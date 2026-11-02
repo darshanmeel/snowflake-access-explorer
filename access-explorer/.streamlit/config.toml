@@ -1,0 +1,12 @@
+# colours come from ui.py (light/dark toggle); no [theme] here, it would fight the toggle
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+[server]
+# Streamlit does see ui.py/access.py changes (it watches every imported module in this folder), but toolbarMode
+# "minimal" hides its "File change · Rerun" prompt, so without runOnSave a change looks ignored. runOnSave is read
+# when a browser session starts: after editing this file, reload open tabs (or restart the server).
+runOnSave = true
