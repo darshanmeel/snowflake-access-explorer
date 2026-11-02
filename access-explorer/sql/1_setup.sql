@@ -1,4 +1,5 @@
--- 1 · setup (developer role): the 7 snapshot tables, the snapshot procedure, read access for the app role. Safe to run again.
+-- 1 · setup (developer role): the 7 snapshot tables, the snapshot procedure, the findings table, stage and procedure,
+-- the worksheet table functions TF_ACCESS_OF / TF_WHO_CAN / TF_CAN, read access for the app role. Safe to run again.
 -- run_sql.py runs each "-- name:" statement in order; "(may fail)" = skipped on error.
 -- Names marked with & come from settings.local.sql. Real set-up: schema, roles and grants via infrastructure as code.
 -- SnowSQL: !source sql/1_setup.sql (from the access-explorer folder)
@@ -83,6 +84,19 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_POLICY (   -- masking and row 
     ARG_COLUMNS VARCHAR(2000),       -- row access policy / conditional masking arguments
     TAG_NAME VARCHAR(500),           -- tag-based policy: DB.SCHEMA.TAG
     POLICY_BODY VARCHAR              -- policy text; the app reads role checks from it (not evaluated)
+);
+
+-- name: TABLE_FINDING
+CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings per run, filled by SP_ACCESS_FINDINGS
+    RUN_ID VARCHAR(36),
+    RULE_NUM VARCHAR(10),
+    TITLE VARCHAR(500),
+    SEVERITY VARCHAR(20),            -- High, Medium, Low
+    GRANTEE VARCHAR(2000),           -- user, role or object the finding is about
+    KIND VARCHAR(20),                -- user, admin, functional, technical, group, object
+    DETAIL VARCHAR,
+    PATH VARCHAR,                    -- A > B > C
+    CREATED_AT TIMESTAMP_LTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
 -- name: PROCEDURE
@@ -278,7 +292,10 @@ def data_objects(session, run_id):
         ORDER BY 1""")]
 
 
-def quoted(name):  # DB.SCHEMA.OBJECT (unquoted, as in the grant data) -> "DB"."SCHEMA"."OBJECT"
+# DB.SCHEMA.OBJECT (unquoted, as in the grant data) -> "DB"."SCHEMA"."OBJECT". To verify: clean() dropped SHOW's quotes,
+# so a part that itself contains "." splits wrongly; that object's call fails and it is listed as skipped in NOTES
+# (tags/policies of it lost on the SHOW fallback only; the ACCOUNT_USAGE path is not affected).
+def quoted(name):
     return ".".join(ident(p) for p in name.split(".", 2))
 
 
@@ -426,6 +443,210 @@ def run(session, p_source):
     return result
 $$;
 
+-- ---------- worksheet access without the app: table functions + findings procedure ----------
+-- The functions walk the last OK run with the same rules as access.py (test_sql.py runs this exact text on DuckDB):
+-- role links = GRANTED_ON 'ROLE' + PRIVILEGE 'USAGE', minus links granted to an admin role (every custom role sits
+-- under SYSADMIN), simple paths only (ROLES = the roles on the path, a user is not one), MAX_DEPTH NULL = every
+-- level, cut at a fixed 50 hops without a flag (the MAX_HOPS setting is not read here).
+-- Depth = roles from the start to the grant holder, holder included (a user is not a role). PATH = 'A > B > C'.
+-- Arguments are read once in ARGS, so they never clash with the column names of the snapshot tables.
+-- Recursive columns are cast in the anchor: Snowflake types them from the anchor and rejects a wider recursive value.
+-- to verify: a recursive CTE is allowed inside a SQL UDTF, and a function argument in a CTE without FROM. The three
+--   FUNCTION statements may fail so the rest of setup still runs, 1_setup_verify.sql then reports them MISSING.
+--   Fallback if they fail: SQL Scripting procedures RETURNS TABLE(...) with the same body in
+--   a RESULTSET returned with RETURN TABLE(res), arguments as :NAME (CALL, then RESULT_SCAN)
+-- to verify: ARRAY_CONSTRUCT / ARRAY_APPEND in a recursive CTE, and ARRAY_CONTAINS with a VARIANT-cast VARCHAR
+
+-- name: FUNCTION_ACCESS_OF (may fail)
+CREATE OR REPLACE FUNCTION &DB.&SCHEMA.TF_ACCESS_OF(NAME VARCHAR, MAX_DEPTH NUMBER)
+RETURNS TABLE (PRIVILEGE VARCHAR, GRANTED_ON VARCHAR, DATABASE_NAME VARCHAR, SCHEMA_NAME VARCHAR, OBJECT_NAME VARCHAR,
+               DEPTH NUMBER, PATH VARCHAR, HOLDER VARCHAR)
+COMMENT = 'Access explorer: every privilege a user (granted roles + PUBLIC) or role reaches, with its role path'
+AS
+$$
+WITH RECURSIVE
+ARGS AS (SELECT CAST(NAME AS VARCHAR) AS A_NAME, MAX_DEPTH AS A_MAX),
+LAST_RUN AS (SELECT MAX_BY(R.RUN_ID, R.FINISHED_AT) AS RUN_ID FROM &DB.&SCHEMA.TBL_ACCESS_RUN R WHERE R.STATUS = 'OK'),
+UR AS (
+    SELECT U.USER_NAME, U.ROLE_NAME
+    FROM &DB.&SCHEMA.TBL_ACCESS_USER_ROLE U JOIN LAST_RUN L ON U.RUN_ID = L.RUN_ID),
+ALL_USERS AS (
+    SELECT U.USER_NAME AS USR FROM UR U
+    UNION
+    SELECT U.USER_NAME FROM &DB.&SCHEMA.TBL_ACCESS_USER U JOIN LAST_RUN L ON U.RUN_ID = L.RUN_ID),
+ME AS (   -- joins, not IN / NOT IN: a NULL user name would empty NOT IN
+    SELECT (SELECT COUNT(*) FROM ALL_USERS X JOIN ARGS A ON X.USR = A.A_NAME) AS IS_USER,
+           (SELECT COUNT(*) FROM UR U JOIN ARGS A ON U.USER_NAME = A.A_NAME WHERE U.ROLE_NAME = 'PUBLIC') AS HAS_PUBLIC),
+EDGE AS (
+    SELECT G.GRANTEE_ROLE AS PARENT, G.OBJECT_NAME AS CHILD
+    FROM &DB.&SCHEMA.TBL_ACCESS_GRANT G JOIN LAST_RUN L ON G.RUN_ID = L.RUN_ID
+    WHERE G.GRANTED_ON = 'ROLE' AND G.PRIVILEGE = 'USAGE'
+      AND G.GRANTEE_ROLE NOT IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'SYSADMIN', 'USERADMIN', 'ORGADMIN')),
+STARTS AS (   -- a user: each granted role row, plus PUBLIC unless granted (1 hop); a role: itself (0 hops)
+    SELECT A.A_NAME || ' > ' || U.ROLE_NAME AS PATH, U.ROLE_NAME AS NODE, 1 AS HOPS, 1 AS IS_USER
+    FROM ARGS A JOIN UR U ON U.USER_NAME = A.A_NAME
+    UNION ALL
+    SELECT A.A_NAME || ' > PUBLIC', 'PUBLIC', 1, 1 FROM ARGS A CROSS JOIN ME M WHERE M.IS_USER > 0 AND M.HAS_PUBLIC = 0
+    UNION ALL
+    SELECT A.A_NAME, A.A_NAME, 0, 0 FROM ARGS A CROSS JOIN ME M WHERE M.IS_USER = 0),
+WALK (PATH, ROLES, NODE, HOPS, IS_USER) AS (
+    SELECT CAST(S.PATH AS VARCHAR), ARRAY_CONSTRUCT(S.NODE), CAST(S.NODE AS VARCHAR), CAST(S.HOPS AS INTEGER),
+           CAST(S.IS_USER AS INTEGER)
+    FROM STARTS S CROSS JOIN ARGS A
+    WHERE A.A_MAX IS NULL OR S.HOPS + 1 - S.IS_USER <= A.A_MAX
+    UNION ALL
+    SELECT W.PATH || ' > ' || E.CHILD, ARRAY_APPEND(W.ROLES, E.CHILD), E.CHILD, W.HOPS + 1, W.IS_USER
+    FROM WALK W JOIN EDGE E ON E.PARENT = W.NODE CROSS JOIN ARGS A
+    WHERE W.HOPS < 50 AND (A.A_MAX IS NULL OR W.HOPS + 2 - W.IS_USER <= A.A_MAX)
+      AND NOT ARRAY_CONTAINS(E.CHILD::VARIANT, W.ROLES))
+SELECT P.PRIVILEGE AS PRIVILEGE,
+       CASE WHEN COALESCE(P.IS_FUTURE, FALSE) THEN 'FUTURE ' || P.GRANTED_ON ELSE P.GRANTED_ON END AS GRANTED_ON,
+       CASE WHEN P.GRANTED_ON = 'DATABASE' THEN P.OBJECT_NAME
+            WHEN P.GRANTED_ON IN ('ACCOUNT', 'WAREHOUSE', 'ROLE', 'USER', 'INTEGRATION', 'RESOURCE MONITOR', 'COMPUTE POOL',
+                                  'EXTERNAL VOLUME') OR POSITION('.' IN P.OBJECT_NAME) = 0 THEN NULL
+            ELSE SPLIT_PART(P.OBJECT_NAME, '.', 1) END AS DATABASE_NAME,
+       CASE WHEN P.GRANTED_ON = 'DATABASE' OR POSITION('.' IN P.OBJECT_NAME) = 0
+                 OR P.GRANTED_ON IN ('ACCOUNT', 'WAREHOUSE', 'ROLE', 'USER', 'INTEGRATION', 'RESOURCE MONITOR', 'COMPUTE POOL',
+                                     'EXTERNAL VOLUME') THEN NULL
+            WHEN P.GRANTED_ON = 'SCHEMA' THEN SUBSTR(P.OBJECT_NAME, POSITION('.' IN P.OBJECT_NAME) + 1)
+            WHEN SPLIT_PART(P.OBJECT_NAME, '.', 3) = '' THEN NULL
+            ELSE SPLIT_PART(P.OBJECT_NAME, '.', 2) END AS SCHEMA_NAME,
+       P.OBJECT_NAME AS OBJECT_NAME, W.HOPS + 1 - W.IS_USER AS DEPTH, W.PATH AS PATH, W.NODE AS HOLDER
+FROM WALK W
+JOIN &DB.&SCHEMA.TBL_ACCESS_GRANT P ON P.GRANTEE_ROLE = W.NODE
+JOIN LAST_RUN L ON P.RUN_ID = L.RUN_ID
+WHERE NOT (P.GRANTED_ON = 'ROLE' AND P.PRIVILEGE = 'USAGE')
+$$;
+
+-- name: FUNCTION_WHO_CAN (may fail)
+CREATE OR REPLACE FUNCTION &DB.&SCHEMA.TF_WHO_CAN(OBJECT_NAME VARCHAR, PRIVILEGE VARCHAR, MAX_DEPTH NUMBER)
+RETURNS TABLE (GRANTEE VARCHAR, GRANTEE_KIND VARCHAR, PRIVILEGE VARCHAR, DEPTH NUMBER, PATH VARCHAR)
+COMMENT = 'Access explorer: every role and user that reaches a privilege on an object (PRIVILEGE NULL = any), with its path'
+AS
+$$
+WITH RECURSIVE
+ARGS AS (SELECT CAST(OBJECT_NAME AS VARCHAR) AS A_OBJ, CAST(PRIVILEGE AS VARCHAR) AS A_PRIV, MAX_DEPTH AS A_MAX),
+LAST_RUN AS (SELECT MAX_BY(R.RUN_ID, R.FINISHED_AT) AS RUN_ID FROM &DB.&SCHEMA.TBL_ACCESS_RUN R WHERE R.STATUS = 'OK'),
+ALL_USERS AS (
+    SELECT U.USER_NAME AS USR FROM &DB.&SCHEMA.TBL_ACCESS_USER_ROLE U JOIN LAST_RUN L ON U.RUN_ID = L.RUN_ID
+    UNION
+    SELECT U.USER_NAME FROM &DB.&SCHEMA.TBL_ACCESS_USER U JOIN LAST_RUN L ON U.RUN_ID = L.RUN_ID),
+MEMBER AS (   -- role -> user; every user holds PUBLIC, which is never listed
+    SELECT U.ROLE_NAME AS NODE, U.USER_NAME AS USR
+    FROM &DB.&SCHEMA.TBL_ACCESS_USER_ROLE U JOIN LAST_RUN L ON U.RUN_ID = L.RUN_ID WHERE U.ROLE_NAME <> 'PUBLIC'
+    UNION ALL
+    SELECT 'PUBLIC', A.USR FROM ALL_USERS A),
+EDGE AS (
+    SELECT G.GRANTEE_ROLE AS PARENT, G.OBJECT_NAME AS CHILD
+    FROM &DB.&SCHEMA.TBL_ACCESS_GRANT G JOIN LAST_RUN L ON G.RUN_ID = L.RUN_ID
+    WHERE G.GRANTED_ON = 'ROLE' AND G.PRIVILEGE = 'USAGE'
+      AND G.GRANTEE_ROLE NOT IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'SYSADMIN', 'USERADMIN', 'ORGADMIN')),
+UP (PRIV, PATH, ROLES, NODE, HOPS) AS (   -- grantee > ... > holder, walking up from each grant holder
+    SELECT CAST(P.PRIVILEGE AS VARCHAR), CAST(P.GRANTEE_ROLE AS VARCHAR), ARRAY_CONSTRUCT(P.GRANTEE_ROLE),
+           CAST(P.GRANTEE_ROLE AS VARCHAR), CAST(0 AS INTEGER)
+    FROM &DB.&SCHEMA.TBL_ACCESS_GRANT P JOIN LAST_RUN L ON P.RUN_ID = L.RUN_ID CROSS JOIN ARGS A
+    WHERE P.OBJECT_NAME = A.A_OBJ AND (A.A_PRIV IS NULL OR P.PRIVILEGE = A.A_PRIV)
+      AND NOT (P.GRANTED_ON = 'ROLE' AND P.PRIVILEGE = 'USAGE')
+    UNION ALL
+    SELECT U.PRIV, E.PARENT || ' > ' || U.PATH, ARRAY_APPEND(U.ROLES, E.PARENT), E.PARENT, U.HOPS + 1
+    FROM UP U JOIN EDGE E ON E.CHILD = U.NODE CROSS JOIN ARGS A
+    WHERE U.HOPS < 50 AND (A.A_MAX IS NULL OR U.HOPS + 1 < A.A_MAX)
+      AND NOT ARRAY_CONTAINS(E.PARENT::VARIANT, U.ROLES))
+SELECT U.NODE AS GRANTEE, 'role' AS GRANTEE_KIND, U.PRIV AS PRIVILEGE, U.HOPS + 1 AS DEPTH, U.PATH AS PATH
+FROM UP U CROSS JOIN ARGS A
+WHERE A.A_MAX IS NULL OR U.HOPS + 1 <= A.A_MAX
+UNION ALL
+SELECT M.USR, 'user', U.PRIV, U.HOPS + 1, M.USR || ' > ' || U.PATH
+FROM UP U JOIN MEMBER M ON M.NODE = U.NODE CROSS JOIN ARGS A
+WHERE U.HOPS < 50 AND (A.A_MAX IS NULL OR U.HOPS + 1 <= A.A_MAX)
+$$;
+
+-- name: FUNCTION_CAN (may fail)
+CREATE OR REPLACE FUNCTION &DB.&SCHEMA.TF_CAN(USER_NAME VARCHAR, PRIVILEGE VARCHAR, OBJECT_NAME VARCHAR)
+RETURNS TABLE (PATH VARCHAR, HOPS NUMBER, HOLDER VARCHAR, VIA_OWNERSHIP BOOLEAN)
+COMMENT = 'Access explorer: every path through which a user holds a privilege on an object, or OWNERSHIP of it; no rows = no'
+AS
+$$
+-- to verify: a SQL UDTF may call another SQL UDTF in its FROM clause
+WITH ARGS AS (SELECT CAST(PRIVILEGE AS VARCHAR) AS A_PRIV, CAST(OBJECT_NAME AS VARCHAR) AS A_OBJ)
+SELECT T.PATH || ' > ' || T.OBJECT_NAME AS PATH, T.DEPTH AS HOPS, T.HOLDER AS HOLDER,
+       T.PRIVILEGE <> A.A_PRIV AS VIA_OWNERSHIP
+FROM TABLE(&DB.&SCHEMA.TF_ACCESS_OF(USER_NAME, NULL)) T CROSS JOIN ARGS A
+WHERE T.OBJECT_NAME = A.A_OBJ AND (T.PRIVILEGE = A.A_PRIV OR (T.PRIVILEGE = 'OWNERSHIP' AND A.A_PRIV <> 'OWNERSHIP'))
+$$;
+
+-- access.py on a stage, imported by SP_ACCESS_FINDINGS. &HERE = this folder (run_sql.py fills it in, SnowSQL reads it from settings)
+-- name: STAGE_CODE
+CREATE STAGE IF NOT EXISTS &DB.&SCHEMA.STG_ACCESS_CODE COMMENT = 'Access explorer: access.py for SP_ACCESS_FINDINGS';
+
+-- to verify: PUT through snowflake-connector-python with a quoted Windows path 'file://C:/...'
+-- name: PUT_CODE
+PUT 'file://&HERE/access.py' @&DB.&SCHEMA.STG_ACCESS_CODE AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
+
+-- name: PROCEDURE_FINDINGS
+CREATE OR REPLACE PROCEDURE &DB.&SCHEMA.SP_ACCESS_FINDINGS(P_SETTINGS VARCHAR DEFAULT '{}')
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('snowflake-snowpark-python')
+IMPORTS = ('@&DB.&SCHEMA.STG_ACCESS_CODE/access.py')
+HANDLER = 'run'
+EXECUTE AS OWNER
+COMMENT = 'Access explorer: the app''s rule checks on the last OK snapshot, written to TBL_ACCESS_FINDING'
+AS
+$$
+# P_SETTINGS: JSON text with any of the keys in SETTINGS (README > Settings); missing keys keep access.py's defaults.
+# to verify: access.py from IMPORTS is importable by name, and re-read after PUT_CODE + CREATE OR REPLACE
+# to verify: os.environ may be changed inside the procedure's Python sandbox
+import importlib
+import json
+import os
+
+from snowflake.snowpark.types import StringType, StructField, StructType
+
+WHERE = "&DB.&SCHEMA"
+FINDING = "&DB.&SCHEMA.TBL_ACCESS_FINDING"
+SETTINGS = ["ROLE_PREFIXES", "BUILD_ROLES", "SENSITIVE_TAGS", "READ_PRIVS", "DORMANT_DAYS", "MAX_DEPTH_RULE",
+            "READ_ROLE_PATTERNS", "READ_SHARE", "READ_MIN_OBJECTS", "MAX_HOPS"]
+COLS = ["RUN_ID", "RULE_NUM", "TITLE", "SEVERITY", "GRANTEE", "KIND", "DETAIL", "PATH"]  # CREATED_AT: column default
+# every column a string: Snowpark infers mixed or all-None columns badly
+SCHEMA = StructType([StructField(c, StringType()) for c in COLS])
+
+
+def run(session, p_settings):
+    s = json.loads(p_settings or "{}")
+    bad = sorted(set(s) - set(SETTINGS))
+    if bad:
+        raise ValueError(f"Unknown settings {bad}; allowed: {SETTINGS}")
+    for k in SETTINGS:  # a warm Python process keeps the previous CALL's environment
+        os.environ.pop(k, None)
+    os.environ.update({k: str(v) for k, v in s.items()})
+    import access
+    importlib.reload(access)  # access.py reads its settings at import time
+    d = access.snapshot(lambda sql: [r.as_dict() for r in session.sql(sql).collect()], WHERE)
+    access.build(d)
+    found = access.rule_rows()
+    run_id = d["run"]["RUN_ID"]
+    data = [[None if v is None else str(v) for v in
+             (run_id, f["num"], f["title"], f["severity"], f["grantee"], f["kind"], f["detail"], " > ".join(f["path"]))]
+            for f in found]
+    session.sql("BEGIN TRANSACTION").collect()  # each statement commits on its own: keep the old rows if the insert fails
+    try:
+        session.sql(f"DELETE FROM {FINDING} WHERE RUN_ID = ?", params=[run_id]).collect()
+        # to verify: append with column_order="name" fills the omitted CREATED_AT from its default, and stays inside the
+        # transaction (Snowpark may upload many rows through a temporary table, and DDL would commit)
+        if data:
+            session.create_dataframe(data, schema=SCHEMA).write.save_as_table(FINDING, mode="append", column_order="name")
+        session.sql("COMMIT").collect()
+    except Exception:
+        session.sql("ROLLBACK").collect()
+        raise
+    per_rule = {}
+    for f in found:
+        per_rule[f["rule"]] = per_rule.get(f["rule"], 0) + 1
+    return {"run_id": run_id, "findings": len(found), "per_rule": per_rule}
+$$;
+
 -- app role: reads the snapshot tables, nothing else (POC: app role = developer role, so these are skipped or no-ops)
 -- name: GRANT_DATABASE_APP (may fail)
 GRANT USAGE ON DATABASE &DB TO ROLE &APP_ROLE;
@@ -457,12 +678,25 @@ GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_TAG TO ROLE &APP_ROLE;
 -- name: GRANT_TABLE_POLICY_APP (may fail)
 GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_POLICY TO ROLE &APP_ROLE;
 
+-- name: GRANT_TABLE_FINDING_APP (may fail)
+GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_FINDING TO ROLE &APP_ROLE;
+
+-- worksheet table functions. to verify: a SQL UDTF reads the tables with its owner's rights, so USAGE is enough
+-- name: GRANT_FUNCTION_ACCESS_OF_APP (may fail)
+GRANT USAGE ON FUNCTION &DB.&SCHEMA.TF_ACCESS_OF(VARCHAR, NUMBER) TO ROLE &APP_ROLE;
+
+-- name: GRANT_FUNCTION_WHO_CAN_APP (may fail)
+GRANT USAGE ON FUNCTION &DB.&SCHEMA.TF_WHO_CAN(VARCHAR, VARCHAR, NUMBER) TO ROLE &APP_ROLE;
+
+-- name: GRANT_FUNCTION_CAN_APP (may fail)
+GRANT USAGE ON FUNCTION &DB.&SCHEMA.TF_CAN(VARCHAR, VARCHAR, VARCHAR) TO ROLE &APP_ROLE;
+
 -- the app's "Refresh snapshot now" button: the CALL runs with the owner's rights, whoever clicks
 -- name: GRANT_PROCEDURE_APP (may fail)
 GRANT USAGE ON PROCEDURE &DB.&SCHEMA.SP_ACCESS_SNAPSHOT(VARCHAR) TO ROLE &APP_ROLE;
 
 -- what the developer role needs to read every grant (real set-up: infrastructure as code), one of:
---   ACCOUNT_USAGE:  GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE &DEV_ROLE;   (every view)
+--   ACCOUNT_USAGE:  GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE &DEV_ROLE   (every view)
 --                   or the SNOWFLAKE database roles SECURITY_VIEWER (GRANTS_TO_*, USERS) + GOVERNANCE_VIEWER (QUERY_HISTORY,
---                   TAG_REFERENCES, POLICY_REFERENCES, MASKING_POLICIES, ROW_ACCESS_POLICIES; Enterprise edition for tags)
---   SHOW fallback:  GRANT MANAGE GRANTS ON ACCOUNT TO ROLE &DEV_ROLE;   (without it SHOW lists only what the role may see)
+--                   TAG_REFERENCES, POLICY_REFERENCES, MASKING_POLICIES, ROW_ACCESS_POLICIES, Enterprise edition for tags)
+--   SHOW fallback:  GRANT MANAGE GRANTS ON ACCOUNT TO ROLE &DEV_ROLE   (without it SHOW lists only what the role may see)

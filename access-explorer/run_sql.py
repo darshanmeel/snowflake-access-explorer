@@ -16,6 +16,7 @@ from sf import connect  # noqa: E402
 HERE = pathlib.Path(__file__).parent
 SETTINGS = HERE / "settings.local.sql" if (HERE / "settings.local.sql").exists() else HERE / "settings.sql"
 NAMES = dict(re.findall(r"^!define (\w+)=(.*?)\s*$", SETTINGS.read_text(encoding="utf-8"), re.M))
+NAMES["HERE"] = HERE.resolve().as_posix()  # PUT needs an absolute path to access.py
 
 
 def fill(sql):

@@ -6,7 +6,8 @@ gatherUsageStats = false
 toolbarMode = "minimal"
 
 [server]
-# Streamlit does see ui.py/access.py changes (it watches every imported module in this folder), but toolbarMode
-# "minimal" hides its "File change · Rerun" prompt, so without runOnSave a change looks ignored. runOnSave is read
-# when a browser session starts: after editing this file, reload open tabs (or restart the server).
+# Streamlit reruns on a change to app.py, ui.py or access.py only while a browser tab is open, and toolbarMode
+# "minimal" hides its "File change · Rerun" prompt: runOnSave reruns open tabs by itself. An edit made with no tab
+# open is picked up by app.fresh() on the next page load. runOnSave is read when a session starts: after editing this
+# file, reload open tabs (or restart the server).
 runOnSave = true

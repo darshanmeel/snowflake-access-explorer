@@ -112,7 +112,7 @@ Each row shows the full path, e.g. `ANALYST_01 -> GRP_ANALYSTS -> F_ANALYST -> T
 | `sql/*_verify.sql` | Checks per step: OK / MISSING / WRONG / SKIPPED, then VERIFIED |
 | `run_sql.py` | Runs a `sql/` file through `../sf.py` (or use SnowSQL: `deploy_snowsql.sql`) |
 | `access.py` | Fake data, `snapshot()`, `mine()`, graph walks, rule checks (no Streamlit) |
-| `app.py` | Streamlit UI: data loaders, one function per tab, `main()`; graphs from `st.graphviz_chart` |
+| `app.py` | Streamlit UI: data loaders, one function per tab, `main()`; graphs from `ui.lane_graph` (inputs from `access.down_graph` / `role_graph` / `object_graph`) |
 | `make_demo_db.py` | Fake data into `demo.duckdb`, same tables as Snowflake (`write(con, data)` for tests) |
 | `take_screens.py` | Screenshots of the DuckDB demo (Playwright + Edge, app on port 8599) |
 | `.streamlit/config.toml` | "Paper" look: warm paper, ink, burnt amber; Fraunces / IBM Plex in `app.py` |
@@ -160,6 +160,45 @@ $env:FAKE="0"; $env:ACCESS_SNAPSHOT="<DB>.<SCHEMA>"; streamlit run app.py
 
 - Depth = number of roles from the start to the role holding the grant, holder included (a user is not a role). `ANALYST_01 > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ` = 3; a grant holder alone = 1. The same on every page.
 - Privilege classes (arrows, badges): read = SELECT, REFERENCES, USAGE on database/schema · write = INSERT, UPDATE, DELETE, TRUNCATE, CREATE ... · own = OWNERSHIP, account privileges · use = everything else (USAGE on procedure/function/warehouse, OPERATE, MONITOR).
+
+## SQL access without the app
+`sql/1_setup.sql` also creates three table functions and a findings procedure. All read the last OK snapshot run,
+so `CALL SP_ACCESS_SNAPSHOT()` first.
+```sql
+USE SCHEMA <DB>.<SCHEMA>;
+-- every privilege a user (granted roles + PUBLIC) or a role reaches; MAX_DEPTH NULL = every level (cap 50 hops)
+SELECT * FROM TABLE(TF_ACCESS_OF('ANALYST_01', NULL)) ORDER BY DEPTH, OBJECT_NAME;
+SELECT * FROM TABLE(TF_ACCESS_OF('F_ANALYST', 2)) WHERE DATABASE_NAME = 'SALES';
+-- who reaches a privilege on an object (PRIVILEGE NULL = any), users and roles
+SELECT * FROM TABLE(TF_WHO_CAN('SALES.CORE.TBL_CUSTOMER', 'SELECT', NULL)) WHERE GRANTEE_KIND = 'user';
+-- can a user do it? one row per path (VIA_OWNERSHIP = through OWNERSHIP, which implies every privilege), no rows = no
+SELECT * FROM TABLE(TF_CAN('ANALYST_01', 'SELECT', 'SALES.CORE.TBL_CUSTOMER')) ORDER BY HOPS;
+-- the app's rule checks, stored per run in TBL_ACCESS_FINDING; returns {run_id, findings, per_rule}
+CALL SP_ACCESS_FINDINGS();
+CALL SP_ACCESS_FINDINGS('{"MAX_DEPTH_RULE": 4, "DORMANT_DAYS": 60}');
+SELECT RULE_NUM, TITLE, SEVERITY, GRANTEE, DETAIL, PATH FROM TBL_ACCESS_FINDING
+WHERE RUN_ID = (SELECT RUN_ID FROM TBL_ACCESS_RUN WHERE STATUS = 'OK' ORDER BY FINISHED_AT DESC LIMIT 1);
+```
+| Object | Returns |
+|---|---|
+| `TF_ACCESS_OF(NAME, MAX_DEPTH)` | `PRIVILEGE, GRANTED_ON` (`FUTURE TABLE` for future grants)`, DATABASE_NAME, SCHEMA_NAME, OBJECT_NAME` (full name)`, DEPTH, PATH, HOLDER`. A name that is a user walks as the user. |
+| `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` | `GRANTEE, GRANTEE_KIND` (user / role)`, PRIVILEGE, DEPTH, PATH` (grantee > ... > holder) |
+| `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` | `PATH` (user > ... > holder > object)`, HOPS` (= depth)`, HOLDER, VIA_OWNERSHIP`. A role name walks as the role (the app's Can they? walks users only). |
+| `SP_ACCESS_FINDINGS(P_SETTINGS)` | Rule findings of the last OK run into `TBL_ACCESS_FINDING` (that run's rows replaced) |
+
+- Same rules as the app: every simple path, links granted to an admin role dropped, depth as in Settings, `PATH` = `A > B > C`.
+- `P_SETTINGS`: JSON text with any of `ROLE_PREFIXES, BUILD_ROLES, SENSITIVE_TAGS, READ_PRIVS, DORMANT_DAYS, MAX_DEPTH_RULE,
+  READ_ROLE_PATTERNS, READ_SHARE, READ_MIN_OBJECTS, MAX_HOPS` (table above); missing keys use the defaults. Unknown keys fail.
+- The procedure runs `access.py`, which setup PUTs to stage `STG_ACCESS_CODE`: rerun `1_setup.sql` after changing `access.py`.
+- App role: SELECT on `TBL_ACCESS_FINDING`, USAGE on the three functions (not on `SP_ACCESS_FINDINGS`, which writes).
+- `python test_sql.py` runs the function bodies from `1_setup.sql` on DuckDB and compares them with `access.py`.
+- Names are matched as stored, case-sensitive: `'ANALYST_01'`, not `'analyst_01'`.
+- Walks stop at 50 hops without a flag (the `MAX_HOPS` setting is not read): `MAX(DEPTH)` of 50 (user) or 51 (role)
+  means the result may be cut. Every simple path is listed, so a dense role graph can return very many rows.
+- A role cycle check covers roles only, so a role named like the user is walked (the app skips it).
+- If setup prints `SKIPPED: FUNCTION_...`, the functions did not compile on this account; the rest of setup still runs.
+- Setup from a worksheet only (no `run_sql.py` / SnowSQL, so no `PUT`): upload `access.py` uncompressed to
+  `STG_ACCESS_CODE` with Snowsight's "+ Files" before `PROCEDURE_FINDINGS`.
 
 ## Later: Streamlit in Snowflake (designed, not built)
 ```mermaid

@@ -4,6 +4,7 @@ Every helper returns an HTML string on one line (no newlines, so st.markdown nev
 Colors come from TOKENS only: css(theme) turns the active set into :root variables, lane_graph() inlines them.
 """
 from html import escape
+from itertools import combinations
 from urllib.parse import urlencode
 
 KINDS = ["user", "functional", "technical", "group", "admin", "object"]
@@ -45,7 +46,8 @@ TOKENS = {
     },
 }
 SEV_TONE = {"High": "bad", "Medium": "warn", "Low": "low"}
-PCLASS = {"read": "Read", "write": "Write", "own": "Own", "use": "Use", "inherit": "Inherits"}
+PCLASS = {"read": "Read", "write": "Write", "own": "Own", "use": "Use", "admin": "Account", "inherit": "Inherits",
+          "also": "Also deeper"}
 
 # plain-language definitions, shown as title tooltips (legend chips, KPI labels, table headers, D badges) and as a glossary
 HELP = {
@@ -58,8 +60,11 @@ HELP = {
     "Object": "What a privilege is granted on: database, schema, table, view, warehouse, procedure or function.",
     "Path": "The chain that gives the access: the start, each role granted to the one before, then the object.",
     "Paths": "How many different chains give the same privilege. More than 1: removing one role may not remove access.",
-    "Depth": "Dn = n roles in the chain from the start to the role that holds the grant, that role included. "
-             "D1 = held by the first role.",
+    "Depth": "Dn = n roles from the user (or group) to the role that holds the grant, that role included. "
+             "E.g. D3: you > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ. D1 = held by the first role.",
+    "Also deeper": "The same role is also reached by a longer chain; the dotted line shows it.",
+    "Use role": "The role granted to you that carries this privilege. With secondary roles ALL it is already active; "
+                "otherwise run USE ROLE <it>.",
     "Future table": "A grant on every table created later in a schema (future grant). Existing tables need their own grant.",
     "Secondary roles": "All = every granted role is active in a session at once. None = only the role in use.",
     "Choke point": "A grant every path passes through: removing it removes the access.",
@@ -67,6 +72,7 @@ HELP = {
     "Write": "Write: INSERT, UPDATE, DELETE or TRUNCATE. Changes data.",
     "Own": "Own: OWNERSHIP. Full control: can change, drop and grant the object.",
     "Use": "Use: USAGE on a warehouse, procedure or function, OPERATE or MONITOR.",
+    "Account": "Account-level privilege (MANAGE GRANTS, CREATE ROLE, ...): can change access itself.",
     "Inherits": "Role-to-role link: the role on the left is granted the one on the right and gets all it holds.",
     "Sensitive": "Tagged as personal or confidential data: on a column, on the object, or inherited from its schema or database.",
     "Masked": "A masking policy hides the value for this role. Read from the policy text, not evaluated by Snowflake.",
@@ -177,6 +183,13 @@ html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],[data
 .stButton button[kind="primary"],.st-key-refresh button{{background:transparent!important;color:var(--accent)!important;border:1px solid var(--accent)!important;font-weight:600}}
 .st-key-refresh button p{{font-weight:600}}
 .st-key-theme button{{width:44px;min-width:44px;padding:0;background:var(--panel)!important}}
+/* the copy-link popover next to it: same look in both themes */
+[data-testid="stPopover"] button{{width:44px;min-width:44px;min-height:40px;padding:0;background:var(--panel)!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:8px!important;box-shadow:none!important}}
+[data-testid="stPopover"] button:hover,[data-testid="stPopover"] button:focus-visible{{border-color:var(--accent)!important;color:var(--accent)!important}}
+[data-testid="stPopover"] button *{{color:inherit!important}}
+[data-testid="stPopoverBody"]{{background:var(--panel)!important;color:var(--ink)!important;border:1px solid var(--line)!important}}
+/* help "?" icons */
+[data-testid="stTooltipIcon"],[data-testid="stTooltipIcon"] *,[data-testid="stTooltipHoverTarget"] svg{{color:var(--muted)!important;opacity:1!important}}
 /* global search: magnifier on the left, no chevron */
 .st-key-find [data-testid="stSelectbox"] svg{{display:none}}
 .st-key-find [data-testid="stSelectbox"] [role="group"]{{padding-left:34px;background:var(--sunk) {search} no-repeat 12px center!important}}
@@ -236,7 +249,14 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 .ae-path svg{{color:var(--edge);flex:none}}
 .ae-legend{{display:flex;flex-wrap:wrap;gap:8px;align-items:center}}
 .ae-depth{{display:inline-flex;min-width:28px;justify-content:center;padding:1px 6px;border-radius:6px;background:var(--sunk);border:1px solid var(--line);font-family:{MONO};font-size:12px;color:var(--ink)}}
-.ae-tablewrap{{overflow-x:auto}}
+.ae-tablewrap{{overflow-x:auto;scrollbar-gutter:stable}}
+.ae-tablewrap::-webkit-scrollbar{{height:10px}}.ae-tablewrap::-webkit-scrollbar-thumb{{background:var(--edge);border-radius:6px}}.ae-tablewrap::-webkit-scrollbar-track{{background:var(--sunk)}}
+.ae-table td.nw{{white-space:nowrap}}
+.ae-table tr.has-sub td{{padding-bottom:6px}}
+.ae-table tr.sub td{{border-top:0;padding-top:0;padding-bottom:12px}}
+.ae-fix{{display:inline-block;max-width:100%;padding:6px 10px;border-radius:8px;background:var(--sunk);border:1px solid var(--line);overflow-wrap:anywhere}}
+.ae-wrap{{white-space:normal;overflow-wrap:anywhere}}
+.ae-table details summary{{cursor:pointer}}
 .ae-table{{width:100%;border-collapse:collapse;font-size:13px;color:var(--ink)}}
 .ae-table th{{background:var(--sunk);color:var(--muted);text-align:left;font-weight:500;padding:10px 12px;white-space:nowrap;border:0}}
 .ae-table td{{padding:10px 12px;border:0;border-top:1px solid var(--line);vertical-align:middle;background:transparent}}
@@ -252,6 +272,25 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 .ae-sevdot{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap}}
 .ae-rule{{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);color:var(--ink)!important;text-decoration:none!important;min-height:132px;min-width:0}}
 .ae-rule:hover{{border-color:var(--edge)}}
+.ae-strip{{display:flex;flex-wrap:wrap;gap:8px}}
+.ae-strip a{{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--line);color:var(--ink)!important;text-decoration:none!important;font-size:13px}}
+.ae-strip a b{{font-family:{SERIF};font-size:20px;font-weight:600}}
+.ae-strip a.on{{border:1.5px solid var(--accent);box-shadow:0 0 0 3px var(--sunk)}}
+.ae-map svg a:hover rect{{stroke:var(--accent);stroke-width:2.5}}
+.ae-rgroup{{margin:6px 0 2px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}}
+.ae-rrow{{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin:0 0 6px!important}}
+.ae-rrow summary .cv{{display:flex;color:var(--muted);transition:transform .15s}}.ae-rrow[open] summary .cv{{transform:rotate(90deg)}}
+.ae-map a{{text-decoration:none!important}}.ae-map{{overflow-x:auto}}.ae-map svg{{min-width:640px}}
+.ae-rrow.on{{border:1.5px solid var(--accent)}}
+.ae-rrow summary{{display:grid;grid-template-columns:96px minmax(180px,2.2fr) 120px minmax(160px,3fr) 14px;gap:12px;align-items:center;padding:9px 14px;cursor:pointer;list-style:none;font-size:13px}}
+.ae-rrow summary::-webkit-details-marker{{display:none}}
+.ae-rrow summary .t{{font-weight:600}}
+.ae-rrow summary .m{{color:var(--muted);font-size:12.5px}}
+.ae-rrow .bar{{display:flex;align-items:center;gap:8px;font-family:{MONO};font-size:12.5px}}
+.ae-rrow .bar i{{display:block;height:6px;border-radius:3px;background:var(--edge);min-width:2px}}
+.ae-rrow .body{{padding:2px 14px 12px 122px;font-size:13px;display:flex;flex-direction:column;gap:6px}}
+.ae-rrow .body p{{margin:0}}.ae-rrow .body b{{font-weight:600}}
+@media (max-width:900px){{.ae-rrow summary{{grid-template-columns:72px 1fr 48px 14px;gap:8px}}.ae-rrow summary .m{{grid-column:1/-1;order:9}}.ae-rrow .body{{padding-left:14px}}}}
 .ae-rule.on{{border:1.5px solid var(--accent);box-shadow:0 0 0 3px var(--sunk)}}
 .ae-rule-top{{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;font-size:12px;color:var(--muted)}}
 .ae-rule-count{{font-family:{SERIF};font-size:34px;font-weight:600;line-height:1.1}}
@@ -267,7 +306,7 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 .ae-block-head{{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:600}}
 .ae-graph{{overflow-x:auto;margin:0 -4px;padding-bottom:4px;border-radius:10px}}
 .ae-graph.wide{{overflow-x:scroll;padding-bottom:8px}}
-.ae-graph.fit{{overflow:hidden}}
+.ae-graph.fit{{overflow-x:auto}}
 .ae-graph svg a:hover rect,.ae-graph svg a:focus rect{{stroke:var(--accent);stroke-width:2.5}}
 .ae-graph svg a:focus{{outline:none}}
 .ae-graph svg path title{{pointer-events:none}}
@@ -285,7 +324,9 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 .pc-own{{color:var(--e-own);border:3px double var(--e-own)}}
 .pc-use{{color:var(--e-use);border:1.5px dashed var(--e-use)}}
 .pc-inherit{{color:var(--muted);border:1.5px solid var(--edge)}}
-.ae-leg-edge{{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}}
+.pc-admin{{color:var(--bad-ink);border:1.5px dotted var(--bad-ink)}}
+.ae-leg-edge{{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}}
+.ae-legend-lines{{margin-top:-8px;gap:6px 14px}}
 .ae-chip.off{{background:var(--sunk)!important;border:1px dashed var(--edge)!important;color:var(--muted)!important}}
 .ae-sens{{display:inline-flex;margin-left:5px;color:var(--bad-ink)}}
 /* sidebar */
@@ -321,7 +362,15 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 @media (max-width:900px){{
 .ae-h1{{font-size:28px}}
 }}
+@media (max-width:640px){{
+/* top bar: crumb on its own row, then search, link and theme buttons side by side */
+[data-testid="stHorizontalBlock"]:has(.st-key-theme){{flex-direction:row!important;flex-wrap:wrap!important;gap:8px!important}}
+[data-testid="stHorizontalBlock"]:has(.st-key-theme)>[data-testid="stColumn"]:first-child{{flex:1 1 100%!important;min-width:100%!important}}
+[data-testid="stHorizontalBlock"]:has(.st-key-theme)>[data-testid="stColumn"]:nth-child(2){{flex:1 1 0!important;min-width:0!important;width:auto!important}}
+[data-testid="stHorizontalBlock"]:has(.st-key-theme)>[data-testid="stColumn"]:nth-child(n+3){{flex:0 0 44px!important;min-width:44px!important;width:44px!important}}
+}}
 @media (max-width:480px){{
+[class*="st-key-card_filter"] [data-testid="stColumn"]{{flex:1 1 100%!important;min-width:100%!important}}
 .ae-card{{padding:16px}}
 .ae-card>.ae-tablewrap{{margin:0 -16px -16px}}
 .ae-kpi-value{{font-size:32px}}
@@ -342,9 +391,10 @@ def _title(text):
     return f' title="{escape(text)}"' if text else ""
 
 
-def chip(name, kind, href=None, sensitive=False, disabled=False, title=""):
-    """sensitive adds a lock marker; disabled draws the chip dashed grey (a disabled user)."""
-    n = escape(str(name))
+def chip(name, kind, href=None, sensitive=False, disabled=False, title="", label=None):
+    """sensitive adds a lock marker; disabled draws the chip dashed grey (a disabled user); label: text shown instead
+    of the name."""
+    n = escape(str(label or name))
     cls = f"ae-chip k-{kind}" + (" off" if disabled else "")
     extra = [title] if title else []
     extra += ["disabled"] * disabled + ["sensitive data"] * sensitive
@@ -354,13 +404,6 @@ def chip(name, kind, href=None, sensitive=False, disabled=False, title=""):
     if href:
         return f'<a class="{cls}" href="{escape(href)}" target="_self"{t}>{n}</a>'
     return f'<span class="{cls}"{t}>{n}</span>'
-
-
-def path(names, kinds, href_of=None):
-    """Chips joined by chevrons; href_of(name) -> link (optional)."""
-    sep = icon("chev", 12, 2.5)
-    return '<div class="ae-path">' + sep.join(
-        chip(n, k, href_of(n) if href_of else None) for n, k in zip(names, kinds)) + '</div>'
 
 
 def depth(n):
@@ -397,16 +440,19 @@ def edge_sample(cls):
     return f'<svg width="28" height="12" viewBox="0 0 28 12" fill="none" aria-hidden="true">{line}</svg>'
 
 
-def legend(edges=False, marks=False):
-    """Node kinds; edges=True adds the line styles (inherits, read, write, own, use);
-    marks=True adds the disabled-user and sensitive markers. Every entry has a tooltip from HELP."""
+def legend(edges=False, marks=False, extra=()):
+    """Node kinds; edges=True adds the line styles (inherits, read, write, own, use; account only when in extra) on a
+    row of their own; marks=True adds the disabled-user and sensitive markers. Every entry has a tooltip from HELP."""
     out = [chip(LABELS[k], k, title=tip(LABELS[k])) for k in KINDS]
     if marks:
         out += [chip("Disabled", "user", disabled=True, title=tip("Disabled")),
                 chip("Sensitive", "object", sensitive=True, title=tip("Sensitive"))]
+    lines = ""
     if edges:
-        out += [f'<span class="ae-leg-edge"{_title(tip(PCLASS[c]))}>{edge_sample(c)}{PCLASS[c]}</span>' for c in EDGE]
-    return '<div class="ae-legend">' + "".join(out) + '</div>'
+        lines = '<div class="ae-legend ae-legend-lines">' + "".join(
+            f'<span class="ae-leg-edge"{_title(tip(PCLASS[c]))}>{edge_sample(c)}{PCLASS[c]}</span>' for c in EDGE
+            if c != "admin" or c in extra) + '</div>'
+    return '<div class="ae-legend">' + "".join(out) + '</div>' + lines
 
 
 def how(text=GRAPH_HOW):
@@ -459,15 +505,25 @@ def profile(cells):
         f'<div><span>{escape(k)}</span><span>{v}</span></div>' for k, v in cells) + '</div>'
 
 
-def table(columns, rows, numeric_cols=(), min_width=640, tips=None):
-    """rows: lists of cell HTML. numeric_cols: column names or indexes right-aligned in mono.
+def table(columns, rows, numeric_cols=(), min_width=640, tips=None, nowrap=(), subs=None):
+    """rows: lists of cell HTML. numeric_cols: column names or indexes right-aligned in mono. nowrap: column names kept
+    on one line. subs: per row an HTML line shown full width under it ("" for none), e.g. a long fix text.
     Headers named in HELP (Depth, Paths, Path, ...) or in tips {column: text} get a tooltip."""
     num = {i for i, c in enumerate(columns) if c in numeric_cols or i in numeric_cols}
+    nw = {i for i, c in enumerate(columns) if c in nowrap}
     tt = {c: (tips or {}).get(c) or HELP.get(c, "") for c in columns}
     th = "".join(f'<th{" class=num" if i in num else ""} scope="col"{_title(tt[c])}>'
                  f'{f"<span class=ae-tip>{escape(c)}</span>" if tt[c] else escape(c)}</th>' for i, c in enumerate(columns))
-    trs = ["<tr>" + "".join(f'<td{" class=num" if i in num else ""}>{c}</td>' for i, c in enumerate(row)) + "</tr>"
-           for row in rows]
+
+    def td(i, c):
+        cls = " ".join(["num"] * (i in num) + ["nw"] * (i in nw))
+        return f'<td class="{cls}">{c}</td>' if cls else f"<td>{c}</td>"
+
+    trs = []
+    for row, sub in zip(rows, subs or [""] * len(rows)):
+        trs.append(f'<tr{" class=has-sub" if sub else ""}>' + "".join(td(i, c) for i, c in enumerate(row)) + "</tr>")
+        if sub:
+            trs.append(f'<tr class="sub"><td colspan="{len(columns)}">{sub}</td></tr>')
     return (f'<div class="ae-tablewrap"><table class="ae-table" style="min-width:{min_width}px">'
             f'<thead><tr>{th}</tr></thead><tbody>{"".join(trs)}</tbody></table></div>')
 
@@ -543,29 +599,128 @@ def skeleton():
             + '</div></div>')
 
 
+def strip(items):
+    """Severity strip: items [(html label, count, href, on)], each part a filter link."""
+    return '<div class="ae ae-strip">' + "".join(
+        f'<a class="{"on" if on else ""}" href="{escape(h)}" target="_self">{lab}<b>{n}</b></a>'
+        for lab, n, h, on in items) + '</div>'
+
+
+def rule_row(num, level, title, count, top, meaning, body, on=False, open_=False):
+    """One rule as an expandable row: severity, number + title, count with a bar (top = largest count), meaning.
+    body: HTML shown when opened."""
+    w = 0 if not top else max(2, round(70 * count / top))
+    bar = f'<span class="bar"><i style="width:{w}px"></i>{count}</span>'
+    return (f'<details class="ae ae-rrow{" on" if on else ""}"{" open" if open_ else ""}><summary>{dot(level, True)}'
+            f'<span class="t">{escape(num)} · {escape(title)}</span>{bar}<span class="m">{escape(meaning)}</span>'
+            f'<span class="cv">{icon("chev", 14, 2.4)}</span></summary><div class="body">{body}</div></details>')
+
+
+# rule map: the role model drawn once; rules sit as badges on the box or arrow they check
+MAP_BOX = {  # spot -> (x, y, w, h, label, caption, kind)
+    "user": (20, 110, 140, 44, "User", "person · service", "user"),
+    "group": (230, 110, 130, 44, "Group role", "identity provider", "group"),
+    "func": (430, 110, 130, 44, "Functional", "job role", "functional"),
+    "tech": (630, 110, 130, 44, "Technical", "READ·WRITE·OWNER", "technical"),
+    "object": (850, 110, 130, 44, "Object", "table · view · ...", "object"),
+    "admin": (230, 226, 130, 40, "Admin roles", "inherit every role", "admin"),
+    "public": (630, 226, 130, 40, "PUBLIC", "every user", "group"),
+}
+MAP_SPOT = {  # spot -> (x, y, align): box spots are a row above the box, arrow spots sit on the arrow
+    "user": (20, 94, "left"), "group": (230, 94, "left"), "func": (430, 94, "left"), "object": (850, 94, "left"),
+    "tech": (630, 94, "left"), "shortcut": (450, 50, "center"), "loop": (695, 92, "center"),
+    "func-tech": (595, 132, "center"), "write": (805, 168, "center"), "func-object": (730, 198, "center"),
+    "admin": (370, 246, "left"), "public": (845, 246, "center"),
+}
+MAP_HOW = ("Boxes: the role model, left to right as access flows. Grey arrows: granted to (dashed: a shortcut the "
+           "model forbids). Blue: read on objects; amber: write; green dashed: use. Badges: rule number · findings, "
+           "coloured by severity (grey outline: passing). Click a badge to filter.")
+
+
+def rule_map(items, theme, selected=""):
+    """items: [(num, spot, level, count, href, tip)], spot a MAP_SPOT key. One SVG, scales to the card width."""
+    t = TOKENS[theme]
+    W, H = 1000, 286
+    out = []
+
+    def arrow(d, tok="edge", sw=1.5, dash=""):
+        da = f' stroke-dasharray="{dash}"' if dash else ""
+        out.append(f'<path d="{d}" stroke="{t[tok]}" stroke-width="{sw}" fill="none"{da} marker-end="url(#ah-{tok})"/>')
+
+    arrow("M160 132H226")
+    arrow("M360 132H426")
+    arrow("M560 132H626")
+    arrow("M760 124H846", "e_read", 1.8)
+    arrow("M760 142H846", "e_write", 3)
+    arrow("M160 120H195V50H745V106", "edge", 1.5, "5 4")  # user straight to a technical role
+    arrow("M660 110V92H730V106")  # technical role holding another technical role
+    arrow("M545 154V198H900V158", "edge", 1.5, "5 4")  # functional role with a direct privilege
+    arrow("M60 154V246H226")
+    arrow("M760 246H930V158", "e_use", 1.8, "5 4")
+    for x, y, w, h, lab, cap, k in MAP_BOX.values():
+        c = t["kind"][k]
+        dash = ' stroke-dasharray="5 3"' if c["dash"] == "dashed" else ""
+        rx = h / 2 if k == "user" else 8
+        out.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}" fill="{c["bg"]}" stroke="{c["border"]}" '
+                   f'stroke-width="1.5"{dash}/><text x="{x + w / 2}" y="{y + h / 2 - 7}" fill="{c["text"]}" '
+                   f'font-family="{SANS}" font-weight="600" font-size="13">{escape(lab)}</text>'
+                   f'<text x="{x + w / 2}" y="{y + h / 2 + 9}" fill="{c["text"]}" font-size="10" opacity=".75">'
+                   f'{escape(cap)}</text>')
+    by = {}
+    for it in items:
+        by.setdefault(it[1], []).append(it)
+    for spot, its in by.items():
+        x, y, align = MAP_SPOT[spot]
+        ws = [len(f"{n}·{c}") * 7 + 14 for n, _, _, c, _, _ in its]
+        x0 = x if align == "left" else x - (sum(ws) + 4 * (len(ws) - 1)) / 2
+        for (n, _, level, c, href, tip), w in zip(its, ws):
+            tone = SEV_TONE[level]
+            bg, ink, bd = (t[f"{tone}_bg"], t[f"{tone}_ink"], t[f"{tone}_bd"]) if c else (t["panel"], t["muted"], t["edge"])
+            sw, bd = (2.5, t["accent"]) if n == selected else (1.2, bd)
+            out.append(f'<a href="{escape(href)}" target="_self"><title>{escape(tip)}</title>'
+                       f'<rect x="{x0:.1f}" y="{y - 10}" width="{w}" height="20" rx="10" fill="{bg}" stroke="{bd}" '
+                       f'stroke-width="{sw}"/><text x="{x0 + w / 2:.1f}" y="{y + .5}" fill="{ink}" font-weight="600">'
+                       f'{escape(n)}<tspan font-weight="400">·{c}</tspan></text></a>')
+            x0 += w + 4
+    marks = "".join(f'<marker id="ah-{k}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" '
+                    f'markerUnits="userSpaceOnUse" '
+                    f'orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="{t[k]}"/></marker>'
+                    for k in ("edge", "e_read", "e_write", "e_use"))
+    return (f'<div class="ae ae-map"><svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;height:auto;'
+            f'display:block" role="img" aria-label="Rule map"><defs>{marks}</defs><g font-family="{MONO}" '
+            f'font-size="11.5" text-anchor="middle" dominant-baseline="central">{"".join(out)}</g></svg></div>')
+
+
 # ---------- depth-lane graph ----------
 
-# edge class -> (colour token, stroke width, dash, double line). Role-to-role links are "inherit".
-EDGE = {"inherit": ("edge", 1.5, "", False), "read": ("e_read", 1.8, "", False),
-        "write": ("e_write", 3, "", False), "own": ("e_own", 4.5, "", True), "use": ("e_use", 1.8, "5 4", False)}
-CH, CH2 = 7.2, 6.0  # mono char width at 12px / 10px
+
+# edge class -> (colour token, stroke width, dash, double line). Role-to-role links are "inherit"; "also" is a link
+# from a deeper parent to a role already shown at a shallower depth (dotted, enters the box from the left).
+EDGE = {"inherit": ("edge", 1.5, "", False), "also": ("edge", 1.5, "2 3", False), "read": ("e_read", 1.8, "", False),
+        "write": ("e_write", 3, "", False), "own": ("e_own", 4.5, "", True), "use": ("e_use", 1.8, "5 4", False),
+        "admin": ("bad_ink", 2, "1 3", False)}
+CLS = ["inherit", "read", "write", "own", "use", "admin"]  # order of parallel edges and ports
+CH, CH2, CHL = 7.2, 6.0, 6.4  # mono char width at 12px / 10px / 10.5px
 TOP, PADX = 40, 12  # room for lane labels, node inner padding
+LH = 16  # edge label height; ports of a node with labels are LH + 2 apart, so stacked labels never touch
+CLEAR = 12  # room kept between a node and an edge passing it
+LOCK = 28  # extra box width for the lock of a sensitive object (drawn inside the box)
 WIDE = 1100  # a scroll-mode graph wider than this gets a hint
 
 
-def short(name, cap):
-    return name if len(name) <= cap else name[:cap - 1] + "…"
-
-
 def wrap(s, cap, n):
-    """Up to n lines of at most cap chars, broken after '_' or '.' when there is one."""
+    """Up to n lines of about cap chars, broken only after '_' or '.'; never cut: a part with no break point stays
+    whole, the last line takes the rest (the box grows; the full name is in its title anyway)."""
     out = []
     while len(s) > cap and len(out) < n - 1:
-        cut = max(s.rfind("_", 0, cap), s.rfind(".", 0, cap)) + 1
-        cut = cut if cut > cap // 3 else cap
+        cut = max(s.rfind("_", 0, cap + 1), s.rfind(".", 0, cap + 1)) + 1
+        if cut <= 0:  # no break point within cap: the first one after it
+            cut = min([i + 1 for i in (s.find("_", cap), s.find(".", cap)) if i > 0] or [len(s)])
+        if cut >= len(s):
+            break
         out.append(s[:cut])
         s = s[cut:]
-    return out + [short(s, cap)]
+    return out + [s]
 
 
 def _norm(e):
@@ -575,15 +730,72 @@ def _norm(e):
     return e[0], e[1], c, lab
 
 
+PRIVS = ["SELECT", "REFERENCES", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "OWNERSHIP", "USAGE", "OPERATE", "MONITOR"]
+
+
+def plabel(privs):
+    """Edge label, never cut silently: 'SELECT', 'INSERT · UPDATE', 'INSERT · UPDATE +2' (the title has all)."""
+    privs = sorted(privs, key=lambda p: (PRIVS.index(p) if p in PRIVS else 99, p))
+    return " · ".join(privs[:2]) + (f" +{len(privs) - 2}" if len(privs) > 2 else "")
+
+
+def place(want, sep, lo, hi):
+    """Positions in the given order, each near its wish, at least sep[j] after the one before, within lo..hi."""
+    out = []
+    for j, w in enumerate(want):
+        out.append(max(w, out[-1] + sep[j] if out else lo))
+    for j in range(len(out) - 1, -1, -1):
+        out[j] = min(out[j], hi if j == len(out) - 1 else out[j + 1] - sep[j + 1])
+    return out
+
+
+def crossings(order, nxt):
+    k = 0
+    for i in range(len(order) - 1):
+        at = {x: j for j, x in enumerate(order[i + 1])}
+        segs = [(j, at[q]) for j, p in enumerate(order[i]) for q in nxt.get(p, ()) if q in at]
+        k += sum((p1 - p2) * (q1 - q2) < 0 for (p1, q1), (p2, q2) in combinations(segs, 2))
+    return k
+
+
+def sweep(order, prv, nxt, rounds=8):
+    """Barycentre ordering (layered graph, long edges as dummy nodes): sweep down then up, each lane sorted by the
+    mean position of its neighbours in the lane before (after); keep the order with the fewest crossings."""
+    best, low = [list(c) for c in order], crossings(order, nxt)
+    for k in range(rounds):
+        down = k % 2 == 0
+        for i in (range(1, len(order)) if down else range(len(order) - 2, -1, -1)):
+            ref = {x: j for j, x in enumerate(order[i - 1 if down else i + 1])}
+            cur = {x: j for j, x in enumerate(order[i])}
+            nb = prv if down else nxt
+            ys = {x: [ref[m] for m in nb.get(x, ()) if m in ref] for x in order[i]}
+            order[i].sort(key=lambda x: sum(ys[x]) / len(ys[x]) if ys[x] else cur[x])
+        c = crossings(order, nxt)
+        if c < low:
+            best, low = [list(o) for o in order], c
+    return best
+
+
+def is_dummy(x):
+    return isinstance(x, tuple) and x[0] == "d"
+
+
 def lane_graph(lanes, edges, kind_of, theme, href_of, selected_lane=None, max_per_lane=12, expand="", query=None,
-               fit=False, marks=None):
-    """One SVG: lanes left to right, nodes are links, edges routed through the gaps between nodes.
-    lanes: [(label, [names])]. edges: [(a, b)] or [(a, b, cls, label)], cls one of EDGE (default "inherit");
-    the same pair may come twice with different classes. kind_of(name) -> kind; href_of(name) -> link.
-    marks: {name: {"disabled", "sensitive"}} (optional). fit: scale into the card width, else scroll sideways.
-    A lane over max_per_lane shows its first N plus a "+K more" node (no edges) linking to query + expand=<lanes>;
-    an expanded lane ends with a "Show fewer" node. Returns one HTML string."""
-    t, marks = TOKENS[theme], marks or {}
+               fit=False, marks=None, notes=None, edge_tip=None, node_tip=None, label=None):
+    """One SVG: lanes left to right, nodes are links, every edge runs left to right.
+    lanes: [(label, [names])]; a name is drawn once, in the first lane that has it.
+    edges: [(a, b)] or [(a, b, cls, label)], cls one of CLS (default "inherit"); one line per (a, b, cls), labels of
+    one class merged. An edge whose target sits in the same or an earlier lane (a role also reached deeper) is drawn
+    dotted: out of the source's top or bottom, around the nodes, into the target's left side, with an arrowhead.
+    kind_of(name) -> kind; href_of(name) -> link. marks: {name: {"disabled", "sensitive", "bad"}}; label(name) ->
+    (big text, small text) for a box, or None for the default (e.g. "future tables" / "SALES.CORE").
+    notes: {name: (badge, tooltip)}, e.g. ("D2 · also D3", "D2: U > F > T" + newline + "D3: ..."); the badge is a
+    small line in the box. fit: a compact layout scaled into the card width, never below 85% (then it scrolls), else
+    full size, scroll sideways. A lane over max_per_lane shows its
+    first N plus a "+K more" node (no edges) linking to query + expand=<lanes>; an expanded lane ends with a
+    "Show fewer" node. edge_tip(a, b, cls, privs, back) -> hover text of an edge (a wide invisible stroke carries it);
+    node_tip: {name: extra hover lines}."""
+    t, marks, notes = TOKENS[theme], marks or {}, notes or {}
     opened = {int(x) for x in (expand or "").split(",") if x.isdigit()}
 
     def again(lanes_open):
@@ -593,192 +805,337 @@ def lane_graph(lanes, edges, kind_of, theme, href_of, selected_lane=None, max_pe
             q["expand"] = ",".join(str(e) for e in sorted(lanes_open))
         return "?" + urlencode(q)
 
-    cols, alias = [], {}
+    cols, alias, seen = [], {}, set()
     for i, (_, names) in enumerate(lanes):
-        names = list(dict.fromkeys(names))
+        names = [x for x in dict.fromkeys(names) if x not in seen]
+        seen.update(names)
         if len(names) > max_per_lane and i not in opened:
             more = ("more", i, len(names) - max_per_lane)
-            alias.update((n, more) for n in names[max_per_lane:])
+            alias.update((x, more) for x in names[max_per_lane:])
             names = names[:max_per_lane] + [more]
         elif len(names) > max_per_lane:
             names = names + [("less", i, 0)]
         cols.append(names)
-    lane_of = {}
-    for i, c in enumerate(cols):
-        for n in c:
-            lane_of.setdefault(n, i)
-    links = {}
+    n = len(cols)
+    lane_of = {x: i for i, c in enumerate(cols) for x in c}
+    links = {}  # (a, b, cls) -> [labels]
     for e in edges:
         a, b, c, lab = _norm(e)
         a, b = alias.get(a, a), alias.get(b, b)
         if a == b or isinstance(a, tuple) or isinstance(b, tuple) or a not in lane_of or b not in lane_of:
             continue  # "+K more" draws no edges: one hidden node's edge would look like all of them
-        old = links.get((a, b, c))
-        links[(a, b, c)] = lab if not old or lab in old.split(", ") else old + ", " + lab
-    near = {}
-    for a, b, _ in links:
+        labs = links.setdefault((a, b, c), [])
+        if lab and lab not in labs:
+            labs.append(lab)
+    fwd = [k for k in links if lane_of[k[0]] < lane_of[k[1]]]
+    back = [k for k in links if lane_of[k[0]] >= lane_of[k[1]]]
+
+    # order: a long edge gets a dummy node in every lane it crosses, then barycentre sweeps
+    order = [[x for x in c if not isinstance(x, tuple)] for c in cols]
+    tails = [[x for x in c if isinstance(x, tuple)] for c in cols]
+    route, prv, nxt, near = {}, {}, {}, {}
+    for a, b in dict.fromkeys((a, b) for a, b, _ in fwd):
+        route[(a, b)] = ds = [("d", a, b, i) for i in range(lane_of[a] + 1, lane_of[b])]
+        for d in ds:
+            order[d[3]].append(d)
+        hops = [a] + ds + [b]
+        for p, q in zip(hops, hops[1:]):
+            nxt.setdefault(p, []).append(q)
+            prv.setdefault(q, []).append(p)
         near.setdefault(a, []).append(b)
         near.setdefault(b, []).append(a)
-    rows = max([len(c) for c in cols] + [1])
+    order = sweep(order, prv, nxt)
+    real = [[x for x in o if not isinstance(x, tuple)] for o in order]
 
-    def rank(c):
-        return {n: r + (rows - len(c)) / 2 for r, n in enumerate(c)}
-
-    # one barycentre sweep each way: a lane sorted by the mean row of its neighbours in placed lanes, so few edges cross
-    for todo, placed in ((range(1, len(cols)), lambda i: range(i)),
-                         (range(len(cols) - 2, -1, -1), lambda i: range(i + 1, len(cols)))):
-        for i in todo:
-            y = {n: r for j in placed(i) for n, r in rank(cols[j]).items()}
-            own = rank(cols[i])
-
-            def key(n):
-                ys = [y[m] for m in near.get(n, []) if m in y]
-                return sum(ys) / len(ys) if ys else own[n]
-
-            cols[i] = (sorted((n for n in cols[i] if not isinstance(n, tuple)), key=key)
-                       + [n for n in cols[i] if isinstance(n, tuple)])
-
-    many = len(lanes) > 6
-    cap, nl = (10, 3) if fit and many else (16, 2) if fit else (20, 2) if many else (40, 2)
-    gap = 30 if fit and many else 44 if many else 64
+    # node sizes; a node with many edges grows so every edge gets its own port
+    many = n > 6
+    cap, nl = (12, 3) if fit and many else (16, 3) if fit else (20, 2) if many else (40, 2)
+    gap = 28 if fit and many else 40 if fit else 48 if many else 64
+    k_in, k_out, labelled = {}, {}, set()
+    for a, b, c in links:
+        k_in[b] = k_in.get(b, 0) + 1
+        if c != "inherit":
+            labelled.add(b)
+    for a, b, c in fwd:
+        k_out[a] = k_out.get(a, 0) + 1
     size = {}  # name -> (w, h, big lines, small line)
     for c in cols:
-        for n in c:
-            if isinstance(n, tuple):
-                big, small = [f"+{n[2]} more" if n[0] == "more" else "Show fewer"], ""
-            elif kind_of(n) == "object" and "." in n:
-                head, last = n.rsplit(".", 1)  # last part big, DB.SCHEMA small under it
-                big, small = wrap(last, cap, max(nl - 1, 1)), short(head, int(cap * 1.2))
+        for x in c:
+            own = None if isinstance(x, tuple) or not label else label(x)
+            if isinstance(x, tuple):
+                big, small = [f"+{x[2]} more" if x[0] == "more" else "Show fewer"], ""
+            elif own:
+                big, small = wrap(own[0], cap, max(nl - 1, 1)), own[1]
+            elif kind_of(x) == "object" and "." in x:
+                head, last = x.rsplit(".", 1)  # last part big, DB.SCHEMA small under it
+                big, small = wrap(last, cap, max(nl - 1, 1)), head
             else:
-                big, small = wrap(str(n), cap, nl), ""
-            sens = 8 if "sensitive" in marks.get(n, ()) else 0
-            w = max([len(x) * CH for x in big] + [len(small) * CH2]) + 2 * PADX + sens
-            size[n] = (w, 14 * len(big) + (12 if small else 0) + 16, big, small)
-    row_h = max([s[1] for s in size.values()] + [32]) + (18 if fit else 22)
-    colw = [max([size[n][0] for n in c] + [len(lb) * 7.6 + 8]) for (lb, _), c in zip(lanes, cols)]
+                big, small = wrap(str(x), cap, nl), notes.get(x, ("", ""))[0]
+            sens = LOCK if "sensitive" in marks.get(x, ()) else 0
+            w = max([len(s) * CH for s in big] + [len(small) * CH2]) + 2 * PADX + sens
+            sp = LH + 2 if x in labelled else 6
+            h = max(14 * len(big) + (12 if small else 0) + 16, (k_in.get(x, 1) - 1) * sp + 22,
+                    (k_out.get(x, 1) - 1) * 5 + 14)
+            size[x] = (w, h, big, small)
+
+    # rows: one integer row per real node, near the mean row of its neighbours; a run of dummies between two nodes
+    # leaves extra room. All lanes share the rows, so the band between two rows is free in every lane.
+    sep, spare, R = [], [], 1
+    for i in range(n):
+        runs, k = [], 0
+        for x in order[i]:
+            if is_dummy(x):
+                k += 1
+            else:
+                runs.append(k)
+                k = 0
+        # an edge passing above the first or below the last node gets an empty row, not the margin under the labels
+        s = [(r + 2) // 3 for r in runs[:1]] + [1 + (r + 1) // 3 for r in runs[1:]]
+        sep.append(s)
+        spare.append((k + 2) // 3 + len(tails[i]))  # rows kept free below the last node
+        R = max(R, sum(s) + (1 if s else 0) + spare[i])
+    row = {}
+    for i in range(n):
+        if real[i]:
+            want = [(R - sum(sep[i]) - 1 - spare[i]) // 2 + sum(sep[i][:j + 1]) for j in range(len(real[i]))]
+            row.update(zip(real[i], place(want, sep[i], sep[i][0], R - 1 - spare[i])))
+    for k in range(6):
+        for i in (range(n) if k % 2 == 0 else range(n - 1, -1, -1)):
+            if real[i]:
+                want = [sum(row[m] for m in near[x]) / len(near[x]) if near.get(x) else row[x] for x in real[i]]
+                if i == 0 and len(real[0]) > 1:  # the start lane (users) evenly spaced, centred on its targets
+                    span = sum(sep[0][1:])
+                    first = min(max(round(sum(want) / len(want) - span / 2), sep[0][0]), R - 1 - spare[0] - span)
+                    pos = [first + sum(sep[0][1:j + 1]) for j in range(len(real[0]))]
+                else:
+                    pos = place([round(w) for w in want], sep[i], sep[i][0], R - 1 - spare[i])
+                row.update(zip(real[i], pos))
+    for i in range(n):
+        last = max([row[x] for x in real[i]], default=-1) + 1 + spare[i] - len(tails[i])
+        row.update((x, last + j) for j, x in enumerate(tails[i]))
+    rh = [30] * (max(row.values(), default=0) + 1)
+    for x, r in row.items():
+        rh[r] = max(rh[r], size[x][1] + (18 if fit else 24))
+    ry, y = [], TOP
+    for h in rh:
+        ry.append(y + h / 2)
+        y += h
+    bottom = y
+    cy = {x: ry[r] for x, r in row.items()}
+
+    # columns: before each lane a curve zone (gap) and a strip for the labels of the edges entering it
+    text = {k: plabel(links[k]) for k in fwd if k[2] != "inherit"}
+    strip = [8] * n
+    for k, s in text.items():
+        strip[lane_of[k[1]]] = max(strip[lane_of[k[1]]], len(s) * CHL + 8 + 14)
+    colw = [max([size[x][0] for x in c] + [len(lb) * 7.6 + 8]) for (lb, _), c in zip(lanes, cols)]
     xl, x = [], 16
-    for w in colw:
+    for i in range(n):
+        x += strip[i]
         xl.append(x)
-        x += w + gap
-    W, H = x - gap + 16, TOP + rows * row_h + 12
-    pos = {}
-    for i, c in enumerate(cols):
-        for n, r in rank(c).items():
-            pos[n] = (xl[i] + colw[i] / 2, TOP + r * row_h + row_h / 2)
-    slots = {}  # gaps between nodes per lane, where routed edges cross that lane
-    for i, c in enumerate(cols):
-        ys = sorted(pos[n][1] for n in c)
-        slots[i] = [ys[0] - row_h / 2] + [(p + q) / 2 for p, q in zip(ys, ys[1:])] + [ys[-1] + row_h / 2] if ys else []
-    used, gaps = {}, {}
+        x += colw[i] + gap
+    W = x - gap + 16 + 24  # right margin: the last boxes never touch the card edge
+    xr = [xl[i] + colw[i] for i in range(n)]
+    xs = [xl[i] - strip[i] for i in range(n)]
+    cx = {x: xl[lane_of[x]] + colw[lane_of[x]] / 2 for x in lane_of}
 
-    def lane_y(i, want, pair):
-        """A bend point for a long edge in lane i: the gap nearest to where the straight line would cross
-        (the same gap for every class edge of one pair)."""
-        if not slots[i]:
-            return want
-        g = gaps.setdefault((pair, i), min(slots[i], key=lambda s: abs(s - want)))
-        k = used[(i, g)] = used.get((i, g), -1) + 1
-        return g + (0, 4, -4, 8, -8, 12, -12)[k % 7]  # parallel edges in one gap side by side
+    def box(x):
+        w, h = size[x][:2]
+        return cx[x] - w / 2, cy[x] - h / 2, cx[x] + w / 2, cy[x] + h / 2
 
-    pairs = {}
-    for a, b, c in links:
+    stack = [sorted((box(x)[1], box(x)[3]) for x in c) for c in cols]
+
+    # dummy nodes: a height in the free band of their lane, near the straight line, in sweep order
+    dy = {}
+
+    def dummies(yo, yi):
+        for i in range(n):
+            items, j = order[i] + tails[i], 0
+            while j < len(items):
+                if not is_dummy(items[j]):
+                    j += 1
+                    continue
+                k = j
+                while k < len(items) and is_dummy(items[k]):
+                    k += 1
+                run = items[j:k]
+                lo = box(items[j - 1])[3] + CLEAR if j else TOP - 2
+                hi = box(items[k])[1] - CLEAR if k < len(items) else bottom + 2
+                if hi - lo < 6 * (len(run) - 1):
+                    ys = [lo + (m + 1) * (hi - lo) / (len(run) + 1) for m in range(len(run))]
+                else:
+                    want = []
+                    for d in run:
+                        a, b = d[1], d[2]
+                        f = (i - lane_of[a]) / (lane_of[b] - lane_of[a])  # level with the source, then the target:
+                        want.append(min(max(yo(a, b) if f < .5 else yi(a, b), lo), hi))  # one bend, no stairs
+                    ys = place(want, [0] + [6] * (len(run) - 1), lo, hi)
+                dy.update(zip(run, ys))
+                j = k
+
+    dummies(lambda a, b: cy[a], lambda a, b: cy[b])
+
+    # ports: every edge leaves / enters at its own height, ordered by where it comes from / goes to
+    pairs, ins, outs, py = {}, {}, {}, {}
+    for a, b, c in fwd:
         pairs.setdefault((a, b), []).append(c)
-    paths, labels, stack = [], [], {}  # stack: (node, side, x) -> {(label, colour token)}
-    for (a, b, c), lab in sorted(links.items(), key=lambda kv: kv[0][2] != "inherit"):  # class edges on top
-        both = pairs[(a, b)]
-        off = (both.index(c) - (len(both) - 1) / 2) * 6  # two classes on one pair: two parallel lines
-        (ax, ay), (bx, by), la, lb = pos[a], pos[b], lane_of[a], lane_of[b]
-        ay, by = ay + off, by + off
-        wa, wb = size[a][0] / 2, size[b][0] / 2
-        if la == lb:  # same lane: loop out into the gap on the right
-            xr = xl[la] + colw[la]
-            bend = xr + gap * .7
-            d = f"M{ax + wa:.1f} {ay:.1f}H{xr:.1f}C{bend:.1f} {ay:.1f} {bend:.1f} {by:.1f} {xr:.1f} {by:.1f}H{bx + wb:.1f}"
-            lx, anchor, back = xr + 4, "start", True
-        else:
-            s = 1 if lb > la else -1
+        outs.setdefault(a, []).append((a, b, c))
+    for k in fwd + back:
+        ins.setdefault(k[1], []).append(k)
+    for cs in pairs.values():
+        cs.sort(key=lambda c: CLS.index(c) if c in CLS else 9)
 
-            def out(i):
-                return xl[i] + colw[i] if s > 0 else xl[i]
+    def before(k):
+        ds = route.get(k[:2])
+        return dy[ds[-1]] if ds else cy[k[0]]
 
-            def into(i):
-                return xl[i] if s > 0 else xl[i] + colw[i]
+    def after(k):
+        ds = route[k[:2]]
+        return dy[ds[0]] if ds else cy[k[1]]
 
-            # horizontal runs through each lane (in a gap), S-curves only between lanes, so no edge crosses a node
-            segs = [(ax + s * wa, out(la), ay)]
-            for i in range(la + s, lb, s):
-                yi = lane_y(i, ay + (by - ay) * (i - la) / (lb - la), (a, b))
-                segs.append((into(i), out(i), yi))
-            segs.append((into(lb), bx - s * wb, by))
-            d = f"M{segs[0][0]:.1f} {segs[0][2]:.1f}H{segs[0][1]:.1f}"
-            for (_, x0, y0), (x1, x2, y1) in zip(segs, segs[1:]):
-                m = (x0 + x1) / 2
-                d += f"C{m:.1f} {y0:.1f} {m:.1f} {y1:.1f} {x1:.1f} {y1:.1f}H{x2:.1f}"
-            lx, anchor, back = into(lb) - s * 4, "end" if s > 0 else "start", s < 0
-        tok, sw, dash, double = EDGE.get(c, EDGE["inherit"])
-        tip = f"{a} → {b}" + (f": {lab}" if lab else " (inherits)")
+    def rank(c):
+        return CLS.index(c) if c in CLS else 9
+
+    for x, ks in ins.items():
+        sp = LH + 2 if x in labelled else 6
+        ks.sort(key=lambda k: (before(k), rank(k[2]), k[0]))
+        py.update(((k, 1), cy[x] + (j - (len(ks) - 1) / 2) * sp) for j, k in enumerate(ks))
+    for x, ks in outs.items():
+        ks.sort(key=lambda k: (after(k), rank(k[2]), k[1]))
+        py.update(((k, 0), cy[x] + (j - (len(ks) - 1) / 2) * 5) for j, k in enumerate(ks))
+
+    def port(a, b, end):
+        ys = [py[((a, b, c), end)] for c in pairs[(a, b)]]
+        return sum(ys) / len(ys)
+
+    dummies(lambda a, b: port(a, b, 0), lambda a, b: port(a, b, 1))
+
+    paths, labels, heads, hits = [], [], [], []
+
+    def draw(k, d, tok, sw, dash, double, tip, back_edge=False):
+        a, b, c = k
+        if edge_tip:
+            tip = edge_tip(a, b, c, links[k], back_edge) or tip
+        hits.append(f'<path d="{d}" stroke="transparent" stroke-width="12" pointer-events="stroke">'
+                    f'<title>{escape(tip)}</title></path>')
         extra = f' stroke-dasharray="{dash}"' if dash else ""
-        paths.append(f'<path d="{d}" stroke="{t[tok]}" stroke-width="{sw}"{extra}><title>{escape(tip)}</title></path>')
+        mark = ' data-back="1"' if back_edge else ""
+        paths.append(f'<path d="{d}" stroke="{t[tok]}" stroke-width="{sw}"{extra} data-a="{escape(a)}" '
+                     f'data-b="{escape(b)}" data-c="{c}"{mark}><title>{escape(tip)}</title></path>')
         if double:
             paths.append(f'<path d="{d}" stroke="{t["panel"]}" stroke-width="1.6"/>')
-        if back:  # an edge that runs right to left (or within a lane) gets an arrowhead, so its direction is clear
-            ex = bx + wb
-            paths.append(f'<path d="M{ex:.1f} {by:.1f}l7 -4v8z" fill="{t[tok]}" stroke="none"/>')
-        if lab:  # one label per text and class at each node side: two holders giving SELECT show one "SELECT"
-            stack.setdefault((b, anchor, lx), {}).setdefault((short(lab, 14), tok), None)
-    for (b, anchor, lx), texts in stack.items():
-        for k, (text, tok) in enumerate(texts):  # alternate above / below the arriving lines
-            y = pos[b][1] + (-5 - 11 * (k // 2) if k % 2 == 0 else 13 + 11 * (k // 2))
-            labels.append(f'<text x="{lx:.1f}" y="{y:.1f}" text-anchor="{anchor}" fill="{t[tok]}" '
-                          f'stroke="{t["panel"]}" stroke-width="3" paint-order="stroke">{escape(text)}</text>')
-    band, heads, nodes = "", [], []
+
+    for k in sorted(fwd, key=lambda k: k[2] != "inherit"):  # class edges on top
+        a, b, c = k
+        cs = pairs[(a, b)]
+        off = (cs.index(c) - (len(cs) - 1) / 2) * 3  # two classes on one pair: parallel lines through the gaps
+        la, lb = lane_of[a], lane_of[b]
+        segs = [(box(a)[2], xr[la], py[(k, 0)])]
+        segs += [(xs[d[3]], xr[d[3]], dy[d] + off) for d in route[(a, b)]]
+        segs.append((xs[lb], box(b)[0], py[(k, 1)]))
+        d = f"M{segs[0][0]:.1f} {segs[0][2]:.1f}H{segs[0][1]:.1f}"
+        for (_, x0, y0), (x1, x2, y1) in zip(segs, segs[1:]):
+            m = (x0 + x1) / 2  # S-curves only in the gaps between lanes, straight runs through the lanes
+            d += f"C{m:.1f} {y0:.1f} {m:.1f} {y1:.1f} {x1:.1f} {y1:.1f}H{x2:.1f}"
+        tok, sw, dash, double = EDGE.get(c, EDGE["inherit"])
+        full = ", ".join(sorted(links[k], key=lambda p: (PRIVS.index(p) if p in PRIVS else 99, p)))
+        draw(k, d, tok, sw, dash, double, f"{a} → {b}: {full}" if c != "inherit" else f"{a} → {b} (inherits)")
+        if k in text:  # on the edge's own last straight run, just before the target
+            s, ly = text[k], py[(k, 1)]
+            lw = len(s) * CHL + 8
+            labels.append(f'<g data-a="{escape(a)}" data-b="{escape(b)}" data-c="{c}"><title>{escape(full)}</title>'
+                          f'<rect x="{xl[lb] - 6 - lw:.1f}" y="{ly - LH / 2:.1f}" width="{lw:.1f}" height="{LH}" '
+                          f'rx="3" fill="{t["panel"]}" stroke="{t[tok]}" stroke-width=".8"/>'
+                          f'<text x="{xl[lb] - 6 - lw / 2:.1f}" y="{ly + .5:.1f}" fill="{t[tok]}">{escape(s)}</text></g>')
+
+    def free(y, i):
+        return all(not (y0 - 6 < y < y1 + 6) for y0, y1 in stack[i])
+
+    from_src, into_lane, low = {}, {}, bottom
+    for k in back:
+        a, b, c = k
+        la, lb = lane_of[a], lane_of[b]
+        ty, (x0, y0, x1, y1) = py[(k, 1)], box(a)
+        j = from_src[a] = from_src.get(a, -1) + 1
+        sx = cx[a] + max(min((0, 10, -10, 20, -20)[j % 5], (x1 - x0) / 2 - 8), 8 - (x1 - x0) / 2)
+        ends = [v for pair in stack[la] for v in pair]
+        if ty >= cy[a]:  # out of the bottom (top) into the free band right below (above) the source
+            lo, hi, sy = y1 + 6, min([v for v in ends if v > y1 + 1] + [bottom + 4]) - 6, y1
+        else:
+            lo, hi, sy = max([v for v in ends if v < y0 - 1] + [TOP - 4]) + 6, y0 - 6, y0
+        mid = (lo + hi) / 2
+        ok = [v for v in sorted((lo + 2 * m for m in range(int((hi - lo) / 2) + 1)), key=lambda v: abs(v - mid))
+              if all(free(v, i) for i in range(lb, la + 1))]
+        g = into_lane[lb] = into_lane.get(lb, -1) + 1
+        xg = max(xs[lb] - 10 - 6 * g, (xr[lb - 1] if lb else 0) + 4)
+        if ok:
+            d = f"M{sx:.1f} {sy:.1f}V{ok[0]:.1f}H{xg:.1f}V{ty:.1f}H{box(b)[0]:.1f}"
+        else:  # no height free in every lane between: into the curve zone, then round below every node
+            low += 8
+            xc = max(xs[la] - 10 - 6 * j, xr[la - 1] + 4)
+            d = f"M{sx:.1f} {sy:.1f}V{mid:.1f}H{xc:.1f}V{low:.1f}H{xg:.1f}V{ty:.1f}H{box(b)[0]:.1f}"
+        tok = EDGE.get(c, EDGE["inherit"])[0]
+        draw(k, d, tok, 1.5, EDGE["also"][2], False, f"{a} → {b} (inherits; {b} is drawn once, at its shortest depth)", True)
+        bx = box(b)[0]
+        heads.append(f'<path d="M{bx - 9:.1f} {ty - 5:.1f}l9 5l-9 5z" fill="{t[tok]}" stroke="none"/>')
+    H = max(bottom, low + 8) + 12
+
+    band, lanes_txt, nodes = "", [], []
     for i, ((lb, _), c) in enumerate(zip(lanes, cols)):
-        cx = xl[i] + colw[i] / 2
         if i == selected_lane:
             band = (f'<rect x="{xl[i] - gap / 3:.1f}" y="2" width="{colw[i] + gap * 2 / 3:.1f}" height="{H - 4:.0f}" '
                     f'rx="10" fill="{t["sunk"]}" stroke="{t["line"]}" stroke-dasharray="4 3"/>')
-        heads.append(f'<text x="{cx:.1f}" y="22" text-anchor="middle">{escape(lb.upper())}</text>')
-        for n in c:
-            nx, ny = pos[n]
-            w, h, big, small = size[n]
-            x0, y0 = nx - w / 2, ny - h / 2
-            if isinstance(n, tuple):
-                more = n[0] == "more"
+        lanes_txt.append(f'<text x="{xl[i] + colw[i] / 2:.1f}" y="22" text-anchor="middle">{escape(lb.upper())}</text>')
+        for x in c:
+            w, h, big, small = size[x]
+            x0, y0 = cx[x] - w / 2, cy[x] - h / 2
+            badge = False
+            if isinstance(x, tuple):
+                more = x[0] == "more"
                 href = again(opened | {i} if more else opened - {i})
-                tip = "Show all" if more else f"Show the first {max_per_lane}"
+                tip, key = ("Show all" if more else f"Show the first {max_per_lane}"), f"+{x[0]}{i}"
                 k = {"bg": t["panel"], "border": t["edge"], "text": t["accent"], "dash": "dashed"}
                 rx, flags = 10, ()
             else:
-                href, flags = href_of(n), marks.get(n, ())
-                k = dict(t["kind"][kind_of(n)])
+                href, flags, key = href_of(x), marks.get(x, ()), x
+                k = dict(t["kind"][kind_of(x)])
                 if "disabled" in flags:
                     k.update(bg=t["sunk"], border=t["edge"], text=t["muted"], dash="dashed")
-                rx = h / 2 if kind_of(n) == "user" else 9
-                tip = n + "".join(f" · {f}" for f in ("disabled", "sensitive") if f in flags)
+                if "bad" in flags:
+                    k.update(border=t["bad_ink"])
+                rx = h / 2 if kind_of(x) == "user" else 9
+                tip = x + "".join(f" · {f}" for f in ("disabled", "sensitive") if f in flags)
+                tip += "\n" + node_tip[x] if node_tip and node_tip.get(x) else ""
+                tip += "\n" + notes[x][1] if notes.get(x, ("", ""))[1] else ""
+                badge = kind_of(x) != "object"
             dash = ' stroke-dasharray="5 3"' if k["dash"] == "dashed" else ""
-            weight = 600 if isinstance(n, tuple) else 500
-            txt = "".join(f'<text x="{nx:.1f}" y="{y0 + 15 + 14 * j:.1f}" fill="{k["text"]}" font-weight="{weight}">'
-                          f'{escape(s)}</text>' for j, s in enumerate(big))
+            weight = 600 if isinstance(x, tuple) else 500
+            top = cy[x] - (14 * len(big) + (12 if small else 0)) / 2  # text block centred in a grown box
+            txt = "".join(f'<text x="{cx[x]:.1f}" y="{top + 7 + 14 * j:.1f}" fill="{k["text"]}" '
+                          f'font-weight="{weight}">{escape(s)}</text>' for j, s in enumerate(big))
             if small:
-                txt += (f'<text x="{nx:.1f}" y="{y0 + 14 + 14 * len(big):.1f}" fill="{k["text"]}" font-size="10" '
-                        f'opacity=".75">{escape(small)}</text>')
-            if "sensitive" in flags:  # lock badge on the top right corner
-                txt += (f'<g transform="translate({x0 + w - 7:.1f},{y0 - 5:.1f})"><circle r="7" fill="{t["bad_bg"]}" '
-                        f'stroke="{t["bad_ink"]}"/><g transform="translate(-4.2,-4.6) scale(.35)" fill="none" '
-                        f'stroke="{t["bad_ink"]}" stroke-width="3">{ICON["lock"]}</g></g>')
-            nodes.append(f'<a href="{escape(href)}" target="_self"><title>{escape(tip)}</title>'
+                txt += (f'<text x="{cx[x]:.1f}" y="{top + 6 + 14 * len(big):.1f}" '
+                        f'fill="{t["accent"] if badge else k["text"]}" font-size="10" '
+                        f'opacity="{1 if badge else .75}">{escape(small)}</text>')
+            if "sensitive" in flags:  # lock inside the box, right of the first line
+                txt += (f'<g transform="translate({x0 + w - PADX - 11:.1f},{top + 1:.1f}) scale(.46)" fill="none" '
+                        f'stroke="{t["bad_ink"]}" stroke-width="2.6" stroke-linecap="round">{ICON["lock"]}</g>')
+            nodes.append(f'<a href="{escape(href)}" target="_self" data-n="{escape(key)}"><title>{escape(tip)}</title>'
                          f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{rx:.1f}" '
-                         f'fill="{k["bg"]}" stroke="{k["border"]}" stroke-width="1.5"{dash}/>{txt}</a>')
-    size_attr = (f'width="100%" style="max-width:{W:.0f}px;height:auto;display:block"' if fit
+                         f'fill="{k["bg"]}" stroke="{k["border"]}" stroke-width="{2.5 if "bad" in flags else 1.5}"'
+                         f'{dash}/>{txt}</a>')
+    size_attr = (f'width="100%" style="min-width:{W * .85:.0f}px;max-width:{W:.0f}px;height:auto;display:block"' if fit
                  else f'width="{W:.0f}" height="{H:.0f}" style="display:block"')
-    # band, lane labels, edges, edge labels, then nodes on top (opaque, so edges end at their borders)
-    svg = (f'<svg viewBox="0 0 {W:.0f} {H:.0f}" {size_attr} role="group" aria-label="Access graph, {len(lanes)} lanes">'
+    # band, lane labels, edges, arrowheads, edge labels, then nodes on top
+    svg = (f'<svg viewBox="0 0 {W:.0f} {H:.0f}" {size_attr} role="group" aria-label="Access graph, {n} lanes">'
            f'{band}<g font-family="{SANS}" font-size="11" font-weight="500" letter-spacing="1" fill="{t["muted"]}">'
-           f'{"".join(heads)}</g><g fill="none">{"".join(paths)}</g>'
-           f'<g font-family="{MONO}" font-size="9.5" font-weight="600">{"".join(labels)}</g>'
+           f'{"".join(lanes_txt)}</g><g fill="none">{"".join(paths)}</g><g>{"".join(heads)}</g>'
+           f'<g fill="none" class="ae-hit">{"".join(hits)}</g>'
+           f'<g font-family="{MONO}" font-size="10.5" font-weight="600" text-anchor="middle" '
+           f'dominant-baseline="central">{"".join(labels)}</g>'
            f'<g font-family="{MONO}" font-size="12" text-anchor="middle" dominant-baseline="central">'
            f'{"".join(nodes)}</g></svg>')
     wide = not fit and W > WIDE
-    hint = f'<div class="ae-graph-hint">{len(lanes)} lanes · scroll sideways for all →</div>' if wide else ""
+    hint = f'<div class="ae-graph-hint">{n} lanes · scroll sideways for all →</div>' if wide else ""
     return (f'{hint}<div class="ae-graph{" fit" if fit else ""}{" wide" if wide else ""}" style="background-image:'
             f'radial-gradient({t["line"]} 1px,transparent 1px);background-size:18px 18px">{svg}</div>')

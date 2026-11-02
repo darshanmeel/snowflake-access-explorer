@@ -10,3 +10,5 @@
 !define DEV_ROLE=<DEV_ROLE>
 -- the app's role: SELECT on the snapshot tables only (may be the developer role)
 !define APP_ROLE=<APP_ROLE>
+-- SnowSQL only (run_sql.py fills it in): absolute path of the access-explorer folder, forward slashes, for PUT
+!define HERE=<HERE>

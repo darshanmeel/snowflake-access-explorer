@@ -1,11 +1,36 @@
 -- Verification of 1_setup.sql: each "-- name:" check prints OK, MISSING, WRONG (row count, "(expect N)") or SKIPPED ("(may fail)"),
 -- then VERIFIED or NOT VERIFIED. SnowSQL: !source sql/1_setup_verify.sql (shows the rows; no verdict).
 
--- name: TABLES (expect 7)
+-- name: TABLES (expect 8)
 SHOW TABLES LIKE 'TBL_ACCESS_%' IN SCHEMA &DB.&SCHEMA;
 
 -- name: PROCEDURE
 DESCRIBE PROCEDURE &DB.&SCHEMA.SP_ACCESS_SNAPSHOT(VARCHAR);
+
+-- name: PROCEDURE_FINDINGS
+DESCRIBE PROCEDURE &DB.&SCHEMA.SP_ACCESS_FINDINGS(VARCHAR);
+
+-- name: FUNCTION_ACCESS_OF
+DESCRIBE FUNCTION &DB.&SCHEMA.TF_ACCESS_OF(VARCHAR, NUMBER);
+
+-- name: FUNCTION_WHO_CAN
+DESCRIBE FUNCTION &DB.&SCHEMA.TF_WHO_CAN(VARCHAR, VARCHAR, NUMBER);
+
+-- name: FUNCTION_CAN
+DESCRIBE FUNCTION &DB.&SCHEMA.TF_CAN(VARCHAR, VARCHAR, VARCHAR);
+
+-- name: STAGE_CODE (expect 1)
+LIST @&DB.&SCHEMA.STG_ACCESS_CODE;
+
+-- the table functions compile and run, N = 0 before the first snapshot
+-- name: CALL_ACCESS_OF
+SELECT COUNT(*) AS N FROM TABLE(&DB.&SCHEMA.TF_ACCESS_OF('PUBLIC', 2));
+
+-- name: CALL_WHO_CAN
+SELECT COUNT(*) AS N FROM TABLE(&DB.&SCHEMA.TF_WHO_CAN('&DB', NULL, 2));
+
+-- name: CALL_CAN
+SELECT COUNT(*) AS N FROM TABLE(&DB.&SCHEMA.TF_CAN('NO_SUCH_USER', 'USAGE', '&DB'));
 
 -- which sources the procedure can use: an error here = that dataset uses the SHOW fallback
 -- name: ACCOUNT_USAGE_GRANTS_TO_ROLES (may fail)
@@ -20,7 +45,7 @@ SELECT COUNT(*) AS N FROM SNOWFLAKE.ACCOUNT_USAGE.USERS WHERE DELETED_ON IS NULL
 -- name: ACCOUNT_USAGE_QUERY_HISTORY (may fail)
 SELECT COUNT(*) AS N FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY WHERE START_TIME >= DATEADD(DAY, -1, CURRENT_TIMESTAMP());
 
--- tags and policies: an error here = per-object INFORMATION_SCHEMA fallback (max 300 tables/views); 0 rows on Standard edition
+-- tags and policies: an error here = per-object INFORMATION_SCHEMA fallback (max 300 tables/views), 0 rows on Standard edition
 -- name: ACCOUNT_USAGE_TAG_REFERENCES (may fail)
 SELECT COUNT(*) AS N FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES WHERE OBJECT_DELETED IS NULL;
 

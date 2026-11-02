@@ -42,6 +42,6 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Short names, comments only for the non-obvious "why", no extra error handling or logging.
 
 ## Verify before saying done
-- `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}))"` lists all 5 rules.
+- `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists all 17 rules (each has a finding on the fake data).
 - Spot-check paths: a user via a group role, a role reached through 2 paths, an admin holder.
 - DuckDB demo + `take_screens.py`: 0 exceptions on every screen.

@@ -1,4 +1,5 @@
--- 3 · cleanup (developer role): deletes the procedure and the 7 snapshot tables with their data. The schema stays.
+-- 3 · cleanup (developer role): deletes the procedures, table functions, code stage and the 8 TBL_ACCESS_ tables with their
+-- data. The schema stays.
 -- SnowSQL: !source sql/3_cleanup.sql (from the access-explorer folder)
 !source settings.local.sql
 USE ROLE &DEV_ROLE;
@@ -9,6 +10,21 @@ USE DATABASE &DB;
 
 -- name: DROP_PROCEDURE (may fail)
 DROP PROCEDURE IF EXISTS &DB.&SCHEMA.SP_ACCESS_SNAPSHOT(VARCHAR);
+
+-- name: DROP_PROCEDURE_FINDINGS (may fail)
+DROP PROCEDURE IF EXISTS &DB.&SCHEMA.SP_ACCESS_FINDINGS(VARCHAR);
+
+-- name: DROP_FUNCTION_CAN (may fail)
+DROP FUNCTION IF EXISTS &DB.&SCHEMA.TF_CAN(VARCHAR, VARCHAR, VARCHAR);
+
+-- name: DROP_FUNCTION_WHO_CAN (may fail)
+DROP FUNCTION IF EXISTS &DB.&SCHEMA.TF_WHO_CAN(VARCHAR, VARCHAR, NUMBER);
+
+-- name: DROP_FUNCTION_ACCESS_OF (may fail)
+DROP FUNCTION IF EXISTS &DB.&SCHEMA.TF_ACCESS_OF(VARCHAR, NUMBER);
+
+-- name: DROP_STAGE_CODE (may fail)
+DROP STAGE IF EXISTS &DB.&SCHEMA.STG_ACCESS_CODE;
 
 -- name: DROP_TABLE_RUN (may fail)
 DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_RUN;
@@ -30,3 +46,6 @@ DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_TAG;
 
 -- name: DROP_TABLE_POLICY (may fail)
 DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_POLICY;
+
+-- name: DROP_TABLE_FINDING (may fail)
+DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING;
