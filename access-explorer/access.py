@@ -1000,11 +1000,11 @@ def title(pv, path):
 def matrix(obj, kind=None, limit=None, priv=None):
     """Object page, effective access by user. Row: user, admin ([admin roles held]; admins inherit everything),
     status, service, privs {privilege: dict(has, owner (implied by OWNERSHIP), depth, count, title, path)} over
-    valid_privs(kind or the object's type), via {cls: [granted roles]} ("Read via / Write via"), holders {cls: [grant
+    the privileges of valid_privs(kind or the object's type) found in the data, via {cls: [granted roles]} ("Read via / Write via"), holders {cls: [grant
     holders]}.
     priv: only users who have it (or OWNERSHIP, which implies it). Users with a path first, then admin users."""
     k0 = kind or kinds.get(obj)
-    cols = valid_privs(k0)
+    cols = [c for c in valid_privs(k0) if c == "OWNERSHIP" or any(pv == c for _, pv, k, _ in privs if k == k0)]
     got = {}
     for r in grantees(obj, kind, limit):
         if r["kind"] == "user" and from_user(r["path"]):
@@ -1386,8 +1386,7 @@ def rules_admin():
     for u in users:
         dr = (profile.get(u) or {}).get("DEFAULT_ROLE")
         if dr in ADMIN:
-            out.append(find("12", u, f"default role {dr}", [u, dr], affects=1, impact="1 user (sessions start "
-                            "without admin rights)", fix=(f"Change in the infrastructure-as-code repo: default role of "
+            out.append(find("12", u, f"default role {dr}", [u, dr], affects=1, impact="1 user", fix=(f"Change in the infrastructure-as-code repo: default role of "
                                                           f"user {u}", f"ALTER USER {sql_name(u)} SET DEFAULT_ROLE = "
                                                                        "<functional role>;")))
     return out
@@ -1489,3 +1488,6 @@ def findings():
     paths, affects, impact)."""
     out = rules_model() + rules_admin() + rules_sensitive() + rules_users() + rule17()
     return sorted(out, key=lambda f: int(f["num"]))
+
+
+LOADED = os.path.getmtime(__file__)  # app.fresh() reloads this module when the file is newer

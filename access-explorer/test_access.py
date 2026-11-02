@@ -114,7 +114,7 @@ def test_object():
     m = a.matrix(o)
     assert {x["user"] for x in m if not x["admin"]} == set(a.FIN_USERS) | {"SVC_DEPLOY", "REPORT_01", "MARKETING_01"}
     assert [x["user"] for x in m if x["admin"]] == ["ADMIN_01", "OPS_01"]
-    assert m[0]["privs"]["SELECT"]["has"] and list(m[0]["privs"]) == a.valid_privs("TABLE")
+    assert m[0]["privs"]["SELECT"]["has"] and list(m[0]["privs"]) == [c for c in a.valid_privs("TABLE") if c != "REFERENCES"]
     mi = a.matrix(o, priv="INSERT")  # the privilege filter keeps holders, implied owners and admins
     assert {x["user"] for x in mi if not x["admin"]} == set(a.FIN_USERS) | {"SVC_DEPLOY"}
     svc = next(x for x in mi if x["user"] == "SVC_DEPLOY")["privs"]

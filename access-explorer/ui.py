@@ -3,6 +3,7 @@
 Every helper returns an HTML string on one line (no newlines, so st.markdown never turns indentation into code blocks).
 Colors come from TOKENS only: css(theme) turns the active set into :root variables, lane_graph() inlines them.
 """
+import os
 from html import escape
 from itertools import combinations
 from urllib.parse import urlencode
@@ -256,6 +257,7 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 .ae-table tr.sub td{{border-top:0;padding-top:0;padding-bottom:12px}}
 .ae-fix{{display:inline-block;max-width:100%;padding:6px 10px;border-radius:8px;background:var(--sunk);border:1px solid var(--line);overflow-wrap:anywhere}}
 .ae-wrap{{white-space:normal;overflow-wrap:anywhere}}
+.ae-subline{{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px}}.ae-subline .ae-path{{display:inline-flex}}
 .ae-table details summary{{cursor:pointer}}
 .ae-table{{width:100%;border-collapse:collapse;font-size:13px;color:var(--ink)}}
 .ae-table th{{background:var(--sunk);color:var(--muted);text-align:left;font-weight:500;padding:10px 12px;white-space:nowrap;border:0}}
@@ -326,7 +328,7 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 .pc-inherit{{color:var(--muted);border:1.5px solid var(--edge)}}
 .pc-admin{{color:var(--bad-ink);border:1.5px dotted var(--bad-ink)}}
 .ae-leg-edge{{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}}
-.ae-legend-lines{{margin-top:-8px;gap:6px 14px}}
+.ae-legend-lines{{margin-top:8px;gap:6px 14px}}
 .ae-chip.off{{background:var(--sunk)!important;border:1px dashed var(--edge)!important;color:var(--muted)!important}}
 .ae-sens{{display:inline-flex;margin-left:5px;color:var(--bad-ink)}}
 /* sidebar */
@@ -705,7 +707,7 @@ TOP, PADX = 40, 12  # room for lane labels, node inner padding
 LH = 16  # edge label height; ports of a node with labels are LH + 2 apart, so stacked labels never touch
 CLEAR = 12  # room kept between a node and an edge passing it
 LOCK = 28  # extra box width for the lock of a sensitive object (drawn inside the box)
-WIDE = 1100  # a scroll-mode graph wider than this gets a hint
+WIDE = 1060  # a scroll-mode graph wider than this gets a hint
 
 
 def wrap(s, cap, n):
@@ -850,7 +852,7 @@ def lane_graph(lanes, edges, kind_of, theme, href_of, selected_lane=None, max_pe
     # node sizes; a node with many edges grows so every edge gets its own port
     many = n > 6
     cap, nl = (12, 3) if fit and many else (16, 3) if fit else (20, 2) if many else (40, 2)
-    gap = 28 if fit and many else 40 if fit else 48 if many else 64
+    gap = 22 if fit and many else 40 if fit else 48 if many else 64
     k_in, k_out, labelled = {}, {}, set()
     for a, b, c in links:
         k_in[b] = k_in.get(b, 0) + 1
@@ -1135,7 +1137,10 @@ def lane_graph(lanes, edges, kind_of, theme, href_of, selected_lane=None, max_pe
            f'dominant-baseline="central">{"".join(labels)}</g>'
            f'<g font-family="{MONO}" font-size="12" text-anchor="middle" dominant-baseline="central">'
            f'{"".join(nodes)}</g></svg>')
-    wide = not fit and W > WIDE
+    wide = W * (.85 if fit else 1) > WIDE
     hint = f'<div class="ae-graph-hint">{n} lanes · scroll sideways for all →</div>' if wide else ""
     return (f'{hint}<div class="ae-graph{" fit" if fit else ""}{" wide" if wide else ""}" style="background-image:'
             f'radial-gradient({t["line"]} 1px,transparent 1px);background-size:18px 18px">{svg}</div>')
+
+
+LOADED = os.path.getmtime(__file__)  # app.fresh() reloads this module when the file is newer

@@ -366,7 +366,7 @@ def csv_text(cols, rows, head=()):
     return f.getvalue()
 
 
-NARROW = {"Depth", "Paths", "Affects", "People", "Masked", "Nearest grant", "Roles with read", "Objects", "Status",
+NARROW = {"Depth", "Paths", "People", "Masked", "Nearest grant", "Roles with read", "Objects", "Status",
           "Type", "Privilege"}  # short columns kept on one line
 
 
@@ -430,12 +430,12 @@ def breaks(rows, ro):
 
 
 def graph_card(title, lanes, edges, notes=None, selected=None, sub="", bad=()):
-    """Deep graphs (over 8 lanes) start fitted to the card, so the answer on the right is in view."""
+    """Graphs over 4 lanes (wider than the card at full size) start fitted, so the answer on the right is in view."""
     with st.container(key="card_graph"):
         left, right = st.columns([4, 1.2], vertical_alignment="center")
         html(f'<div class="ae">{ui.title(title, sub)}</div>', left)
         with right:
-            fit = flag("Fit to width", "fit", len(lanes) > 8, toggle=True,
+            fit = flag("Fit to width", "fit", len(lanes) > 4, toggle=True,
                        help="Scale the whole graph into the card (scrolls below a readable size). Off: full size, "
                             "scroll sideways.")
         names = {n for _, ns in lanes for n in ns}
@@ -885,7 +885,7 @@ def sensitivity_card(o):
     cols = sorted({c for c, *_ in tg if c} | set(ps["columns"]))
     sp = a.split_users(a.readers(o), a.admin_users())
     everyone = (f'<span class="ae-ink-warn">everyone who can read</span> <span class="ae-small">'
-                f'({plural(len(sp["people"]), "person")}' + (f' +{len(sp["admin"])} via admin' if sp["admin"] else "")
+                f'({len(sp["people"])} {"person" if len(sp["people"]) == 1 else "people"}' + (f' +{len(sp["admin"])} via admin' if sp["admin"] else "")
                 + (f' +{len(sp["service"])} service' if sp["service"] else "") + ')</span>')
 
     def note(c):
@@ -933,25 +933,27 @@ def sensitivity_card(o):
 
 
 def via_html(x, plain=False):
-    """"Read + write via GRP_EMEA_ALL > … > T_FINANCE_REPORT_WRITE": classes that share their granted roles and grant
-    holders merged. plain: text for the CSV."""
+    """"Read + write via GRP_EMEA_ALL → T_FINANCE_REPORT_WRITE, T_FINANCE_REPORT_READ": classes that share their granted
+    roles merged, then the grant holders. plain: text for the CSV."""
     groups = {}
     for c, rs in x["via"].items():
-        groups.setdefault((tuple(rs), tuple(x["holders"][c])), []).append(ui.PCLASS[c])
+        g = groups.setdefault(tuple(rs), ([], []))
+        g[0].append(ui.PCLASS[c])
+        g[1].extend(h for h in x["holders"][c] if h not in rs and h not in g[1])
     out = []
-    for (rs, hs), cs in groups.items():
+    for rs, (cs, hs) in groups.items():
         lab = " + ".join(cs).capitalize()
-        ends = [h for h in hs if h not in rs]
         if plain:
-            out.append(f"{lab} via {', '.join(rs)}" + (f" > ... > {', '.join(ends)}" if ends else ""))
+            out.append(f"{lab} via {', '.join(rs)}" + (f" > ... > {', '.join(hs)}" if hs else ""))
         else:
-            out.append(f'<span class="ae-small">{e(lab)} via</span> ' + " ".join(chip(r) for r in rs)
-                       + (f' <span class="ae-small">&gt; … &gt;</span> ' + " ".join(chip(h) for h in ends) if ends else ""))
+            held = f"grant held by {', '.join(hs)}" if hs else "granted role holds the grant itself"
+            out.append(f'<span class="ae-small ae-tip" title="{e(held)}">{e(lab)} via</span> '
+                       + " ".join(chip(r) for r in rs))
     return " · ".join(out) if plain else "<br>".join(out)
 
 
 def matrix_card(o, t, pv, active, m):
-    cols = a.valid_privs(t)
+    cols = list(m[0]["privs"]) if m else []
     db, sc, nm = a.split_name(o, t)
     scols = a.sensitive_cols(o) if a.is_data(t) else []
     rpol = a.policies_of(o)["rows"] if a.is_data(t) else []
@@ -1025,7 +1027,7 @@ def matrix_card(o, t, pv, active, m):
                 [["Object", o, t], ["Filter", pv or "any privilege", "disabled excluded" if active else ""],
                  ["Run", a.run.get("RUN_ID"), when]]), f"{o}_{pv or 'ALL'}_{datetime.now():%Y-%m-%d}.csv",
                 "text/csv", key="csv_matrix", on_click="ignore")
-        html(ui.table(["User"] + cols + extra + ["Via", "Nearest grant", "Paths"], rows, {"Paths"}, 900, tips=tips,
+        html(ui.table(["User"] + cols + extra + ["Via", "Nearest grant", "Paths"], rows, {"Paths"}, 760, tips=tips,
                       nowrap={"Nearest grant", "Paths"} | set(cols)) if rows else
              f'<p class="ae ae-empty">No user reaches {e(o)} at any depth.</p>')
     st.caption("Click a tick to see every path on Can they?. owner: implied by OWNERSHIP. Hover a tick for the path.")
@@ -1160,7 +1162,7 @@ def removal_html(u, r):
         both = f" · all {len(x['edges'])} needed" if len(x["edges"]) > 1 else ""
         warn = f" · {plural(others, 'other user')} lose it too" if others else ""
         out.append(f'<div class="ae-block" style="background:var(--panel)"><div class="ae-block-head">'
-                   f'<span>{e(x["iac"])}</span><span class="ae-small" style="white-space:nowrap">'
+                   f'<span>{e(x["iac"]).replace("; ", "<br>")}</span><span class="ae-small" style="white-space:nowrap">'
                    f'{plural(x["affects"], "user")} lose{"s" * (x["affects"] == 1)} it{e(both)}{e(warn)}</span></div>'
                    f'<span class="ae-mono" style="font-size:12.5px">{e(x["sql"])}</span></div>')
     return "".join(out)
@@ -1242,7 +1244,8 @@ def sensitive_page():
         seen = {}
         for c, t, v, origin in r["tags"]:
             seen.setdefault(a.tag_label(t, v), []).append(origin + (f" {c}" if c else ""))
-        return " ".join(ui.chip(k, "object", title="; ".join(dict.fromkeys(v))) for k, v in seen.items())
+        return '<div class="ae-path">' + " ".join(ui.chip(k, "object", title="; ".join(dict.fromkeys(v)))
+                                                  for k, v in seen.items()) + '</div>'
 
     def masked_cell(r):
         k, n = r["masked"]
@@ -1251,7 +1254,7 @@ def sensitive_page():
     table_card("sensobj", "Sensitive objects, most reached first",
                f"{plural(len(rank), 'object')}" + (f" · tag {e(tg)}" if tg else "") + (f" · {e(db)}" if db else ""),
                ["Database", "Schema", "Object", "Tags", "Sensitive columns", "Masked", "Row policy", "People",
-                "Roles with read"],
+                "Roles"],
                [[ui.mono(r["database"]), ui.mono(r["schema"]), chip(r["object"], short=True), tags_html(r),
                  e(", ".join(r["cols"]) or "whole object"), masked_cell(r),
                  " ".join(f'<span class="ae-mono ae-tip" title="{e(p)}">{e(p.split(".")[-1])}</span>'
@@ -1263,7 +1266,7 @@ def sensitive_page():
                  ", ".join(r["cols"]), f"{r['masked'][0]} of {r['masked'][1]} masked", ", ".join(r["row_policies"]),
                  len(r["people"]), ", ".join(r["people"]), len(r["disabled"]), len(r["service"]), ", ".join(r["admin"]),
                  ", ".join(r["roles"])] for r in rank],
-               "No sensitive object matches these filters.", {"People", "Roles with read"}, min_width=880,
+               "No sensitive object matches these filters.", {"People", "Roles"}, min_width=760,
                data_cols=["Database", "Schema", "Object", "Type", "Tags", "Sensitive columns", "Masked", "Row policy",
                           "People", "People names", "Disabled", "Service", "Via admin", "Roles with read"],
                fname=f"sensitive_objects_{datetime.now():%Y-%m-%d}.csv")
@@ -1271,7 +1274,7 @@ def sensitive_page():
     admins = a.admin_users()
     ad = sorted(u for u in admins if u not in who and not (people and (a.is_disabled(u) or a.is_service(u))))
     sp = a.split_users(us)
-    sub = " · ".join(x for x in [plural(len(sp["people"]), "person"), f"{len(sp['disabled'])} disabled" * bool(
+    sub = " · ".join(x for x in [f'{len(sp["people"])} {"person" if len(sp["people"]) == 1 else "people"}', f"{len(sp['disabled'])} disabled" * bool(
         sp["disabled"]), f"{len(sp['service'])} service" * bool(sp["service"]), f"{len(ad)} via admin" * bool(ad)] if x)
     rows = [[strong(u, str((a.profile.get(u) or {}).get("TYPE") or "person").lower()),
              tag(a.status(u), "low" if a.status(u) == "active" else "warn") + "<br>" + login_html(u),
@@ -1375,11 +1378,12 @@ def review_page():
     head = (["Database"] if db == "*" else []) + ["Schema", "Object", "User", "Status", "Privileges", "Sensitive",
                                                   "Granted roles", "Path"]
     rows = [([ui.mono(x["database"])] if db == "*" else []) + [
-        ui.mono(x["schema"]), ui.mono(x["object"]) + f'<br><span class="ae-small">{e(x["type"] or "")}</span>',
+        ui.mono(x["schema"]), (e(a.future_label(f'{x["database"]}.{x["schema"]}.{x["object"]}', x["type"]) or "")
+                               or ui.mono(x["object"])) + f'<br><span class="ae-small">{e(x["type"] or "")}</span>',
         strong(x["user"], x["user_type"].lower()), tag(x["status"], "low" if x["status"] == "active" else "warn"),
         " ".join(ui.pclass(c) for c in x["classes"].split(", ") if c) + f'<br><span class="ae-small">'
         f'{e(x["privileges"])}</span>', e(x["sensitive"]), " ".join(chip(r) for r in x["granted"].split(", ") if r),
-        f'<span class="ae-small ae-wrap">{e(x["path"])}</span>'] for x in shown]
+        chain(x["path"].split(" > "), True) if x["path"] else ""] for x in shown]
     filt = [f"schema {sc}"] * bool(sc) + [f"object {ob}"] * bool(ob) + ["disabled excluded"] * active
     table_card("review", f"Access review: {where}", f"{plural(len(shown), 'row')} shown of {len(rs)} · one per user and "
                "object · the CSV has every row and blank Reviewer and Keep/Revoke columns"
@@ -1516,24 +1520,25 @@ def rules_page(rows):
     table_card("findings", "Findings", f"{len(shown)} across {plural(len({x['num'] for x in shown}), 'rule')} · "
                f"{len(gs)} rows (same fix merged)" + (" · " + e(", ".join(what)) if what else "")
                + (f' · <a href="{e(link(page="rules"))}" target="_self">clear filters</a>' if what else ""),
-               ["Rule", "Grantee", "Detail", "Affects", "Path"],
+               ["Rule", "Grantee", "Detail", "Affects"],
                [[f'<div style="min-width:170px">{ui.dot(xs[0]["severity"], True)}<br>'
                  f'<span class="ae-tip" title="{e(xs[0]["why"])}">{e(xs[0]["num"])} · {e(xs[0]["title"])}</span></div>',
                  who_cell(xs), ui.mono(xs[0]["detail"]) + (f'<br><span class="ae-small">and {len(xs) - 1} more like '
                                                             'it</span>' if len(xs) > 1 else ""),
                  f'<span class="ae-tip" title="users who lose access when the fix is applied, net of their other '
-                 f'paths">{e(xs[0]["impact"])}</span>', "".join(chain(p, True) for p in xs[0]["paths"])] for xs in gs],
+                 f'paths">{e(xs[0]["impact"])}</span>'] for xs in gs],
                [[x["num"], x["title"], x["severity"], x["grantee"], x["detail"], x["iac"], x["sql"],
                  "" if x["affects"] is None else x["affects"], x["same_fix"], " | ".join(arrow(p) for p in x["paths"])]
                 for x in shown],
                "No findings for this selection." if what else "No rule findings in this data.", {"Affects"},
-               min_width=980, data_cols=["Rule", "Title", "Severity", "Grantee", "Detail", "Fix", "SQL",
+               min_width=760, data_cols=["Rule", "Title", "Severity", "Grantee", "Detail", "Fix", "SQL",
                                          "Affects users", "Same fix", "Paths"],
                fname=f"findings_{sev or 'all'}_{now:%Y-%m-%d}.csv",
                head=[["Rule checks", ", ".join(what) or "all"], ["Run", a.run.get("RUN_ID"),
                                                                  str(a.run.get("FINISHED_AT"))[:16]],
                      ["Generated", f"{now:%Y-%m-%d %H:%M}"]],
-               subs=[fix(xs[0]) for xs in gs])
+               subs=[f'<div class="ae-subline"><span class="ae-small">Path</span> '
+                     + "".join(chain(p, True) for p in xs[0]["paths"]) + '</div>' + fix(xs[0]) for xs in gs])
 
 
 def admins_card():
@@ -1610,10 +1615,8 @@ def fresh():
     app, whose files don't change), under the lock so no other session renders half-reloaded lookups."""
     with lock():
         for m in (a, ui):
-            t = os.path.getmtime(m.__file__)
-            if getattr(m, "MTIME", t) != t:
+            if os.path.getmtime(m.__file__) > m.LOADED:
                 importlib.reload(m)
-            m.MTIME = t
 
 
 def main():
