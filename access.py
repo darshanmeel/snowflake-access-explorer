@@ -2957,8 +2957,9 @@ def rules_model(only=None):
 def rules_admin(only=None):
     """Rules 5, 9, 12: admin roles, PUBLIC, admin default roles."""
     out = []
+    near = set().union(*(ups(r)[1] for r in ADMIN if r in roles))  # reach only: skips the path walk for everyone else
     for u in users:  # 5: one finding per (person, admin role), shortest path; one below another admin role is not
-        if not is_service(u) and inside(only, u, "5"):
+        if u in near and not is_service(u) and inside(only, u, "5"):
             for r, ps in group((p[-1], p) for p in admin_paths(u, user=True)).items():
                 p = ps[0]
                 if not ADMIN & set(p[1:-1]):

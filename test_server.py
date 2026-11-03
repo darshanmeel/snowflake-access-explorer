@@ -1,3 +1,4 @@
+import json
 """server.py on the fake data: every endpoint answers 200 with the keys of web/API.md. Run: python test_server.py"""
 import os
 
@@ -138,7 +139,8 @@ def test_sensitive_rules_review():
     assert r["total"] and r["admins"] and r["counts"]["High"]
     assert len(r["per_rule"]) == len(a.RULES) and {f["num"] for f in r["findings"]} == {k for k, v in r["per_rule"].items() if v}
     js("/api/rules?sev=High&rule=4")
-    assert r["findings"][0]["grantees"]
+    f = r["findings"][0]
+    assert f["grantee"] and {"num", "severity", "what", "impact", "paths", "iac", "sql"} <= set(f)
     csv = get("/api/rules.csv")
     assert csv.headers["content-type"].startswith("text/csv") and "Rule checks" in csv.text
     rv = js("/api/review?db=*", ["filters", "kpis", "rows", "refs"])
@@ -188,6 +190,16 @@ def test_streamlit_bridge():  # the React app inside Streamlit gets the same ans
     assert ans("/api/reload", {"what": "page"})[1]["ok"]
     st, mine, sid = ans("/api/mine/load", {})
     assert st == 200 and sid and ans("/api/mine", sid=sid)[1]["loaded"]
+
+
+def test_whatif():
+    from urllib.parse import quote
+    ch = quote(json.dumps([{"op": "drop_role", "role": a.FUNC + "ANALYST"}]))
+    d = js(f"/api/whatif?changes={ch}", ["changes", "summary", "counts", "users", "objects", "roles", "findings", "iac", "sql", "refs"])
+    assert d["counts"]["users"] and d["users"][0]["lost_rows"] and "DROP ROLE" in d["sql"]
+    assert "What if" in get(f"/api/whatif.csv?changes={ch}").text
+    get("/api/whatif?changes=nope", 400)
+    get("/api/whatif?changes=" + quote(json.dumps([{"op": "drop_role", "role": "NOPE"}])), 400)
 
 
 def test_read_only():  # the only write-like statement is the snapshot CALL

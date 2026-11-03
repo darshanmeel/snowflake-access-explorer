@@ -827,7 +827,7 @@ def test_group_graph():
     assert set(next(g for g in a.group_objects(a.grants("ANALYST_01", True), "database")
                     if g["group"] == "SALES")["holders"]) == holders  # every holder, not one per row
     g = a.graph_input("SVC_DEPLOY", max_objects=40)
-    assert g["level"] == "object" and g["header"] == "33 objects" and g["kinds"] == {}
+    assert g["level"] == "object" and g["header"] == "33 objects" and g["kinds"] == {a.BUILTIN_NODE: "fold"}
     g = a.graph_input("SVC_DEPLOY", max_objects=20)  # over the cap: grouped by schema (14 groups, under 20)
     assert g["header"] == "33 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
     assert g["kinds"]["SALES.PIPELINE"] == "schema" and "SALES" not in g["kinds"] and "WH_SALES_XS" not in g["kinds"]
