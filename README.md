@@ -40,7 +40,7 @@ Find (top bar) opens any user, role or object. Every view is a link (`?page=role
 More screens, and how to read them: [README.html](README.html).
 
 ## Run it
-The **local web app (React)** is the recommended and default version: it runs on your machine, reads Snowflake with your own login and shows the same pages as the Streamlit version. Data comes from Snowflake by default; fake data only with `--fake`. Both use the same code (`access.py`).
+The **local web app (React)** is the recommended and default version: it runs on your machine and reads Snowflake with your own login. The Streamlit version runs the very same React app inside Streamlit, so both look and work the same. Data comes from Snowflake by default; fake data only with `--fake`. Both use the same code (`access.py`).
 
 | | `SOURCE=direct` (default) | `SOURCE=objects` |
 |---|---|---|
@@ -51,7 +51,7 @@ The **local web app (React)** is the recommended and default version: it runs on
 
 Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). The sidebar shows **Data from &lt;time&gt;**; **Read Snowflake again** reads it again. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
 
-### 1. Install once (PowerShell; needs Python 3.10+, git and, to rebuild the web app, Node 20+)
+### 1. Install once (PowerShell; needs Python 3.10+ and git, no Node or npm)
 ```
 git clone https://github.com/darshanmeel/snowflake-access-explorer.git
 cd snowflake-access-explorer
@@ -59,7 +59,8 @@ python -m venv .venv; .venv\Scripts\activate          # macOS/Linux: python3 -m 
 pip install -r requirements-web.txt
 ```
 If `activate` says running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then activate again.
-The built web app is in `web/dist`; after changing `web/src` run `cd web; npm install; npm run build`. Update: `git pull; pip install -r requirements-web.txt`.
+The web app comes built (`web/dist`, and `web/dist-st` for Streamlit), so running it needs only Python. Update: `git pull; pip install -r requirements-web.txt`.
+Developers who change `web/src` rebuild both bundles with Node 20+ (`cd web; npm ci; npm run build; npm run build:st`) and commit them.
 
 ### 2. Start it
 ```
@@ -123,7 +124,7 @@ Then set `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` in `.env` (and `SNOWFLAKE_ROLE=<APP_ROL
 - SnowSQL instead of `run_sql.py`: `!source` the same `sql/` files in order. Remove everything: `python run_sql.py sql/3_cleanup.sql`.
 
 ### Streamlit in Snowflake (SiS)
-`app.py` + `ui.py` also run as a Streamlit app inside Snowflake, with the same React components (`web/dist-st/`) where Streamlit allows. It reads as the viewer, keeps data in memory only (no local disk, so no `.cache/`) for 24 h and writes nothing. Use `SOURCE=objects` there, with the daily task above so the data is fresh.
+`app.py` also runs as a Streamlit app inside Snowflake: one Streamlit component (`web/dist-st/`) holds the same React app, and its data calls are answered in Python by the same code as the local server (`st_react.app`). If Snowflake blocks the component, `ST_REACT=native` runs plain Streamlit pages instead. It reads as the viewer, keeps data in memory only (no local disk, so no `.cache/`) for 24 h and writes nothing. Use `SOURCE=objects` there, with the daily task above so the data is fresh.
 
 ### Container Services (optional)
 Only to give everyone the local web app without each person installing it: run `server.py` as a service. Not needed to use the app.

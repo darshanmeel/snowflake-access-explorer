@@ -26,8 +26,11 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - **Local (recommended, default):** `server.py` (FastAPI, JSON API over `access.py`) + `web/` (React). Runs on your machine.
   `python run.py` (web), `run.py streamlit`, `--fake`, `--direct` / `--objects`, `--port N`; env `APP`, `WEB_PORT` (8000),
   `STREAMLIT_PORT` (8501) so both run side by side.
-- **Streamlit in Snowflake:** `app.py` + `ui.py`, using the same React components from `web/` as Streamlit
-  components (built bundle committed under `web/dist-st/`) wherever Streamlit in Snowflake allows; plain Streamlit otherwise.
+- **Streamlit in Snowflake:** `app.py` runs the same React app (`web/src/App.tsx`) as one Streamlit component
+  (`st_react.app`): its API calls come back to Python and are answered by `server.py` functions, so both versions show
+  identical pages. `ST_REACT=native` (or `html`) runs the plain Streamlit pages in `app.py` + `ui.py` as a fallback.
+- Built bundles `web/dist` and `web/dist-st` are committed: users only run Python, never npm. After any change in
+  `web/src`, rebuild both (`npm run build`, `npm run build:st`) and commit them.
   Must keep running as a Streamlit app inside Snowflake. Container Services: optional, only to give everyone the local version.
 - `access.py` is the only place for data, walks and rules; both versions call it, neither has its own logic.
 - **If you change one version, change the other in the same task:** a page, tab, column, graph style or rule shown
