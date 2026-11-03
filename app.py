@@ -1,14 +1,12 @@
 """Snowflake access explorer. Run: streamlit run app.py
-Data: FAKE=1 (default) fake data · DUCKDB=<file> fake data in DuckDB (make_demo_db.py), read with the snapshot SQL ·
-FAKE=0 Snowflake via ../sf.py, as the logged-in user.
+Data: FAKE=1 (default) fake data · FAKE=0 Snowflake via sf.py, as the logged-in user: the snapshot tables
+(ACCESS_SNAPSHOT=DB.SCHEMA) or, with ACCESS_SNAPSHOT empty, the grants read directly.
 Page, entity and filters live in the URL (?page=role&name=...&depth=3), so chips and graph nodes are plain links."""
 import csv
 import importlib
 import io
 import json
 import os
-import pathlib
-import sys
 import threading
 from datetime import datetime, timezone
 from html import escape as e
@@ -19,9 +17,8 @@ import streamlit as st
 import access as a
 import ui
 
-DUCK = os.environ.get("DUCKDB")
-MODE = "duckdb" if DUCK else "fake" if os.environ.get("FAKE", "1") != "0" else "snowflake"
-WHERE = os.environ.get("ACCESS_SNAPSHOT", "") if MODE == "snowflake" else "main"  # DB.SCHEMA of the tables
+MODE = "fake" if os.environ.get("FAKE", "1") != "0" else "snowflake"
+WHERE = os.environ.get("ACCESS_SNAPSHOT", "")  # DB.SCHEMA of the tables
 DIRECT = MODE == "snowflake" and not WHERE  # no tables: read the grants straight from Snowflake (a.live)
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")  # "My access" without Snowflake, and the default user
 # nav order; a page shows in the nav once it has a function in VIEW (sensitive and review come next)
@@ -62,10 +59,6 @@ THEME, VIEW_MODE, ROWS, SENS, BREAKS = "light", "shared", [], {}, {}
 # ---------- data ----------
 
 def connect():  # one connection per load: a cached one expires when idle
-    if DUCK:
-        import duckdb
-        return duckdb.connect(DUCK, read_only=True)
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
     from sf import connect as sf
     return sf()
 

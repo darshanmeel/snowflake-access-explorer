@@ -97,6 +97,8 @@ tr.grp td{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-tra
 .sev.bad{background:#F9E2DE;border-color:#EDB9B1;color:#8C271D}
 .sev.warn{background:#F7EFCF;border-color:#E6D58A;color:#634B0E}
 .sev.low{background:#ECE8E1;border-color:#D3CBBF;color:#5B544B}
+pre{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin:8px 0 12px;overflow-x:auto;font:12.5px/1.5 var(--mono);white-space:pre}
+ol{margin:0 0 10px;padding-left:20px}
 table.set td:first-child{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
 table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:break-word;max-width:360px}
 @media (max-width:900px){.legend,.two,.nums{grid-template-columns:1fr}main{padding:24px 16px}.card{padding:20px 16px}
@@ -119,7 +121,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <nav class="toc">
   <a href="#overview">Overview</a><a href="#flow">Process</a><a href="#graph">Reading a graph</a><a href="#user">User</a><a href="#role">Role</a>
   <a href="#object">Object</a><a href="#check">Can they?</a><a href="#rules">Rule checks</a><a href="#sensitive">Sensitive data</a>
-  <a href="#review">Access review</a><a href="#big">Big accounts</a><a href="#mine">My access</a><a href="#side">Settings and limits</a>
+  <a href="#review">Access review</a><a href="#big">Big accounts</a><a href="#mine">My access</a><a href="#run">Run modes and setup</a><a href="#model">Role model</a><a href="#sql">SQL</a><a href="#sources">Data sources</a><a href="#side">Settings and limits</a>
 </nav>
 
 <section class="card" id="overview">
@@ -140,6 +142,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li>5, 7: the app and the SQL functions read only the last <code>STATUS = 'OK'</code> run: nobody sees half a snapshot.</li>
       <li>Viewers need no rights on ACCOUNT_USAGE or SHOW: SELECT on the <code>TBL_ACCESS_</code> tables is enough.</li>
       <li>My access skips the snapshot: it reads the viewer's own roles live, with the viewer's rights (<a href="#mine">below</a>).</li>
+      <li>No procedures allowed? <b>Direct mode</b> skips 1–3 and the tables: the app reads the same sources itself, with your role (<a href="#run">Run modes</a>).</li>
     </ul>
   </div>
 </section>
@@ -357,7 +360,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <section class="card screen" id="big">
   <header><h2>Big accounts</h2><span class="q">?schema=DB.SCHEMA · ?full=1 · ?expand=3 · ?unfold=1</span></header>
   <p class="answers"><b>Answers</b>How do I read a graph with thousands of objects and hundreds of roles?</p>
-  <figure><img src="docs/img/grouped-big-graph.png" alt="Summary graph for BIG_01: granted roles, folded roles, grant holders, databases"><figcaption>BIG_01 (big.duckdb): 2,000 objects grouped by database, summary view.</figcaption></figure>
+  <figure><img src="docs/img/grouped-big-graph.png" alt="Summary graph for BIG_01: granted roles, folded roles, grant holders, databases"><figcaption>BIG_01 (the big test account): 2,000 objects grouped by database, summary view.</figcaption></figure>
   <figure><img src="docs/img/schema-drill-down.png" alt="SVC_DEPLOY drill-down into SALES.PIPELINE"><figcaption>SVC_DEPLOY › SALES.PIPELINE: drill-down into one schema.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
@@ -397,16 +400,85 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   </div>
 </section>
 
+<section class="card" id="run">
+  <div class="eyebrow">Side view · setup</div>
+  <h2>Run modes and what you need</h2>
+  <p class="key">Set the mode in <code>.env</code>; then <code>streamlit run app.py</code>. Install steps: README.md.</p>
+<table><thead><tr><th>Mode</th><th>Set in <code>.env</code></th><th>Needs in Snowflake</th><th>You see</th></tr></thead><tbody>
+<tr><td><b>Fake data</b></td><td><code>FAKE=1</code> (default without <code>.env</code>)</td><td>Nothing</td><td>The demo account used in these screenshots</td></tr>
+<tr><td><b>My access</b></td><td>Direct settings below; open <code>?data=mine</code>, click <b>Load my access</b></td><td>A warehouse; for the 7-day query history also a database (<code>SNOWFLAKE_DATABASE</code> or your default namespace)</td><td>Your own roles and everything they reach</td></tr>
+<tr><td><b>Direct</b></td><td><code>FAKE=0</code>, <code>ACCESS_SNAPSHOT=</code> (empty), <code>SNOWFLAKE_*</code></td><td>A role and a warehouse; whole account: <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (fast) or <code>MANAGE GRANTS</code> (SHOW, slow)</td><td>The whole account, as far as your role can read it</td></tr>
+<tr><td><b>Snapshot tables</b></td><td><code>FAKE=0</code>, <code>ACCESS_SNAPSHOT=&lt;DB&gt;.&lt;SCHEMA&gt;</code>, <code>SNOWFLAKE_*</code></td><td>The one-time setup below; viewers need <code>&lt;APP_ROLE&gt;</code></td><td>One shared, scheduled copy of the whole account</td></tr>
+</tbody></table>
+  <div class="two" style="margin-top:18px">
+    <div>
+      <h3>Direct mode</h3>
+      <ul>
+        <li>For accounts where procedures can't be created: no tables, procedures, functions or setup; nothing is written.</li>
+        <li>At start the app reads grants, future grants, users, query history, tags, policies and streams with your role, keeps them in memory for 1 h. <b>Read Snowflake again</b> (sidebar) reads again.</li>
+        <li>Same sources as the procedure (<a href="#sources">Data sources</a>): <code>ACCOUNT_USAGE</code> where readable, else <code>SHOW</code> / <code>INFORMATION_SCHEMA</code> (one query per role and per schema: minutes on a big account).</li>
+        <li>The sidebar shows <code>direct</code> and, under Incomplete, which dataset fell back and why.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Login</h3>
+      <ul>
+        <li>Browser SSO by default: a tab opens on the machine running Streamlit, so run the app on your own machine.</li>
+        <li>Key pair instead: <code>SNOWFLAKE_PRIVATE_KEY_FILE</code> (+ <code>SNOWFLAKE_PRIVATE_KEY_PWD</code> if encrypted). No passwords.</li>
+        <li>One login per new connection; an admin's <code>ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;</code> lets one login last ~4 h.</li>
+      </ul>
+    </div>
+  </div>
+  <h3 style="margin-top:22px">One-time setup for snapshot tables (developer)</h3>
+<p>Only if your team can create tables and procedures. A developer runs this once; the app then reads the tables (<code>ACCESS_SNAPSHOT=&lt;DB&gt;.&lt;SCHEMA&gt;</code>). Install as in README.md, <code>.env</code> filled in (<code>run_sql.py</code> switches to <code>DEV_ROLE</code> itself):</p>
+<pre>copy settings.sql settings.local.sql      # fill in DB, SCHEMA, WH, DEV_ROLE, APP_ROLE (SnowSQL: also HERE)
+python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql
+python run_sql.py sql/2_snapshot.sql;  python run_sql.py sql/2_snapshot_verify.sql   # = CALL SP_ACCESS_SNAPSHOT(&#x27;AUTO&#x27;)</pre>
+<ol><li><code>DEV_ROLE</code> needs <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (or <code>MANAGE GRANTS</code>); without it the snapshot holds only what that role sees (table below).</li><li><code>1_setup.sql</code> grants <code>APP_ROLE</code> its access to the tables. Grant <code>APP_ROLE</code> to the people who use the app, through your infrastructure as code.</li><li>Optional, admin: <code>ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;</code> users then log in once per ~4 h instead of once per connection.</li><li>Keep data fresh: schedule the snapshot with a task (the owner needs <code>EXECUTE TASK</code>), or use the app&#x27;s <b>Rebuild snapshot in Snowflake</b>, then <b>Reload page data</b>:<pre>CREATE TASK &lt;DB&gt;.&lt;SCHEMA&gt;.TSK_ACCESS_SNAPSHOT WAREHOUSE = &lt;WH&gt; SCHEDULE = &#x27;USING CRON 0 6 * * * UTC&#x27;
+AS CALL &lt;DB&gt;.&lt;SCHEMA&gt;.SP_ACCESS_SNAPSHOT(&#x27;AUTO&#x27;);
+ALTER TASK &lt;DB&gt;.&lt;SCHEMA&gt;.TSK_ACCESS_SNAPSHOT RESUME;</pre></li></ol>
+<ul><li>SnowSQL instead of <code>run_sql.py</code>: <code>!source</code> the same <code>sql/</code> files in order (set <code>HERE</code> in <code>settings.local.sql</code>).</li><li><code>1_setup_verify.sql</code> shows which ACCOUNT_USAGE views the role can read (SKIPPED = that dataset uses its fallback, see Data sources).</li><li>Remove everything: <code>python run_sql.py sql/3_cleanup.sql; python run_sql.py sql/3_cleanup_verify.sql</code>.</li></ul>
+<table><thead><tr><th>Role</th><th>Needs</th></tr></thead><tbody><tr><td>Developer <code>&lt;DEV_ROLE&gt;</code> (owns tables and procedure)</td><td>Create tables and procedures in <code>&lt;SCHEMA&gt;</code>. To see every grant: <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (or DB roles <code>SECURITY_VIEWER</code> + <code>GOVERNANCE_VIEWER</code>, the latter for query history, tags and policies), or <code>MANAGE GRANTS</code> for SHOW. Without them the snapshot holds only what the role sees.</td></tr><tr><td>App <code>&lt;APP_ROLE&gt;</code></td><td>USAGE on database, schema, warehouse · SELECT on the 9 <code>TBL_ACCESS_</code> tables (8 snapshot tables + <code>TBL_ACCESS_FINDING</code>) · USAGE on <code>SP_ACCESS_SNAPSHOT</code> (rebuild button only) · USAGE on <code>TF_ACCESS_OF</code>, <code>TF_WHO_CAN</code>, <code>TF_CAN</code> (worksheet SQL)</td></tr><tr><td>Any user, My access</td><td>Nothing extra: a warehouse and a database whose INFORMATION_SCHEMA they can read</td></tr></tbody></table>
+<ul><li>The procedure runs with its owner&#x27;s rights: whoever clicks, a low-privilege user can&#x27;t overwrite the snapshot with a partial one.</li><li>A CALL while another run is RUNNING (under 1 h old) returns <code>SKIPPED</code>. The app reads only the last <code>STATUS = &#x27;OK&#x27;</code> run.</li></ul>
+</section>
+
+<section class="card" id="model">
+  <div class="eyebrow">Side view · model</div>
+  <h2>Role model the app expects</h2>
+  <p class="key">Arrow = is granted to the next box.</p>
+  <p><span class="n user">User / service user</span> → <span class="n group">Group role</span> → <span class="n func">F_ANALYST</span> → <span class="n tech">T_SALES_CORE_READ</span> → <span class="n obj">Objects</span> &nbsp; (a user may also get <span class="n func">F_</span> roles directly)</p>
+<ul><li>Users get functional roles (directly or via a group role); privileges sit on technical roles only.</li><li>Technical roles per database (<code>OWNER</code>) and per schema (<code>OWNER</code>, <code>READ</code>, <code>WRITE</code>, <code>EXECUTE</code>); READ is inside WRITE.</li><li>Prefixes <code>F_</code> / <code>T_</code>; another naming: <code>ROLE_PREFIXES=&lt;functional&gt;,&lt;technical&gt;</code>. DB and schema names come from grant data, never from role names.</li><li>Admin roles (<code>ACCOUNTADMIN</code>, <code>SECURITYADMIN</code>, <code>SYSADMIN</code>, <code>USERADMIN</code>, <code>ORGADMIN</code>): links into them are hidden; holders and account-level privileges show in red.</li><li>Depth = roles from the start to the role holding the grant, holder included: <code>ANALYST_01 &gt; GRP_ANALYSTS &gt; F_ANALYST &gt; T_SALES_CORE_READ</code> = 3.</li></ul>
+</section>
+
+<section class="card" id="sql">
+  <div class="eyebrow">Side view · worksheet</div>
+  <h2>SQL without the app (snapshot tables only)</h2>
+<p><code>sql/1_setup.sql</code> also creates three table functions and a findings procedure; all read the last OK run.</p>
+<pre>USE SCHEMA &lt;DB&gt;.&lt;SCHEMA&gt;;
+SELECT * FROM TABLE(TF_ACCESS_OF(&#x27;ANALYST_01&#x27;, NULL)) ORDER BY DEPTH, OBJECT_NAME;   -- NULL = every level
+SELECT * FROM TABLE(TF_WHO_CAN(&#x27;SALES.CORE.TBL_CUSTOMER&#x27;, &#x27;SELECT&#x27;, NULL)) WHERE GRANTEE_KIND = &#x27;user&#x27;;
+SELECT * FROM TABLE(TF_CAN(&#x27;ANALYST_01&#x27;, &#x27;SELECT&#x27;, &#x27;SALES.CORE.TBL_CUSTOMER&#x27;)) ORDER BY HOPS;  -- no rows = no
+CALL SP_ACCESS_FINDINGS(&#x27;{&quot;MAX_DEPTH_RULE&quot;: 4, &quot;DORMANT_DAYS&quot;: 60}&#x27;);                  -- into TBL_ACCESS_FINDING</pre>
+<table><thead><tr><th>Object</th><th>Returns</th></tr></thead><tbody><tr><td><code>TF_ACCESS_OF(NAME, MAX_DEPTH)</code></td><td><code>PRIVILEGE, GRANTED_ON</code> (<code>FUTURE TABLE</code> for future grants)<code>, DATABASE_NAME, SCHEMA_NAME, OBJECT_NAME, DEPTH, PATH, HOLDER</code>; a user name walks as the user</td></tr><tr><td><code>TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)</code></td><td><code>GRANTEE, GRANTEE_KIND</code> (user / role)<code>, PRIVILEGE, DEPTH, PATH</code>; PRIVILEGE NULL = any</td></tr><tr><td><code>TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)</code></td><td><code>PATH, HOPS</code> (= depth)<code>, HOLDER, VIA_OWNERSHIP</code>; one row per path</td></tr><tr><td><code>SP_ACCESS_FINDINGS(P_SETTINGS)</code></td><td>Returns <code>{run_id, findings, per_rule}</code>; that run&#x27;s rows in <code>TBL_ACCESS_FINDING</code> replaced</td></tr></tbody></table>
+<ul><li>Same walk as the app; <code>PATH</code> = <code>A &gt; B &gt; C</code>. Names match as stored, case-sensitive.</li><li><code>P_SETTINGS</code>: JSON with any key of the settings table from <code>ROLE_PREFIXES</code> down; unknown keys fail.</li><li>The procedure runs <code>access.py</code> from stage <code>STG_ACCESS_CODE</code>: rerun <code>1_setup.sql</code> after changing <code>access.py</code> (worksheet only: upload it with Snowsight &quot;+ Files&quot;).</li><li>Walks stop at 50 hops without a flag: <code>MAX(DEPTH)</code> of 50 (user) or 51 (role) means the result may be cut.</li><li><code>SKIPPED: FUNCTION_...</code> in setup: the functions did not compile on this account; the rest still runs.</li></ul>
+</section>
+
+<section class="card" id="sources">
+  <div class="eyebrow">Side view · lineage</div>
+  <h2>Data sources</h2>
+  <p class="key">Decided per dataset at every read (procedure CALL or direct mode).</p>
+<table><thead><tr><th>Dataset</th><th>ACCOUNT_USAGE (lag up to ~2 h)</th><th>Fallback</th><th>Table</th></tr></thead><tbody><tr><td>Role -&gt; object, role -&gt; role</td><td><code>GRANTS_TO_ROLES</code></td><td><code>SHOW ROLES</code> + <code>SHOW GRANTS TO ROLE</code></td><td><code>TBL_ACCESS_GRANT</code></td></tr><tr><td>Role -&gt; user</td><td><code>GRANTS_TO_USERS</code></td><td><code>SHOW GRANTS OF ROLE</code></td><td><code>TBL_ACCESS_USER_ROLE</code></td></tr><tr><td>Future grants</td><td>none</td><td>always <code>SHOW FUTURE GRANTS IN DATABASE / SCHEMA</code></td><td><code>TBL_ACCESS_GRANT</code> (<code>IS_FUTURE</code>)</td></tr><tr><td>User profile</td><td><code>USERS</code></td><td><code>SHOW USERS</code></td><td><code>TBL_ACCESS_USER</code></td></tr><tr><td>Roles, warehouses used</td><td><code>QUERY_HISTORY</code>, 30 days</td><td><code>INFORMATION_SCHEMA.QUERY_HISTORY</code>, 7 days</td><td><code>TBL_ACCESS_USAGE</code></td></tr><tr><td>Tags</td><td><code>TAG_REFERENCES</code> (Enterprise)</td><td>per table: <code>INFORMATION_SCHEMA.TAG_REFERENCES(_ALL_COLUMNS)</code>, max 300</td><td><code>TBL_ACCESS_TAG</code></td></tr><tr><td>Masking and row access policies, with text</td><td><code>POLICY_REFERENCES</code> + <code>MASKING_POLICIES</code> / <code>ROW_ACCESS_POLICIES</code></td><td>per table: <code>POLICY_REFERENCES</code>, text from <code>DESCRIBE</code></td><td><code>TBL_ACCESS_POLICY</code></td></tr><tr><td>Streams (rule 22)</td><td>none</td><td>always <code>SHOW STREAMS IN ACCOUNT</code></td><td><code>TBL_ACCESS_STREAM</code></td></tr><tr><td>Run log</td><td></td><td></td><td><code>TBL_ACCESS_RUN</code></td></tr></tbody></table>
+<ul><li><code>P_SOURCE</code>: <code>AUTO</code> (default: ACCOUNT_USAGE where readable, else SHOW) · <code>ACCOUNT_USAGE</code> (fail if not readable) · <code>SHOW</code> (live, 2 queries per role).</li><li>Tags, policies, streams, usage: an error sets that source to <code>UNAVAILABLE</code>; the run stays OK. Any other failed dataset: the run is <code>FAILED</code> and its rows deleted.</li><li>My access reads <code>CURRENT_AVAILABLE_ROLES()</code>, <code>SHOW GRANTS TO ROLE / USER</code>, <code>DESC USER</code>, <code>QUERY_HISTORY_BY_USER</code> (7 days) as the user.</li><li>Column names of the tag/policy views and <code>SHOW STREAMS</code> are marked &quot;to verify&quot; in <code>sql/1_setup.sql</code>.</li></ul>
+</section>
+
 <section class="card" id="side">
   <div class="eyebrow">Side view</div>
   <h2>Settings (env vars)</h2>
-<!--map:settings-->
-<table class="set"><thead><tr><th>Variable</th><th>Default</th><th>Does</th></tr></thead><tbody><tr><td><code>FAKE</code></td><td><code>1</code></td><td><code>0</code> = Snowflake via <code>../sf.py</code></td></tr><tr><td><code>DUCKDB</code></td><td></td><td>DuckDB file with the snapshot tables (wins over <code>FAKE</code>)</td></tr><tr><td><code>ACCESS_SNAPSHOT</code></td><td></td><td><code>&lt;DB&gt;.&lt;SCHEMA&gt;</code> of the tables (Snowflake only); empty = direct mode, no tables</td></tr><tr><td><code>DEMO_USER</code></td><td><code>ENGINEER_01</code></td><td>Default user, and the &quot;me&quot; of My access outside Snowflake</td></tr><tr><td><code>ROLE_PREFIXES</code></td><td><code>F_,T_</code></td><td>Functional and technical role prefixes</td></tr><tr><td><code>BUILD_ROLES</code></td><td><code>&lt;functional prefix&gt;DEPLOY</code></td><td>fnmatch patterns of the build identity: may hold OWNER roles (rule 4), skipped by rules 17, 19–23</td></tr><tr><td><code>MAX_HOPS</code></td><td><code>50</code></td><td>Safety cap on role hops per walk</td></tr><tr><td><code>MAX_PATHS</code></td><td><code>200</code></td><td>Full chains listed per row; path counts are always exact</td></tr><tr><td><code>CAP_PRIVS</code></td><td>READ: <code>SELECT, REFERENCES, USAGE, READ</code> · WRITE: READ + <code>INSERT, UPDATE, DELETE, TRUNCATE, WRITE</code> · EXECUTE: <code>USAGE</code> · OWNER: <code>OWNERSHIP</code></td><td>Rule 18: standard privileges per capability suffix, JSON</td></tr><tr><td><code>SENSITIVE_TAGS</code></td><td><code>PRIVACY_CATEGORY=IDENTIFIER|QUASI_IDENTIFIER|SENSITIVE,SENSITIVITY=PII|CONFIDENTIAL</code></td><td>Tag (last name part, any case) = values that make data sensitive; no <code>=</code> = any value</td></tr><tr><td><code>READ_PRIVS</code></td><td><code>SELECT,OWNERSHIP</code></td><td>Privileges that count as &quot;can read&quot;</td></tr><tr><td><code>DORMANT_DAYS</code></td><td><code>90</code></td><td>No login for this long (or never) before the run&#x27;s <code>FINISHED_AT</code> (rules 7, 16)</td></tr><tr><td><code>MAX_DEPTH_RULE</code></td><td><code>5</code></td><td>Rule 14 threshold</td></tr><tr><td><code>READ_ROLE_PATTERNS</code></td><td><code>_READ$|_READ_|_R$|_R_|_RO$|_RO_|READONLY|READ_ONLY|VIEWER|_VIEW$|REPORTING|_RPT</code></td><td>Rule 17 name heuristic (regex, any case)</td></tr><tr><td><code>READ_SHARE</code>, <code>READ_MIN_OBJECTS</code></td><td><code>0.8</code>, <code>5</code></td><td>Rule 17 behaviour heuristic: share of tables/views a role only reads, over at least this many</td></tr></tbody></table>
-<!--/map:settings-->
+<p>Set them in <code>.env</code> (template <code>.env.example</code>) or as environment variables: a name missing or empty in <code>.env</code> comes from the environment, and a variable set in the shell wins. The <code>SNOWFLAKE_*</code> rows connect; the rest choose the data and tune the rules.</p>
+<table class="set"><thead><tr><th>Variable</th><th>Default</th><th>Does</th></tr></thead><tbody><tr><td><code>SNOWFLAKE_ACCOUNT</code>, <code>SNOWFLAKE_USER</code></td><td></td><td>Required for Snowflake: <code>&lt;org&gt;-&lt;account&gt;</code> and your login name</td></tr><tr><td><code>SNOWFLAKE_ROLE</code>, <code>SNOWFLAKE_WAREHOUSE</code></td><td></td><td>Role and warehouse for the session (else your defaults)</td></tr><tr><td><code>SNOWFLAKE_DATABASE</code>, <code>SNOWFLAKE_SCHEMA</code></td><td></td><td>Optional session namespace (My access reads query history through it)</td></tr><tr><td><code>SNOWFLAKE_PRIVATE_KEY_FILE</code>, <code>SNOWFLAKE_PRIVATE_KEY_PWD</code></td><td></td><td>Key pair login instead of browser SSO; the password only for an encrypted key</td></tr><tr><td><code>FAKE</code></td><td><code>1</code></td><td><code>0</code> = Snowflake via <code>sf.py</code></td></tr><tr><td><code>ACCESS_SNAPSHOT</code></td><td></td><td><code>&lt;DB&gt;.&lt;SCHEMA&gt;</code> of the tables (Snowflake only); empty = direct mode, no tables</td></tr><tr><td><code>DEMO_USER</code></td><td><code>ENGINEER_01</code></td><td>Default user, and the &quot;me&quot; of My access outside Snowflake</td></tr><tr><td><code>ROLE_PREFIXES</code></td><td><code>F_,T_</code></td><td>Functional and technical role prefixes</td></tr><tr><td><code>BUILD_ROLES</code></td><td><code>&lt;functional prefix&gt;DEPLOY</code></td><td>fnmatch patterns of the build identity: may hold OWNER roles (rule 4), skipped by rules 17, 19–23</td></tr><tr><td><code>MAX_HOPS</code></td><td><code>50</code></td><td>Safety cap on role hops per walk</td></tr><tr><td><code>MAX_PATHS</code></td><td><code>200</code></td><td>Full chains listed per row; path counts are always exact</td></tr><tr><td><code>CAP_PRIVS</code></td><td>READ: <code>SELECT, REFERENCES, USAGE, READ</code> · WRITE: READ + <code>INSERT, UPDATE, DELETE, TRUNCATE, WRITE</code> · EXECUTE: <code>USAGE</code> · OWNER: <code>OWNERSHIP</code></td><td>Rule 18: standard privileges per capability suffix, JSON</td></tr><tr><td><code>SENSITIVE_TAGS</code></td><td><code>PRIVACY_CATEGORY=IDENTIFIER|QUASI_IDENTIFIER|SENSITIVE,SENSITIVITY=PII|CONFIDENTIAL</code></td><td>Tag (last name part, any case) = values that make data sensitive; no <code>=</code> = any value</td></tr><tr><td><code>READ_PRIVS</code></td><td><code>SELECT,OWNERSHIP</code></td><td>Privileges that count as &quot;can read&quot;</td></tr><tr><td><code>DORMANT_DAYS</code></td><td><code>90</code></td><td>No login for this long (or never) before the run&#x27;s <code>FINISHED_AT</code> (rules 7, 16)</td></tr><tr><td><code>MAX_DEPTH_RULE</code></td><td><code>5</code></td><td>Rule 14 threshold</td></tr><tr><td><code>READ_ROLE_PATTERNS</code></td><td><code>_READ$|_READ_|_R$|_R_|_RO$|_RO_|READONLY|READ_ONLY|VIEWER|_VIEW$|REPORTING|_RPT</code></td><td>Rule 17 name heuristic (regex, any case)</td></tr><tr><td><code>READ_SHARE</code>, <code>READ_MIN_OBJECTS</code></td><td><code>0.8</code>, <code>5</code></td><td>Rule 17 behaviour heuristic: share of tables/views a role only reads, over at least this many</td></tr></tbody></table>
   <h2 style="margin-top:28px">Limits</h2>
-<!--map:limits-->
 <ul><li>Data is as old as the last CALL, plus up to ~2 h ACCOUNT_USAGE lag; tags need Enterprise edition.</li><li>Live session roles of other users can&#x27;t be read: the app shows defaults and roles used in queries.</li><li>SHOW fallback: 2 queries per role (slow on many roles); query history then 7 days or none.</li><li>Database roles are not modelled.</li><li>Masked / clear and all / filtered / no rows come from the policy text, not evaluated; subqueries, mapping tables, UDFs, NOT, CASE, user checks give &quot;unknown&quot;.</li><li>Sensitive reach counts <code>READ_PRIVS</code> on the object only; USAGE on its database/schema is not checked.</li><li>Rule 17 is a heuristic (name or mostly-read behaviour); review before acting. Rule 13 skips technical roles.</li><li>Object, Can they? and Access review list every path into an object: the slow part on very large, nested accounts.</li><li>Pages render one at a time per app process (<code>access.py</code> keeps lookups in module globals, under a lock).</li><li>My access has no tags or policies, so no sensitivity, rule checks or access review.</li></ul>
-<!--/map:limits-->
+
 </section>
 
 </main>

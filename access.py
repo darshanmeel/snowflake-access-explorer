@@ -11,11 +11,14 @@ import pathlib
 import re
 from datetime import datetime
 
-ENV = pathlib.Path(__file__).with_name(".env")  # NAME=value lines (template .env.example); real env vars win
+# .env (template .env.example) fills in what the environment lacks: no file, a missing name or an empty value
+# leaves the environment variable (or the default) in place, and a variable set in the shell wins.
+ENV = pathlib.Path(__file__).with_name(".env")
 for line in ENV.read_text(encoding="utf-8-sig").splitlines() if ENV.is_file() else []:
     k, _, v = line.partition("=")
-    if k.strip() and not k.lstrip().startswith("#") and _:
-        os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
+    k, v = k.strip(), v.strip().strip("\"'")
+    if k and v and not k.startswith("#"):
+        os.environ.setdefault(k, v)
 
 ADMIN = {"ACCOUNTADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "ORGADMIN"}
 MAX_HOPS = int(os.environ.get("MAX_HOPS", "50"))  # safety cap on role hops per walk

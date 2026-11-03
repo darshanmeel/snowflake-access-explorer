@@ -315,12 +315,12 @@ def test_readonly():
 
 
 def test_demo_db():
-    """make_demo_db writes every table, TAG and POLICY included; snapshot() reads back what fake() holds."""
+    """test_sql.write writes every table, TAG and POLICY included; snapshot() reads back what fake() holds."""
     import duckdb
-    import make_demo_db
+    from test_sql import write
     con = duckdb.connect()
     d = a.fake()
-    make_demo_db.write(con, d)
+    write(con, d)
 
     def query(sql):
         cur = con.execute(sql)
@@ -411,6 +411,21 @@ def test_live():
             assert src["usage"] == "UNAVAILABLE" and s["STREAM"] == d["STREAM"]
         else:
             assert s["TAG"] == d["TAG"] and s["POLICY"] == d["POLICY"] and s["USAGE"] == d["USAGE"]
+
+
+def test_pages():
+    """Every page renders without an exception on the fake data (one AppTest run each, no browser)."""
+    from streamlit.testing.v1 import AppTest
+    os.environ["FAKE"] = "1"  # never Snowflake here, whatever .env says
+    app, c = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.py"), "SALES.CORE.TBL_CUSTOMER"
+    for q in (dict(page="user", name="ANALYST_01"), dict(page="role", name=T + "SALES_CORE_READ"),
+              dict(page="object", name=c), dict(page="sensitive"), dict(page="check", name="ENGINEER_01", priv="SELECT", obj=c),
+              dict(page="check", name="ANALYST_01", priv="INSERT", obj=c), dict(page="rules"), dict(page="review"),
+              dict(page="user", data="mine")):
+        at = AppTest.from_file(app, default_timeout=120)
+        at.query_params.update(q)
+        at.run()
+        assert not at.exception, (q, [x.value for x in at.exception])
 
 
 def test_kinds():
@@ -955,7 +970,7 @@ if __name__ == "__main__":
     for t in (test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live):
+              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

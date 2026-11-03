@@ -1,8 +1,7 @@
 """Fill the generated parts of README.html between <!--map:NAME--> markers.
     python docs/make_readme.py
 overview, flow: boxes on a fixed canvas plus one SVG arrow layer (straight arrows only, never through a box).
-rules: titles and severities from access.py, areas from app.py.
-settings, limits: copied from README.md, so the two files never drift."""
+rules: titles and severities from access.py, areas from app.py. The rest of README.html is plain HTML."""
 import ast
 import pathlib
 import re
@@ -141,33 +140,6 @@ def rules():
             '</thead><tbody>' + "".join(rows) + '</tbody></table>')
 
 
-def md_inline(s):
-    """The bits of Markdown README.md uses in tables and lists: `code`, **bold**, \\|."""
-    s = escape(s.strip()).replace("\\|", "|")
-    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
-    return re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
-
-
-def md_section(md, heading):
-    m = re.search(rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", md, re.M | re.S)
-    assert m, heading
-    return m.group(1)
-
-
-def settings(md):
-    rows = [ln.strip()[1:-1] for ln in md_section(md, "Settings (env vars)").splitlines() if ln.startswith("|")][2:]
-    cells = [re.split(r"(?<!\\)\|", r) for r in rows]
-    assert all(len(c) == 3 for c in cells)
-    return ('<table class="set"><thead><tr><th>Variable</th><th>Default</th><th>Does</th></tr></thead><tbody>'
-            + "".join("<tr>" + "".join(f"<td>{md_inline(x)}</td>" for x in c) + "</tr>" for c in cells)
-            + "</tbody></table>")
-
-
-def limits(md):
-    items = [ln[2:] for ln in md_section(md, "Limits").splitlines() if ln.startswith("- ")]
-    return "<ul>" + "".join(f"<li>{md_inline(i)}</li>" for i in items) + "</ul>"
-
-
 def inject(html, name, body):
     pat = re.compile(f"(<!--map:{name}-->).*?(<!--/map:{name}-->)", re.S)
     assert pat.search(html), name
@@ -176,12 +148,9 @@ def inject(html, name, body):
 
 if __name__ == "__main__":
     page = HERE / "README.html"
-    md = (HERE / "README.md").read_text(encoding="utf-8")
     html = page.read_text(encoding="utf-8")
     html = inject(html, "overview", canvas("overview", 1080, 440, OVERVIEW, OVERVIEW_ARROWS))
     html = inject(html, "flow", canvas("flow", 1080, 640, FLOW, FLOW_ARROWS, LANES))
     html = inject(html, "rules", rules())
-    html = inject(html, "settings", settings(md))
-    html = inject(html, "limits", limits(md))
     page.write_text(html, encoding="utf-8", newline="\n")
     print("README.html updated")

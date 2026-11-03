@@ -1,4 +1,0 @@
-streamlit>=1.50
-duckdb>=1.0
-snowflake-connector-python  # only for real data (FAKE=0, run_sql.py)
-# playwright  # take_screens.py only (dev): pip install playwright

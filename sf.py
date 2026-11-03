@@ -3,7 +3,8 @@
     python sf.py "select current_user(), current_role()"
     python sf.py -f query.sql
 
-Login: key pair when SNOWFLAKE_PRIVATE_KEY_FILE is set, else SSO in the browser. No other method (no password).
+Settings: env vars or .env. Login: key pair when SNOWFLAKE_PRIVATE_KEY_FILE is set, else SSO in the browser.
+No other method (no password).
 
 In Python:
     from sf import connect, run
@@ -13,6 +14,8 @@ import os
 import sys
 
 import snowflake.connector
+
+import access  # noqa: F401  (loads .env)
 
 
 def connect():

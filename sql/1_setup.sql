@@ -2,7 +2,7 @@
 -- the worksheet table functions TF_ACCESS_OF / TF_WHO_CAN / TF_CAN, read access for the app role. Safe to run again.
 -- run_sql.py runs each "-- name:" statement in order; "(may fail)" = skipped on error.
 -- Names marked with & come from settings.local.sql. Real set-up: schema, roles and grants via infrastructure as code.
--- SnowSQL: !source sql/1_setup.sql (from the access-explorer folder)
+-- SnowSQL: !source sql/1_setup.sql (from the repo folder)
 !source settings.local.sql
 USE ROLE &DEV_ROLE;
 USE SECONDARY ROLES NONE;   -- as inside the owner's-rights procedure

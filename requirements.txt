@@ -1,0 +1,3 @@
+streamlit>=1.50
+duckdb>=1.0  # tests only (test_sql.py runs the SQL functions on DuckDB)
+snowflake-connector-python  # real data (FAKE=0, run_sql.py)

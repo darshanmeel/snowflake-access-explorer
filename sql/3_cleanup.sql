@@ -1,6 +1,6 @@
 -- 3 · cleanup (developer role): deletes the snapshot task (README, if made), the procedures, table functions, code stage and the 9 TBL_ACCESS_ tables with their
 -- data. The schema stays.
--- SnowSQL: !source sql/3_cleanup.sql (from the access-explorer folder)
+-- SnowSQL: !source sql/3_cleanup.sql (from the repo folder)
 !source settings.local.sql
 USE ROLE &DEV_ROLE;
 USE SECONDARY ROLES NONE;   -- as inside the owner's-rights procedure

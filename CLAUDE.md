@@ -12,9 +12,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Direct mode (`ACCESS_SNAPSHOT` empty, for accounts where procedures can't be created): `access.live()` reads the same
   sources with the user's role into memory, same dict as `snapshot()`. Keep it in step with `SP_ACCESS_SNAPSHOT`; `test_live` checks it.
 - No credentials, account names or company names in code or the repo. Real values live in git-ignored
-  `settings.local.sql` and `.env` (env vars, template `.env.example`). Connection via `../sf.py` (`connect()`).
+  `settings.local.sql` and `.env` (env vars, template `.env.example`). Connection via `sf.py` (`connect()`), all files at the repo root.
 - The procedure uses only the read sources in README > "Data sources". No queries on business data.
-- Don't commit or push unless asked. Commits pass `../.githooks/pre-commit` (company-term check, `git config core.hooksPath .githooks`); never bypass it with `--no-verify`.
+- Don't commit or push unless asked. Commits pass `.githooks/pre-commit` (company-term check, `git config core.hooksPath .githooks`); never bypass it with `--no-verify`.
 
 ## RBAC model
 - Account roles only; database roles are not used.
@@ -60,4 +60,4 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   23 schema CREATE on read-only role.
 - `python test_access.py` and `python test_sql.py` green (test_access reruns itself with `ROLE_PREFIXES=ZF_,ZT_`).
 - Spot-check paths: a user via a group role, a role reached through 2 paths, an admin holder.
-- DuckDB demo + `take_screens.py`: 0 exceptions on every screen.
+- `test_pages` (in test_access.py): every page renders without an exception.

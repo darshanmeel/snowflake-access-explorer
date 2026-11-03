@@ -4,16 +4,14 @@
     python run_sql.py sql/1_setup.sql            # work: each statement in order, "(may fail)" ones skipped on error
     python run_sql.py sql/1_setup_verify.sql     # checks: OK / MISSING / WRONG / SKIPPED per check, then VERIFIED or not
 
-Connection: ../sf.py env vars (SNOWFLAKE_USER, ...), from the environment or .env. SnowSQL runs the same files with !source.
+Connection: sf.py env vars (SNOWFLAKE_USER, ...), from the environment or .env. SnowSQL runs the same files with !source.
 """
 import pathlib
 import re
 import sys
 
-import access  # noqa: E402,F401  (loads .env)
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-from sf import connect  # noqa: E402
+import access  # noqa: F401  (loads .env)
+from sf import connect
 
 HERE = pathlib.Path(__file__).parent
 SETTINGS = HERE / "settings.local.sql" if (HERE / "settings.local.sql").exists() else HERE / "settings.sql"

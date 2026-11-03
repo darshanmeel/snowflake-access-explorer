@@ -10,7 +10,42 @@ from types import ModuleType, SimpleNamespace
 import duckdb
 
 import access as a
-import make_demo_db
+
+COLS = {
+    "GRANT": "GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE",
+    "USER_ROLE": "USER_NAME, ROLE_NAME",
+    "USER": "USER_NAME, TYPE, DISABLED, DEFAULT_ROLE, DEFAULT_SECONDARY_ROLES, DEFAULT_WAREHOUSE, DEFAULT_NAMESPACE, LAST_SUCCESS_LOGIN",
+    "USAGE": "USER_NAME, KIND, NAME, QUERIES, LAST_USED",
+    "TAG": "OBJECT_NAME, DOMAIN, COLUMN_NAME, TAG_NAME, TAG_VALUE, APPLY_METHOD",
+    "POLICY": "POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY",
+    "STREAM": "STREAM_NAME, SOURCE_NAME, SOURCE_TYPE",
+}
+
+
+def write(db, d):
+    """Data set d into the duckdb connection db as the Snowflake TBL_ACCESS_ tables: run log (2 OK runs, 1 failed) + rows of run-2."""
+    db.execute("CREATE OR REPLACE TABLE TBL_ACCESS_RUN (RUN_ID VARCHAR, STARTED_AT TIMESTAMP, FINISHED_AT TIMESTAMP, "
+               "STATUS VARCHAR, SOURCES VARCHAR, ROW_COUNTS VARCHAR, NOTES VARCHAR)")
+    src = json.dumps({"grants": "ACCOUNT_USAGE", "user_roles": "ACCOUNT_USAGE", "future_grants": "SHOW",
+                      "users": "ACCOUNT_USAGE", "usage": "ACCOUNT_USAGE", "tags": "ACCOUNT_USAGE",
+                      "policies": "ACCOUNT_USAGE", "streams": "SHOW"})
+    counts = json.dumps({k: len(d.get(t, [])) for k, t in [("grants", "GRANT"), ("user_roles", "USER_ROLE"), ("users", "USER"),
+                                                   ("usage", "USAGE"), ("tags", "TAG"), ("policies", "POLICY"),
+                                                   ("streams", "STREAM")]})
+    db.executemany("INSERT INTO TBL_ACCESS_RUN VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        ("run-1", "2026-11-01 07:00", "2026-11-01 07:02", "OK", src, "{}", "{}"),
+        ("run-2", "2026-11-02 07:00", "2026-11-02 07:03", "OK", src, counts,
+         json.dumps({"future_grants": "1 database skipped — DEMO_DB: insufficient privileges"})),
+        ("run-3", "2026-11-02 08:00", None, "FAILED", src, "{}", json.dumps({"error": "demo: failed run, never shown"}))])
+    for t, cols in COLS.items():
+        names = cols.split(", ")
+        types = ["BOOLEAN" if c in ("IS_FUTURE", "DISABLED") else "BIGINT" if c == "QUERIES" else "VARCHAR" for c in names]
+        db.execute(f"CREATE OR REPLACE TABLE TBL_ACCESS_{t} (RUN_ID VARCHAR, "
+                   + ", ".join(f"{c} {k}" for c, k in zip(names, types)) + ")")
+        data = [["run-2"] + [row.get(c) for c in names] for row in d.get(t, [])]
+        if data:
+            db.executemany(f"INSERT INTO TBL_ACCESS_{t} VALUES ({', '.join(['?'] * (len(names) + 1))})", data)
+
 
 SETUP = (pathlib.Path(__file__).parent / "sql" / "1_setup.sql").read_text(encoding="utf-8")
 LIMITS = [None, 0, 1, 2, 3, 4, 6, 10]
@@ -26,10 +61,10 @@ def duck(sql):
 
 
 def load(d, build=True):
-    """DuckDB with d in TBL_ACCESS_ tables (make_demo_db), the table functions as table macros; access.py built from
+    """DuckDB with d in TBL_ACCESS_ tables (write below), the table functions as table macros; access.py built from
     the same tables through access.snapshot()."""
     con = duckdb.connect()
-    make_demo_db.write(con, d)
+    write(con, d)
     for name, args, body in re.findall(r"CREATE OR REPLACE FUNCTION &DB\.&SCHEMA\.(TF_\w+)\((.*?)\)\s*RETURNS TABLE.*?"
                                        r"\$\$(.*?)\$\$", SETUP, re.S):
         params = ", ".join(x.split()[0] for x in args.split(","))
