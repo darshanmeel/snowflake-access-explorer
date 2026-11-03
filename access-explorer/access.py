@@ -523,7 +523,8 @@ def down(path, limit=None, user=False):
 
 
 def up(path, limit=None):
-    """Every simple path from path[-1] up to the roles and users that hold it. limit: max hops from path[0]."""
+    """Every simple path from path[-1] up to the roles and users that hold it. limit: max hops from path[0].
+    A user ends a path as its graph node id (uid), so user X and role X holding the same role stay apart."""
     yield path
     nxt = [r for r in held_by.get(path[-1], []) if r not in path]
     us = users if path[-1] == "PUBLIC" else users_of.get(path[-1], [])  # every user holds PUBLIC; it is never listed
@@ -531,7 +532,7 @@ def up(path, limit=None):
         for r in nxt:
             yield from up(path + [r], limit)
         for u in us:
-            yield path + [u]
+            yield path + [uid(u, True)]
 
 
 def bfs(path):
@@ -548,9 +549,9 @@ def bfs(path):
     return best
 
 
-def users_through(name):
-    """Users who reach a role (every user for PUBLIC); a user name gives itself."""
-    return {name} if kind_of(name) == "user" else ups(name)[1]
+def users_through(name, user=False):
+    """Users who reach a role (every user for PUBLIC); user=True: the user name itself."""
+    return {name} if user else ups(name)[1]
 
 
 def ups(role):
@@ -854,18 +855,18 @@ def account_privs(name, user=False, default_only=False, limit=None):
 
 def admin_holders():
     """Users and roles holding an admin role: rows (grantee, path grantee->...->admin role)."""
-    return [(p[-1], p[::-1]) for r in sorted(ADMIN) for p in list(up([r]))[1:]]
+    return [(node_name(p[-1]), p[::-1]) for r in sorted(ADMIN) for p in list(up([r]))[1:]]
 
 
 def from_user(path):
-    """path grantee->...->role starts at a user (not at a role of the same name)."""
-    return len(path) > 1 and path[0] in (users if path[1] == "PUBLIC" else users_of.get(path[1], []))
+    """path grantee->...->role (from up()) starts at a user, not at a role of the same name (see uid)."""
+    return len(path) > 1 and path[0] not in cached("rset", lambda: set(roles))
 
 
 def who_can(obj, kind=None, limit=None):
     """Who has which privilege on obj (of type kind): rows (grantee, privilege, path grantee->...->holder).
     limit: max depth (grant holder = 1, see depth())."""
-    rows = [(p[-1], pv, p[::-1]) for r, pv, k in on.get(obj, []) if kind in (None, k) for p in up([r], limit)]
+    rows = [(node_name(p[-1]), pv, p[::-1]) for r, pv, k in on.get(obj, []) if kind in (None, k) for p in up([r], limit)]
     return [x for x in rows if limit is None or depth(x[2], from_user(x[2])) <= limit]
 
 
@@ -1389,7 +1390,7 @@ def held(role, limit=None):
     """Role page, held by (up). Row: grantee, kind, depth (roles from the grantee to this role, both included;
     a user holding it directly = 1, a role holding it directly = 2), direct, path (shortest, grantee->...->role),
     paths, count, only_via (roles every path passes through: revoking one of them removes it)."""
-    g = group(((p[-1], from_user(p[::-1])), p[::-1]) for p in list(up([role], limit))[1:])
+    g = group(((node_name(p[-1]), from_user(p[::-1])), p[::-1]) for p in list(up([role], limit))[1:])
     out = []
     for (x, u), ps in sorted(g.items(), key=lambda x: (len(x[1][0]), x[0])):
         d = depth(ps[0], u)
@@ -1457,7 +1458,7 @@ def admin_users():
 def admin_people():
     """Users holding an admin role or an account-level privilege (MANAGE GRANTS, ...), service users included.
     Row: user, roles, paths (user->...->admin role), account [(privilege, path)], service, status, last_login, days."""
-    ps = group((p[0], p) for x, p in admin_holders() if from_user(p))
+    ps = group((x, p) for x, p in admin_holders() if from_user(p))
     acct = {u: account_privs(u, True) for u in users}
     return [dict(user=u, roles=sorted({p[-1] for p in ps.get(u, [])}), paths=ps.get(u, []), account=acct[u],
                  service=is_service(u), status=status(u), last_login=(profile.get(u) or {}).get("LAST_SUCCESS_LOGIN"),
@@ -1886,7 +1887,7 @@ def lose(e):
 def losing(e):
     g, x, out = e["grantee"], e["to"], set()
     hs = {r for r, pv, k in on.get(x, []) if pv == e["priv"]} - {g}  # other holders of the privilege
-    for v in users_through(g):
+    for v in users_through(g, e.get("user")):
         sts, kids, cnt, _ = cached(("walk", v), lambda: fast(v, True))  # counted, not listed: big accounts stay fast
         if e["priv"] is None:  # every path to x uses the link g -> x
             via = sum(s == [v, x] for s in sts) if e.get("user") else cnt.get(g, 0) * kids.get(g, []).count(x)
@@ -1900,7 +1901,7 @@ def losing(e):
 def losers(edges, priv, obj):
     """Users who no longer hold priv on obj once every edge in edges is cut (each of their paths uses one)."""
     gone = {(e["grantee"], e["to"]) for e in edges}
-    us = set().union(*(users_through(e["grantee"]) for e in edges))
+    us = set().union(*(users_through(e["grantee"], e.get("user")) for e in edges))
     return {v for v in us if all(gone & set(zip(p, p[1:] + [obj])) for pv, k, o, p in access_of(v, True)
                                  if pv == priv and o == obj)}
 
@@ -1940,7 +1941,7 @@ def ask_for(priv, obj):
     [dict(role, privileges, path)]. Build roles (BUILD) and roles that reach an admin role are never suggested."""
     out = {}
     for x, pv, p in who_can(obj):
-        if (pv == priv and kind_of(x) == "functional" and (x not in out or len(p) < len(out[x]))
+        if (pv == priv and not from_user(p) and role_kind(x) == "functional" and (x not in out or len(p) < len(out[x]))
                 and not any(fnmatch.fnmatch(x, b) for b in BUILD) and not reaches_admin(x)):
             out[x] = p + [obj]
     return sorted((dict(role=r, privileges=sum(len(granted.get(y, [])) for y in bfs([r])), path=p)
@@ -2002,7 +2003,7 @@ def review(db=None):
                             privileges=", ".join(sorted(pv for pv, _ in v)),
                             classes=", ".join(sorted({priv_class(pv, kinds.get(o)) for pv, _ in v})),
                             sensitive=", ".join(sorted({tag_label(t, val) for _, t, val, _ in sens.get(o, [])})),
-                            granted=", ".join(sorted({p[1] for p in ps})), path=" > ".join(ps[0] + [o]),
+                            granted=", ".join(sorted({p[1] for p in ps})), path=" > ".join([x] + ps[0][1:] + [o]),
                             reviewer="", decision=""))
     for u, rs in sorted(adm.items()):
         out.append(dict(database=db or "(every database)", schema="", object="(every object, through an admin role)",
@@ -2150,7 +2151,7 @@ def rules_model():
                 if not g.startswith(TECH) and not is_build(g):
                     out.append(find("4", g, r, [g, r], [role_edge(g, r)]))
     for r in roles:  # 13; technical roles without holders are the model's unused capability roles, by design
-        if kind_of(r) in ("functional", "group") and r != "PUBLIC" and not users_of.get(r) and not held_by.get(r):
+        if role_kind(r) in ("functional", "group") and r != "PUBLIC" and not users_of.get(r) and not held_by.get(r):
             kids = sorted(holds.get(r, []))
             out.append(find("13", r, f"holds {plural(len(kids), 'role')}" + (f": {', '.join(kids)}" if kids else "")
                             + f"; {plural(len(granted.get(r, [])), 'privilege')} of its own", [r],
@@ -2227,7 +2228,7 @@ def rules_sensitive():
             out.append(find("10", u, "; ".join(f"{', '.join(pv)} on {o}" for o, pv in v.items()),
                             min((best[r] for _, _, r in got[o0]), key=len) + [o0], edges, user=True))
     for r in roles:  # 11: the fix cuts every held role (and own grant) that leads to sensitive data
-        if kind_of(r) == "group":
+        if role_kind(r) == "group":
             got = reads([r])
             objs = sorted(set(got) & set(s))
             if objs:
@@ -2333,13 +2334,13 @@ def rule19():
         best = {}
         for p in up([h]):
             q, u = p[::-1], from_user(p[::-1])
-            if (u and not is_service(q[0])) or (not u and role_kind(q[0]) in ("functional", "group")
-                                                and not is_build(q[0])):
-                if (q[0], u) not in best or len(q) < len(best[(q[0], u)]):
-                    best[(q[0], u)] = q
+            x = node_name(q[0])
+            if (u and not is_service(x)) or (not u and role_kind(x) in ("functional", "group") and not is_build(x)):
+                if (x, u) not in best or len(q) < len(best[(x, u)]):
+                    best[(x, u)] = q
         for (x, u), q in sorted(best.items()):
             out.append(find("19", x, "EXECUTE TASK on ACCOUNT " + (f"via {' > '.join(q[1:])}" if len(q) > 1 else
-                                                                   "granted directly"), q + [o],
+                                                                   "granted directly"), [x] + q[1:] + [o],
                             [priv_edge(h, pv, k, o)], user=u))
     return out
 

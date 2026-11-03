@@ -610,11 +610,26 @@ def test_namespaces():
     assert {r["role"]: r["kind"] for r in a.reach("Z", True)}["Z"] == "group"  # the role, not the user
     ge = {(r["grantee"], r["kind"]): r for r in a.grantees("D.S.Z")}
     assert ge[("Z", "group")]["depth"] == 1 and ge[("Z", "user")]["depth"] == 2
-    assert not a.from_user(["Z"]) and a.from_user(["Z", "R9", "Z"])
+    assert not a.from_user(["Z"]) and a.from_user(["Z" + a.UTAG, "R9", "Z"]) and not a.from_user(["Z", "R9"])
     assert {(r["grantee"], r["kind"]) for r in a.held("R9")} == {("Z", "user")}
+    # user X and role X both hold R2: one row each, counted once each
+    assert sorted((r["grantee"], r["kind"], r["count"]) for r in a.held("R2")) == [("X", "group", 1), ("X", "user", 1)]
+    assert a.role_stats("R2")["users"] == 1 and a.role_stats("R2")["above"] == 1
+    assert sorted((r["grantee"], r["kind"], r["depth"]) for r in a.grantees("D.S.T")) ==         [("R2", "group", 1), ("X", "group", 2), ("X", "user", 1)]
+    assert a.object_stats("D.S.T")["users"] == 1 and a.object_stats("D.S.T")["roles"] == 2
+    assert [m["user"] for m in a.matrix("D.S.T")] == ["X"] and [r["user"] for r in a.review() if r["object"] == "T"] == ["X"]
     a.build(tiny([("R2", "X")], [], [("R2", "SELECT", "TABLE", "D.S.T")]) | dict(USER=[dict(USER_NAME="X")]))
     assert not a.from_user(["X", "R2"])  # a user X exists, but only role X holds R2
     assert [(r["grantee"], r["kind"]) for r in a.grantees("D.S.T")] == [("R2", "group"), ("X", "group")]
+    # role X (held by user Y) and user X both hold R2: cutting role X -> R2 takes it from Y, not from user X
+    a.build(tiny([("X", "Y0"), ("R2", "X")], [("X", "Y"), ("R2", "X")], [("R2", "SELECT", "TABLE", "D.S.T")]))
+    assert a.users_through("X") == {"Y"} and a.users_through("X", True) == {"X"}
+    assert a.lose(a.role_edge("X", "R2")) == {"Y"} and a.lose(a.role_edge("X", "R2", True)) == {"X"}
+    # rule 13 sees role Z although a user Z exists; rule 19 paths start at the plain user name
+    a.build(tiny([], [("R9", "Z"), ("R2", "X")], [("Z", "SELECT", "TABLE", "D.S.T"), ("R9", "SELECT", "TABLE", "D.S.U"),
+                                                  ("R2", "EXECUTE TASK", "ACCOUNT", "ACCT"), ("X", "SELECT", "TABLE", "D.S.T")]))
+    assert {c[2] for c in a.checks() if c[0] == "13"} >= {"Z", "X"}
+    assert ["X", "R2", "ACCT"] in [c[4] for c in a.checks() if c[0] == "19"]
     # graphs: user Z and role Z are two boxes; the role page walks the role, not the user
     a.build(tiny([("Z", "R9"), ("T2", "Z")], [("R9", "Z"), ("A", "Z")],
                  [("A", "SELECT", "TABLE", "D.S.T1"), ("T2", "SELECT", "TABLE", "D.S.T2")]))

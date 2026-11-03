@@ -285,9 +285,10 @@ def find():
         return
     for k in [k for k in st.session_state if k.startswith(("f_", "pick_")) and k != "f_data"]:
         del st.session_state[k]
-    with lock():  # a callback runs before main takes the lock; page_of reads the shared lookups
-        page = page_of(n)
-    st.query_params.from_dict(kept() | {"page": page, "name": n})
+    with lock():  # a callback runs before main takes the lock; node_kind reads the shared lookups
+        k, name = a.node_kind(n), a.node_name(n)
+    st.query_params.from_dict(kept() | {"page": "user" if k == "user" else "object" if k == "object" else "role",
+                                        "name": name})
     st.session_state.find = None
 
 
@@ -331,12 +332,14 @@ def rchip(n, title=""):
 
 def mpath(p, cls="", first=None):
     """A path as a mini chain graph (ui.mini_path): start, roles, maybe an object; long ones collapse. first: the kind
-    of p[0] when known (a role named like a user stays a role); later names are roles or the object."""
+    of p[0] when known (a role named like a user stays a role); later names are roles or the object. p[0] may be a
+    graph node id (a.uid): a user named like a role, as up() paths start."""
     nodes = []
     for i, n in enumerate(p):
-        k = (first or a.kind_of(n)) if i == 0 else a.role_kind(n)
+        name = a.node_name(n) if i == 0 else n
+        k = (a.node_kind(n) if name != n or not first else first) if i == 0 else a.role_kind(n)
         lab = a.future_label(n, a.kinds.get(n, "")) or (a.split_name(n)[2] if k == "object" else None)
-        nodes.append((n, k, href_k(n, k), lab if lab != n else None))
+        nodes.append((n, k, href_k(name, k), lab if lab != n else None))
     return ui.mini_path(nodes, cls)
 
 
@@ -352,14 +355,14 @@ def edge_cls(f):
     return a.priv_class(g[2], a.kinds.get(g[1], "")) if g and g[2] else ""
 
 
-def strong(n, caption="", bad=False):
+def strong(n, caption="", bad=False, kind=None):
     cap = f'<br><span class="ae-small{" ae-ink-bad" if bad else ""}">{e(caption)}</span>' if caption else ""
-    return (f'<a class="ae-strong" style="color:var(--ink);text-decoration:none" href="{e(href(n))}" '
+    return (f'<a class="ae-strong" style="color:var(--ink);text-decoration:none" href="{e(href_k(n, kind) if kind else href(n))}" '
             f'target="_self">{e(n)}</a>{cap}')
 
 
-def kind_label(n):
-    k = a.kind_of(n)
+def kind_label(n, k=None):
+    k = k or a.kind_of(n)
     if k == "user":
         p = a.profile.get(n) or {}
         s = a.status(n) if n in a.profile else ""
@@ -368,7 +371,8 @@ def kind_label(n):
 
 
 def arrow(p):
-    return " > ".join(p)
+    """A path as text; a user named like a role (a.uid, as up() paths start) by its own name."""
+    return " > ".join([a.node_name(p[0])] + list(p[1:])) if p else ""
 
 
 def plural(n, word):
@@ -1047,7 +1051,8 @@ def holds_card(r, hold, s):
 
 def held_card(r, up, only_users):
     """Held by (up), full width, with "If revoked from": who loses r, and which privileges, net of other paths."""
-    direct = sorted(set(a.held_by.get(r, [])) | set(a.users_of.get(r, [])))
+    # graph node ids (a.uid): user X and role X holding r are two picks, matched against held()'s paths
+    direct = sorted(set(a.held_by.get(r, [])) | {a.uid(u, True) for u in a.users_of.get(r, [])})
     with st.container(key="card_held"):
         left, right = st.columns([3, 2], vertical_alignment="bottom")
         n_users = sum(x["kind"] == "user" for x in up)
@@ -1060,18 +1065,18 @@ def held_card(r, up, only_users):
         if cut:
             for x in up:
                 if all((cut, r) in zip(p, p[1:]) for p in x["paths"]):
-                    lost.add(x["grantee"])
+                    lost.add((x["grantee"], x["kind"]))
                     if x["kind"] == "user":
-                        loses[x["grantee"]] = a.loses(x["grantee"], cut, r)
-            iac, sql = a.fix_text([a.role_edge(cut, r, a.kind_of(cut) == "user")])
-            html(ui.banner("warn", f"Revoking {e(r)} from {e(cut)}: {plural(len(lost), 'grantee')} lose it, "
+                        loses[x["grantee"]] = a.loses(x["grantee"], a.node_name(cut), r)
+            iac, sql = a.fix_text([a.role_edge(a.node_name(cut), r, a.node_kind(cut) == "user")])
+            html(ui.banner("warn", f"Revoking {e(r)} from {e(a.node_name(cut))}: {plural(len(lost), 'grantee')} lose{'s' * (len(lost) == 1)} it, "
                                    f"{plural(len(loses), 'user')} among them", [e(iac), ui.mono(sql)]))
         cols = ["Grantee", "Depth", "Only via", "Path", "Paths"] + (["Loses"] if cut else [])
         rows = []
         for x in up:
             g = x["grantee"]
-            cap = kind_label(g) + (" · granted directly" if x["direct"] else "")
-            row = [strong(g, cap) + (" " + tag("loses it", "bad") if g in lost else ""), ui.depth(x["depth"]),
+            cap = kind_label(g, x["kind"]) + (" · granted directly" if x["direct"] else "")
+            row = [strong(g, cap, kind=x["kind"]) + (" " + tag("loses it", "bad") if (g, x["kind"]) in lost else ""), ui.depth(x["depth"]),
                    " ".join(rchip(n) for n in x["only_via"]) or '<span class="ae-muted">–</span>',
                    mpath(x["path"], first=x["kind"]), str(x["count"])]
             if cut:
@@ -1157,7 +1162,7 @@ def object_page():
         merged.setdefault((x["grantee"], x["kind"], tuple(x["path"])), []).append(x)
     table_card("grantees", "All grantees", "roles and users · path read toward the object",
                ["Grantee", "Privilege", "Depth", "Path", "Paths"],
-               [[strong(k[0], kind_label(k[0]) if k[1] == "user" else KIND.get(k[1], "Group role")),
+               [[strong(k[0], kind_label(k[0], k[1]), kind=k[1]),
                  " ".join(ui.pclass(y["cls"], y["privilege"]) for y in v), ui.depth(v[0]["depth"]), mpath(list(k[2]), v[0]["cls"], k[1]),
                  str(max(y["count"] for y in v))] for k, v in merged.items()],
                [[k[0], k[1], a.status(k[0]) if k[1] == "user" else "", *a.split_name(o, t)[:2],
@@ -1416,7 +1421,7 @@ def check_page():
                     + mpath(r["ask"][0]["path"], a.priv_class(pv, a.kinds[o]), "role"))
         elif r["closest"]:
             body = (f'<p class="ae-muted">No functional role reaches {e(pv)}. It sits with this chain:</p>'
-                    + mpath(r["closest"], a.priv_class(pv, a.kinds[o]), "role"))
+                    + mpath(r["closest"], a.priv_class(pv, a.kinds[o])))
         else:
             body = f'<p class="ae-muted">No role holds {e(pv)} on {e(o)}.</p>'
         html(ui.card("What to ask for", "", body))
@@ -1686,7 +1691,7 @@ def review_page():
     keys = ["database", "schema", "object", "type", "user", "user_type", "status", "last_login", "privileges", "classes",
             "sensitive", "granted", "path", "reviewer", "decision"]
     head = (["Database"] if db == "*" else []) + ["Schema", "Object", "User", "Status", "Privileges", "Sensitive",
-                                                  "Granted roles", "Path"]
+                                                  "Granted roles"]
     rows = [([ui.mono(x["database"])] if db == "*" else []) + [
         ui.mono(x["schema"]), (e(a.future_label(f'{x["database"]}.{x["schema"]}.{x["object"]}', x["type"]) or "")
                                or ui.mono(x["object"])) + f'<br><span class="ae-small">{e(x["type"] or "")}</span>',
@@ -1695,14 +1700,17 @@ def review_page():
         + f'<br><span class="ae-small">{e(x["privileges"].replace(", ", " · "))}</span></div>',
         " ".join(tag(t.split("=", 1)[-1], "bad", t) for t in x["sensitive"].split(", ") if t)
         or '<span class="ae-muted">–</span>',
-        " ".join(rchip(r) for r in x["granted"].split(", ") if r),
-        mpath(x["path"].split(" > "), x["classes"].split(", ")[0], "user") if x["path"] else ""] for x in shown]
+        " ".join(rchip(r) for r in x["granted"].split(", ") if r)] for x in shown]
+    # the path on its own full-width line: as a column it pushed the table past the card's right edge
+    subs = [f'<div class="ae-sub-path"><span class="ae-small">Path</span>'
+            f'{mpath(x["path"].split(" > "), x["classes"].split(", ")[0], "user")}</div>' if x["path"] else ""
+            for x in shown]
     filt = [f"schema {sc}"] * bool(sc) + [f"object {ob}"] * bool(ob) + ["disabled excluded"] * active
     table_card("review", f"Access review: {where}", f"{plural(len(shown), 'row')} shown of {len(rs)} · one per user and "
                "object · the CSV has every row and blank Reviewer and Keep/Revoke columns"
                + (" · " + e(", ".join(filt)) if filt else ""), head, rows,
                [[x[k] if x[k] is not None else "" for k in keys] for x in rs],
-               f"No user reaches an object in {where}.", min_width=880, data_cols=cols,
+               f"No user reaches an object in {where}.", min_width=760, data_cols=cols, subs=subs,
                fname=f"access_review_{'ALL' if db == '*' else db}_{datetime.now():%Y-%m-%d}.csv",
                head=[["Access review", where], ["Run", a.run.get("RUN_ID"), when],
                      ["Filter", ", ".join(filt) or "all users"], ["Generated", f"{datetime.now():%Y-%m-%d %H:%M}"]])
@@ -1858,7 +1866,8 @@ def rules_page(rows):
                  f'{e(xs[0]["num"])} · {e(xs[0]["title"])}</span>',
                  who_cell(xs), f'<span class="ae-det">{wbr(xs[0]["detail"])}</span>'
                  + (f'<br><span class="ae-small">and {len(xs) - 1} more like it</span>' if len(xs) > 1 else ""),
-                 mpaths(xs[0]["paths"], edge_cls(xs[0]), top=2),
+                 mpaths(xs[0]["paths"], edge_cls(xs[0]), top=2,
+                        first=xs[0]["kind"] if all(p[0] == xs[0]["grantee"] for p in xs[0]["paths"]) else None),
                  f'<span class="ae-tip" title="users who lose access when the fix is applied, net of their other '
                  f'paths">{e(xs[0]["impact"])}</span>'] for xs in gs],
                [[x["num"], x["title"], x["severity"], x["grantee"], x["detail"], x["iac"], x["sql"],
@@ -1907,7 +1916,8 @@ def topbar(page, names):
     html(ui.crumb(PAGES[page]), c[0])
     c[1].selectbox("Find", names, index=None, key="find", on_change=find, label_visibility="collapsed",
                    placeholder="Find a user, role or object",
-                   format_func=lambda n: f"{n}  ·  {kind_label(n)}" + ("  ·  sensitive" if n in SENS else ""))
+                   format_func=lambda n: f"{a.node_name(n)}  ·  {kind_label(a.node_name(n), a.node_kind(n))}"
+                   + ("  ·  sensitive" if n in SENS else ""))
     slot = c[2].popover("", icon=":material/link:", help="Copy a link to this view").empty()
     c[3].button("", key="theme", on_click=flip, help="Switch light / dark",
                 icon=":material/light_mode:" if THEME == "dark" else ":material/dark_mode:")
@@ -2002,7 +2012,8 @@ def main():
                 html(ui.banner("warn", f"Incomplete: {e(k.replace('_', ' '))}"), notes)
                 with notes.expander("Details"):
                     st.caption(str(v))
-        names = a.users + [r for r in a.roles if r not in a.profile] + a.objects if d is not None else []
+        # graph node ids (a.uid), so a role named like a user is listed too
+        names = [a.uid(u, True) for u in a.users] + a.roles + a.objects if d is not None else []
         with top:
             slot = topbar(page, names)
         if d is None:

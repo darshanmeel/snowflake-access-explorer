@@ -351,6 +351,7 @@ details.ae-mpd[open]>summary .ae-mp-less{{display:inline-flex;margin-bottom:3px}
 .ae-table td .ae-mp,.ae-table td .ae-mps{{min-width:200px}}
 .ae-det{{display:block;min-width:170px;font-family:{MONO};font-size:12.5px}}
 .ae-table td .ae-wide{{min-width:360px}}
+.ae-sub-path{{display:flex;align-items:center;gap:10px}}.ae-table td .ae-sub-path .ae-mp{{min-width:0}}
 .ae-rt{{display:inline-block;min-width:170px;max-width:240px;font-size:12px}}
 .ae-ty{{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:12px;color:var(--muted)}}.ae-ty i{{font-style:normal;font-family:{MONO};color:var(--ink)}}
 .ae-hl{{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:5px;font-size:12px}}

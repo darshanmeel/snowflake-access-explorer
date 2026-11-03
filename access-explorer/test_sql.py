@@ -65,16 +65,9 @@ def check_access_of(con, name, user, limit):
 
 
 def check_who_can(con, obj, priv, limit):
-    # kind from how up() builds a path (a user is appended last, from users_of), not from from_user(), which calls a
-    # user and a role of the same name both a user; who_can() keeps every path the limit allows, re-filtered here
-    want = Counter()
-    for (x, pv, p), c in Counter((x, pv, tuple(p)) for x, pv, p in a.who_can(obj, limit=limit) if priv in (None, pv)).items():
-        nr = 1 if len(p) == 1 else a.held_by.get(p[1], []).count(p[0])
-        nu = 0 if len(p) == 1 else (a.users if p[1] == "PUBLIC" else a.users_of.get(p[1], [])).count(p[0])
-        for kind, n in (("role", nr), ("user", nu)):
-            d = len(p) - (kind == "user")
-            if n and (limit is None or d <= limit):
-                want[(x, kind, pv, d, " > ".join(p))] += n * c // (nr + nu)
+    want = Counter((x, "user" if a.from_user(p) else "role", pv, a.depth(p, a.from_user(p)),
+                    " > ".join([a.node_name(p[0])] + p[1:]))
+                   for x, pv, p in a.who_can(obj, limit=limit) if priv in (None, pv))
     same(rows(con, "SELECT * FROM TF_WHO_CAN(?, ?, ?)", [obj, priv, limit]), want, f"TF_WHO_CAN({obj}, {priv}, {limit})")
     return sum(want.values())
 
