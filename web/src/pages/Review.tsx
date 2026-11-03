@@ -1,4 +1,4 @@
-import { qs, useApi } from "../api/client";
+import { download, useApi } from "../api/client";
 import type { ReviewPage, ReviewRow } from "../api/types";
 import { Banner, Card, DataTable, KpiRow } from "../components";
 import { apiParams, useApp } from "../ctx";
@@ -8,11 +8,10 @@ export function ReviewPageView() {
   const c = useApp();
   const s = useApi<ReviewPage>(c.view === "mine" ? null : "review", apiParams(c));
   if (c.view === "mine") return <><Head title="Access review" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
-  const q = (extra: Record<string, string | undefined> = {}) => qs({ ...apiParams(c), ...extra });
   return (
     <>
       <Head title="Access review" sub="Who can reach what, one row per user and object, ready for sign-off."
-        right={<a className="ae-btn" href={`/api/review.csv${q()}`}>Download CSV (every row, with reviewer columns)</a>} />
+        right={<button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button>} />
       <Load s={s}>{(d) => {
         const f = d.filters, k = d.kpis;
         const opt = (xs: string[], all: string): [string, string][] => [["", all], ...xs.map((x): [string, string] => [x, x])];

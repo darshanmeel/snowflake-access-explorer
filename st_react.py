@@ -4,13 +4,17 @@ Each function draws one component and returns the click as a dict, or None:
   {"id": <node id or name>, "name": <user/role/object name>, "kind": <NodeKind or None>, "action": <NodeAction or None>, "row": <table row, tables only>}
 params(click) turns it into query params; the caller does st.query_params.update(...) and st.rerun().
 
+app() runs the whole React app (all pages) as one component; app.py uses it by default.
+
 MODE (env ST_REACT, default "component"):
-  component  bidirectional v1 component from web/dist-st (declare_component(path=...)); clicks come back.
+  component  bidirectional v1 component from web/dist-st (declare_component(path=...)); clicks and API calls come back.
   html       fallback when SiS blocks path= components: the bundle inlined into st.components.v1.html,
-             display only (always returns None), navigation stays in native Streamlit widgets.
+             display only (always returns None); app.py then runs its plain Streamlit pages.
+  native     app.py runs its plain Streamlit pages (no React).
 """
 import json
 import os
+from urllib.parse import parse_qsl
 from pathlib import Path
 
 import streamlit as st
@@ -48,6 +52,59 @@ def _show(component, props, key, theme=None, height=600):
         return None
     seen[key] = v.get("nonce")
     return v
+
+
+def answer(method, url, body, sid):
+    """One API call of the React app, answered by server.py as the local server would: (status, body, sid)."""
+    import server
+    path, _, q = url.partition("?")
+    name = path.removeprefix("/api/")
+    p = dict(parse_qsl(q))
+    try:
+        if name == "meta":
+            return 200, server.meta(p, sid), sid
+        if name == "mine":
+            return 200, server.mine_state(sid), sid
+        if name == "reload":
+            return 200, server.reload(body), sid
+        if name == "mine/load":
+            sid = os.urandom(16).hex()
+            return 200, server.clean(server.load_mine(sid, p.get("fresh") == "1")), sid
+        if name.endswith(".csv"):
+            return 200, server.serve_csv(name[:-4], p, sid)[1], sid
+        if name in server.ROUTES:
+            return 200, server.serve(name, p, sid), sid
+        return 404, {"detail": "not_found", "message": "No such endpoint."}, sid
+    except server.ApiError as x:
+        return x.status, {"detail": x.detail, "message": x.message}, sid
+    except Exception as x:  # shown in the page like any API error
+        return 500, {"detail": "error", "message": f"{type(x).__name__}: {x}"}, sid
+
+
+def app(key="app"):
+    """The whole React app (web/src/App.tsx) as one component: its API calls come back as the component value and are
+    answered here with server.py, so both versions run the same pages. Returns once the page is drawn."""
+    ss = st.session_state
+    done = ss.setdefault("_ae_answers", {})
+    query = "&".join(f"{k}={v}" for k, v in st.query_params.items())
+    v = _comp(component="app", props={}, answers=done, query=query, key=key, default=None)
+    if not v:
+        return
+    reqs = v.get("requests") or []
+    new = False
+    for r in reqs:
+        if r["id"] not in done:
+            status, body, ss["_ae_sid"] = answer(r["method"], r["url"], r.get("body"), ss.get("_ae_sid"))
+            done[r["id"]] = {"status": status, "body": json.loads(_js(body))}
+            new = True
+    open_ids = {r["id"] for r in reqs}
+    for k in [k for k in done if k not in open_ids]:
+        del done[k]  # answered and received: the frame no longer asks for it
+    url = (v.get("url") or "").lstrip("?")
+    if url and url != query:
+        st.query_params.from_dict(dict(parse_qsl(url)))
+    if new:
+        st.rerun()
 
 
 def graph(data, key, theme=None, legend=True, max_height=640):

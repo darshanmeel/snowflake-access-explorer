@@ -127,8 +127,10 @@ const VIEWS: Record<Page, () => JSX.Element> = {
   sensitive: SensitivePageView, rules: RulesPageView, review: ReviewPageView,
 };
 
-export function App() {
+/** onUrl: the Streamlit wrapper mirrors the page's URL params into the browser address bar. */
+export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const [loc, go] = useLoc();
+  useEffect(() => { onUrl?.(url(loc)); }, [loc]);
   const [theme, flip] = useTheme();
   const [busy, setBusy] = useState("");
   const view = loc.mine ? "mine" : "shared";
@@ -190,7 +192,7 @@ export function App() {
           )}
           {ctx && !needMine && (
             <AppCtx.Provider value={ctx}>
-              {meta?.mode === "fake" && <Banner tone="info" title="Demo data" lines={["Fake accounts, roles and tables. Set FAKE=0 and the connection in .env to read Snowflake."]} />}
+              {meta?.mode === "fake" && <Banner tone="info" title="Demo data" lines={["Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake."]} />}
               <Body key={`${view}:${loc.page}`} />
             </AppCtx.Provider>
           )}

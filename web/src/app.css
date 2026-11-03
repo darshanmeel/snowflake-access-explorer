@@ -40,3 +40,5 @@ body { background: #f6f4f1; }
 .ae-kpis { margin: 12px 0; }
 .ae-card { margin-bottom: 14px; }
 @media (max-width: 820px) { .app { grid-template-columns: 1fr; } .side { border-right: 0; border-bottom: 1px solid var(--ae-line); } }
+.st-embed .app { min-height: 0; }
+.st-embed .top { position: static; }

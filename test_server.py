@@ -175,6 +175,21 @@ def test_spa():
     assert c.get("/some/page").status_code in (200, 404)
 
 
+def test_streamlit_bridge():  # the React app inside Streamlit gets the same answers as over HTTP (st_react.app)
+    import st_react
+    ans = lambda url, body=None, sid=None: st_react.answer("POST" if body is not None else "GET", url, body, sid)
+    st, m, _ = ans("/api/meta?view=shared")
+    assert st == 200 and m["loaded"] and {p["key"] for p in m["pages"]} == set(server.PAGES)
+    name = m["default_user"]
+    assert ans(f"/api/user?name={name}")[1] == c.get(f"/api/user?name={name}").json()
+    assert ans("/api/role?name=PUBLIC")[1]["role"]["name"] == "PUBLIC"
+    assert ans("/api/nope")[0] == 404 and ans("/api/user?name=NOBODY_X")[0] == 404
+    assert ans("/api/review.csv?db=*")[1].startswith(c.get("/api/review.csv?db=*").text[:40])
+    assert ans("/api/reload", {"what": "page"})[1]["ok"]
+    st, mine, sid = ans("/api/mine/load", {})
+    assert st == 200 and sid and ans("/api/mine", sid=sid)[1]["loaded"]
+
+
 def test_read_only():  # the only write-like statement is the snapshot CALL
     src = open(server.__file__, encoding="utf-8").read()
     assert "SP_ACCESS_SNAPSHOT" in src and not any(w in src for w in ("cur.execute(f\"GRANT", "REVOKE ROLE"))

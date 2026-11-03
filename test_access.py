@@ -519,6 +519,7 @@ def test_pages():
     """Every page renders without an exception on the fake data (one AppTest run each, no browser)."""
     from streamlit.testing.v1 import AppTest
     os.environ["FAKE"] = "1"  # never Snowflake here, whatever .env says
+    os.environ["ST_REACT"] = "native"  # the plain Streamlit pages; the React app is checked in test_server
     app, c = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.py"), "SALES.CORE.TBL_CUSTOMER"
     for q in (dict(page="user", name="ANALYST_01"), dict(page="role", name=T + "SALES_CORE_READ"),
               dict(page="object", name=c), dict(page="sensitive"), dict(page="check", name="ENGINEER_01", priv="SELECT", obj=c),

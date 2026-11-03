@@ -16,6 +16,7 @@ import streamlit as st
 
 import access as a
 import cache
+import st_react
 import ui
 
 MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|objects (README > Settings)
@@ -2202,4 +2203,17 @@ def main():
         share(slot)
 
 
-main()
+def react_app():
+    """The same React app as the local version (web/src/App.tsx), one component filling the page; its API calls are
+    answered in Python by server.py (st_react.app). ST_REACT=native runs the plain Streamlit pages above instead."""
+    st.set_page_config("Snowflake access explorer", layout="wide", initial_sidebar_state="collapsed")
+    html("<style>header[data-testid=stHeader],[data-testid=stSidebar],[data-testid=stSidebarCollapsedControl],"
+         "footer{display:none}[data-testid=stMainBlockContainer],.block-container{padding:0!important;max-width:none!important}"
+         "[data-testid=stAppViewContainer] .main,[data-testid=stMain]{padding:0}iframe{display:block}</style>")
+    st_react.app()
+
+
+if st_react.MODE == "component":
+    react_app()
+else:
+    main()
