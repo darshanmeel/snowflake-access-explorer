@@ -76,15 +76,26 @@ Key: solid = calls · dashed = data moves · numbers = order.
 - Update: `git pull`, then `pip install -r requirements.txt`.
 
 ## One-time setup in Snowflake (developer)
-Same `local.ps1`, with `SNOWFLAKE_ROLE` left out (`run_sql.py` uses `DEV_ROLE`):
+Clone and install as above, then (`local.ps1` without `SNOWFLAKE_ROLE`: `run_sql.py` uses `DEV_ROLE`):
 ```
 copy settings.sql settings.local.sql      # fill in DB, SCHEMA, WH, DEV_ROLE, APP_ROLE (SnowSQL: also HERE)
+. .\local.ps1                              # SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_WAREHOUSE
 python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql
 python run_sql.py sql/2_snapshot.sql;  python run_sql.py sql/2_snapshot_verify.sql   # = CALL SP_ACCESS_SNAPSHOT('AUTO')
 ```
-- SnowSQL instead of `run_sql.py`: `deploy_snowsql.sql`.
-- Fresh data: rerun `2_snapshot.sql` (or the app's **Rebuild snapshot in Snowflake**), then **Reload page data**.
+1. `DEV_ROLE` needs `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or `MANAGE GRANTS`); without it the snapshot holds only what that role sees (table below).
+2. `1_setup.sql` grants `APP_ROLE` its access to the tables. Grant `APP_ROLE` to the people who use the app, through your infrastructure as code.
+3. Optional, admin: `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;` users then log in once per ~4 h instead of once per connection.
+4. Keep data fresh: schedule the snapshot with a task (the owner needs `EXECUTE TASK`), or use the app's **Rebuild snapshot in Snowflake**, then **Reload page data**:
+   ```
+   CREATE TASK <DB>.<SCHEMA>.TSK_ACCESS_SNAPSHOT WAREHOUSE = <WH> SCHEDULE = 'USING CRON 0 6 * * * UTC'
+     AS CALL <DB>.<SCHEMA>.SP_ACCESS_SNAPSHOT('AUTO');
+   ALTER TASK <DB>.<SCHEMA>.TSK_ACCESS_SNAPSHOT RESUME;
+   ```
+
+- SnowSQL instead of `run_sql.py`: `!source` the same `sql/` files in order (set `HERE` in `settings.local.sql`).
 - `1_setup_verify.sql` shows which ACCOUNT_USAGE views the role can read (SKIPPED = that dataset uses its fallback, see Data sources).
+- Remove everything: `python run_sql.py sql/3_cleanup.sql; python run_sql.py sql/3_cleanup_verify.sql`.
 - Checks: `python test_access.py` (reruns itself with `ROLE_PREFIXES=ZF_,ZT_`), `python test_sql.py`.
 
 | Role | Needs |
