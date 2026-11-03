@@ -163,4 +163,5 @@ Only to give everyone the local web app without each person installing it: run `
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Bundled third-party code keeps its own licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
+Dual-licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+Unless you say otherwise, any contribution you submit is licensed the same way, with no extra terms. Bundled third-party code keeps its own licenses: [THIRD_PARTY.md](THIRD_PARTY.md).

@@ -1,7 +1,7 @@
 # Third-party software
 
 The built bundles `web/dist` and `web/dist-st` include open-source packages. Their licenses apply to that code,
-not to this project's own code (MIT, see `LICENSE`).
+not to this project's own code (MIT OR Apache-2.0, see `LICENSE-MIT` and `LICENSE-APACHE`).
 
 - **elkjs** (graph layout): Eclipse Public License 2.0 (or GPL-3.0-or-later).
   Source: https://github.com/kieler/elkjs. Used unchanged.
