@@ -5,7 +5,7 @@ import type { ListItem, SensitiveReach, UserPage } from "../api/types";
 type MR = UserPage["multi"]["rows"][number];
 import { Banner, Card, DataTable, KpiRow, PrivilegeTabs, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog, Usage } from "./common";
+import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog, Usage, ScopeChips } from "./common";
 
 export function UserPage() {
   const c = useApp();
@@ -29,6 +29,7 @@ export function UserPage() {
         {s.data && <Sel label="Only privilege" value={s.data.filters.priv} onPick={(v) => c.set({ priv: v })}
           options={[["", "Any privilege"], ...s.data.filters.privileges.map((o): [string, string] => [o, o])]} />}
       </Controls>
+      <ScopeChips />
       <Load s={s}>{(d) => {
         const u = d.user;
         return (
@@ -55,7 +56,7 @@ export function UserPage() {
             <Findings list={d.findings} total={d.findings_total} refs={d.refs} />
             <GraphCard g={d.graph} refs={d.refs} />
             {d.capped.length > 0 && <Banner tone="warn" title="Some walks were cut" lines={[`Chains longer than the hop limit were stopped: ${d.capped.slice(0, 5).join(", ")}`]} />}
-            <Tabs active={part} onChange={setPart} tabs={[
+            <Tabs active={part} onChange={(t) => { setPart(t); c.set({ schema: null, otype: null, full: null }); }} tabs={[
               { key: "privs", label: "Privileges", count: d.privileges.length },
               ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),
               ...(d.can_read?.length ? [{ key: "sees", label: "What they see", count: d.can_read.length }] : []),

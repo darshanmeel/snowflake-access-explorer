@@ -4,6 +4,7 @@ import type { AdminPerson, RulesPage } from "../api/types";
 import { Banner, Card, DataTable, FindingList, PathText, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, Head, Load, NameLink } from "./common";
+import { changeOfPath, WhatIfButton } from "./Whatif";
 
 
 export function RulesPageView() {
@@ -35,7 +36,8 @@ export function RulesPageView() {
                     {d.filters.grantee && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ grantee: null })}>{d.filters.grantee} ×</button>}
                   </div>
                 )}
-                <FindingList key={scope.join()} list={d.findings} kinds={d.refs.kinds} onOpen={o.open} csvName="findings" />
+                <FindingList key={scope.join()} list={d.findings} kinds={d.refs.kinds} onOpen={o.open} csvName="findings"
+                  whatIf={(p) => { const ch = changeOfPath(p, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; }} />
                 <p className="ae-muted">{d.counts.Passing} of {c.meta.rules.length} rules pass.</p>
               </Card>
             )}

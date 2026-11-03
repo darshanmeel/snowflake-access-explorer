@@ -73,8 +73,8 @@ def load(d, build=True):
                                        r"\$\$(.*?)\$\$", SETUP, re.S):
         params = ", ".join(x.split()[0] for x in args.split(","))
         con.execute(f"CREATE OR REPLACE MACRO {name}({params}) AS TABLE {duck(body)}")
-    if build:
-        a.build(a.snapshot(lambda sql: query(con, sql), "main"))
+    if build:  # the table functions see Snowflake's built-in grants too
+        a.build(a.snapshot(lambda sql: query(con, sql), "main"), builtin=True)
     return con
 
 
@@ -126,7 +126,8 @@ def test_demo():
     assert n > 1000
     privs = {o: sorted({pv for _, pv, _ in a.on[o]}) for o in a.objects}
     assert sum(check_who_can(con, o, pv, lim) for o in OBJS for pv in [None] + privs[o] for lim in LIMITS) > 100
-    assert sum(check_who_can(con, o, None, None) for o in a.objects) > 100
+    some = [o for o in a.objects if not a.is_builtin(o)] + [o for o in a.objects if a.is_builtin(o)][:5]
+    assert sum(check_who_can(con, o, None, None) for o in some) > 100
     assert sum(check_can(con, u, pv, o) for u in a.users for o in OBJS for pv in privs[o] + ["USAGE"]) > 10
     deep = con.execute("SELECT MAX(DEPTH) FROM TF_ACCESS_OF('FIN_01', NULL)").fetchone()[0]
     assert deep == 10 and con.execute("SELECT MAX(DEPTH) FROM TF_ACCESS_OF('FIN_01', 9)").fetchone()[0] < 10

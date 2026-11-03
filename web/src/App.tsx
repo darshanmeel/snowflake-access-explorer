@@ -11,11 +11,12 @@ import { ReviewPageView } from "./pages/Review";
 import { RolePageView } from "./pages/Role";
 import { RulesPageView } from "./pages/Rules";
 import { SensitivePageView } from "./pages/Sensitive";
+import { WhatIfPageView } from "./pages/Whatif";
 import { UserPage } from "./pages/User";
 
-const PAGES: Page[] = ["user", "role", "object", "check", "sensitive", "rules", "review"];
+const PAGES: Page[] = ["user", "role", "object", "check", "sensitive", "rules", "review", "whatif"];
 const LABEL: Record<Page, string> = {
-  user: "User", role: "Role", object: "Object", check: "Can they?", sensitive: "Sensitive data", rules: "Rule checks", review: "Access review",
+  user: "User", role: "Role", object: "Object", check: "Can they?", sensitive: "Sensitive data", rules: "Rule checks", review: "Access review", whatif: "What if",
 };
 
 interface Loc { page: Page; params: Params; mine: boolean }
@@ -123,7 +124,7 @@ function Side({ meta, page, nav, reload }: { meta: Meta; page: Page; nav: (p: Pa
 
 const VIEWS: Record<Page, () => JSX.Element> = {
   user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView,
-  sensitive: SensitivePageView, rules: RulesPageView, review: ReviewPageView,
+  sensitive: SensitivePageView, rules: RulesPageView, review: ReviewPageView, whatif: WhatIfPageView,
 };
 
 /** onUrl: the Streamlit wrapper mirrors the page's URL params into the browser address bar. */

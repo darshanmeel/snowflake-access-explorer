@@ -5,6 +5,7 @@ or mine() (the logged-in user's own access, live). All return the same dict; bui
 """
 import difflib
 import fnmatch
+import functools
 import json
 import os
 import pathlib
@@ -24,6 +25,12 @@ ADMIN = {"ACCOUNTADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "ORGADMIN"}
 # account privileges Snowflake grants to PUBLIC by default (plus the SNOWFLAKE.* database roles): not rule 9
 DEFAULT_PUBLIC = set(os.environ.get("DEFAULT_PUBLIC",
                                     "VIEW LINEAGE,USE AI FUNCTIONS,INGEST LINEAGE,BIND SERVICE ENDPOINT").split(","))
+# Snowflake's own roles and objects every account gets through PUBLIC (fnmatch on the name): the SNOWFLAKE.* database
+# roles and application role, system compute pools and warehouses, the learning role / warehouse / database. Their
+# grants are hidden by default (build(builtin=False)): no counts, one fold box in graphs, never rule 9 or 13
+BUILTIN = os.environ.get("BUILTIN", "SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*").split(",")
+BUILTIN_RE = re.compile("|".join(fnmatch.translate(b) for b in BUILTIN))
+BUILTIN_NODE = "Snowflake built-in (via PUBLIC)"
 MAX_HOPS = int(os.environ.get("MAX_HOPS", "50"))  # safety cap on role hops per walk
 # functional and technical role prefixes; another naming: ROLE_PREFIXES=<functional>,<technical>
 FUNC, TECH = os.environ.get("ROLE_PREFIXES", "F_,T_").split(",")
@@ -211,6 +218,36 @@ def fake():
     pv += [("HR.SC_R_PAYROLL", "SELECT", "VIEW" if ".VW_" in o else "TABLE", o) for o in pay]
     dbr += [("HR.SC_R_PAYROLL", f"{F}HR")]
     ur += [(f"{F}HR", "HR_01")]
+    # a database granted through database roles only: read / write / manage / create per schema (W holds R, M holds
+    # W), 18 of them, held by two group roles (engineers: manage + create, readers: read)
+    for sc in ("ODS", "STG", "CORE", "MART", "SANDBOX"):
+        r, w, m, c = (f"DW.SC_{x}_{sc}" for x in "RWMC")
+        caps = (r, w) if sc == "SANDBOX" else (r, w, m, c)
+        pv += [(x, "USAGE", k, o) for x in caps for k, o in (("DATABASE", "DW"), ("SCHEMA", f"DW.{sc}"))]
+        for i in range(1, 4):
+            o = f"DW.{sc}.TBL_{sc}_{i:02}"
+            pv += [(r, "SELECT", "TABLE", o)] + [(w, p, "TABLE", o) for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")]
+        dbr += [(r, w), (w, m)] if m in caps else [(r, w), (w, "GRP_DW_ENGINEERS")]
+        dbr += [(r, "GRP_DW_READERS")] + [(x, "GRP_DW_ENGINEERS") for x in (m, c) if x in caps]
+        pv += [(m, p, "SCHEMA", f"DW.{sc}") for p in ("MODIFY", "MONITOR") if m in caps]
+        pv += [(c, p, "SCHEMA", f"DW.{sc}") for p in ("CREATE TABLE", "CREATE VIEW") if c in caps]
+    ur += [("GRP_DW_ENGINEERS", "DW_DEV_01"), ("GRP_DW_READERS", "DW_BI_01"), ("GRP_DW_READERS", "DW_BI_02")]
+    # Snowflake's own grants to PUBLIC (BUILTIN, hidden by default): system database roles reaching a few hundred
+    # functions and views, the application role, system compute pools and warehouse, the learning role
+    for r, sc, k, n in [("CORE_VIEWER", "CORE", "VIEW", 12), ("DATA_METRIC_USER", "CORE", "FUNCTION", 260),
+                        ("CORTEX_USER", "CORTEX", "FUNCTION", 40), ("ML_USER", "ML", "FUNCTION", 20),
+                        ("ALERT_VIEWER", "ALERT", "VIEW", 5), ("SPCS_VIEWER", "SPCS", "VIEW", 5)]:
+        dbr.append((f"SNOWFLAKE.{r}", "PUBLIC"))
+        pv += [(f"SNOWFLAKE.{r}", "USAGE", "DATABASE", "SNOWFLAKE"), (f"SNOWFLAKE.{r}", "USAGE", "SCHEMA", f"SNOWFLAKE.{sc}")]
+        pv += [(f"SNOWFLAKE.{r}", "USAGE" if k == "FUNCTION" else "SELECT", k,
+                f"SNOWFLAKE.{sc}.{'FN' if k == 'FUNCTION' else 'VW'}_{r}_{i:03}") for i in range(n)]
+    pv += [("PUBLIC", "USAGE", "APPLICATION_ROLE", "SNOWFLAKE.PUBLIC"),
+           ("PUBLIC", "USAGE", "COMPUTE_POOL", "SYSTEM_COMPUTE_POOL_CPU"),
+           ("PUBLIC", "USAGE", "COMPUTE_POOL", "SYSTEM_COMPUTE_POOL_GPU"),
+           ("PUBLIC", "USAGE", "WAREHOUSE", "SYSTEM$STREAMLIT_NOTEBOOK_WH"),
+           ("SNOWFLAKE_LEARNING_ROLE", "USAGE", "WAREHOUSE", "SNOWFLAKE_LEARNING_WH"),
+           ("SNOWFLAKE_LEARNING_ROLE", "USAGE", "DATABASE", "SNOWFLAKE_LEARNING_DB")]
+    rg.append(("SNOWFLAKE_LEARNING_ROLE", "PUBLIC"))
     grants = [dict(GRANTEE_ROLE=p, PRIVILEGE="USAGE", GRANTED_ON="ROLE", OBJECT_NAME=c, IS_FUTURE=False) for c, p in rg]
     grants += [dict(GRANTEE_ROLE=p, PRIVILEGE="USAGE", GRANTED_ON="DATABASE_ROLE", OBJECT_NAME=c, IS_FUTURE=False)
                for c, p in dbr]
@@ -231,7 +268,10 @@ def fake():
                                    ("MARKETING_01", "PERSON", f"{F}MARKETING", '["ALL"]', "WH_SALES_XS"),
                                    ("OPS_01", "PERSON", "SYSADMIN", '["ALL"]', None),
                                    ("SUPPORT_01", "PERSON", f"{F}SUPPORT", '["ALL"]', "WH_SALES_XS"),
-                                   ("HR_01", "PERSON", f"{F}HR", '["ALL"]', None)]
+                                   ("HR_01", "PERSON", f"{F}HR", '["ALL"]', None),
+                                   ("DW_DEV_01", "PERSON", "GRP_DW_ENGINEERS", '["ALL"]', None),
+                                   ("DW_BI_01", "PERSON", "GRP_DW_READERS", '["ALL"]', None),
+                                   ("DW_BI_02", "PERSON", "GRP_DW_READERS", '["ALL"]', None)]
              + [(u, "PERSON", CHAIN[0], '["ALL"]', "WH_FINANCE_XS") for u in FIN_USERS]]  # FIN_14 disabled
     usage = [dict(USER_NAME=u, KIND=k, NAME=n, QUERIES=q, LAST_USED="2026-10-30 09:00")
              for u, k, n, q in [("ANALYST_01", "ROLE", "GRP_ANALYSTS", 412),
@@ -667,7 +707,7 @@ def live(query):
 
 def only(d, user):
     """Demo of mine() without Snowflake: one user's slice of a full data set."""
-    build(d)
+    build(d, builtin=True)
     seen = {r for s in starts(user, True) for p in down(s, user=True) for r in p[1:]}
     run = dict(RUN_ID="live", FINISHED_AT="now", SOURCES={"all": f"demo: {user}'s slice of the fake data",
                                                           "usage": "INFORMATION_SCHEMA"},
@@ -689,20 +729,36 @@ capped = set()  # start of every walk cut at MAX_HOPS; the UI clears it before a
 db_roles = set()  # database roles, by their qualified name DB.ROLE
 ROLE_ON = ("ROLE", "DATABASE_ROLE")  # GRANTED_ON of a role link (with USAGE): an account or a database role is held
 memo = {}  # results that only depend on the data set (rule findings, ...), cleared by build()
+hidden = []  # GRANT rows of Snowflake's built-in grants (builtin_grant) left out by build(builtin=False)
+source = {}  # data: the dict build() got, builtin: its flag (what_if rebuilds from them)
 
 
-def build(d, key=None):
+def is_builtin(name):
+    return bool(BUILTIN_RE.match(name or ""))
+
+
+def builtin_grant(g):
+    """A GRANT row Snowflake makes itself: held by a built-in role, or PUBLIC's on a built-in role or object."""
+    return is_builtin(g["GRANTEE_ROLE"]) or (g["GRANTEE_ROLE"] == "PUBLIC" and is_builtin(g["OBJECT_NAME"]))
+
+
+def build(d, key=None, builtin=False):
     """Fill the module lookups from fake() or snapshot(). key: the same key as the last build skips the work (the app
-    passes the run of the shared snapshot, so a rerun does not rebuild or recheck the rules)."""
+    passes the run of the shared snapshot, so a rerun does not rebuild or recheck the rules). builtin: keep Snowflake's
+    built-in grants (BUILTIN); left out by default, kept in hidden."""
     global roles, users, objects, run
-    if key is not None and memo.get("key") == key:
+    if key is not None and memo.get("key") == (key, builtin):
         return
     memo.clear()
-    memo["key"] = key
+    memo["key"] = (key, builtin)
+    source.update(data=d, builtin=builtin)
     for x in (role_grants, user_grants, privs, holds, held_by, users_of, roles_of, profile, used, kinds, granted, on,
-              capped, tags, policies, sens, streams, db_roles):
+              capped, tags, policies, sens, streams, db_roles, hidden):
         x.clear()
     for g in d["GRANT"]:
+        if not builtin and builtin_grant(g):
+            hidden.append(g)
+            continue
         if g["GRANTED_ON"] in ROLE_ON and g["PRIVILEGE"] == "USAGE":  # role inheritance; OWNERSHIP on a role is not
             # every custom role is also granted to SYSADMIN: dropped so admin roles don't swallow every graph;
             # holding an admin role is kept and flagged in red
@@ -742,6 +798,17 @@ def build(d, key=None):
         hit = [t for t in tags_of(o) if tag_hit(rules, t[1], t[2])]
         if hit:
             sens[o] = hit
+
+
+def builtin_info():
+    """Snowflake's built-in grants left out by build(): dict(label, grants, roles [built-in roles], objects (count)),
+    None when nothing is left out."""
+    if not hidden:
+        return None
+    role_on = ROLE_ON + ("APPLICATION_ROLE",)
+    rs = {g["OBJECT_NAME"] for g in hidden if g["GRANTED_ON"] in role_on} | {g["GRANTEE_ROLE"] for g in hidden} - {"PUBLIC"}
+    return dict(label=BUILTIN_NODE, grants=len(hidden), roles=sorted(rs),
+                objects=len({g["OBJECT_NAME"] for g in hidden if g["GRANTED_ON"] not in role_on}))
 
 
 def cached(name, fn):
@@ -794,6 +861,7 @@ def node_name(n):
     return n[:-len(UTAG)] if node_kind(n) == "user" and n.endswith(UTAG) else n
 
 
+@functools.cache  # pure, and called for every grant a walk reaches
 def priv_class(pv, kind=""):
     """read | write | own | use | manage | admin, for arrows and badges. manage: CREATE ..., MODIFY, OPERATE, APPLY ...
     (changes or runs objects without touching data); admin: account-level (MANAGE GRANTS, EXECUTE TASK, ...)."""
@@ -864,6 +932,7 @@ def split_name(obj, kind=None):
     return (parts[0], parts[1], parts[2]) if len(parts) == 3 else (parts[0], "", parts[1])  # future grant in a database
 
 
+@functools.cache
 def is_data(kind):
     """Tables and views (any flavour), not future grants: what sensitivity and rule 17 count."""
     return not kind.startswith("FUTURE") and ("TABLE" in kind or "VIEW" in kind)
@@ -942,10 +1011,7 @@ def ups(role):
 
 def best_paths(name, user=False):
     """{role: shortest path name->...->role} for every role name reaches, once per data set."""
-    def make():
-        sts, kids, _, hops = fast(name, user)
-        return shortest(sts, kids, hops)
-    return cached(("best", name, user), make)
+    return cached(("best", name, user), lambda: paths_from(starts(name, user)))
 
 
 def starts(name, user=False, default_only=False):
@@ -1158,20 +1224,36 @@ def down_graph(start, rows, walked=(), user=None):
 
 
 def object_graph(obj, kind, shown, users):
-    """Object page graph: grantees() rows as shown and the users drawn. Returns (lanes, edges, notes) or None."""
+    """Object page graph: grantees() rows as shown and the users drawn. Lanes follow the chain (a role sits right of
+    every user or role holding it: longest chain from a start), so every line runs left to right; badges give the
+    depth from the start as on every page, plus "also grant holder" on a holder that also holds roles drawn here.
+    Returns (lanes, edges, notes) or None."""
     paths = [tagged(x[:-1], row["kind"]) for row in shown for x in row["paths"]]
     if not paths:
         return None
-    ch = chains(paths, True)
-    d = {n: min(v) for n, v in ch.items()}
+    links = role_links(paths)
     users = [uid(u, True) for u in users]
-    nodes = set(d) - set(users)
-    far = max([d[n] for n in nodes] + [1])
-    lanes = ([("Users", [u for u in users if u in {x[0] for x in paths}])]
-             + by_depth(nodes, d, "Depth {}", range(far, 1, -1))
-             + by_depth(nodes, d, "Depth 1 · Grant holders", [1]) + [("Object", [obj])])
-    edges = role_links(paths) + priv_links([dict(privilege=x["privilege"], type=kind, paths=x["paths"]) for x in shown])
-    return lanes, edges, notes(ch, nodes)
+    lane = {}
+    for p in paths:
+        for i, n in enumerate(p):
+            lane.setdefault(n, 0 if i == 0 and node_kind(n) == "user" else 1)
+    for _ in lane:  # longest chain; at most one pass per node, so a loop can't hang it
+        moved = False
+        for x, y in links:
+            if lane[y] <= lane[x]:
+                lane[y], moved = lane[x] + 1, True
+        if not moved:
+            break
+    nodes = set(lane) - set(users)
+    lanes = ([("Users", [u for u in users if u in lane])]
+             + by_depth(nodes, lane, "Depth {}", range(1, max([lane[n] for n in nodes] + [0]) + 1)) + [("Object", [obj])])
+    edges = links + priv_links([dict(privilege=x["privilege"], type=kind, paths=x["paths"]) for x in shown])
+    out = notes(chains(paths), nodes)
+    for n in {p[-1] for p in paths} & {x for x, _ in links}:
+        badge, tip = out.get(n, ("", ""))
+        out[n] = (" · ".join(filter(None, [badge, "also grant holder"])),
+                  "\n".join(filter(None, [tip, f"Also a grant holder: its own grant on {obj}, besides the roles it holds."])))
+    return lanes, edges, out
 
 
 def tagged(p, kind):
@@ -1190,7 +1272,7 @@ def role_graph(role, up_rows, writes=()):
     nodes = set(d) - set(us) - {role}
     far = max([d[n] for n in nodes] + [1])
     hold, kids = holds_of(role), sorted(holds.get(role, []))
-    objs = list(dict.fromkeys(h["object"] for h in hold))
+    objs = list(dict.fromkeys(h["object"] for h in hold)) + [BUILTIN_NODE] * (role == "PUBLIC" and bool(hidden))
     stray = [x for x in writes if x["inherited"] and x["holder"] in kids and x["object"] not in objs]
     lanes = ([("Users", us)] if us else []) + by_depth(nodes, d, "Depth {}", range(far, 1, -1))
     sel = len(lanes)
@@ -1199,6 +1281,7 @@ def role_graph(role, up_rows, writes=()):
         lanes.append(("Writes through held roles", list(dict.fromkeys(x["object"] for x in stray))))
     edges = role_links(paths) + [(role, x) for x in kids] + list(dict.fromkeys(
         (role, h["object"], h["cls"], h["privilege"]) for h in hold))
+    edges += [(role, BUILTIN_NODE, "use", "USAGE")] * (BUILTIN_NODE in objs)
     edges += [(x["holder"], x["object"], priv_class(pv, kinds.get(x["object"], "")), pv) for x in stray
               for pv in x["privileges"]]
     return lanes, edges, notes(ch, nodes), sel
@@ -2078,6 +2161,10 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
                 per.setdefault((h, k, r["cls"], r["privilege"]), set()).add(r["object"])
     edges += priv_links([r for r in rows if not grouped(r)])
     edges += [(a, b, c, pv, len(o)) for (a, b, c, pv), o in per.items()]
+    bi = builtin_info() if schema is None and not otype else None
+    if bi and "PUBLIC" in nodes | {sid}:  # Snowflake's own grants: one fold box under PUBLIC
+        lanes[-1] = (lanes[-1][0], lanes[-1][1] + [BUILTIN_NODE])
+        edges.append(("PUBLIC", BUILTIN_NODE, "use", "USAGE", bi["objects"]))
     info, fi, sens = graph_info(lanes, edges, okey), finding_index()[0], sensitive()
     for g, os_ in members.items():
         info.setdefault(g, {}).update(count=len(os_), noun="object" if len(os_) == 1 else "objects",
@@ -2088,7 +2175,13 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
               + (f" in {schema}" if schema else "")
               + how.get(level, ""))
     kinds_ = {g: "type-group" if level == "type" else level for g in members}
-    return dict(lanes=lanes, edges=edges, notes=notes(ch, nodes), info=info, kinds=kinds_, header=header, level=level,
+    nts = notes(ch, nodes)
+    if bi and BUILTIN_NODE in lanes[-1][1]:
+        kinds_[BUILTIN_NODE] = "fold"
+        info[BUILTIN_NODE] = dict(count=bi["grants"], noun="built-in grants")
+        nts[BUILTIN_NODE] = ("hidden", f"{bi['grants']} grants Snowflake makes to every account through PUBLIC, "
+                                       f"{bi['objects']} objects: {', '.join(bi['roles'])}\nShow built-in draws them")
+    return dict(lanes=lanes, edges=edges, notes=nts, info=info, kinds=kinds_, header=header, level=level,
                 shown=len(objs), total=len({r["object"] for r in every}),
                 groups=group_objects(rows, level) if level in ("schema", "database") else [],
                 types={key(r): r["type"] for r in rows} if level == "type" else {})
@@ -2408,6 +2501,284 @@ def search(q, names):
     return difflib.get_close_matches(q, list(names), n=10, cutoff=0.6)
 
 
+# ---------- what if: grants removed in memory, before / after diff (read-only: prints the IaC / REVOKE text) ----------
+
+WHAT_IF_OPS = ("revoke_role_from_user", "revoke_role_from_role", "revoke_priv", "drop_role", "empty_public")
+REBOUND = ("roles", "users", "objects", "run")  # build() binds these anew; it refills the other lookups in place
+STATE = REBOUND + ("role_grants", "user_grants", "privs", "holds", "held_by", "users_of", "roles_of", "profile", "used",
+                   "granted", "on", "kinds", "tags", "policies", "sens", "streams", "capped", "db_roles", "memo",
+                   "hidden", "source")
+
+
+def changes_of(changes):
+    """what_if() changes checked against the loaded grants: (cut, [dict(change, label, iac, sql)]). cut: dict(user
+    {(user, role)}, link {(role, grantee role)}, priv {(role, privilege, object)}, drop {role}, public). ValueError
+    for an unknown op or a grant that is not there."""
+    cut, out = dict(user=set(), link=set(), priv=set(), drop=set(), public=False), []
+    for c in changes:
+        op, r = c.get("op"), c.get("role")
+        if op == "revoke_role_from_user":
+            u = c.get("user")
+            if r not in roles_of.get(u, []):
+                raise ValueError(f"Role {r} is not granted to user {u}")
+            cut["user"].add((u, r))
+            label, (iac, sql) = f"Revoke role {r} from user {u}", revoke(role_edge(u, r, True))
+        elif op == "revoke_role_from_role":
+            g = c.get("grantee")
+            if r not in holds.get(g, []):
+                raise ValueError(f"Role {r} is not granted to role {g}")
+            cut["link"].add((r, g))
+            label, (iac, sql) = f"Revoke role {r} from role {g}", revoke(role_edge(g, r))
+        elif op == "revoke_priv":
+            pv, o = c.get("privilege"), c.get("object")
+            ks = sorted({k for p, k, x in granted.get(r, []) if p == pv and x == o})
+            if not ks:
+                raise ValueError(f"Role {r} holds no {pv} on {o}")
+            cut["priv"].add((r, pv, o))
+            label, (iac, sql) = f"Revoke {pv} on {o} from role {r}", fix_text([priv_edge(r, pv, k, o) for k in ks])
+        elif op == "drop_role":
+            if r not in roles or r == "PUBLIC" or r in ADMIN:  # PUBLIC and the system roles can't be dropped
+                raise ValueError(f"Role {r} can't be dropped" if r in roles else f"No role {r}")
+            cut["drop"].add(r)
+            label, iac, sql = (f"Drop role {r}", f"Remove in the infrastructure-as-code repo: role {r}, with every "
+                                                 "grant to and from it", f"DROP {role_sql(r)};")
+        elif op == "empty_public":  # PUBLIC itself can't be revoked: every user holds it
+            cut["public"] = True
+            edges = [priv_edge("PUBLIC", pv, k, o) for pv, k, o in granted.get("PUBLIC", [])]
+            edges += [role_edge("PUBLIC", x) for x in dict.fromkeys(holds.get("PUBLIC", []))]
+            label, (iac, sql) = "Remove every grant to PUBLIC", fix_text(edges) if edges else ("PUBLIC holds nothing", "")
+        else:
+            raise ValueError(f"Unknown op {op!r}; ops: {', '.join(WHAT_IF_OPS)}")
+        out.append(dict(change=c, label=label, iac=iac, sql=sql))
+    return cut, out
+
+
+def without_cuts(d, cut):
+    """d without the GRANT / USER_ROLE rows the cut removes."""
+    def gone(g):
+        r, o, link = g["GRANTEE_ROLE"], g["OBJECT_NAME"], g["GRANTED_ON"] in ROLE_ON
+        return (r in cut["drop"] or (link and o in cut["drop"]) or (cut["public"] and r == "PUBLIC")
+                or ((o, r) in cut["link"] if link and g["PRIVILEGE"] == "USAGE" else (r, g["PRIVILEGE"], o) in cut["priv"]))
+    return d | dict(GRANT=[g for g in d["GRANT"] if not gone(g)],
+                    USER_ROLE=[x for x in d["USER_ROLE"] if (x["USER_NAME"], x["ROLE_NAME"]) not in cut["user"]
+                               and x["ROLE_NAME"] not in cut["drop"]])
+
+
+def paths_from(sts):
+    """Shortest path from the start paths to every role they reach (BFS, no hop cap): {role: path}."""
+    best, todo = {}, sorted(sts, key=len)
+    while todo:
+        nxt = []
+        for p in todo:
+            if p[-1] not in best:
+                best[p[-1]] = p
+                nxt += [p + [r] for r in holds.get(p[-1], []) if r not in best]
+        todo = nxt
+    return best
+
+
+def reached_roles():
+    """Roles some user reaches (PUBLIC too when there are users), once per data set."""
+    def make():
+        todo = list({r for rs in roles_of.values() for r in rs} | ({"PUBLIC"} if users else set()))
+        seen = set(todo)
+        while todo:
+            for r in holds.get(todo.pop(), []):
+                if r not in seen:
+                    seen.add(r)
+                    todo.append(r)
+        return seen
+    return cached("reached", make)
+
+
+def what_if(changes, cap=MAX_PATHS):
+    """The access lost when grants go, simulated on a copy: the loaded lookups are rebuilt without the changes and put
+    back after; the rules recheck only the users and roles a change can touch. changes: [dict(op, ...)]:
+    revoke_role_from_user (role, user), revoke_role_from_role (role, grantee), revoke_priv (role, privilege, object),
+    drop_role (role), empty_public (every grant to PUBLIC). cap: objects / roles listed per user (None: all; counts
+    are always exact). Returns dict(changes [dict(change, label, iac, sql)], summary, counts, users [dict(user, status,
+    lost (privileges), objects (lost), lost_rows [dict(object, type, privileges, classes, path)], kept (privileges
+    still reached through another path), kept_rows [... + via (the path left), through (its first role the old path
+    did not use)], kept_roles [dict(role, path, via, through)]: roles right under a cut still reached)],
+    objects [dict(object, type, sensitive, unreached, ownerless)], roles [dict(role, kind, orphan, unreached)],
+    findings [dict(num, title, severity, grantee, kind, detail, path, status fixed | new, changed: the rule still
+    fires on that grantee)], iac, sql, csv [rows: section, name, privilege, type, object, cls, status, path, detail])."""
+    cut, steps = changes_of(changes)
+    pub = list(dict.fromkeys(holds.get("PUBLIC", []))) if cut["public"] else []
+    # cut points: (users who reach it, role, the roles right under the cut)
+    pts = [({u}, r, {r}) for u, r in cut["user"]] + [(ups(g)[1], r, {r}) for r, g in cut["link"]]
+    pts += [(ups(r)[1], r, set(holds.get(r, []))) for r in cut["drop"]]
+    below, touched, heads, pcut = {}, {}, {}, {}  # roles under each cut point; per user: what it may lose
+    for us, r, hs in pts:
+        below.setdefault(r, set(bfs([r])))
+        for u in us:
+            touched.setdefault(u, set()).update(below[r])
+            heads.setdefault(u, set()).update(hs)
+    for r, pv, o in cut["priv"]:
+        for u in ups(r)[1]:
+            pcut.setdefault(u, set()).add((r, pv, o))
+    every_t = set()  # empty PUBLIC: every user may lose the roles under PUBLIC and its grants
+    for r in pub:
+        every_t |= below.setdefault(r, set(bfs([r])))
+    every_p = {("PUBLIC", pv, o) for pv, _, o in granted.get("PUBLIC", [])} if cut["public"] else set()
+    before = {}  # user -> (shortest paths, roles under a cut it reaches, grants cut that it reaches)
+    for u in set(users) if every_t or every_p else set(touched) | set(pcut):
+        reach = paths_from(starts(u, True))
+        t = (touched.get(u, set()) | every_t) & reach.keys()
+        p = [x for x in pcut.get(u, set()) | every_p if x[0] in reach]
+        if t or p:
+            before[u] = (reach, t, p, (heads.get(u, set()) | set(pub)) & t)
+    under = set().union(*below.values())
+    tops = {x for r, g in cut["link"] for x in ups(g)[0]} | {x for r in cut["drop"] for x in ups(r)[0]}
+    tops |= {x for r, _, _ in cut["priv"] for x in ups(r)[0]} | {"PUBLIC"}
+    # what the per-grantee rules recheck: who had a finding below or above a cut, and every role above one for the
+    # rules a removed grant can start (GROW)
+    fb = cached("findings", findings)
+    only = {n: set(tops) if n in GROW else set() for n in SCOPED}
+    for f in fb:
+        if f["num"] in SCOPED and (f["grantee"] in before or f["grantee"] in tops):
+            only[f["num"]].add(f["grantee"])
+    fb = [f for f in fb if f["num"] not in SCOPED or f["grantee"] in only[f["num"]]]
+    objs = {o for r in under for _, _, o in granted.get(r, [])} | {o for _, _, o in cut["priv"] | every_p}
+    b_live = reached_roles()
+    b_obj = {o: (any(r in b_live for r, _, _ in on.get(o, [])), any(pv == "OWNERSHIP" for _, pv, _ in on.get(o, [])))
+             for o in objs}
+    cands = {r for _, r in cut["user"]} | {r for r, _ in cut["link"]} | set(pub)  # may lose their last holder
+    cands |= {x for r in cut["drop"] for x in holds.get(r, [])}
+    b_role = {r: bool(users_of.get(r) or held_by.get(r)) for r in cands}
+    g = globals()
+    saved = {n: g[n] if n in REBOUND else g[n].copy() for n in STATE}
+    old = saved["granted"]
+    try:
+        build(without_cuts(source["data"], cut), builtin=source["builtin"])
+        groups, after = {}, {}
+
+        def split(r):  # r's grants (before), grouped by the roles holding the same privilege on the object after
+            if r not in groups:
+                by = {}
+                for pv, k, o in old.get(r, []):
+                    by.setdefault(frozenset(h for h, p2, _ in on.get(o, []) if p2 == pv), []).append((pv, k, o))
+                groups[r] = list(by.items())
+            return groups[r]
+
+        def best(hs, reach):
+            return reach[min(hs, key=lambda x: (len(reach[x]), x))]
+
+        for u, (b_reach, t, p, hs) in before.items():
+            reach = paths_from(starts(u, True))
+            lost, kept = {}, {}  # (privilege, object) -> (type, holder before[, path to a holder after])
+            for r in t - reach.keys():
+                for hs, items in split(r):
+                    left = hs & reach.keys()
+                    via = best(left, reach) if left else None
+                    for pv, k, o in items:
+                        if via:
+                            kept.setdefault((pv, o), (k, r, via))
+                        else:
+                            lost.setdefault((pv, o), (k, r))
+            for r, pv, o in p:
+                k = next(k for p2, k, x in old[r] if p2 == pv and x == o)
+                left = {h for h, p2, _ in on.get(o, []) if p2 == pv} & reach.keys()
+                if left:
+                    kept.setdefault((pv, o), (k, r, best(left, reach)))
+                else:
+                    lost.setdefault((pv, o), (k, r))
+            after[u] = (lost, kept, {r: reach[r] for r in hs & reach.keys()})
+        a_live = reached_roles()
+        a_obj = {o: (any(r in a_live for r, _, _ in on.get(o, [])), any(pv == "OWNERSHIP" for _, pv, _ in on.get(o, [])))
+                 for o in objs}
+        orphan = {r for r, had in b_role.items() if had and r not in cut["drop"] and r != "PUBLIC"
+                  and not (users_of.get(r) or held_by.get(r))}
+        gone = (b_live & under) - a_live - cut["drop"]
+        fa = [f for f in findings(only) if f["num"] not in SCOPED or f["grantee"] in only[f["num"]]]
+    finally:
+        for n, v in saved.items():
+            if n in REBOUND:
+                g[n] = v
+            else:
+                g[n].clear()
+                if isinstance(v, list):
+                    g[n].extend(v)
+                else:
+                    g[n].update(v)
+
+    def rows(got, b_reach):  # one row per object, at most cap
+        keep = set(sorted({o for _, o in got})[:cap])
+        per = {}
+        for (pv, o), x in got.items():
+            if o in keep:
+                per.setdefault(o, []).append((pv,) + x)
+        out = []
+        for o in sorted(per):
+            xs = sorted(per[o], key=lambda x: x[0])
+            row = dict(object=o, type=xs[0][1], privileges=[x[0] for x in xs], path=b_reach[xs[0][2]] + [o],
+                       classes=sorted({priv_class(x[0], x[1]) for x in xs}, key=CLS_ORDER.index))
+            out.append(row | dict(via=xs[0][3] + [o], through=through(row["path"], xs[0][3])) if len(xs[0]) > 3 else row)
+        return out
+
+    def through(old, new):  # the first role of the path left that the old path did not use
+        return next((r for r in new[1:] if r not in old), new[1] if len(new) > 1 else new[0])
+
+    us = []
+    for u, (lost, kept, moved) in after.items():  # moved: roles under a cut still reached, another way
+        b_reach = before[u][0]
+        if lost or kept or moved:
+            us.append(dict(user=u, status=status(u), lost=len(lost), objects=len({o for _, o in lost}),
+                           lost_rows=rows(lost, b_reach), kept=len(kept), kept_rows=rows(kept, b_reach),
+                           kept_roles=[dict(role=r, path=b_reach[r], via=p, through=through(b_reach[r], p))
+                                       for r, p in sorted(moved.items())][:cap]))
+    us.sort(key=lambda x: (-x["objects"], -x["lost"], x["user"]))
+    key, k3 = (lambda f: (f["num"], f["grantee"], f["user"], f["detail"])), (lambda f: (f["num"], f["grantee"], f["user"]))
+    bk, ak = {key(f): f for f in fb}, {key(f): f for f in fa}
+    b3, a3 = {k3(f) for f in fb}, {k3(f) for f in fa}
+    fnd = [dict(num=f["num"], title=RULES[f["num"]][0], severity=SEVERITY.get(f["num"], "Low"), grantee=f["grantee"],
+                kind="user" if f["user"] else role_kind(f["grantee"]), detail=f["detail"], path=f["path"], status=st,
+                changed=k3(f) in other)
+           for st, mine_, theirs, other in (("fixed", bk, ak, a3), ("new", ak, bk, b3))
+           for k, f in sorted(mine_.items(), key=lambda x: (int(x[0][0]), x[0][1])) if k not in theirs]
+    ob = [dict(object=o, type=kinds.get(o, ""), sensitive=o in sens, unreached=b[0] and not a_obj[o][0],
+               ownerless=b[1] and not a_obj[o][1]) for o, b in sorted(b_obj.items())]
+    ob = [x for x in ob if x["unreached"] or x["ownerless"]]
+    rs = [dict(role=r, kind=role_kind(r), orphan=r in orphan, unreached=r in gone) for r in sorted(orphan | gone)]
+    n = dict(users=sum(bool(x["lost"]) for x in us), objects=len({o for lost, _, _ in after.values() for _, o in lost}),
+             kept=sum(bool(x["kept"] or x["kept_roles"]) for x in us), unreached=sum(x["unreached"] for x in ob),
+             ownerless=sum(x["ownerless"] for x in ob), orphans=len(orphan), unreached_roles=len(gone),
+             fixed=sum(f["status"] == "fixed" and not f["changed"] for f in fnd),
+             new=sum(f["status"] == "new" and not f["changed"] for f in fnd),
+             changed=len({(f["num"], f["grantee"]) for f in fnd if f["changed"]}))
+    via = {}
+    for x in us:
+        for r in {y["through"] for y in x["kept_rows"] + x["kept_roles"]}:
+            via[r] = via.get(r, 0) + 1
+    top = max(via, key=lambda r: (via[r], r)) if via else ""
+    parts = [f"{plural(n['users'], 'user')} lose{'s' * (n['users'] == 1)} access to {plural(n['objects'], 'object')}"
+             if n["users"] else "Nobody loses access"]
+    parts += [f"{n['kept']} keep{'s' * (n['kept'] == 1)} access through another path (most via {top})"] * bool(top)
+    parts += [f"{plural(n['unreached'], 'object')} nobody reaches any more"] * bool(n["unreached"])
+    parts += [f"{plural(n['ownerless'], 'object')} without an owner"] * bool(n["ownerless"])
+    parts += [f"{plural(n['orphans'], 'role')} left without users or parent roles"] * bool(n["orphans"])
+    parts += [f"{plural(n['fixed'], 'finding')} fixed, {n['new']} new"
+              + (f", {n['changed']} changed" if n["changed"] else "")]
+    csv = [dict(section="change", name=s["label"], privilege="", type="", object="", cls="", status="", path="",
+                detail=s["sql"] or s["iac"]) for s in steps]
+    for x in us:
+        for st, ys in (("lost", x["lost_rows"]), ("kept", x["kept_rows"])):
+            csv += [dict(section="user", name=x["user"], privilege=", ".join(y["privileges"]), type=y["type"],
+                         object=y["object"], cls=", ".join(y["classes"]), status=st,
+                         path=" > ".join(y.get("via") or y["path"]), detail="") for y in ys]
+        csv += [dict(section="user", name=x["user"], privilege="", type="ROLE", object=y["role"], cls="",
+                     status="kept role", path=" > ".join(y["via"]), detail="") for y in x["kept_roles"]]
+    csv += [dict(section="object", name=x["object"], privilege="", type=x["type"], object=x["object"], cls="",
+                 status=", ".join(k for k in ("unreached", "ownerless") if x[k]), path="",
+                 detail="sensitive" if x["sensitive"] else "") for x in ob]
+    csv += [dict(section="role", name=x["role"], privilege="", type="", object="", cls="",
+                 status=", ".join(k for k in ("orphan", "unreached") if x[k]), path="", detail=x["kind"]) for x in rs]
+    csv += [dict(section="finding", name=f["grantee"], privilege="", type="", object="", cls="", status=f["status"],
+                 path=" > ".join(f["path"]), detail=f"Rule {f['num']} {f['title']}: {f['detail']}") for f in fnd]
+    return dict(changes=steps, summary="; ".join(parts), counts=n, users=us, objects=ob, roles=rs, findings=fnd,
+                iac="\n".join(s["iac"] for s in steps), sql="\n".join(s["sql"] for s in steps if s["sql"]), csv=csv)
+
+
 # ---------- rules ----------
 
 def plural(n, word):
@@ -2459,19 +2830,35 @@ def is_build(r):
     return any(fnmatch.fnmatch(r, b) for b in BUILD)
 
 
-def data_use(r):
-    """What r reaches: (eff [(privilege, type, object, path r->...->holder)], {data object: {read, write, own}})."""
+def own_use(x):
+    """x's own grants on data objects: {object: {read, write, own}}, once per data set."""
     def make():
-        eff = [(pv, k, o, p) for x, p in bfs([r]).items() for pv, k, o in granted.get(x, [])]
-        cls = {}
-        for pv, k, o, p in eff:
-            if is_data(k) and priv_class(pv, k) in ("read", "write", "own"):
-                cls.setdefault(o, set()).add(priv_class(pv, k))
-        return eff, cls
+        out = {}
+        for pv, k, o in granted.get(x, []):
+            c = priv_class(pv, k)
+            if c in ("read", "write", "own") and is_data(k):
+                out.setdefault(o, set()).add(c)
+        return out
+    return cached(("own", x), make)
+
+
+def data_use(r):
+    """What r reaches: ({role: shortest path r->...->role}, {data object: {read, write, own}})."""
+    def make():
+        best, cls = bfs([r]), {}
+        for x in best:
+            for o, c in own_use(x).items():
+                cls.setdefault(o, set()).update(c)
+        return best, cls
     return cached(("use", r), make)
 
 
-def readonly_writes(role=None):
+def effective(r):
+    """r's privileges, inherited included: [(privilege, type, object, path r->...->holder)]."""
+    return [(pv, k, o, p) for x, p in data_use(r)[0].items() for pv, k, o in granted.get(x, [])]
+
+
+def readonly_writes(role=None, only=None):
     """Rule 17, read-only roles that can write (role=None: every role but admin and BUILD roles).
     name heuristic: READ_ROLE_PATTERNS -> any write/own privilege; _EXECUTE -> write/own; _WRITE -> OWNERSHIP.
     behaviour heuristic: share of data objects it can only read >= READ_SHARE over >= READ_MIN_OBJECTS objects,
@@ -2480,15 +2867,18 @@ def readonly_writes(role=None):
     read_only, objects (counts for behaviour)."""
     out = []
     for r in [role] if role else roles:
-        if r in ADMIN or r == "PUBLIC" or is_build(r):
+        if r in ADMIN or r == "PUBLIC" or is_build(r) or not inside(only, r, "17"):
             continue
-        eff, cls = data_use(r)
+        cls = data_use(r)[1]
         bad = {"own"} if r.upper().endswith("_WRITE") else \
             {"write", "own"} if READ_ROLE_PATTERNS.search(r) or r.upper().endswith("_EXECUTE") else set()
-        by_name = {(pv, o): p for pv, k, o, p in eff if priv_class(pv, k) in bad}
         ro = [o for o, c in cls.items() if c == {"read"}]
         stray = {o for o, c in cls.items() if c & {"write", "own"}}
         beh = len(cls) >= READ_MIN_OBJECTS and stray and len(ro) / len(cls) >= READ_SHARE
+        if not (bad or beh):
+            continue
+        eff = effective(r)
+        by_name = {(pv, o): p for pv, k, o, p in eff if priv_class(pv, k) in bad}
         by_beh = {(pv, o): p for pv, k, o, p in eff if beh and o in stray and priv_class(pv, k) in ("write", "own")}
         per = {}
         for (pv, o), p in (by_name | by_beh).items():
@@ -2502,7 +2892,16 @@ def readonly_writes(role=None):
     return out
 
 
-def rules_model():
+SCOPED = {"3", "5", "7", "10", "11", "14", "17", "23"}  # rules whose findings(only) check only the names in only
+GROW = {"14", "17", "23"}  # of those, the ones a removed grant can start (a longer shortest chain, a higher read share)
+
+
+def inside(only, name, num):
+    """findings(only): rule num checks name (only=None: everyone)."""
+    return only is None or name in only.get(num, ())
+
+
+def rules_model(only=None):
     """Rules 1-4, 13, 14: the layered role model."""
     out = []
     for role, user in user_grants:
@@ -2520,7 +2919,7 @@ def rules_model():
     consumers = [(g, h, True) for g, h in roles_of.items()] + [(g, h, False) for g, h in holds.items()
                                                                if role_kind(g) != "technical"]
     for g, direct, u in consumers:  # one finding per (consumer, held role, READ role), shortest path
-        for d in direct:
+        for d in direct if inside(only, g, "3") else ():
             best = bfs([d])
             for t in dict.fromkeys(direct):
                 p = best.get(t)
@@ -2534,14 +2933,20 @@ def rules_model():
                 if role_kind(g) != "technical" and not is_build(g):
                     out.append(find("4", g, r, [g, r], [role_edge(g, r)]))
     for r in roles:  # 13; technical roles without holders are the model's unused capability roles, by design
-        if role_kind(r) in ("functional", "group") and r != "PUBLIC" and not users_of.get(r) and not held_by.get(r):
+        if (role_kind(r) in ("functional", "group") and r != "PUBLIC" and not is_builtin(r) and not users_of.get(r)
+                and not held_by.get(r)):
             kids = sorted(holds.get(r, []))
             out.append(find("13", r, f"holds {plural(len(kids), 'role')}" + (f": {', '.join(kids)}" if kids else "")
                             + f"; {plural(len(granted.get(r, [])), 'privilege')} of its own", [r],
                             fix=(f"Remove in the infrastructure-as-code repo: role {r}", f"DROP ROLE {sql_name(r)};")))
-    for r in sorted(users_of):  # 14: per role granted to users, the deepest grant it leads to
-        deep = max(((len(p), pv, o, p, is_data(k)) for x, p in bfs([r]).items() for pv, k, o in granted.get(x, [])),
-                   default=None, key=lambda t: (t[0], t[4]))
+    for r in sorted(x for x in users_of if inside(only, x, "14")):  # 14: per role granted to users, the deepest grant
+        deep = None  # the first grant of the longest chain, a data object first; shorter chains can't win
+        for x, p in sorted(bfs([r]).items(), key=lambda t: -len(t[1])):
+            if deep and len(p) < deep[0]:
+                break
+            for pv, k, o in granted.get(x, []):
+                if deep is None or (len(p), is_data(k)) > (deep[0], deep[4]):
+                    deep = (len(p), pv, o, p, is_data(k))
         if deep and deep[0] > MAX_DEPTH_RULE:
             out.append(find("14", r, f"{deep[0]} roles deep to {deep[1]} on {deep[2]}; held by "
                                      f"{len(users_of[r])} users", deep[3] + [deep[2]], edge=(deep[3][-1], deep[2], deep[1]),
@@ -2549,20 +2954,20 @@ def rules_model():
     return out
 
 
-def rules_admin():
+def rules_admin(only=None):
     """Rules 5, 9, 12: admin roles, PUBLIC, admin default roles."""
     out = []
     for u in users:  # 5: one finding per (person, admin role), shortest path; one below another admin role is not
-        if not is_service(u):
+        if not is_service(u) and inside(only, u, "5"):
             for r, ps in group((p[-1], p) for p in admin_paths(u, user=True)).items():
                 p = ps[0]
                 if not ADMIN & set(p[1:-1]):
                     out.append(find("5", u, r, p, [role_edge(p[-2], p[-1], len(p) == 2)], paths=ps, user=True))
     for r, pv, k, o in privs:
-        if r == "PUBLIC" and not (k == "ACCOUNT" and pv in DEFAULT_PUBLIC):
+        if r == "PUBLIC" and not (k == "ACCOUNT" and pv in DEFAULT_PUBLIC) and not is_builtin(o):
             out.append(find("9", r, f"{pv} on {k} {o}", [r, o], [priv_edge(r, pv, k, o)]))
     for child, parent in role_grants:
-        if parent == "PUBLIC" and not child.startswith("SNOWFLAKE."):
+        if parent == "PUBLIC" and not is_builtin(child):
             out.append(find("9", parent, f"role {child}", [parent, child], [role_edge(parent, child)]))
     for u in users:
         dr = (profile.get(u) or {}).get("DEFAULT_ROLE")
@@ -2573,7 +2978,7 @@ def rules_admin():
     return out
 
 
-def rules_sensitive():
+def rules_sensitive(only=None):
     """Rules 6, 7, 10, 11, 15: sensitive data."""
     out, s = [], sensitive()
     for o in s:  # 6
@@ -2588,7 +2993,7 @@ def rules_sensitive():
                                      f"ALTER {k} {sql_obj(o)} MODIFY COLUMN {sql_name(c)} SET MASKING POLICY <policy>;")))
     read_by = {o: readers(o) for o in s}
     for u in users:  # 7
-        if is_service(u):
+        if is_service(u) or not inside(only, u, "7"):
             continue
         objs = sorted(o for o, us in read_by.items() if u in us)
         if objs and (is_dormant(u) or is_disabled(u)):
@@ -2604,14 +3009,14 @@ def rules_sensitive():
                     writes.setdefault(u, {}).setdefault(o, []).append((pv, k, r))
     for u in users:  # 10: one finding per person; the fix revokes every write grant it uses, on the holder
         got = writes.get(u)
-        if got and not is_service(u):
+        if got and not is_service(u) and inside(only, u, "10"):
             v = {o: sorted({pv for pv, _, _ in x}) for o, x in sorted(got.items())}
             edges = [priv_edge(r, pv, k, o) for o, x in sorted(got.items()) for pv, k, r in x]
             o0, best = next(iter(v)), best_paths(u, True)
             out.append(find("10", u, "; ".join(f"{', '.join(pv)} on {o}" for o, pv in v.items()),
                             min((best[r] for _, _, r in got[o0]), key=len) + [o0], edges, user=True))
     for r in roles:  # 11: the fix cuts every held role (and own grant) that leads to sensitive data
-        if role_kind(r) == "group":
+        if role_kind(r) == "group" and inside(only, r, "11"):
             got = reads([r])
             objs = sorted(set(got) & set(s))
             if objs:
@@ -2644,11 +3049,11 @@ def rules_users():
     return out
 
 
-def rule17():
+def rule17(only=None):
     """Rule 17: read-only roles that can write. An inherited write on a role flagged by its name only, that is not
     mostly read either, gets a review hint instead of SQL (the name may just be a team name)."""
     out = []
-    for x in cached("ro", readonly_writes):
+    for x in cached("ro", readonly_writes) if only is None else readonly_writes(only=only):
         r, p = x["role"], x["path"]
         mostly = f"mostly read: {x['read_only']} of {x['objects']} objects read-only; " if x["how"] != "name" else ""
         src = f"via {x['holder']} (inherited)" if x["inherited"] else "direct"
@@ -2765,21 +3170,23 @@ def rule22():
     return out
 
 
-def rule23():
+def rule23(only=None):
     """Rule 23: CREATE ... on a schema reached by a read-only role (rule 17's name or behaviour heuristic; behaviour
     here: share of data objects it only reads >= READ_SHARE over >= READ_MIN_OBJECTS objects)."""
     out = []
     for r in roles:
-        if r in ADMIN or r == "PUBLIC" or is_build(r):
+        if r in ADMIN or r == "PUBLIC" or is_build(r) or not inside(only, r, "23"):
             continue
-        eff, cls = data_use(r)
-        made = {}
-        for pv, k, o, p in eff:
-            if k == "SCHEMA" and pv.startswith("CREATE "):
-                made.setdefault(o, []).append((pv, p))
+        cls = data_use(r)[1]
         name = bool(READ_ROLE_PATTERNS.search(r))
         beh = len(cls) >= READ_MIN_OBJECTS and sum(c == {"read"} for c in cls.values()) / max(len(cls), 1) >= READ_SHARE
-        if not made or not (name or beh):
+        if not (name or beh):
+            continue
+        made = {}
+        for pv, k, o, p in effective(r):
+            if k == "SCHEMA" and pv.startswith("CREATE "):
+                made.setdefault(o, []).append((pv, p))
+        if not made:
             continue
         how = "both" if name and beh else "name" if name else "behaviour"
         for o, v in sorted(made.items()):
@@ -2790,11 +3197,12 @@ def rule23():
     return out
 
 
-def findings():
+def findings(only=None):
     """Every rule finding, in rule order: dict(num, grantee, detail, path, edges [grant edges the fix removes], edge
-    (see find()), fix, paths, affects, impact)."""
-    out = (rules_model() + rules_admin() + rules_sensitive() + rules_users() + rule17() + rule18() + rule19()
-           + rules_operate() + rule22() + rule23())
+    (see find()), fix, paths, affects, impact). only: {rule: users and roles it checks} for the per-grantee rules
+    (SCOPED), the other rules check everything (what_if: only what a change can touch)."""
+    out = (rules_model(only) + rules_admin(only) + rules_sensitive(only) + rules_users() + rule17(only) + rule18()
+           + rule19() + rules_operate() + rule22() + rule23(only))
     return sorted(out, key=lambda f: int(f["num"]))
 
 

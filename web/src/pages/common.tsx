@@ -4,6 +4,7 @@ import type { ApiFail, State } from "../api/client";
 import type { Banner as B, DataView, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
 import { Banner, Card, DataTable, FindingList, Graph, PathText, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
+import { changeOfPath, WhatIfButton } from "./Whatif";
 
 export function col<R>(key: string, label: string, get: Column<R>["get"], more: Partial<Column<R>> = {}): Column<R> {
   return { key, label, get, ...more };
@@ -111,7 +112,7 @@ export function GraphCard({ g, title, refs }: { g: G | null; title?: string; ref
         </div>
       )}
       {g.note && <p className="ae-graph-note">{g.note}</p>}
-      <Graph graph={g} theme={c.theme} onNodeClick={o.node} />
+      <Graph graph={g} theme={c.theme} onNodeClick={o.node} onRules={(id) => c.nav("rules", { grantee: id.replace(/ \(user\)$/, "") })} />
     </Card>
   );
 }
@@ -130,6 +131,23 @@ export function NameLink({ id, refs, label }: { id: string; refs: Refs; label?: 
   return <button className={`ae-link ae-k-${k}`} onClick={() => o.open(id)} title={id}>{label ?? id}</button>;
 }
 
+const SCOPE: [string, string][] = [["on", "object"], ["priv", "privilege"]]; // schema / otype: the graph card shows them
+
+/** The filters this page carries in its URL, as chips: × removes one. Keeps a picked object or schema from silently
+ * narrowing other tabs. */
+export function ScopeChips() {
+  const c = useApp();
+  const on = SCOPE.filter(([k]) => c.params[k]);
+  if (!on.length) return null;
+  return (
+    <div className="ae-graph-open">
+      Showing only
+      {on.map(([k, w]) => <button key={k} className="ae-chip ae-chip-plain" onClick={() => c.set({ [k]: null })}>{w} {c.params[k]} ×</button>)}
+      {on.length > 1 && <button className="ae-link" onClick={() => c.set(Object.fromEntries(on.map(([k]) => [k, null])))}>clear all</button>}
+    </div>
+  );
+}
+
 /** Rule findings of a user, role or object: compact "High 2 · Medium 1" that opens the severity tabs in place. */
 export function Findings({ list, refs }: { list: Finding[]; total?: number; refs: Refs }) {
   const c = useApp();
@@ -137,7 +155,8 @@ export function Findings({ list, refs }: { list: Finding[]; total?: number; refs
   if (!list.length) return null;
   return (
     <section className="ae-card ae-card-tight">
-      <FindingList list={list} compact kinds={refs.kinds} onOpen={o.open} onRule={(num) => c.nav("rules", { rule: num })} />
+      <FindingList list={list} compact kinds={refs.kinds} onOpen={o.open} onRule={(num) => c.nav("rules", { rule: num })}
+        whatIf={(p) => { const ch = changeOfPath(p, refs.kinds); return ch && <WhatIfButton ch={[ch]} />; }} />
     </section>
   );
 }

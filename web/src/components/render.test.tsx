@@ -35,6 +35,8 @@ describe("render", () => {
     expect(x("U") < x("F") && x("F") < x("T") && x("T") < x("S.C.T1")).toBe(true);
     const lane1 = ["F", "G"].map((id) => l.nodes.get(id)!).sort((a, b) => a.y - b.y);
     expect(lane1[0].y + lane1[0].h).toBeLessThanOrEqual(lane1[1].y);
+    for (const pts of l.routes.values()) expect(pts.every((p, i) => !i || p.x >= pts[i - 1].x)).toBe(true); // left to right
+    expect(l.routes.size).toBe(g.edges.filter((e) => !e.back).length);
   });
 
   it("renders the privilege tabs and switches tab", async () => {

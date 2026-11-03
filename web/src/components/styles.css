@@ -104,23 +104,30 @@ button.ae-path-name:hover { text-decoration: underline; }
 
 /* graph */
 .ae-graph-wrap { min-width: 0; margin: 0 0 12px; }
-.ae-graph { width: 100%; border: 1px solid var(--ae-line); border-radius: 8px; overflow: hidden; }
+.ae-graph { position: relative; width: 100%; border: 1px solid var(--ae-line); border-radius: 8px; overflow: hidden; }
 .ae-graph .react-flow__node { cursor: pointer; }
 .ae-graph .react-flow__node-lane { cursor: default; pointer-events: none; }
 .ae-graph .react-flow__controls button { background: var(--ae-panel); color: var(--ae-ink); border-color: var(--ae-line); fill: var(--ae-ink); }
-.ae-lane { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; text-align: center; border-bottom: 1px dashed; padding-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ae-lane { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; text-align: center; border-bottom: 2px solid;
+  padding-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ae-node { position: relative; width: 100%; height: 100%; padding: 7px 10px; font-family: var(--ae-mono); font-size: 12px;
   display: flex; flex-direction: column; justify-content: center; text-align: center; line-height: 16px; }
 .ae-node-user { padding: 7px 16px; }
 .ae-node-label { position: relative; font-weight: 500; }
+.ae-node { transition: opacity .15s; }
+.ae-node-box .ae-node-badge { font-weight: 500; }
 .ae-node-sub { font-size: 10.5px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
 .ae-node-badge { font-size: 10px; line-height: 14px; position: relative; }
-.ae-node-rules { position: absolute; top: -8px; right: -6px; display: flex; gap: 2px; }
+.ae-node-rules { position: absolute; top: -10px; right: -6px; font-size: 10px; line-height: 14px; padding: 0 6px; cursor: pointer; white-space: nowrap; }
 .ae-node-rules span, .ae-rule-dot { font-size: 10px; line-height: 16px; min-width: 16px; height: 16px; border-radius: 999px; padding: 0 4px; text-align: center; color: #fff; display: inline-block; }
 .ae-dbrole { position: absolute; inset: 0; width: 100%; height: 100%; }
 .ae-lock { vertical-align: -1px; margin-right: 4px; display: inline-block; }
 .ae-handle { opacity: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; border: 0; }
-.ae-edge-label { position: absolute; font-family: var(--ae-mono); font-size: 10px; border: 1px solid; border-radius: 999px; padding: 0 5px; pointer-events: none; }
+.ae-edge-label { position: absolute; font-family: var(--ae-mono); font-size: 10.5px; line-height: 15px; border: 1px solid; border-radius: 999px; padding: 0 6px; pointer-events: none; font-variant-numeric: tabular-nums; }
+.ae-graph-tip { position: absolute; z-index: 10; max-width: 290px; padding: 7px 10px; border-radius: 6px; font-size: 12px; line-height: 1.4;
+  pointer-events: none; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+.ae-graph-tip-head { font-weight: 600; }
+.ae-graph-hint { position: absolute; left: 10px; bottom: 6px; font-size: 11px; pointer-events: none; }
 .ae-graph-open { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--ae-muted); margin-top: 6px; }
 .ae-graph-note { font-size: 12px; color: var(--ae-muted); margin-top: 6px; }
 
@@ -206,3 +213,8 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-use-n { font-family: var(--ae-mono); font-size: 12px; text-align: right; }
 @media (max-width: 800px) { .ae-use { grid-template-columns: 1fr 1fr; } }
 .ae-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--ae-muted); border: 1px solid var(--ae-line); border-radius: 4px; padding: 0 4px; margin-left: 4px; vertical-align: 1px; }
+
+/* what if */
+.ae-fd-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
+.ae-wi-user { padding: 4px 0 8px 20px; }
+.ae-wi-user h4 { margin: 8px 0 4px; font-size: 13px; }

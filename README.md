@@ -17,6 +17,8 @@ Key: solid = calls · dashed = data moves · numbers = order.
 - **Every path, at any depth.** It walks the whole role hierarchy, database roles (`DB.ROLE`) included, so access inherited ten roles deep shows up next to direct grants, each with its full chain (`ANALYST_01 > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ > TABLE`).
 - **Who reads sensitive data.** It uses classification tags and masking or row access policies to show which columns each role sees in clear.
 - **Rule checks.** 23 checks of the role model, such as a technical role granted to a person, an admin role held by a user, dormant users or PUBLIC grants. Each finding comes with the fix as infrastructure-as-code text and the matching SQL.
+- **What if.** Pick grants to take away (a role from a user or role, a privilege, a whole role, or everything on PUBLIC) and see who loses what, who keeps it another way, which objects and roles are left behind, and which findings go away or appear. It is a simulation: it prints the REVOKE text for your infrastructure as code and never runs it.
+- **Readable graphs.** One lane per depth from the user, many database roles of one database folded into one box, huge boxes grouped by schema and type, hover explains each line in words, and each box shows its worst rule finding ("High · 3", click opens them). Snowflake's own built-in grants that every user gets through PUBLIC are one folded box, not findings.
 - **Read-only.** It only reads from Snowflake. It never runs GRANT, REVOKE, CREATE or ALTER and writes nothing to Snowflake. Locally it keeps a copy of what it read in `.cache/` (git-ignored) for a day; no passwords.
 - **Works with what you have.** It shows the whole account if your role can read it, and only your own access if not (My access).
 
@@ -30,6 +32,7 @@ Key: solid = calls · dashed = data moves · numbers = order.
 | Sensitive data | Which objects are sensitive, who reads them, and which columns are unmasked? Two roles compared. |
 | Rule checks | Where does the role model break its own rules? Severity, findings and fixes. |
 | Access review | One row per user and object in a database, with the path, exported as CSV with Reviewer and Keep/Revoke columns. |
+| What if | If we revoke this, who loses what, and what is left behind? Start here or from "What if revoked?" on role pages, paths, findings and Can they?. |
 
 Find (top bar) opens any user, role or object. Every view is a link (`?page=role&name=F_ANALYST`), so you can share it.
 
@@ -96,6 +99,7 @@ SNOWFLAKE_WAREHOUSE=<WH>
 | `SOURCE` | `direct` (`objects` if `ACCESS_SNAPSHOT` is set) | `direct` or `objects`, see above |
 | `ACCESS_SNAPSHOT` | `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA` | `<DB>.<SCHEMA>` of the `TBL_ACCESS_` tables; `SOURCE=objects` without any of these is an error |
 | `CACHE_HOURS` | `24` | Hours the local copy in `.cache/` is used; `0` = memory only |
+| `BUILTIN` | `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*` | Names of Snowflake's built-in roles and objects, folded under PUBLIC and left out of rule checks (`?builtin=1` shows them) |
 | `APP`, `WEB_PORT`, `STREAMLIT_PORT` | `web`, `8000`, `8501` | What `run.py` starts, and where |
 
 More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, ...): README.html.

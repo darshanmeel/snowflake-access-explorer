@@ -46,6 +46,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Technical roles: `<TECH><DB>_OWNER`, and `<TECH><DB>_<SCHEMA>_OWNER|READ|WRITE|EXECUTE` per schema.
 - Default links: schema OWNER -> DB OWNER, READ -> WRITE. Cross-schema and cross-database links exist.
 - Never parse role names to get the DB or schema (names contain underscores). Use grant data.
+- Snowflake built-ins (`BUILTIN` patterns: SNOWFLAKE.*, system compute pools, ...) reached via PUBLIC are hidden from walks,
+  counts and rules (`a.hidden`), drawn as one fold box under PUBLIC; `builtin=1` shows them. Never rule 9 / 13 findings.
+- What if (`a.what_if`): simulation only, restores every lookup afterwards; prints REVOKE / IaC text, never runs it.
 - Admin roles `ACCOUNTADMIN`, `SECURITYADMIN`, `SYSADMIN`, `USERADMIN`, `ORGADMIN`: hide the "every role -> SYSADMIN"
   hierarchy. Show any user or role that holds an admin role in red, with its path.
   Show account-level privileges (MANAGE GRANTS, CREATE DATABASE, ...) in red too.

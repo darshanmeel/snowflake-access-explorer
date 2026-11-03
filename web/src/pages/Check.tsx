@@ -3,6 +3,7 @@ import type { CheckPage, ListItem } from "../api/types";
 import { Banner, Card, DataTable, KpiRow } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Usage } from "./common";
+import { changeOfPath, WhatIfButton } from "./Whatif";
 
 export function CheckPageView() {
   const c = useApp();
@@ -35,7 +36,8 @@ export function CheckPageView() {
                 <DataTable csv="check_paths.csv" rows={d.paths}
                   columns={[col("d", "Depth", (r: CheckPage["paths"][number]) => r.depth, { num: true }),
                     col("h", "Held by", (r: CheckPage["paths"][number]) => r.holder, { render: (r: CheckPage["paths"][number]) => <NameLink id={r.holder} refs={d.refs} /> }),
-                    col("w", "How", (r: CheckPage["paths"][number]) => r.how, { wrap: "wrap" }), pathCol<CheckPage["paths"][number]>(d.refs)]} />
+                    col("w", "How", (r: CheckPage["paths"][number]) => r.how, { wrap: "wrap" }), pathCol<CheckPage["paths"][number]>(d.refs),
+                    col("w", "", () => "", { render: (r: CheckPage["paths"][number]) => { const ch = changeOfPath(r.path, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; } })]} />
               </Card>
             )}
             {d.owner.length > 0 && (
@@ -45,7 +47,7 @@ export function CheckPageView() {
             )}
             {d.choke.length > 0 && (
               <Card title="Where to cut" sub="Every path goes through one of these. Remove the link and the access is gone.">
-                {d.choke.map((r) => <NameLink key={r} id={r} refs={d.refs} />)}
+                {d.choke.map((r) => <div key={r} className="ae-fd-path"><NameLink id={r} refs={d.refs} /><WhatIfButton ch={[{ op: "drop_role", role: r }]} label="What if dropped?" /></div>)}
               </Card>
             )}
             {!a.yes && d.closest && (

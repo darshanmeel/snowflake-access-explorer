@@ -4,6 +4,7 @@ import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
 import { Banner, Card, DataTable, Graph, KpiRow, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog } from "./common";
+import { changeOfPath, WhatIfButton } from "./Whatif";
 
 type RW = RolePage["readonly_writes"][number];
 const CELL: Record<HoldCell, string> = { direct: "direct", inherited: "inherited", owner: "owner", lacks: "lacks" };
@@ -60,6 +61,11 @@ function HeldBy({ d }: { d: RolePage }) {
           col("d", "Depth", (r: HeldRow) => r.depth, { num: true }), col("n", "Paths", (r: HeldRow) => r.count, { num: true }),
           col("l", "If revoked", revokeText, { wrap: "nowrap", help: "Direct holder: what removing its own grant does. Others: the roles every path goes through." }),
           pathCol<HeldRow>(d.refs),
+          col("w", "", () => "", { wrap: "nowrap", render: (r: HeldRow) => {
+            const ch = r.direct ? (r.kind === "user" ? { op: "revoke_role_from_user" as const, role: d.role.name, user: r.id.replace(/ \(user\)$/, "") }
+              : { op: "revoke_role_from_role" as const, role: d.role.name, grantee: r.id }) : changeOfPath(r.path, d.refs.kinds);
+            return ch && <WhatIfButton ch={[ch]} label="What if?" />;
+          } }),
         ]} />
     </>
   );
@@ -75,7 +81,7 @@ export function RolePageView() {
   const [part, setPart] = useState("privs");
   return (
     <>
-      <Head title="Role" sub="Who holds this role, what it holds, and what it can reach." />
+      <Head title="Role" sub="Who holds this role, what it holds, and what it can reach." right={name && <WhatIfButton ch={[{ op: "drop_role", role: name }]} label="What if dropped?" />} />
       <Controls>
         <Pick label="Role" value={name} options={names} onPick={(v) => c.nav("role", { name: v })} />
         <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />

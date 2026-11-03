@@ -1,6 +1,6 @@
 // Rule findings, the same on every page: severity tabs, one group per rule (most people affected first), a sentence per
 // finding with its impact as a tag, and a Fix panel (path, infrastructure-as-code text, SQL; this app never runs it).
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { Finding, Severity } from "../api/types";
 import { PathText } from "./PathText";
 import { download, toCsv } from "./table";
@@ -29,7 +29,9 @@ function Copy({ text }: { text: string }) {
   return <button className="ae-btn ae-btn-s" onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1200); })}>{done ? "Copied" : "Copy"}</button>;
 }
 
-function Line({ f, kinds, onOpen }: { f: Finding; kinds: Record<string, string>; onOpen?: (id: string) => void }) {
+type WhatIfFn = (path: string[]) => ReactNode;
+
+function Line({ f, kinds, onOpen, whatIf }: { f: Finding; kinds: Record<string, string>; onOpen?: (id: string) => void; whatIf?: WhatIfFn }) {
   const [fix, setFix] = useState(false);
   const k = kinds[f.grantee] ?? f.kind;
   return (
@@ -42,7 +44,7 @@ function Line({ f, kinds, onOpen }: { f: Finding; kinds: Record<string, string>;
       </div>
       {fix && (
         <div className="ae-fd-panel">
-          {f.paths.map((p, i) => <div key={i}><PathText path={p} kinds={kinds} onOpen={onOpen} /></div>)}
+          {f.paths.map((p, i) => <div key={i} className="ae-fd-path"><PathText path={p} kinds={kinds} onOpen={onOpen} />{whatIf?.(p)}</div>)}
           {f.same_fix && <p className="ae-muted">Same fix as {f.same_fix}.</p>}
           {(f.iac || f.sql) && <p className="ae-muted">Text for your infrastructure as code. This app never runs it.</p>}
           {f.iac && <div className="ae-code-row"><pre className="ae-code">{f.iac}</pre><Copy text={f.iac} /></div>}
@@ -53,7 +55,7 @@ function Line({ f, kinds, onOpen }: { f: Finding; kinds: Record<string, string>;
   );
 }
 
-function Group({ g, open, kinds, onOpen, onRule }: { g: RuleGroup; open: boolean; kinds: Record<string, string>; onOpen?: (id: string) => void; onRule?: (num: string) => void }) {
+function Group({ g, open, kinds, onOpen, onRule, whatIf }: { g: RuleGroup; open: boolean; kinds: Record<string, string>; onOpen?: (id: string) => void; onRule?: (num: string) => void; whatIf?: WhatIfFn }) {
   const [on, setOn] = useState(open);
   return (
     <div className={`ae-fg ae-sev-${g.severity}`}>
@@ -65,7 +67,7 @@ function Group({ g, open, kinds, onOpen, onRule }: { g: RuleGroup; open: boolean
       </button>
       {on && (
         <>
-          <ul className="ae-fd-list">{g.items.map((f, i) => <Line key={i} f={f} kinds={kinds} onOpen={onOpen} />)}</ul>
+          <ul className="ae-fd-list">{g.items.map((f, i) => <Line key={i} f={f} kinds={kinds} onOpen={onOpen} whatIf={whatIf} />)}</ul>
           {onRule && <button className="ae-link ae-fg-all" onClick={() => onRule(g.num)}>Rule {g.num} on the Rule checks page</button>}
         </>
       )}
@@ -80,9 +82,10 @@ export interface FindingsProps {
   onRule?: (num: string) => void;
   compact?: boolean; // entity pages: one line "High 2 · Medium 1" that opens the tabs in place
   csvName?: string;
+  whatIf?: WhatIfFn; // a "What if revoked?" control for a path in the Fix panel
 }
 
-export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, csvName = "findings" }: FindingsProps) {
+export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, csvName = "findings", whatIf }: FindingsProps) {
   const [tab, setTab] = useState<Severity | "All">(() => firstTab(list));
   const [open, setOpen] = useState(!compact);
   const [area, setArea] = useState("");
@@ -135,7 +138,7 @@ export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, cs
         </div>
       )}
       {hidden > 0 && <p className="ae-muted ae-fd-hidden">{hidden} hidden: {why}</p>}
-      {groups.map((g, i) => <Group key={`${tab}:${g.num}`} g={g} open={groups.length === 1 || (i === 0 && g.items.length <= 5)} kinds={kinds} onOpen={onOpen} onRule={onRule} />)}
+      {groups.map((g, i) => <Group key={`${tab}:${g.num}`} g={g} open={groups.length === 1 || (i === 0 && g.items.length <= 5)} kinds={kinds} onOpen={onOpen} onRule={onRule} whatIf={whatIf} />)}
       {!groups.length && <p className="ae-muted">Nothing here.</p>}
     </div>
   );
