@@ -3,6 +3,8 @@
     python sf.py "select current_user(), current_role()"
     python sf.py -f query.sql
 
+Login: key pair when SNOWFLAKE_PRIVATE_KEY_FILE is set, else SSO in the browser. No other method (no password).
+
 In Python:
     from sf import connect, run
     rows = run("select 1")

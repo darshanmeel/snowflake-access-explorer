@@ -66,7 +66,8 @@ flowchart LR
 ```
 Key: solid = calls · dashed = data moves · numbers = order.
 
-- Browser login is used when `SNOWFLAKE_PRIVATE_KEY_FILE` is not set; no password or key is stored.
+- Two logins only: key pair when `SNOWFLAKE_PRIVATE_KEY_FILE` is set, else browser SSO. Passwords are not supported;
+  nothing is stored in the repo.
 - One login per new connection (app load, Rebuild, My access, each `run_sql.py` file). To reuse it for ~4 h, an admin runs
   `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;` once (Linux also: `pip install "snowflake-connector-python[secure-local-storage]"`).
 - The login tab opens on the machine running Streamlit: run the app on your own machine. A shared server needs key pair
