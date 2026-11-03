@@ -80,42 +80,41 @@ function Find({ view, onOpen }: { view: string; onOpen: (i: FindItem) => void })
   );
 }
 
-function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page) => void }) {
+function Side({ meta, page, nav, reload }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void; reload: () => void }) {
+  const pr = meta.protection;
+  const what = meta.mode === "fake" ? "Demo data" : meta.source === "direct" ? "Snowflake" : "Snapshot";
+  const stale = meta.mode !== "fake" && meta.run?.old;
   return (
     <aside className="side">
       <nav>
         {meta.pages.map((p) => (
           <button key={p.key} className={p.key === page ? "on" : ""} onClick={() => nav(p.key)}>
-            <span>{p.label}</span>{p.badge != null && <span className="ae-tab-count">{p.badge}</span>}
+            <span>{p.label}</span>
+            {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`}>{p.severity ? `${p.severity} ${p.badge}` : p.badge}</span>}
           </button>
         ))}
       </nav>
       {meta.run && (
-        <>
-          <h4>Data</h4>
-          <p>{meta.mode === "fake" ? "Demo data (FAKE=1)" : meta.source === "direct" ? "Read directly from Snowflake" : "Snapshot tables"}</p>
-          {meta.fetched_at && <p className="ae-muted">Data from {meta.fetched_at}</p>}
-          <p className={meta.run.old ? "ae-muted" : undefined}>{meta.run.when}</p>
-          {meta.run.old && <p>The snapshot is older than a day.</p>}
-        </>
+        <p className="side-data" title={meta.fetched_at ? `Read ${meta.fetched_at}` : undefined}>
+          {stale && <span className="ae-dot ae-dot-dormant" title="Older than a day: read Snowflake again for fresh data" />}
+          {what} · {meta.run.when}
+          <button className="side-reload" onClick={reload} title={meta.mode === "fake" ? "Reload" : "Read Snowflake again"}>↻</button>
+        </p>
       )}
       {meta.notes.length > 0 && (
-        <>
-          <h4>Incomplete</h4>
+        <details className="side-notes">
+          <summary className="ae-warn">Incomplete: {meta.notes.length} source{meta.notes.length === 1 ? "" : "s"}</summary>
           <p className="ae-muted">Some data could not be read, so some answers may be missing things.</p>
-          {meta.notes.map((n) => (
-            <details key={n.key}>
-              <summary>{n.title}</summary>
-              <p>{n.meaning}</p>
-              {n.raw && <p className="ae-muted">{n.raw}</p>}
-            </details>
-          ))}
-        </>
+          {meta.notes.map((n) => <p key={n.key}><strong>{n.title}</strong> {n.meaning}{n.raw && <span className="ae-muted"> {n.raw}</span>}</p>)}
+        </details>
       )}
-      {meta.governance && Object.keys(meta.governance).length > 0 && (
+      {pr && (
         <>
-          <h4>Governance</h4>
-          {Object.entries(meta.governance).map(([k, v]) => <p key={k}><strong>{k}:</strong> {v}</p>)}
+          <h4>Protection</h4>
+          {pr.unmasked > 0 && <button className="side-link ae-bad" onClick={() => nav("rules", { rule: "6" })}>{pr.unmasked} sensitive column{pr.unmasked === 1 ? "" : "s"} not masked</button>}
+          <button className="side-link" onClick={() => nav("sensitive")}>{pr.row_tables} table{pr.row_tables === 1 ? "" : "s"} with row policies</button>
+          <button className="side-link" onClick={() => nav("sensitive")}>{pr.masked_columns} masked column{pr.masked_columns === 1 ? "" : "s"}</button>
+          <button className="side-link" onClick={() => nav("sensitive")}>{pr.tagged_objects} tagged object{pr.tagged_objects === 1 ? "" : "s"}</button>
         </>
       )}
     </aside>
@@ -175,12 +174,11 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             <button className={loc.mine ? "on" : ""} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>
           </div>
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
-          {!loc.mine && <button className="ae-btn" onClick={reload} title="Reads Snowflake again; the data is otherwise kept for a day">Read Snowflake again</button>}
           {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
           <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           {busy && <span className="ae-muted">{busy}</span>}
         </header>
-        {meta ? <Side meta={meta} page={loc.page} nav={(p) => nav(p, {})} /> : <aside className="side" />}
+        {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} reload={reload} /> : <aside className="side" />}
         <main className="main">
           {m.error && <ErrorBox e={m.error} />}
           {!meta && !m.error && <p className="ae-muted">Loading…</p>}

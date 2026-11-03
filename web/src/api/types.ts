@@ -3,7 +3,7 @@
 export type View = "shared" | "mine";
 export type Mode = "fake" | "snowflake";
 export type Source = "fake" | "objects" | "direct";
-export type Severity = "High" | "Medium" | "Low";
+export type Severity = "Critical" | "High" | "Medium" | "Low";
 export type Tone = "info" | "warn" | "bad";
 
 /** Kinds of users, roles and objects; the last five are combined graph boxes. */
@@ -192,7 +192,7 @@ export interface Meta {
   sources: Record<string, string>;
   notes: Note[];
   mine: MineState;
-  pages: { key: Page; label: string; badge: number | null }[];
+  pages: { key: Page; label: string; badge: number | null; severity?: Severity | null }[]; // rules: count of the worst severity
   default_user: string;
   prefixes: { func: string; tech: string };
   admin_roles: string[];
@@ -202,6 +202,7 @@ export interface Meta {
   sensitive_tags: string;
   rules: RuleInfo[];
   governance: Record<string, string> | null;
+  protection: { row_tables: number; masked_columns: number; tagged_objects: number; unmasked: number } | null;
   tokens: { light: ThemeTokens; dark: ThemeTokens };
   help: Record<string, string>;
   type_icon: Record<string, [string, string]>;
@@ -277,13 +278,21 @@ export interface Account {
   public: string[];
 }
 
-export interface FindingLine {
+/** One rule finding, the same shape on every page (server.finding). */
+export interface Finding {
   num: string;
-  severity: Severity;
   title: string;
+  severity: Severity;
+  area: string;
   grantee: string;
   kind: NodeKind;
-  details: string[];
+  what: string; // the role, object or privilege involved
+  impact: { text: string; tone: "ok" | "warn" | "bad" } | null;
+  people: string[]; // users affected: the grantee if a user, else those who lose access when it is fixed
+  paths: Path[];
+  iac: string;
+  sql: string;
+  same_fix: string;
 }
 
 export type RowsState = "all" | "filtered" | "none" | "unknown";
@@ -318,8 +327,13 @@ export interface UsageCard {
   days: number;
   source: string;
   readable: boolean;
-  rows: { kind: string; name: string; queries: number; last_used: string }[];
+  roles: { role: string; kind: NodeKind; default: boolean; status: "used" | "secondary" | "unused"; queries: number;
+    last_used: string | null; takes: number | null }[]; // takes: objects the user loses if this unused role goes
+  warehouses: { name: string; queries: number; last_used: string }[];
 }
+
+/** Role page: users holding the role who used it in the query history. */
+export interface RoleUsage { holders: number; used: number; unused: string[] }
 
 // ---------- pages ----------
 
@@ -354,7 +368,7 @@ export interface UserPage {
     privileges: string[];
   };
   banners: Banner[];
-  findings: FindingLine[];
+  findings: Finding[];
   findings_total: number;
   kpis: {
     privileges: number;
@@ -428,8 +442,9 @@ export interface RolePage {
   };
   scope_kpis: { direct: number; effective: number; objects: number; holders: number; sensitive: number } | null;
   banners: Banner[];
-  findings: FindingLine[];
+  findings: Finding[];
   findings_total: number;
+  usage: RoleUsage;
   readonly_writes: {
     object: string;
     privileges: string[];
@@ -595,6 +610,7 @@ export interface SensitivePage {
   view: View;
   state: "ok" | "mine" | "unavailable" | "no_tags" | "none_sensitive";
   governance: Record<string, string> | null;
+  protection: { row_tables: number; masked_columns: number; tagged_objects: number; unmasked: number } | null;
   filters: { tag: string; db: string; people: boolean; tags: string[]; dbs: string[] };
   kpis: {
     objects: number;
@@ -638,23 +654,6 @@ export interface SensitivePage {
   refs: Refs;
 }
 
-export interface FindingRow {
-  num: string;
-  title: string;
-  severity: Severity;
-  why: string;
-  grantees: { id: string; kind: NodeKind }[];
-  detail: string;
-  more: number;
-  paths: Path[];
-  edge_cls: EdgeCls | "";
-  iac: string;
-  sql: string;
-  affects: number | null;
-  impact: string;
-  same_fix: string;
-}
-
 export interface AdminPerson {
   user: string;
   service: boolean;
@@ -671,7 +670,7 @@ export interface RulesPage {
   filters: { grantee: string; sev: Severity | "Passing" | ""; rule: string };
   counts: Record<Severity | "Passing", number>;
   per_rule: Record<string, number>;
-  findings: FindingRow[];
+  findings: Finding[];
   total: number;
   rows_unknown: string[];
   admins: AdminPerson[];

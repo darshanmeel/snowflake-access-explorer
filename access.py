@@ -2417,20 +2417,21 @@ def plural(n, word):
 def rule_rows():
     """Rule checks page. Row: rule ("1 ..."), num, title, why, severity (SEVERITY), grantee, kind, detail, path,
     paths, iac, sql (fix texts, "" when no SQL fits), affects (users who lose something when the fix is applied, net of
-    their other paths; None when the fix revokes nothing), impact (affects as text: "3 users lose it", "5 readers
+    their other paths; None when the fix revokes nothing), losers (those users), impact (affects as text: "3 users lose it", "5 readers
     exposed", "—"), same_fix (rule label of an earlier finding with the same fix), edges (grant edges the fix removes),
     edge ((from, to, privilege) the finding applies to, privilege None for a role link; None for an object finding)."""
     out, seen = [], {}
     for f in cached("findings", findings):
         iac, sql = f.get("fix") or fix_text(f["edges"])
         n, t = f["num"], RULES[f["num"]][0]
-        affects, impact = f.get("affects"), f.get("impact")
+        affects, impact, who = f.get("affects"), f.get("impact"), []
         if f["edges"]:
-            affects = len(set().union(*(lose(e) for e in f["edges"])))
+            who = sorted(set().union(*(lose(e) for e in f["edges"])))
+            affects = len(who)
             impact = plural(affects, "user") + " lose" + "s" * (affects == 1) + " access"
         out.append(dict(rule=f"{n} {t}", num=n, title=t, why=RULES[n][1], severity=SEVERITY.get(n, "Low"), edge=f["edge"],
                         grantee=f["grantee"], kind="user" if f["user"] else role_kind(f["grantee"]), detail=f["detail"], path=f["path"],
-                        paths=f.get("paths", [f["path"]]), edges=f["edges"], iac=iac, sql=sql, affects=affects,
+                        paths=f.get("paths", [f["path"]]), edges=f["edges"], iac=iac, sql=sql, affects=affects, losers=who,
                         impact=impact or "—", same_fix=seen.get(sql, "") if sql else ""))
         if sql:
             seen.setdefault(sql, f"Rule {n}")

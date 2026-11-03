@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, SensitiveReach, UserPage } from "../api/types";
-import { Banner, Card, DataTable, KpiRow, PrivilegeTabs } from "../components";
+
+type MR = UserPage["multi"]["rows"][number];
+import { Banner, Card, DataTable, KpiRow, PrivilegeTabs, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog, Usage } from "./common";
 
@@ -11,6 +14,7 @@ export function UserPage() {
   const s = useApi<UserPage>("user", { ...apiParams(c), name });
   const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
   const o = useOpen(s.data?.refs);
+  const [part, setPart] = useState("privs");
   return (
     <>
       <Head title={mine ? "My access" : "User"} sub="What this user can reach, and through which roles." />
@@ -51,35 +55,36 @@ export function UserPage() {
             <Findings list={d.findings} total={d.findings_total} refs={d.refs} />
             <GraphCard g={d.graph} refs={d.refs} />
             {d.capped.length > 0 && <Banner tone="warn" title="Some walks were cut" lines={[`Chains longer than the hop limit were stopped: ${d.capped.slice(0, 5).join(", ")}`]} />}
-            <Card title="Privileges" sub="Split by what they allow. Each tab has its own diagram.">
+            <Tabs active={part} onChange={setPart} tabs={[
+              { key: "privs", label: "Privileges", count: d.privileges.length },
+              ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),
+              ...(d.can_read?.length ? [{ key: "sees", label: "What they see", count: d.can_read.length }] : []),
+              ...(d.sensitive?.known && d.sensitive.rows.length ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }] : []),
+              { key: "usage", label: "Role usage", count: d.usage.roles.length },
+            ]} />
+            {part === "privs" && <Card title="Privileges" sub="One row per object: Read, Write or Own from the grants. Each tab has its own diagram.">
               <PrivilegeTabs rows={d.privileges.filter((r) => !r.hidden || r.tab === "usage" || r.tab === "account")} roles={d.roles} account={d.account}
                 refs={d.refs} tabs={d.tabs} theme={c.theme} csvName={`${u.name}_privileges`} onNodeClick={o.node} onOpen={o.open} />
-            </Card>
-            {d.multi.rows.length > 0 && (
+            </Card>}
+            {part === "multi" && (
               <Card title="Privileges reached more than one way" sub={`${d.multi.shown} of ${d.multi.total} paths`}>
                 <DataTable csv={`${u.name}_multi_paths.csv`} rows={d.multi.rows}
-                  columns={[col("p", "Privilege", (r: UserPage["multi"]["rows"][number]) => r.privilege), col("o", "Object", (r: UserPage["multi"]["rows"][number]) => r.object, { wrap: "wrap" }),
-                    col("d", "Depth", (r: UserPage["multi"]["rows"][number]) => r.depth, { num: true }), pathCol<UserPage["multi"]["rows"][number]>(d.refs)]} />
+                  columns={[col("p", "Privilege", (r: MR) => r.privilege, { wrap: "nowrap" }), col("o", "Object", (r: MR) => r.object, { wrap: "nowrap" }),
+                    col("d", "Depth", (r: MR) => r.depth, { num: true }), pathCol<MR>(d.refs)]} />
               </Card>
             )}
-            <DataViews views={d.can_read} title="What they see when they read" />
-            {d.sensitive && d.sensitive.known && d.sensitive.rows.length > 0 && (
-              <Card title="Sensitive data, by granted role" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
+            {part === "sees" && <DataViews views={d.can_read} title="What they see when they read" />}
+            {part === "sens" && d.sensitive && (
+              <Card title="Sensitive data they can see" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
                 <DataTable csv="sensitive_reach.csv" rows={d.sensitive.rows}
-                  columns={[col("o", "Object", (r: SensitiveReach) => r.object, { wrap: "wrap" }),
+                  columns={[col("o", "Object", (r: SensitiveReach) => r.object, { wrap: "nowrap" }),
                     col("c", "Columns", (r: SensitiveReach) => r.cols.join(", "), { wrap: "wrap" }),
-                    col("r", "Granted role", (r: SensitiveReach) => r.role, { render: (r: SensitiveReach) => <NameLink id={r.role} refs={d.refs} /> }),
+                    col("r", "Granted role", (r: SensitiveReach) => r.role, { wrap: "nowrap", render: (r: SensitiveReach) => <NameLink id={r.role} refs={d.refs} /> }),
                     col("t", "Sees", (r: SensitiveReach) => r.text, { wrap: "wrap" }),
                     pathCol<SensitiveReach>(d.refs)]} />
               </Card>
             )}
-            <Card title="Granted roles and how much they are used">
-              <DataTable csv={`${u.name}_granted_roles.csv`} rows={d.granted}
-                columns={[col("r", "Role", (r: UserPage["granted"][number]) => r.role, { render: (r: UserPage["granted"][number]) => <NameLink id={r.role} refs={d.refs} /> }),
-                  col("k", "Kind", (r: UserPage["granted"][number]) => r.kind), col("d", "Default", (r: UserPage["granted"][number]) => (r.default ? "yes" : "")),
-                  col("u", "Use", (r: UserPage["granted"][number]) => r.used_text)]} />
-            </Card>
-            <Usage u={d.usage} />
+            {part === "usage" && <Usage u={d.usage} refs={d.refs} />}
           </>
         );
       }}</Load>

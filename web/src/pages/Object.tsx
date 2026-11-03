@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { useApi } from "../api/client";
-import type { GranteeRow, ListItem, MatrixRow, ObjectPage } from "../api/types";
-import { Banner, Card, Chips, DataTable, KpiRow, Tabs } from "../components";
-import { apiParams, useApp } from "../ctx";
+import type { ListItem, MatrixRow, ObjectPage } from "../api/types";
+import { Banner, Card, Chips, DataTable, GroupedGrantees, KpiRow, Tabs } from "../components";
+import { apiParams, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, StateTag, Tog } from "./common";
 
 export function ObjectPageView() {
   const c = useApp();
   const name = c.params.name ?? "";
   const [tab, setTab] = useState("all");
+  const [part, setPart] = useState("who");
   const list = useApi<{ items: ListItem[] }>("list", { what: "objects", view: c.view, type: c.params.type });
   const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
   // no name: the server picks the first object of the type (as app.py)
   const s = useApi<ObjectPage>("object", { ...apiParams(c), name });
+  const op = useOpen(s.data?.refs);
   return (
     <>
       <Head title="Object" sub="Who can reach a table, view or other object, and how." />
@@ -44,7 +46,14 @@ export function ObjectPageView() {
               {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
             </Card>
             {d.admin_paths.length > 0 && <Banner tone="bad" title="Admin roles reach this object" lines={d.admin_paths.map((p) => p.join(" > "))} />}
-            {d.sensitivity && (
+            <GraphCard g={d.graph} refs={d.refs} />
+            <Tabs active={part} onChange={setPart} tabs={[
+              { key: "who", label: "Who has access", count: d.grantees.length },
+              { key: "users", label: "Users × privileges", count: d.matrix.rows.length },
+              ...(d.sees ? [{ key: "sees", label: "What each role sees", count: d.sees.rows.length }] : []),
+              ...(d.sensitivity ? [{ key: "sens", label: "Sensitivity", count: d.sensitivity.columns.length, tone: o.sensitive ? "warn" as const : null }] : []),
+            ]} />
+            {part === "sens" && d.sensitivity && (
               <Card title="Sensitivity" sub={`${d.sensitivity.readers.people} people can read it (${d.sensitivity.readers.admin} admin, ${d.sensitivity.readers.service} service)`}>
                 <Chips items={d.sensitivity.object_tags.map((t) => ({ id: t.label, title: t.origin, tone: t.sensitive ? "bad" : null }))} />
                 {d.sensitivity.row_policies.map((p) => (
@@ -54,14 +63,14 @@ export function ObjectPageView() {
                   <DataTable csv={`${o.name}_columns.csv`} rows={d.sensitivity.columns} maxHeight={320}
                     columns={[col("c", "Column", (r: any) => r.column),
                       col("t", "Tags", (r: any) => r.tags.map((t: any) => t.label).join(", "), { wrap: "wrap" }),
-                      col("m", "Masking", (r: any) => (r.masking.length ? r.masking.join(", ") : "none"), { wrap: "wrap" }),
+                      col("m", "Masking", (r: any) => (r.masking.length ? r.masking.join(", ") : "Not protected: no masking policy"), { wrap: "wrap",
+                        render: (r: any) => (r.masking.length ? r.masking.join(", ") : <span className="ae-bad">Not protected: no masking policy</span>) }),
                       col("e", "Clear for", (r: any) => (r.unmasked_everyone ? "everyone" : r.clear_known ? r.clear_for.map((x: any) => x.role).join(", ") : "unknown"), { wrap: "wrap" })]} />
                 )}
                 {Object.entries(d.sensitivity.policy_text).map(([n, t]) => <details key={n}><summary>{n}</summary><pre className="ae-code">{t}</pre></details>)}
               </Card>
             )}
-            <GraphCard g={d.graph} refs={d.refs} />
-            <Card title="Users" sub="Every user, with what they can do here" scroll>
+            {part === "users" && <Card title="Users" sub="Every user, with what they can do here" scroll>
               <DataTable csv={`${o.name}_users.csv`} rows={d.matrix.rows} rowTone={(r: MatrixRow) => (r.admin.length ? "bad" : null)}
                 columns={[
                   col("u", "User", (r: MatrixRow) => r.user, { render: (r: MatrixRow) => <NameLink id={r.user} refs={d.refs} /> }),
@@ -74,8 +83,8 @@ export function ObjectPageView() {
                   col("d", "Depth", (r: MatrixRow) => r.depth ?? "", { num: true }), col("n", "Paths", (r: MatrixRow) => r.paths, { num: true }),
                   pathCol<MatrixRow>(d.refs, "Shortest path"),
                 ]} />
-            </Card>
-            {d.sees && (
+            </Card>}
+            {part === "sees" && d.sees && (
               <Card title="What each role sees" sub="Columns clear or masked, rows all or filtered, per role that can read the object" scroll>
                 <DataTable csv={`${o.name}_role_view.csv`} rows={d.sees.rows}
                   columns={[col("r", "Role", (r: any) => r.role, { render: (r: any) => <NameLink id={r.role} refs={d.refs} /> }),
@@ -84,17 +93,12 @@ export function ObjectPageView() {
                       { render: (r: any) => { const x = r.columns.find((y: any) => y.column === cn); return x ? StateTag(x) : null; } }))]} />
               </Card>
             )}
-            <Card title="Who has access" sub="Grouped by what the privilege allows">
-              <Tabs tabs={d.tabs.map((t) => ({ key: t.key, label: t.label, count: t.count }))} active={tab} onChange={setTab} />
-              <DataTable csv={`${o.name}_grantees_${tab}.csv`} rows={gs} rowTone={(r: GranteeRow) => (r.kind === "admin" ? "bad" : null)}
-                columns={[
-                  col("g", "Grantee", (r: GranteeRow) => r.grantee, { render: (r: GranteeRow) => <NameLink id={r.id} refs={d.refs} label={r.grantee} /> }),
-                  col("k", "Kind", (r: GranteeRow) => r.kind_label), col("s", "Status", (r: GranteeRow) => r.status ?? ""),
-                  col("p", "Privileges", (r: GranteeRow) => r.privileges.map((p) => p.privilege).join(", "), { wrap: "wrap" }),
-                  col("d", "Depth", (r: GranteeRow) => r.depth, { num: true }), col("n", "Paths", (r: GranteeRow) => r.count, { num: true }),
-                  pathCol<GranteeRow>(d.refs),
-                ]} />
-            </Card>
+            {part === "who" && (
+              <Card title="Who has access" sub="Users that come in through the same chain are one row" right={
+                <div className="seg">{d.tabs.map((t) => <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>{t.label} {t.count}</button>)}</div>}>
+                <GroupedGrantees key={tab} rows={gs} kinds={d.refs.kinds} onOpen={op.open} csv={`${o.name}_grantees_${tab}.csv`} />
+              </Card>
+            )}
           </>
         );
       }}</Load>

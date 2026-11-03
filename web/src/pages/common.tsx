@@ -1,8 +1,8 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
 import { useId, type ReactNode } from "react";
 import type { ApiFail, State } from "../api/client";
-import type { Banner as B, DataView, FindingLine, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
-import { Banner, Card, DataTable, Graph, PathText, type Column } from "../components";
+import type { Banner as B, DataView, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
+import { Banner, Card, DataTable, FindingList, Graph, PathText, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 
 export function col<R>(key: string, label: string, get: Column<R>["get"], more: Partial<Column<R>> = {}): Column<R> {
@@ -122,7 +122,7 @@ export function PathCell({ path, refs }: { path: string[]; refs: Refs }) {
 }
 
 export const pathCol = <R extends { path?: string[] | null }>(refs: Refs, label = "Path"): Column<R> =>
-  col<R>("path", label, (r) => (r.path ?? []).join(" > "), { render: (r) => (r.path ? <PathCell path={r.path} refs={refs} /> : null), wrap: "wrap", width: 420 });
+  col<R>("path", label, (r) => (r.path ?? []).join(" > "), { render: (r) => (r.path ? <PathCell path={r.path} refs={refs} /> : null), wrap: "nowrap" });
 
 export function NameLink({ id, refs, label }: { id: string; refs: Refs; label?: string }) {
   const o = useOpen(refs);
@@ -130,31 +130,23 @@ export function NameLink({ id, refs, label }: { id: string; refs: Refs; label?: 
   return <button className={`ae-link ae-k-${k}`} onClick={() => o.open(id)} title={id}>{label ?? id}</button>;
 }
 
-const SEV = { High: "bad", Medium: "warn", Low: null } as const;
-
-export function Findings({ list, total, refs, title = "Rule findings" }: { list: FindingLine[]; total: number; refs: Refs; title?: string }) {
+/** Rule findings of a user, role or object: compact "High 2 · Medium 1" that opens the severity tabs in place. */
+export function Findings({ list, refs }: { list: Finding[]; total?: number; refs: Refs }) {
   const c = useApp();
+  const o = useOpen(refs);
   if (!list.length) return null;
   return (
-    <Card title={title} sub={`${total} finding${total === 1 ? "" : "s"}`}
-      right={<button className="ae-btn" onClick={() => c.nav("rules", {})}>All rule checks</button>}>
-      <DataTable csv={null} filter={false} rows={list} maxHeight={320}
-        rowTone={(f) => SEV[f.severity] ?? null}
-        columns={[
-          col("num", "Rule", (f: FindingLine) => f.num, { width: 60 }),
-          col("sev", "Severity", (f: FindingLine) => f.severity, { width: 80 }),
-          col("title", "Finding", (f: FindingLine) => f.title, { wrap: "wrap" }),
-          col("who", "Holder", (f: FindingLine) => f.grantee, { render: (f: FindingLine) => <NameLink id={f.grantee} refs={refs} /> }),
-          col("d", "Details", (f: FindingLine) => f.details.join(" · "), { wrap: "wrap" }),
-        ]} />
-    </Card>
+    <section className="ae-card ae-card-tight">
+      <FindingList list={list} compact kinds={refs.kinds} onOpen={o.open} onRule={(num) => c.nav("rules", { rule: num })} />
+    </section>
   );
 }
 
 const tone = (s: string) => (s === "masked" || s === "none" ? "ae-st-masked" : s === "clear" || s === "all" ? "ae-st-clear" : "ae-st-unknown");
 
 /** A state chip (clear / masked / all / filtered / unknown) with its reason on hover. */
-export const StateTag = (x: StateWhy<string>) => <span className={`ae-st ${tone(x.state)}`} title={x.reason}>{x.state}</span>;
+const WORD: Record<string, string> = { clear: "visible", masked: "masked", all: "all rows", filtered: "filtered rows", none: "no rows", unknown: "unknown" };
+export const StateTag = (x: StateWhy<string>) => <span className={`ae-st ${tone(x.state)}`} title={x.reason}>{WORD[x.state] ?? x.state}</span>;
 
 interface VRow { object: string; item: string; state: string; reason: string }
 
@@ -178,13 +170,33 @@ export function DataViews({ views, title = "What they see when they read" }: { v
   );
 }
 
-export function Usage({ u }: { u: UsageCard }) {
+const USE = { used: "used", secondary: "used as secondary", unused: "not used" } as const;
+
+/** Every role granted to the user straight: held against used (bar = share of queries), unused first as candidates to
+ * remove, with what removing it takes away; warehouses on one line. */
+export function Usage({ u, refs }: { u: UsageCard; refs?: Refs }) {
+  const o = useOpen(refs);
+  const max = Math.max(1, ...u.roles.map((r) => r.queries));
   return (
-    <Card title="Role usage" sub={`Query history, last ${u.days} days · ${u.source}`}>
+    <Card title="Role usage" sub={u.source}>
       {!u.readable ? <p className="ae-muted">Query history is not readable with this role, so use is unknown.</p> : (
-        <DataTable csv={null} rows={u.rows} maxHeight={260} empty="No queries in this period."
-          columns={[col("k", "Kind", (r: UsageCard["rows"][number]) => r.kind), col("n", "Name", (r: UsageCard["rows"][number]) => r.name),
-            col("q", "Queries", (r: UsageCard["rows"][number]) => r.queries, { num: true }), col("l", "Last used", (r: UsageCard["rows"][number]) => r.last_used)]} />
+        <>
+          <div className="ae-usage">
+            {u.roles.map((r) => (
+              <div key={r.role} className={`ae-use ae-use-${r.status}`}>
+                <button className={`ae-chip ae-chip-${r.kind}`} onClick={() => o.open(r.role)}>{r.role}</button>
+                <span className="ae-use-bar"><span style={{ width: `${(100 * r.queries) / max}%` }} /></span>
+                <span className="ae-use-n">{r.queries ? `${r.queries} queries` : ""}</span>
+                <span className="ae-muted">{r.last_used ? `last ${r.last_used.slice(0, 10)}` : ""}</span>
+                <span className={`ae-tag ae-tag-${r.status === "unused" ? "warn" : "ok"}`}>
+                  {r.status === "unused" ? `not used in ${u.days} days · candidate to remove` : USE[r.status]}{r.default ? " · default" : ""}
+                </span>
+                {r.takes != null && <span className="ae-muted">{r.takes ? `removing it takes away ${r.takes} object${r.takes === 1 ? "" : "s"}` : "removing it takes nothing away"}</span>}
+              </div>
+            ))}
+          </div>
+          {u.warehouses.length > 0 && <p className="ae-muted">Warehouses: {u.warehouses.map((w) => `${w.name} (${w.queries})`).join(" · ")}</p>}
+        </>
       )}
     </Card>
   );

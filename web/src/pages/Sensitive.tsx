@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useApi } from "../api/client";
 import type { SensitivePage } from "../api/types";
-import { Banner, Card, Chips, DataTable, KpiRow } from "../components";
+import { Banner, Card, Chips, DataTable, KpiRow, Tabs } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
 
@@ -17,6 +18,7 @@ const WHY: Record<string, string> = {
 export function SensitivePageView() {
   const c = useApp();
   const s = useApi<SensitivePage>("sensitive", apiParams(c));
+  const [part, setPart] = useState("objects");
   return (
     <>
       <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them." />
@@ -37,23 +39,27 @@ export function SensitivePageView() {
               { label: "Disabled readers", value: k.disabled, tone: k.disabled ? "warn" : null },
               { label: "Unmasked columns", value: k.unmasked, tone: k.unmasked ? "bad" : null },
             ]} />
-            {d.governance && <Card title="Governance in use"><DataTable csv={null} filter={false} rows={Object.entries(d.governance)}
-              columns={[col("k", "What", (r: [string, string]) => r[0]), col("v", "Where", (r: [string, string]) => r[1])]} /></Card>}
             {k.stale.length > 0 && <Banner tone="warn" title="Disabled or dormant users still hold access" lines={[k.stale.join(", ")]} />}
-            <Card title="Sensitive objects" scroll>
+            <Tabs active={part} onChange={setPart} tabs={[
+              { key: "objects", label: "Sensitive objects", count: d.objects.length },
+              { key: "readers", label: "Who can read them", count: d.readers.length },
+              { key: "compare", label: "Compare two roles" },
+            ]} />
+            {part === "objects" && <Card title="Sensitive objects" scroll>
               <DataTable csv="sensitive_objects.csv" rows={d.objects} limit={300}
                 columns={[
                   col("o", "Object", (r: O) => r.object, { render: (r: O) => <NameLink id={r.object} refs={d.refs} />, wrap: "wrap" }),
                   col("t", "Type", (r: O) => r.type),
                   col("g", "Tags", (r: O) => r.tags.map((t) => t.label).join(", "), { render: (r: O) => <Chips items={r.tags.map((t) => ({ id: t.label, title: t.origins.join("; "), tone: "bad" as const }))} />, wrap: "wrap" }),
                   col("c", "Columns", (r: O) => r.cols.join(", "), { wrap: "wrap" }),
-                  col("m", "Masked", (r: O) => (r.cols.length ? `${r.masked[0]} of ${r.masked[1]}` : ""), { help: "Columns with a masking policy" }),
+                  col("m", "Masked", (r: O) => (r.cols.length ? `${r.masked[0]} of ${r.masked[1]}` : ""), { help: "Columns with a masking policy",
+                    render: (r: O) => (r.cols.length && r.masked[0] < r.masked[1] ? <span className="ae-bad">{r.masked[0]} of {r.masked[1]} · not protected</span> : r.cols.length ? `${r.masked[0]} of ${r.masked[1]}` : "") }),
                   col("rp", "Row policy", (r: O) => r.row_policies.join(", "), { wrap: "wrap" }),
                   col("p", "People", (r: O) => r.people.length, { num: true }), col("a", "Admin", (r: O) => r.admin.length, { num: true }),
                   col("ro", "Roles", (r: O) => r.roles.join(", "), { wrap: "truncate" }),
                 ]} />
-            </Card>
-            <Card title="Who can read them" sub="One row per user; the shortest path to a sensitive object" scroll>
+            </Card>}
+            {part === "readers" && <Card title="Who can read them" sub="One row per user; the shortest path to a sensitive object" scroll>
               <DataTable csv="sensitive_readers.csv" rows={d.readers} limit={300} rowTone={(r: R) => (r.via_admin ? "bad" : r.status !== "active" ? "warn" : null)}
                 columns={[
                   col("u", "User", (r: R) => r.user, { render: (r: R) => <NameLink id={r.user} refs={d.refs} /> }),
@@ -62,8 +68,8 @@ export function SensitivePageView() {
                   col("ro", "Via roles", (r: R) => r.roles.join(", "), { wrap: "truncate" }),
                   pathCol<R>(d.refs),
                 ]} />
-            </Card>
-            <Card title="Compare two roles" sub="What each sees in the sensitive objects">
+            </Card>}
+            {part === "compare" && <Card title="Compare two roles" sub="What each sees in the sensitive objects">
               <Controls>
                 <Sel label="Role A" value={d.compare.a} onPick={(v) => c.set({ a: v })} options={d.compare.roles.map((x): [string, string] => [x, x])} />
                 <Sel label="Role B" value={d.compare.b} onPick={(v) => c.set({ b: v })} options={d.compare.roles.map((x): [string, string] => [x, x])} />
@@ -73,7 +79,7 @@ export function SensitivePageView() {
                 columns={[col("o", "Object", (r: SensitivePage["compare"]["rows"][number]) => r.object, { wrap: "wrap" }),
                   col("a", d.compare.a, (r: SensitivePage["compare"]["rows"][number]) => r.a ?? "no access", { wrap: "wrap" }),
                   col("b", d.compare.b, (r: SensitivePage["compare"]["rows"][number]) => r.b ?? "no access", { wrap: "wrap" })]} />
-            </Card>
+            </Card>}
           </>
         );
       }}</Load>

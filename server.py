@@ -197,8 +197,7 @@ def kind_label(n, k=None):
     k = k or a.kind_of(n)
     if k == "user":
         p = a.profile.get(n) or {}
-        s = a.status(n) if n in a.profile else ""
-        return "User · " + str(p.get("TYPE") or "person").lower() + (f" · {s}" if s and s != "active" else "")
+        return str(p.get("TYPE") or "person").lower()  # the status has its own column
     return KIND.get(k, "Group role")
 
 
@@ -701,24 +700,69 @@ def tab_list(rows, hidden, reach, acct):
     return [dict(key=k, label=lab, count=n[k]) for k, lab in TABS if n[k]] + [dict(key="all", label="All", count=len(rows))]
 
 
+def impact(x):
+    """The finding's impact as a tag: who loses access when it is fixed, or how many read in clear."""
+    n, who = x["affects"], x["losers"]
+    if n is None or x["impact"] == "—":
+        return None
+    if x["edges"] and not n:
+        return dict(text="Safe to fix: everyone keeps access another way", tone="ok")
+    if who:
+        names = ", ".join(who[:3]) + (f" +{len(who) - 3}" if len(who) > 3 else "")
+        return dict(text=f"{plural(n, 'user')} lose{'s' * (n == 1)} access: {names}", tone="warn")
+    return dict(text=x["impact"], tone="bad" if x["num"] == "6" else "warn")
+
+
+def finding(x):
+    """One finding, the same shape on every page (web/API.md Finding)."""
+    user = x["kind"] == "user"
+    return dict(num=x["num"], title=x["title"], severity=x["severity"], area=RULE_INFO.get(x["num"], ("", "Other"))[1],
+                grantee=a.uid(x["grantee"], user), kind=norm(x["kind"]), what=x["detail"], impact=impact(x),
+                people=sorted({x["grantee"]} if user else set()) or x["losers"][:50], paths=x["paths"][:5],
+                iac=x["iac"], sql=x["sql"], same_fix=x["same_fix"])
+
+
 def findings_of(name, user, skip=()):
-    """Rule findings of a user or role (for a user also of the roles granted to it directly), one line per rule and grantee."""
+    """Rule findings of a user or role (for a user also of the roles granted to it directly)."""
     via = set(a.roles_of.get(name, [])) if user else set()
     xs = [x for x in S["rows"] if x["num"] not in skip and ((x["grantee"] == name and (x["kind"] == "user") == user)
                                                            or (x["grantee"] in via and x["kind"] != "user"))]
-    per = {}
-    for x in xs:
-        per.setdefault((x["num"], x["grantee"], x["kind"]), []).append(x)
-    return [dict(num=n, severity=v[0]["severity"], title=v[0]["title"], grantee=g, kind=norm(k),
-                 details=list(dict.fromkeys(x["detail"] for x in v))) for (n, g, k), v in per.items()], len(xs)
+    return [finding(x) for x in xs], len(xs)
 
 
 def usage(u):
+    """Role usage card: every role granted to u straight, held against used in the query history (unused first, with
+    what removing it takes away), and the warehouses."""
     src = a.run["SOURCES"].get("usage")
     days = 7 if src == "INFORMATION_SCHEMA" else 30
-    return dict(days=days, source=str(src or ""), readable=src != "UNAVAILABLE",
-                rows=[dict(kind=x["KIND"], name=x["NAME"], queries=x["QUERIES"], last_used=str(x["LAST_USED"])[:16])
-                      for x in a.used.get(u, [])])
+    rows = a.used.get(u, [])
+    by = {}
+    for x in rows:
+        if x["KIND"] in ("ROLE", "SECONDARY ROLE"):
+            y = by.setdefault(x["NAME"], dict(queries=0, last_used="", secondary=True))
+            y["queries"] += x["QUERIES"]
+            y["last_used"] = max(y["last_used"], str(x["LAST_USED"])[:16])
+            y["secondary"] &= x["KIND"] == "SECONDARY ROLE"
+    dr = (a.profile.get(u) or {}).get("DEFAULT_ROLE")
+    roles = []
+    for r in sorted(a.roles_of.get(u, [])):
+        x = by.get(r)
+        status = "unused" if not x else "secondary" if x["secondary"] else "used"
+        takes = len({o for _, o in a.loses(u, u, r)}) if status == "unused" else None
+        roles.append(dict(role=r, kind=norm(a.role_kind(r)), default=r == dr, status=status,
+                          queries=x["queries"] if x else 0, last_used=x["last_used"] if x else None, takes=takes))
+    roles.sort(key=lambda r: (r["status"] != "unused", -r["queries"], r["role"]))
+    return dict(days=days, source=f"Query history, last {days} days, from {'INFORMATION_SCHEMA' if days == 7 else 'ACCOUNT_USAGE'}",
+                readable=src != "UNAVAILABLE", roles=roles,
+                warehouses=[dict(name=x["NAME"], queries=x["QUERIES"], last_used=str(x["LAST_USED"])[:16])
+                            for x in rows if x["KIND"] == "WAREHOUSE"])
+
+
+def role_usage(r):
+    """Role page: how many users holding r used it (as primary or secondary role) in the query history."""
+    holders = sorted(a.ups(r)[1])
+    used = {u for u in holders if any(x["NAME"] == r and x["KIND"] in ("ROLE", "SECONDARY ROLE") for x in a.used.get(u, []))}
+    return dict(holders=len(holders), used=len(used), unused=[u for u in holders if u not in used][:200])
 
 
 def scope_of(p, rows):
@@ -809,7 +853,7 @@ def user_page(p, view):
                   last_login_text=text, login_mark=mark, login_days=a.login_days(u)),
         filters=dict(roles="default" if c["default_only"] else "all", depth=c["limit"], dataonly=c["data_only"],
                      schema=scope, otype=c["otype"] or "", on=c["on"], priv=c["pv"], objects=c["objs"], privileges=c["privs"]),
-        banners=banners, findings=findings[:6], findings_total=total,
+        banners=banners, findings=findings, findings_total=total,
         kpis=dict(privileges=len(rows), objects=len(objs), paths=sum(r["count"] for r in rows), multi=twice,
                   roles=len(reach), roles_direct=sum(x["direct"] for x in reach),
                   deepest=max((r["depth"] for r in rows), default=0), sensitive=len(sens) if (S["sens"] or shared) else None,
@@ -921,7 +965,9 @@ def role_page(p, view):
                       kind_label=kind_label(x["grantee"], x["kind"]) + (" · granted directly" if x["direct"] else ""),
                       status=a.status(x["grantee"]) if x["kind"] == "user" else None, depth=x["depth"],
                       direct=x["direct"], only_via=x["only_via"], path=x["path"], count=x["count"],
-                      loses_it=(x["grantee"], x["kind"]) in lost, loses=loses.get(x["grantee"], [])) for x in up]
+                      # no grantee picked: a direct holder loses the role when its own grant is its only path
+                      loses_it=(x["grantee"], x["kind"]) in lost if cut else x["direct"] and x["count"] == 1,
+                      loses=loses.get(x["grantee"], [])) for x in up]
     # holds as a has / lacks grid
     objs = {}
     for h in hold:
@@ -959,7 +1005,7 @@ def role_page(p, view):
         scope_kpis=dict(direct=len(hold), effective=len(sc), objects=len({x["object"] for x in sc}),
                         holders=len({x["holder"] for x in sc}), sensitive=len({x["object"] for x in sc if x["object"] in S["sens"]}))
         if scope else None,
-        banners=banners, findings=findings[:6], findings_total=total, readonly_writes=ro_rows, account=acc, graph=graph,
+        banners=banners, findings=findings, findings_total=total, usage=role_usage(r), readonly_writes=ro_rows, account=acc, graph=graph,
         held_by=dict(rows=held_rows, revoke=revoke),
         holds=dict(types=types_, other=[dict(privilege=h["privilege"], cls=h["cls"], type=h["type"], object=h["object"],
                                              name=h["name"]) for h in other], count=len(hold), objects=len(objs)),
@@ -1239,14 +1285,7 @@ def rules_page(p, view):
     sev = p.get("sev", "") if p.get("sev", "") in SEVS + ["Passing"] else ""
     sel = p.get("rule", "") if p.get("rule", "") in a.RULES else ""
     lvl = lambda n: a.SEVERITY.get(n, "Low")
-    shown = [x for x in mine if (not sev or x["severity"] == sev) and (not sel or x["num"] == sel)]
-    groups = {}  # the same fix for several grantees of one rule: one row
-    for x in shown:
-        groups.setdefault((x["num"], x["sql"]) if x["sql"] else id(x), []).append(x)
-
-    def edge_cls(f):
-        g = f.get("edge")
-        return a.priv_class(g[2], a.kinds.get(g[1], "")) if g and g[2] else ""
+    shown = [x for x in mine if not sel or x["num"] == sel]
 
     unknown = sorted(o for o in S["sens"] if any(a.row_terms(q) is None for q in a.policies_of(o)["rows"]))
     return dict(
@@ -1254,11 +1293,7 @@ def rules_page(p, view):
         counts={**{s: sum(count[n] for n in a.RULES if lvl(n) == s) for s in SEVS},
                 "Passing": sum(not count[n] for n in a.RULES)},
         per_rule=count,
-        findings=[dict(num=xs[0]["num"], title=xs[0]["title"], severity=xs[0]["severity"], why=xs[0]["why"],
-                       grantees=[dict(id=a.uid(x["grantee"], x["kind"] == "user"), kind=norm(x["kind"])) for x in xs],
-                       detail=xs[0]["detail"], more=len(xs) - 1, paths=xs[0]["paths"], edge_cls=edge_cls(xs[0]),
-                       iac=xs[0]["iac"], sql=xs[0]["sql"], affects=xs[0]["affects"], impact=xs[0]["impact"],
-                       same_fix=xs[0]["same_fix"]) for xs in groups.values()],
+        findings=[finding(x) for x in shown],
         total=len(shown), rows_unknown=[] if who else unknown,
         admins=[dict(user=x["user"], service=x["service"], roles=x["roles"], account=list(dict.fromkeys(pv for pv, _ in x["account"])),
                      paths=x["paths"] + [q for _, q in x["account"]], status=x["status"],
@@ -1425,17 +1460,26 @@ def meta(p, sid):
         with session(view, sid) as d:
             run = a.run
             when, old = snap_time(run) if view == "shared" else ("live", False)
-            badge = {"rules": len(S["rows"]), "sensitive": len(S["sens"])}
+            worst = next((v for v in ("Critical", "High", "Medium", "Low") if any(x["severity"] == v for x in S["rows"])), None)
+            badge = {"rules": sum(x["severity"] == worst for x in S["rows"]), "sensitive": len(S["sens"])}
             base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
                                               when=when, old=old),
                         sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view),
-                        pages=[dict(key=k, label=lab, badge=badge.get(k) or None) for k, lab in PAGES.items()
-                               if not (view == "mine" and k in SHARED_ONLY)],
+                        pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None)
+                               for k, lab in PAGES.items() if not (view == "mine" and k in SHARED_ONLY)],
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
+                        protection=protection() if view == "shared" else None,
                         default_user=DEMO_USER if DEMO_USER in a.users else (a.users[0] if a.users else DEMO_USER))
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)
     return clean(base)
+
+
+def protection():
+    """Sidebar "Protection": counts that link to where they are explained; unmasked sensitive columns are rule 6."""
+    g = a.governance_kpis()
+    return dict(row_tables=g["row_tables"], masked_columns=g["masked_columns"], tagged_objects=g["tagged_objects"],
+                unmasked=sum(x["num"] == "6" for x in S["rows"]))
 
 
 def reload(body):

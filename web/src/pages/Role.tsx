@@ -1,11 +1,69 @@
+import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
-import { Banner, Card, DataTable, KpiRow, PrivilegeTabs } from "../components";
+import { Banner, Card, DataTable, Graph, KpiRow, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog } from "./common";
 
 type RW = RolePage["readonly_writes"][number];
 const CELL: Record<HoldCell, string> = { direct: "direct", inherited: "inherited", owner: "owner", lacks: "lacks" };
+
+/** What the role holds, one tab per object type with its count. */
+function Holds({ d }: { d: RolePage }) {
+  const [tab, setTab] = useState(d.holds.types[0]?.type ?? "");
+  const t = d.holds.types.find((x) => x.type === tab) ?? d.holds.types[0];
+  if (!t) return null;
+  type HR = (typeof t.rows)[number];
+  return (
+    <>
+      <Tabs active={t.type} onChange={setTab} tabs={d.holds.types.map((x) => ({ key: x.type, label: x.type.toLowerCase(), count: x.rows.length }))} />
+      <DataTable key={t.type} csv={`${d.role.name}_${t.type}.csv`} rows={t.rows}
+        columns={[col("o", "Object", (r: HR) => r.object, { wrap: "nowrap" }),
+          ...t.privs.map((p) => col(p, p, (r: HR) => CELL[r.cells[p]] ?? "",
+            { wrap: "nowrap", render: (r: HR) => <span className={`ae-cell ae-cell-${r.cells[p]}`}>{r.cells[p] === "lacks" ? "—" : r.cells[p] ?? ""}</span> }))]} />
+    </>
+  );
+}
+
+function revokeText(r: HeldRow) {
+  if (r.loses_it) return r.loses.length ? `loses ${r.loses.length} privilege(s)` : "loses access";
+  if (r.direct) return `keeps it: ${r.count - 1} other path${r.count === 2 ? "" : "s"}`;
+  return r.only_via.length ? `only via ${r.only_via.join(", ")}` : "keeps it other ways";
+}
+
+/** Who gets the role: a graph from the holders to the role (Users / Roles / All), the table under it. */
+function HeldBy({ d }: { d: RolePage }) {
+  const c = useApp();
+  const o = useOpen(d.refs);
+  const users = d.held_by.rows.filter((r) => r.kind === "user");
+  const [tab, setTab] = useState(users.length ? "users" : "all");
+  const rows = tab === "users" ? users : tab === "roles" ? d.held_by.rows.filter((r) => r.kind !== "user") : d.held_by.rows;
+  const g = useMemo(() => pathGraph(rows.map((r) => ({ path: r.path, cls: "inherit" as const })),
+    { kinds: d.refs.kinds, objectLabel: "This role", title: "Held by" }), [rows, d.refs.kinds]);
+  return (
+    <>
+      <Tabs active={tab} onChange={setTab} tabs={[
+        { key: "users", label: "Users", count: users.length },
+        { key: "roles", label: "Roles", count: d.held_by.rows.length - users.length },
+        { key: "all", label: "All", count: d.held_by.rows.length },
+      ]} />
+      {d.usage.holders > 0 && (
+        <p className="ae-muted">{d.usage.used} of {d.usage.holders} users who hold it used it in the query history
+          {d.usage.unused.length > 0 && <> · not used by {d.usage.unused.slice(0, 8).join(", ")}{d.usage.unused.length > 8 ? ` +${d.usage.unused.length - 8}` : ""}</>}</p>
+      )}
+      {rows.length > 0 && <Graph graph={g} theme={c.theme} onNodeClick={o.node} maxHeight={420} />}
+      <DataTable csv={`${d.role.name}_held_by_${tab}.csv`} rows={rows} rowTone={(r: HeldRow) => (r.kind === "admin" ? "bad" : r.loses_it ? "warn" : null)}
+        columns={[
+          col("g", "Grantee", (r: HeldRow) => r.grantee, { wrap: "nowrap", render: (r: HeldRow) => <NameLink id={r.id} refs={d.refs} label={r.grantee} /> }),
+          col("k", "Kind", (r: HeldRow) => r.kind_label, { wrap: "nowrap" }),
+          col("s", "Status", (r: HeldRow) => r.status ?? "", { wrap: "nowrap", render: (r: HeldRow) => r.status && <><StatusDot s={r.status} /> {r.status}</> }),
+          col("d", "Depth", (r: HeldRow) => r.depth, { num: true }), col("n", "Paths", (r: HeldRow) => r.count, { num: true }),
+          col("l", "If revoked", revokeText, { wrap: "nowrap", help: "Direct holder: what removing its own grant does. Others: the roles every path goes through." }),
+          pathCol<HeldRow>(d.refs),
+        ]} />
+    </>
+  );
+}
 
 export function RolePageView() {
   const c = useApp();
@@ -14,6 +72,7 @@ export function RolePageView() {
   const s = useApi<RolePage>(name ? "role" : null, { ...apiParams(c), name });
   const o = useOpen(s.data?.refs);
   const names = roles.data?.items.map((i) => i.id) ?? [];
+  const [part, setPart] = useState("privs");
   return (
     <>
       <Head title="Role" sub="Who holds this role, what it holds, and what it can reach." />
@@ -50,20 +109,18 @@ export function RolePageView() {
             </Card>
           )}
           <GraphCard g={d.graph} refs={d.refs} />
-          <Card title="Effective privileges and roles held" sub="Split by what they allow">
+          <Tabs active={part} onChange={setPart} tabs={[
+            { key: "privs", label: "Privileges", count: d.privileges.length },
+            { key: "held", label: "Held by", count: d.held_by.rows.length },
+            ...(d.holds.types.length ? [{ key: "holds", label: "What it holds", count: d.holds.count }] : []),
+            ...(d.can_read?.length ? [{ key: "sees", label: "What it sees", count: d.can_read.length }] : []),
+          ]} />
+          {part === "privs" && <Card title="Effective privileges and roles held" sub="Split by what they allow">
             <PrivilegeTabs rows={d.privileges} roles={d.roles} account={d.account} refs={d.refs} tabs={d.tabs} theme={c.theme}
               csvName={`${d.role.name}_privileges`} onNodeClick={o.node} onOpen={o.open} />
-          </Card>
-          <Card title="Held by" sub="Every user and role that gets this role, and what they would lose if the link to it were cut">
-            <DataTable csv={`${d.role.name}_held_by.csv`} rows={d.held_by.rows} rowTone={(r: HeldRow) => (r.kind === "admin" ? "bad" : null)}
-              columns={[
-                col("g", "Grantee", (r: HeldRow) => r.grantee, { render: (r: HeldRow) => <NameLink id={r.id} refs={d.refs} label={r.grantee} /> }),
-                col("k", "Kind", (r: HeldRow) => r.kind_label), col("s", "Status", (r: HeldRow) => r.status ?? ""),
-                col("d", "Depth", (r: HeldRow) => r.depth, { num: true }), col("n", "Paths", (r: HeldRow) => r.count, { num: true }),
-                col("v", "Only via", (r: HeldRow) => r.only_via.join(", "), { wrap: "wrap" }),
-                col("l", "If revoked", (r: HeldRow) => (r.loses_it ? `loses ${r.loses.length} privilege(s)` : "keeps it other ways"), { help: "What the grantee loses if the link to this role is removed" }),
-                pathCol<HeldRow>(d.refs),
-              ]} />
+          </Card>}
+          {part === "held" && <Card title="Held by" sub="Every user and role that gets this role, through which chain, and what a revoke would take away">
+            <HeldBy d={d} />
             {d.filters.cuts.length > 0 && (
               <Controls><Sel label="If revoked from" value={d.filters.cut} onPick={(v) => c.set({ cut: v })}
                 options={[["", "(pick a grantee)"], ...d.filters.cuts.map((x): [string, string] => [x, x])]} /></Controls>
@@ -74,28 +131,20 @@ export function RolePageView() {
                 <pre className="ae-code">{d.held_by.revoke.iac}</pre><pre className="ae-code">{d.held_by.revoke.sql}</pre>
               </Banner>
             )}
-          </Card>
-          {d.holds.types.length > 0 && (
+          </Card>}
+          {part === "holds" && d.holds.types.length > 0 && (
             <Card title="What it holds" sub={`${d.holds.count} privileges on ${d.holds.objects} objects. Green: has it, red: lacks it.`}>
               <Controls><Sel label="Show who lacks" value={d.filters.lacks} onPick={(v) => c.set({ lacks: v })}
                 options={[["", "(any)"], ...d.filters.gaps.map((x): [string, string] => [x, x])]} /></Controls>
-              {d.holds.types.map((t) => (
-                <div key={t.type} className="ae-hold">
-                  <h4>{t.type}</h4>
-                  <DataTable csv={`${d.role.name}_${t.type}.csv`} rows={t.rows}
-                    columns={[col("o", "Object", (r: (typeof t.rows)[number]) => r.object, { wrap: "wrap" }),
-                      ...t.privs.map((p) => col(p, p, (r: (typeof t.rows)[number]) => CELL[r.cells[p]] ?? "",
-                        { render: (r: (typeof t.rows)[number]) => <span className={`ae-cell ae-cell-${r.cells[p]}`}>{r.cells[p] === "lacks" ? "—" : r.cells[p] ?? ""}</span> }))]} />
-                </div>
-              ))}
+              <Holds d={d} />
               {d.holds.other.length > 0 && (
-                <DataTable csv={`${d.role.name}_other.csv`} rows={d.holds.other}
+                <details><summary>Account and other privileges ({d.holds.other.length})</summary><DataTable csv={`${d.role.name}_other.csv`} rows={d.holds.other}
                   columns={[col("p", "Privilege", (r: RolePage["holds"]["other"][number]) => r.privilege), col("t", "On", (r: RolePage["holds"]["other"][number]) => r.type),
-                    col("o", "Object", (r: RolePage["holds"]["other"][number]) => r.object, { wrap: "wrap" })]} />
+                    col("o", "Object", (r: RolePage["holds"]["other"][number]) => r.object, { wrap: "wrap" })]} /></details>
               )}
             </Card>
           )}
-          <DataViews views={d.can_read} />
+          {part === "sees" && <DataViews views={d.can_read} />}
         </>
       )}</Load>}
     </>

@@ -39,16 +39,17 @@ export function DataTable<R>({
     return col ? sortRows(f, col.get, by!.dir) : f;
   }, [rows, q, by, columns]);
   const shown = all ? view : view.slice(0, limit);
+  const tools = filter && rows.length >= 10; // a filter box and row count only where there is something to filter
 
   const exportCsv = () =>
     download(csv || "table.csv", toCsv(columns.map((c) => c.label), view.map((r) => columns.map((c) => cellText(c.get(r))))));
 
   return (
     <div className="ae-table-wrap">
-      {(filter || csv !== null) && (
+      {(tools || csv !== null) && (
         <div className="ae-table-tools">
-          {filter && <input className="ae-input" placeholder="Filter rows" value={q} onChange={(e) => setQ(e.target.value)} />}
-          <span className="ae-muted">{view.length === rows.length ? `${rows.length} rows` : `${view.length} of ${rows.length} rows`}</span>
+          {tools && <input className="ae-input" placeholder="Filter rows" value={q} onChange={(e) => setQ(e.target.value)} />}
+          {tools && <span className="ae-muted">{view.length === rows.length ? `${rows.length} rows` : `${view.length} of ${rows.length} rows`}</span>}
           {csv !== null && <button className="ae-btn" onClick={exportCsv}>CSV</button>}
         </div>
       )}

@@ -30,7 +30,8 @@ if args.source:
     env["SOURCE"] = args.source
 if args.app == "streamlit":
     port = args.port or int(env.get("STREAMLIT_PORT", "8501"))
-    cmd = [sys.executable, "-m", "streamlit", "run", "app.py", "--server.port", str(port)]
+    cmd = [sys.executable, "-m", "streamlit", "run", "app.py", "--server.port", str(port), "--server.headless", "true",
+           "--browser.gatherUsageStats", "false"]  # no first-run email prompt
 else:
     env["WEB_PORT"] = str(args.port or int(env.get("WEB_PORT", "8000")))
     cmd = [sys.executable, "server.py"]

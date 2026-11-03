@@ -1,10 +1,15 @@
+import { useState } from "react";
 import { download, useApi } from "../api/client";
-import type { ReviewPage, ReviewRow } from "../api/types";
-import { Banner, Card, DataTable, KpiRow } from "../components";
+import type { PrivClass, ReviewPage, ReviewRow } from "../api/types";
+import { AccessTag, Banner, Card, DataTable, KpiRow, StatusDot, Tabs } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
 
+const RANK = ["use", "read", "manage", "write", "own", "admin"];
+const strongest = (cs: PrivClass[]): PrivClass => cs.reduce<PrivClass>((a, c) => (RANK.indexOf(c) > RANK.indexOf(a) ? c : a), cs[0] ?? "use");
+
 export function ReviewPageView() {
+  const [tab, setTab] = useState("sens");
   const c = useApp();
   const s = useApi<ReviewPage>(c.view === "mine" ? null : "review", apiParams(c));
   if (c.view === "mine") return <><Head title="Access review" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
@@ -14,6 +19,7 @@ export function ReviewPageView() {
         right={<button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button>} />
       <Load s={s}>{(d) => {
         const f = d.filters, k = d.kpis;
+        const t = tab === "sens" && !d.rows.some((r) => r.sensitive.length) ? "all" : tab;
         const opt = (xs: string[], all: string): [string, string][] => [["", all], ...xs.map((x): [string, string] => [x, x])];
         return (
           <>
@@ -31,18 +37,24 @@ export function ReviewPageView() {
               { label: "Admin rows", value: k.admin_rows, tone: k.admin_rows ? "bad" : null },
               { label: "Sensitive objects", value: k.sensitive, tone: k.sensitive ? "warn" : null },
             ]} />
-            <Card title="Access" scroll>
-              <DataTable csv={`access_review_${f.db === "*" ? "ALL" : f.db}.csv`} rows={d.rows} limit={400} maxHeight={640}
+            <Tabs active={t} onChange={setTab} tabs={[
+              { key: "sens", label: "Sensitive objects", count: d.rows.filter((r) => r.sensitive.length).length, tone: "warn" },
+              { key: "all", label: "All", count: d.rows.length },
+            ]} />
+            <Card scroll>
+              <DataTable key={t} csv={`access_review_${f.db === "*" ? "ALL" : f.db}_${t}.csv`} rows={t === "sens" ? d.rows.filter((r) => r.sensitive.length) : d.rows}
+                limit={400} maxHeight={640} sort={{ key: "o" }}
                 rowTone={(r: ReviewRow) => (r.admin ? "bad" : r.status !== "active" ? "warn" : null)}
                 columns={[
-                  col("o", "Object", (r: ReviewRow) => `${r.database}.${r.schema}.${r.object}`, { wrap: "wrap", render: (r: ReviewRow) => (
-                    <NameLink id={`${r.database}.${r.schema}.${r.object}`} refs={d.refs} label={r.object} />) }),
-                  col("ty", "Type", (r: ReviewRow) => r.type), col("db", "Schema", (r: ReviewRow) => `${r.database}.${r.schema}`),
-                  col("u", "User", (r: ReviewRow) => r.user, { render: (r: ReviewRow) => <NameLink id={r.user} refs={d.refs} /> }),
-                  col("ut", "Type", (r: ReviewRow) => r.user_type), col("s", "Status", (r: ReviewRow) => r.status),
-                  col("l", "Last login", (r: ReviewRow) => r.last_login ?? "never"),
-                  col("p", "Privileges", (r: ReviewRow) => r.privileges.join(", "), { wrap: "wrap" }),
-                  col("se", "Sensitive", (r: ReviewRow) => r.sensitive.join(", "), { wrap: "truncate" }),
+                  col("o", "Object", (r: ReviewRow) => `${r.database}.${r.schema}.${r.object}`, { wrap: "nowrap", render: (r: ReviewRow) => (
+                    <><NameLink id={`${r.database}.${r.schema}.${r.object}`} refs={d.refs} label={r.object} /> <span className="ae-badge">{r.type.toLowerCase()}</span>
+                      {r.sensitive.length > 0 && <span className="ae-sens" title={`Sensitive: ${r.sensitive.join(", ")}`}>●</span>}</>) }),
+                  col("db", "Schema", (r: ReviewRow) => `${r.database}.${r.schema}`, { wrap: "nowrap" }),
+                  col("u", "User", (r: ReviewRow) => r.user, { wrap: "nowrap", render: (r: ReviewRow) => (
+                    <><StatusDot s={r.status} /><NameLink id={r.user} refs={d.refs} /> <span className="ae-badge">{r.user_type.toLowerCase()}</span></>) }),
+                  col("l", "Last login", (r: ReviewRow) => r.last_login ?? "never", { wrap: "nowrap" }),
+                  col("p", "Access", (r: ReviewRow) => r.privileges.join(", "), { wrap: "nowrap", render: (r: ReviewRow) => (
+                    <AccessTag cls={strongest(r.classes)} grants={r.privileges} />) }),
                   col("g", "Granted roles", (r: ReviewRow) => r.granted.join(", "), { wrap: "truncate" }),
                   pathCol<ReviewRow>(d.refs),
                 ]} />

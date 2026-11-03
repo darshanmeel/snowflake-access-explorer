@@ -1,5 +1,5 @@
 // Privilege tabs: order, labels, counts. The server sets row.tab; privTab is the fallback for rows without it.
-import type { Account, PrivRow, ReachRow, Tab, TabKey } from "../api/types";
+import type { Account, PrivClass, PrivRow, ReachRow, Tab, TabKey } from "../api/types";
 
 export const TAB_ORDER: TabKey[] = [
   "account", "granted", "database_roles", "usage", "warehouses", "execute", "read", "write", "own", "manage", "all",
@@ -51,4 +51,27 @@ export function tabList(rows: PrivRow[], roles: ReachRow[] = [], account?: Accou
     else count = tabRows(rows, key).length;
     return { key, label: TAB_LABEL[key], count };
   }).filter((t) => t.count > 0 || t.key === "all");
+}
+
+/** One row per object: the strongest access (own > write > read; manage, use, admin kept as they are), every grant,
+ * and the shortest path with the other distinct paths. SELECT + INSERT is write; OWNERSHIP is own. */
+export interface ObjRow {
+  object: string; label: string; type: string; access: PrivClass; grants: string[]; holder: string; depth: number;
+  path: string[]; more: string[][]; count: number; sensitive: boolean;
+}
+const RANK: Record<PrivClass, number> = { use: 0, read: 1, manage: 2, write: 3, own: 4, admin: 5 };
+export function byObject(rows: PrivRow[]): ObjRow[] {
+  const m = new Map<string, ObjRow>();
+  for (const r of [...rows].sort((a, b) => a.depth - b.depth)) {
+    let o = m.get(r.object);
+    if (!o) {
+      o = { object: r.object, label: r.future_label ?? r.object, type: r.type, access: r.cls, grants: [], holder: r.holder,
+        depth: r.depth, path: r.path, more: [], count: 0, sensitive: r.sensitive };
+      m.set(r.object, o);
+    } else if (o.more.length < 4 && ![o.path, ...o.more].some((p) => p.join(">") === r.path.join(">"))) o.more.push(r.path);
+    if (RANK[r.cls] > RANK[o.access]) o.access = r.cls;
+    if (!o.grants.includes(r.privilege)) o.grants.push(r.privilege);
+    o.count = Math.max(o.count, r.count);
+  }
+  return [...m.values()];
 }

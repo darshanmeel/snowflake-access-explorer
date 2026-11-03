@@ -1,12 +1,12 @@
 // Privileges split in tabs, each with its own small diagram and table.
 import { useMemo, useState } from "react";
-import type { Account, Graph as G, GraphNode, PrivRow, ReachRow, Refs, Tab, TabKey } from "../api/types";
+import type { Account, Graph as G, GraphNode, PrivClass, PrivRow, ReachRow, Refs, Tab, TabKey } from "../api/types";
 import { Graph } from "./Graph";
 import { DataTable, type Column } from "./DataTable";
 import { Banner, Chips, Tabs } from "./parts";
 import { PathText } from "./PathText";
 import { tabGraph } from "./tabgraph";
-import { TAB_LABEL, tabList, tabRoles, tabRows } from "./tabs";
+import { byObject, TAB_LABEL, tabList, tabRoles, tabRows, type ObjRow } from "./tabs";
 import type { ThemeName } from "./theme";
 
 export interface PrivilegeTabsProps {
@@ -81,21 +81,29 @@ function AccountList({ account, rows, kinds, onOpen }: { account?: Account | nul
   );
 }
 
+const ACCESS: Partial<Record<PrivClass, string>> = { read: "Read", write: "Write", own: "Own", manage: "Manage", use: "Use", admin: "Admin" };
+
+/** Access badge: Read / Write / Own (from the grants), the grants on hover. */
+export const AccessTag = ({ cls, grants }: { cls: PrivClass; grants: string[] }) =>
+  <span className={`ae-pclass ae-pclass-${cls}`} title={grants.join(", ")}>{ACCESS[cls] ?? cls}</span>;
+
 function PrivTable({ rows, kinds, onOpen, csv }: { rows: PrivRow[]; kinds: Record<string, string>; onOpen?: (id: string) => void; csv: string }) {
-  const cols: Column<PrivRow>[] = [
-    { key: "privilege", label: "Privilege", get: (r) => r.privilege, wrap: "nowrap",
-      render: (r) => <span className={`ae-pclass ae-pclass-${r.cls}`}>{r.privilege}</span> },
-    { key: "object", label: "Object", get: (r) => r.future_label ?? r.object, wrap: "truncate",
+  const objs = useMemo(() => byObject(rows), [rows]);
+  const cols: Column<ObjRow>[] = [
+    { key: "object", label: "Object", get: (r) => r.label, wrap: "truncate",
       render: (r) => <button className="ae-link" onClick={() => onOpen?.(r.object)} title={r.object}>
-        {r.sensitive && <span className="ae-sens" title="Sensitive">●</span>}{r.future_label ?? r.object}</button> },
+        {r.sensitive && <span className="ae-sens" title="Sensitive">●</span>}{r.label}</button> },
     { key: "type", label: "Type", get: (r) => r.type, wrap: "nowrap" },
-    ...(rows.some((r) => r.granted) ? [{ key: "granted", label: "Use role", get: (r: PrivRow) => r.granted ?? "", wrap: "nowrap" as const, help: "The role granted to you that carries this privilege." }] : []),
+    { key: "access", label: "Access", get: (r) => ACCESS[r.access] ?? r.access, wrap: "nowrap", render: (r) => <AccessTag cls={r.access} grants={r.grants} />,
+      help: "Read when every grant only reads; any write grant makes it Write; OWNERSHIP is Own." },
+    { key: "grants", label: "Grants", get: (r) => r.grants.join(", "), wrap: "wrap" },
     { key: "holder", label: "Grant holder", get: (r) => r.holder, wrap: "nowrap" },
     { key: "depth", label: "Depth", get: (r) => r.depth, num: true, render: (r) => `D${r.depth}` },
-    { key: "count", label: "Paths", get: (r) => r.count, num: true, help: "Chains that give this privilege; over 1, one revoke may not remove it." },
-    { key: "path", label: "Path", get: (r) => r.path, wrap: "wrap", render: (r) => <PathText path={r.path} kinds={kinds} onOpen={onOpen} /> },
+    { key: "count", label: "Paths", get: (r) => r.count, num: true, help: "Chains that give this access; over 1, one revoke may not remove it." },
+    { key: "path", label: "Shortest path", get: (r) => r.path.join(" > "), wrap: "nowrap",
+      render: (r) => <PathText path={r.path} more={r.more} cls={r.access} grants={r.grants} kinds={kinds} onOpen={onOpen} /> },
   ];
-  return <DataTable columns={cols} rows={rows} csv={csv} sort={{ key: "depth" }} rowTone={(r) => (r.cls === "admin" ? "bad" : null)} />;
+  return <DataTable columns={cols} rows={objs} csv={csv} sort={{ key: "depth" }} rowTone={(r) => (r.access === "admin" ? "bad" : null)} />;
 }
 
 function RoleTable({ rows, kinds, onOpen, csv }: { rows: ReachRow[]; kinds: Record<string, string>; onOpen?: (id: string) => void; csv: string }) {
