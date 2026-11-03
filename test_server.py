@@ -121,7 +121,7 @@ def test_object():
 
 
 def test_check():
-    d = js("/api/check", ["answer", "paths", "graph", "usage", "privileges", "refs", "options", "ask"])
+    d = js("/api/check", ["answer", "paths", "graph", "privileges", "refs", "options", "ask"])
     assert d["answer"]["yes"] and d["paths"]
     graph_ok(d["graph"])
     no = js("/api/check?name=ANALYST_01&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=DELETE")

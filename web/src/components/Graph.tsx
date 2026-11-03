@@ -10,7 +10,7 @@ import "@xyflow/react/dist/style.css";
 import type { Graph as G, GraphEdge, GraphNode } from "../api/types";
 import { EDGE, KIND_LABEL, TOKENS, edgeColor, kindStyle, type ThemeName, type Tokens } from "./theme";
 import { GROUP_KINDS, buckets, edgeTip, expand, foldRoles, related } from "./graphs";
-import { layout, nodeSize, roundPath, type Layout, type Pt } from "./layout";
+import { layout, nodeSize, roundPath, type Layout, type Pt, badgeLines } from "./layout";
 import { Legend } from "./Legend";
 
 export interface GraphProps {
@@ -197,7 +197,7 @@ function AeNode({ data }: NodeProps) {
         {lines.map((l, i) => <div key={i}>{l}</div>)}
       </div>
       {n.sub && <div className="ae-node-sub" style={{ color: dbRole ? s.border : t.muted }}>{n.sub}</div>}
-      {n.badge && <div className="ae-node-badge" style={{ color: group ? s.text : t.muted }}>{n.badge}</div>}
+      {badgeLines(n.badge).map((l, i) => <div key={i} className="ae-node-badge" style={{ color: group ? s.text : t.muted }}>{l}</div>)}
       {n.rules.length > 0 && (() => {
         const worst = SEV.find((v) => n.rules.some((r) => r.severity === v)) ?? "Low";
         return <span className={`ae-node-rules ae-sevpill ae-sev-${worst}`}>{worst} · {n.rules.length}</span>;

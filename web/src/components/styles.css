@@ -117,7 +117,7 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-node { transition: opacity .15s; }
 .ae-node-box .ae-node-badge { font-weight: 500; }
 .ae-node-sub { font-size: 10.5px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
-.ae-node-badge { font-size: 10px; line-height: 14px; position: relative; }
+.ae-node-badge { font-size: 10px; line-height: 14px; position: relative; white-space: nowrap; }
 .ae-node-rules { position: absolute; top: -10px; right: -6px; font-size: 10px; line-height: 14px; padding: 0 6px; cursor: pointer; white-space: nowrap; }
 .ae-node-rules span, .ae-rule-dot { font-size: 10px; line-height: 16px; min-width: 16px; height: 16px; border-radius: 999px; padding: 0 4px; text-align: center; color: #fff; display: inline-block; }
 .ae-dbrole { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -218,3 +218,4 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-fd-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
 .ae-wi-user { padding: 4px 0 8px 20px; }
 .ae-wi-user h4 { margin: 8px 0 4px; font-size: 13px; }
+.ae-btn-s { white-space: nowrap; }

@@ -27,11 +27,15 @@ export function wrap(s: string, cap = 26, n = 3): string[] {
   return [...out, s];
 }
 
+/** Badge lines: "D1 · also D2, D3 · also grant holder" puts each part after the first "·" group on its own line. */
+export const badgeLines = (b: string) => (b ? b.split(" · also grant holder").concat(b.includes("also grant holder") ? ["also grant holder"] : []).filter(Boolean) : []);
+
 export function nodeSize(n: GraphNode): { w: number; h: number; lines: string[] } {
   const lines = wrap(n.label);
-  const longest = Math.max(...lines.map((l) => l.length), (n.sub ?? "").length * 0.85, n.badge.length * 0.8);
+  const bl = badgeLines(n.badge);
+  const longest = Math.max(...lines.map((l) => l.length), (n.sub ?? "").length * 0.85, ...bl.map((l) => l.length * 0.85));
   const w = Math.min(MAX_W, Math.max(n.kind === "user" ? 120 : 140, longest * CH + PAD + (n.marks.includes("sensitive") ? 18 : 0)));
-  const h = 20 + lines.length * 16 + (n.sub ? 15 : 0) + (n.badge ? 14 : 0);
+  const h = 20 + lines.length * 16 + (n.sub ? 15 : 0) + bl.length * 14;
   return { w, h, lines };
 }
 

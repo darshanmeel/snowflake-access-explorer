@@ -3,7 +3,8 @@ import { useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage } from "../api/types";
 import { Banner, Card, Chips, DataTable, GroupedGrantees, KpiRow, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { col, Controls, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, StateTag, Tog } from "./common";
+import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
+import { WhatIfButton } from "./Whatif";
 
 export function ObjectPageView() {
   const c = useApp();
@@ -45,7 +46,9 @@ export function ObjectPageView() {
               {k.deployers.length > 0 && <p>Deployed by: <Chips items={k.deployers.map((r) => ({ id: r, kind: "user" }))} /></p>}
               {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
             </Card>
-            {d.admin_paths.length > 0 && <Banner tone="bad" title="Admin roles reach this object" lines={d.admin_paths.map((p) => p.join(" > "))} />}
+            {d.admin_paths.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${new Set(d.admin_paths.map((p) => p[0])).size} user(s)`} lines={d.admin_paths.map((p, i) => <span key={i} className="ae-fd-path"><PathCell path={p} refs={d.refs} /><WhatIfButton ch={[{ op: "revoke_role_from_user", role: p[1], user: p[0].replace(/ \(user\)$/, "") }]} /></span>)}>
+              <p className="ae-muted">An admin role inherits every role, so these users reach this object without a path drawn below.</p>
+            </Banner>}
             <GraphCard g={d.graph} refs={d.refs} />
             <Tabs active={part} onChange={setPart} tabs={[
               { key: "who", label: "Who has access", count: d.grantees.length },

@@ -28,7 +28,7 @@ Key: solid = calls · dashed = data moves · numbers = order.
 | User | What can this user reach, through every role? Graph, privileges with their paths, sensitive data, roles used. |
 | Role | Who holds this role, what does it give, and who loses access if it is revoked? |
 | Object | Who can touch this table or view, and how? Which columns are masked for whom? |
-| Can they? | Can user X do SELECT, INSERT, CREATE TABLE, etc. on Y? Yes, with every path and how to remove it, or no, with the role to ask for. |
+| Can they? | Can user X do SELECT, INSERT, CREATE TABLE, etc. on Y, or leave Privilege on **Any** to see every access X has on Y? Yes, with every path and how to remove it, or no, with the role to ask for. |
 | Sensitive data | Which objects are sensitive, who reads them, and which columns are unmasked? Two roles compared. |
 | Rule checks | Where does the role model break its own rules? Severity, findings and fixes. |
 | Access review | One row per user and object in a database, with the path, exported as CSV with Reviewer and Keep/Revoke columns. |
@@ -41,6 +41,17 @@ Find (top bar) opens any user, role or object. Every view is a link (`?page=role
 ![Rule checks: severity counts, rule map and rules by area](docs/img/rule-checks.png)
 
 More screens, and how to read them: [README.html](README.html).
+
+## Quick start
+Needs Python 3.10+ and git. No Node or npm: the web app comes built.
+```
+git clone https://github.com/darshanmeel/snowflake-access-explorer.git
+cd snowflake-access-explorer
+python -m venv .venv; .venv\Scripts\activate          # macOS/Linux: python3 -m venv .venv; source .venv/bin/activate
+pip install -r requirements-web.txt
+python run.py --fake                                  # try it on fake data: open http://localhost:8000
+```
+For your own account: `copy .env.example .env` (macOS/Linux: `cp`), fill in account, user, role and warehouse (step 3 below), then `python run.py`. A browser tab opens for the Snowflake login. The details follow.
 
 ## Run it
 The **local web app (React)** is the recommended and default version: it runs on your machine and reads Snowflake with your own login. The Streamlit version runs the very same React app inside Streamlit, so both look and work the same. Data comes from Snowflake by default; fake data only with `--fake`. Both use the same code (`access.py`).

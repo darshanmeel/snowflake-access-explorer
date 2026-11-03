@@ -589,7 +589,7 @@ export interface CheckPage {
   user: string;
   object: string;
   type: string;
-  priv: string;
+  priv: string; // "*" = all privileges the user holds on the object
   privileges: string[];
   answer: {
     yes: boolean;
@@ -602,7 +602,7 @@ export interface CheckPage {
   status: UserStatus;
   dormant_days: number | null;
   admin_paths: Path[];
-  paths: { path: Path; depth: number; holder: string; how: string }[];
+  paths: { path: Path; depth: number; holder: string; how: string; privilege: string }[];
   owner: Path[];
   choke: string[];
   closest: Path | null;
@@ -612,7 +612,6 @@ export interface CheckPage {
   warehouse: string | null;
   read: { summary: string; rows: StateWhy<RowsState> | null; columns: (StateWhy<ColState> & { column: string })[]; role_only: string | null } | null;
   graph: Graph | null;
-  usage: UsageCard;
   capped: string[];
   refs: Refs;
 }

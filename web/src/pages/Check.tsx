@@ -2,7 +2,7 @@ import { useApi } from "../api/client";
 import type { CheckPage, ListItem } from "../api/types";
 import { Banner, Card, DataTable, KpiRow } from "../components";
 import { apiParams, useApp } from "../ctx";
-import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Usage } from "./common";
+import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 export function CheckPageView() {
@@ -18,7 +18,7 @@ export function CheckPageView() {
       <Controls>
         {!mine && <Pick label="User" value={name} options={users.data?.items.map((i) => i.id) ?? [name]} onPick={(v) => c.set({ name: v, obj: null })} />}
         <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={360} options={objs.data?.items.map((i) => i.id) ?? []} onPick={(v) => c.set({ obj: v, priv: null })} />
-        {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v })} options={s.data.privileges.map((p): [string, string] => [p, p])} />}
+        {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v })} options={s.data.privileges.map((p): [string, string] => [p, p === "*" ? "Any" : p])} />}
       </Controls>
       <Load s={s}>{(d) => {
         const a = d.answer;
@@ -28,13 +28,14 @@ export function CheckPageView() {
             <KpiRow items={a.stats.map(([label, value]) => ({ label, value }))} />
             {d.status !== "active" && <Banner tone="warn" title={`User is ${d.status}`} lines={d.dormant_days ? [`No login for ${d.dormant_days} days.`] : []} />}
             {d.admin_paths.length > 0 && (
-              <Banner tone="bad" title="Admin roles give this user everything" lines={d.admin_paths.map((p) => p.join(" > "))} />
+              <Banner tone="bad" title="Admin roles give this user everything" lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
             )}
             <GraphCard g={d.graph} refs={d.refs} />
             {d.paths.length > 0 && (
-              <Card title="Paths" sub={`${d.paths.length} way(s) to ${d.priv} on ${d.object}`}>
+              <Card title="Paths" sub={`${d.paths.length} way(s) to ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}`}>
                 <DataTable csv="check_paths.csv" rows={d.paths}
-                  columns={[col("d", "Depth", (r: CheckPage["paths"][number]) => r.depth, { num: true }),
+                  columns={[...(d.priv === "*" ? [col("p", "Privilege", (r: CheckPage["paths"][number]) => r.privilege, { wrap: "nowrap" })] : []),
+                    col("d", "Depth", (r: CheckPage["paths"][number]) => r.depth, { num: true }),
                     col("h", "Held by", (r: CheckPage["paths"][number]) => r.holder, { render: (r: CheckPage["paths"][number]) => <NameLink id={r.holder} refs={d.refs} /> }),
                     col("w", "How", (r: CheckPage["paths"][number]) => r.how, { wrap: "wrap" }), pathCol<CheckPage["paths"][number]>(d.refs),
                     col("w", "", () => "", { render: (r: CheckPage["paths"][number]) => { const ch = changeOfPath(r.path, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; } })]} />
@@ -84,7 +85,6 @@ export function CheckPageView() {
                 )}
               </Card>
             )}
-            <Usage u={d.usage} />
           </>
         );
       }}</Load>

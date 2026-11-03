@@ -1144,6 +1144,9 @@ def object_page(p, view):
 
 # ---------- can they ----------
 
+ALL = "*"  # Can they?: every privilege on the object
+
+
 def check_page(p, view):
     need(a.users and a.objects, "No users or objects in this data.")
     mine = view == "mine"
@@ -1154,9 +1157,20 @@ def check_page(p, view):
         (r["object"] for r in a.grants(u, True) if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
     need(o in a.kinds, f"{o} is not in this snapshot")
     opts = a.valid_privs(a.kinds[o])
-    pv = p.get("priv") if p.get("priv") in opts else "SELECT" if "SELECT" in opts else opts[0]
-    r = a.can(u, pv, o)
+    pv = p.get("priv") if p.get("priv") in opts else ALL
+    if pv == ALL:  # every privilege the user holds on o, each with its own paths
+        held = list(dict.fromkeys(x["privilege"] for x in a.grants(u, True) if x["object"] == o))
+        rs = {x: a.can(u, x, o) for x in held}
+        r = (dict(next(iter(rs.values())), choke=[]) if rs else a.can(u, opts[0], o)) | dict(ask=[], options=[], closest=None)
+        r["paths"] = [q | dict(privilege=x) for x, v in rs.items() for q in v["paths"]]
+        r["owner"] = list({tuple(q): q for v in rs.values() for q in v["owner"]}.values())
+        r["choke"] = [c for c in (next(iter(rs.values()))["choke"] if rs else []) if all(c in v["choke"] for v in rs.values())]
+        r["shortest"] = min((q["depth"] for q in r["paths"]), default=None)
+    else:
+        held, r = [pv], a.can(u, pv, o)
+        r["paths"] = [q | dict(privilege=pv) for q in r["paths"]]
     ps, admin = r["paths"], a.admin_paths(u, True)
+    what = (", ".join(held) if held else "anything") if pv == ALL else pv
     off = r["status"] == "disabled"
     sleep = not off and a.is_dormant(u) and not a.is_service(u)
     d = a.login_days(u)
@@ -1175,30 +1189,32 @@ def check_page(p, view):
                    tone=tone, stats=[["Paths", 0], ["Via admin", len(admin)]])
     elif not ps:
         ans = dict(yes=False, how="none", title="No, not through any role",
-                   text=f"No role granted to {u}, at any depth, holds {pv} on {o}.{note}", tone="low",
+                   text=f"No role granted to {u}, at any depth, holds {'any privilege' if pv == ALL else pv} on {o}.{note}", tone="low",
                    stats=[["Paths", 0], ["Shortest depth", "—"]])
     else:
         ends = {x["holder"] for x in ps}
-        ans = dict(yes=True, how="paths", title=yes_text or f"Yes, through {plural(len(ps), 'path')}",
-                   text=f"{u} can {pv} {o}." + (f" Every path ends at {ps[0]['holder']}." if len(ends) == 1 else "")
+        ans = dict(yes=True, how="paths", title=yes_text or (f"Yes: {plural(len(held), 'privilege')} through {plural(len(ps), 'path')}"
+                                                             if pv == ALL else f"Yes, through {plural(len(ps), 'path')}"),
+                   text=(f"{u} has {what} on {o}." if pv == ALL else f"{u} can {pv} {o}.") + (f" Every path ends at {ps[0]['holder']}." if len(ends) == 1 else "")
                    + (" Also through an admin role." if admin else "") + note, tone=tone,
-                   stats=[["Paths", len(ps)], ["Shortest depth", r["shortest"]]])
+                   stats=([["Privileges", len(held)]] if pv == ALL else []) + [["Paths", len(ps)], ["Shortest depth", r["shortest"]]])
     read = None
-    if not mine and pv in a.READ_PRIVS and a.is_data(a.kinds[o]) and (ps or r["owner"]):
+    if not mine and any(x in a.READ_PRIVS for x in held) and a.is_data(a.kinds[o]) and (ps or r["owner"]):
         v = a.data_view(u, o, True)
         if v["can_read"]:
             w = a.data_view(r["use_role"], o, False) if r["use_role"] else None
             read = dict(summary=v["summary"], rows=v["rows"] if v["rows"]["policy"] else None, columns=v["columns"],
                         role_only=w["summary"] if w and w["summary"] != v["summary"] else None)
-    g = ps and a.down_graph(u, [dict(privilege=pv, type=a.kinds[o], object=o, paths=[x["path"] for x in ps])], user=True)
+    g = ps and a.down_graph(u, [dict(privilege=x, type=a.kinds[o], object=o, paths=[q["path"] for q in ps if q["privilege"] == x])
+                                for x in held if any(q["privilege"] == x for q in ps)], user=True)
     return dict(
-        view=view, user=u, object=o, type=a.kinds[o], priv=pv, privileges=opts, answer=ans, status=r["status"],
+        view=view, user=u, object=o, type=a.kinds[o], priv=pv, privileges=[ALL] + opts, answer=ans, status=r["status"],
         dormant_days=d if sleep else None, admin_paths=admin, paths=r["paths"], owner=r["owner"], choke=r["choke"],
         closest=r["closest"], ask=[] if mine else r["ask"],
         options=[] if mine else [dict(iac=x["iac"], sql=x["sql"], affects=x["affects"], users=x["users"], edges=len(x["edges"]))
                                  for x in r["options"]],
         use_role=r["use_role"], warehouse=r["warehouse"], read=read,
-        graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None, usage=usage(u), capped=sorted(a.capped))
+        graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None, capped=sorted(a.capped))
 
 
 # ---------- sensitive data ----------
