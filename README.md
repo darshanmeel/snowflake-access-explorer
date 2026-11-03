@@ -160,3 +160,7 @@ Only to give everyone the local web app without each person installing it: run `
 - SQL functions for worksheets;
 - data sources;
 - all settings, and the limits.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Bundled third-party code keeps its own licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
