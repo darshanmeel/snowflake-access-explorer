@@ -92,6 +92,7 @@ export interface GraphNode {
   rules: RuleHit[];
   action: NodeAction | null;
   group: string | null; // id in Graph.groups when this is a combined box
+  classes?: PrivClass[] | null; // roles: what their own grants allow (counts on a folded box)
 }
 
 export interface GraphEdge {
@@ -205,6 +206,16 @@ export interface Meta {
   help: Record<string, string>;
   type_icon: Record<string, [string, string]>;
   pclass: Record<string, string>;
+  /** Snowflake's built-in grants left out (null with builtin=1 or none); graphs show them as one fold box. */
+  builtin: BuiltinInfo | null;
+  what_if_ops: WhatIfOp[];
+}
+
+export interface BuiltinInfo {
+  label: string; // "Snowflake built-in (via PUBLIC)", the fold box's node id
+  grants: number;
+  objects: number;
+  roles: string[];
 }
 
 export interface ReloadAnswer {
@@ -718,5 +729,80 @@ export interface ReviewPage {
     sensitive: number;
   };
   rows: ReviewRow[];
+  refs: Refs;
+}
+
+// ---------- What if (GET /api/whatif?changes=<JSON list>) ----------
+
+export type WhatIfOp = "revoke_role_from_user" | "revoke_role_from_role" | "revoke_priv" | "drop_role" | "empty_public";
+
+export type WhatIfChange =
+  | { op: "revoke_role_from_user"; role: string; user: string }
+  | { op: "revoke_role_from_role"; role: string; grantee: string }
+  | { op: "revoke_priv"; role: string; privilege: string; object: string }
+  | { op: "drop_role"; role: string }
+  | { op: "empty_public" };
+
+export interface WhatIfStep {
+  change: WhatIfChange;
+  label: string;
+  iac: string;
+  sql: string; // "" when no SQL fits
+}
+
+export interface WhatIfObjectRow {
+  object: string;
+  type: string;
+  privileges: string[];
+  classes: PrivClass[];
+  path: Path; // shortest path before: user > ... > holder > object
+  via?: Path; // kept rows: the path left
+  through?: string; // kept rows: its first role the old path did not use
+}
+
+export interface WhatIfUser {
+  user: string;
+  status: UserStatus;
+  lost: number; // privileges lost (exact)
+  objects: number; // objects lost (exact)
+  kept: number; // privileges kept through another path (exact)
+  lost_rows: WhatIfObjectRow[]; // first max_paths objects
+  kept_rows: WhatIfObjectRow[];
+  kept_roles: { role: string; path: Path; via: Path; through: string }[];
+}
+
+export interface WhatIfFinding {
+  num: string;
+  title: string;
+  severity: Severity;
+  grantee: string;
+  kind: string;
+  detail: string;
+  path: Path;
+  status: "fixed" | "new";
+  changed: boolean; // the rule still fires on that grantee, with another detail
+}
+
+export interface WhatIfPage {
+  changes: WhatIfStep[];
+  summary: string;
+  counts: {
+    users: number;
+    objects: number;
+    kept: number;
+    unreached: number;
+    ownerless: number;
+    orphans: number;
+    unreached_roles: number;
+    fixed: number;
+    new: number;
+    changed: number;
+  };
+  users: WhatIfUser[];
+  objects: { object: string; type: string; sensitive: boolean; unreached: boolean; ownerless: boolean }[];
+  roles: { role: string; kind: string; orphan: boolean; unreached: boolean }[];
+  findings: WhatIfFinding[];
+  iac: string;
+  sql: string;
   refs: Refs;
 }

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from collections import Counter
 
 import access as a
 import ui
@@ -501,7 +502,7 @@ def test_db_roles():
             return show(sql)
 
         m = a.mine(query, None)
-        assert sum(c.startswith("SHOW GRANTS TO DATABASE ROLE") for c in calls) == (1 if bad else 2)  # each once
+        assert sum(c.startswith('SHOW GRANTS TO DATABASE ROLE "HR".') for c in calls) == (1 if bad else 2)  # each once
         a.build(m)
         assert a.kind_of(r) == "database" and r in {x["role"] for x in a.reach("ENGINEER_01", True)}
         mine_got = sorted({(x["privilege"], x["object"]) for x in a.grants("ENGINEER_01", True)})
@@ -658,6 +659,89 @@ def test_fast():
     assert r["count"] == 2 and r["paths"] == [["U", "A", "C", "D.S.T"], ["U", "A", "B", "C", "D.S.T"]] and not a.capped
 
 
+def test_builtin():
+    """Snowflake's built-in grants through PUBLIC: left out by default (one fold box in graphs), never rule 9 or 13;
+    the database with 18 database roles held by two group roles."""
+    info, rules = a.builtin_info(), Counter(c[0] for c in a.checks())
+    assert info["grants"] == len(a.hidden) > 300 and {"SNOWFLAKE.CORTEX_USER", "SNOWFLAKE.PUBLIC"} <= set(info["roles"])
+    assert not [n for n in a.roles + a.objects if a.is_builtin(n)]
+    assert a.is_builtin("SYSTEM$STREAMLIT_NOTEBOOK_WH") and a.is_builtin("SYSTEM_COMPUTE_POOL_GPU") and not a.is_builtin("SNOWFLAKE")
+    g = a.graph_input("ANALYST_01")
+    assert g["lanes"][-1][1][-1] == a.BUILTIN_NODE and g["kinds"][a.BUILTIN_NODE] == "fold"
+    assert ("PUBLIC", a.BUILTIN_NODE, "use", "USAGE", info["objects"]) in g["edges"]
+    assert a.BUILTIN_NODE in a.role_graph("PUBLIC", a.held("PUBLIC"))[0][-1][1]
+    n, extra = len(a.grants("ANALYST_01", True)), len({(x["PRIVILEGE"], x["OBJECT_NAME"]) for x in a.hidden
+                                                         if x["GRANTED_ON"] not in a.ROLE_ON})
+    dw = [r for r in a.roles if r.startswith("DW.")]
+    assert len(dw) == 18 and {a.role_kind(r) for r in dw} == {"database"}
+    assert {p for r in dw for p in a.held_by[r] if p not in dw} == {"GRP_DW_ENGINEERS", "GRP_DW_READERS"}
+    reach = {x["role"]: x["path"] for x in a.reach("DW_DEV_01", True)}
+    assert reach["DW.SC_R_ODS"] == ["DW_DEV_01", "GRP_DW_ENGINEERS", "DW.SC_M_ODS", "DW.SC_W_ODS", "DW.SC_R_ODS"]
+    assert not [r for r in a.grants("DW_BI_01", True) if r["cls"] == "write"]
+    a.build(a.fake(), builtin=True)
+    assert a.builtin_info() is None and len(a.grants("ANALYST_01", True)) == n + extra
+    assert sum(o.startswith("SNOWFLAKE.CORE.FN_") for o in a.objects) >= 200
+    assert a.role_kind("SNOWFLAKE.CORTEX_USER") == "database" and "SNOWFLAKE.CORTEX_USER" in {
+        x["role"] for x in a.reach("ANALYST_01", True)}
+    assert Counter(c[0] for c in a.checks()) == rules  # the same findings: no rule 9 on them, no orphan learning role
+
+
+def test_whatif():
+    """What if: revokes simulated in memory, the loaded lookups untouched; the scoped rule recheck equals a rebuild."""
+    keep = (a.roles, list(a.privs), list(a.role_grants), dict(a.holds), a.cached("findings", a.findings))
+    nine = next(x for x in a.rule_rows() if x["num"] == "9")
+    pub = a.what_if([dict(op="empty_public")])
+    lost = {x["user"] for x in pub["users"] if "WH_SALES_XS" in {r["object"] for r in x["lost_rows"]}}
+    assert len(lost) == nine["affects"] == len(a.users) - 3 and pub["counts"]["users"] == len(a.users)  # VIEW LINEAGE
+    kept = {x["user"]: x["kept_rows"][0] for x in pub["users"] if x["kept_rows"]}
+    assert set(kept) == {"ANALYST_01", "ANALYST_02", "ENGINEER_01"} and {x["via"][-2] for x in kept.values()} == {F + "ANALYST"}
+    assert pub["sql"] == "REVOKE USAGE ON WAREHOUSE WH_SALES_XS FROM ROLE PUBLIC; REVOKE VIEW LINEAGE ON ACCOUNT FROM ROLE PUBLIC;"
+    assert [(f["num"], f["status"]) for f in pub["findings"]] == [("9", "fixed")]
+    assert pub["summary"].startswith(f"{len(a.users)} users lose access to 2 objects; 3 keep access")
+    w = a.what_if([dict(op="revoke_role_from_role", role=T + "SALES_CORE_READ", grantee=F + "ANALYST")])
+    u = {x["user"]: x for x in w["users"]}
+    assert set(u) == {"ANALYST_01", "ANALYST_02", "ENGINEER_01"} and w["sql"] == f"REVOKE ROLE {T}SALES_CORE_READ FROM ROLE {F}ANALYST;"
+    assert "SALES.CORE.TBL_CUSTOMER" in {r["object"] for r in u["ANALYST_01"]["lost_rows"]}
+    assert u["ENGINEER_01"]["lost"] == 0 and u["ENGINEER_01"]["kept_roles"][0]["through"] == F + "ENGINEER"
+    w = a.what_if([dict(op="revoke_role_from_user", role="GRP_ANALYSTS", user="ANALYST_01")])
+    assert {(pv, r["object"]) for r in w["users"][0]["lost_rows"] for pv in r["privileges"]} == set(
+        a.loses("ANALYST_01", "ANALYST_01", "GRP_ANALYSTS"))
+    assert ("10", "ANALYST_01", "fixed", False) in {(f["num"], f["grantee"], f["status"], f["changed"]) for f in w["findings"]}
+    w = a.what_if([dict(op="revoke_priv", role=T + "SALES_MART_OWNER", privilege="OWNERSHIP", object="SALES.MART.VW_CUSTOMER")])
+    assert w["objects"] == [dict(object="SALES.MART.VW_CUSTOMER", type="VIEW", sensitive=True, unreached=False, ownerless=True)]
+    assert w["sql"].startswith("GRANT OWNERSHIP ON VIEW SALES.MART.VW_CUSTOMER TO ROLE <new owner role>")
+    w = a.what_if([dict(op="drop_role", role=F + "ENGINEER")])
+    fixed = {(f["num"], f["grantee"]) for f in w["findings"] if f["status"] == "fixed" and not f["changed"]}
+    assert {("4", F + "ENGINEER"), ("19", F + "ENGINEER")} <= fixed and w["sql"] == f"DROP ROLE {F}ENGINEER;"
+    assert T + "SALES_CORE_WRITE" in {r["role"] for r in w["roles"] if r["orphan"]}
+    assert "HR.PEOPLE.TBL_EMPLOYEE" in {x["object"] for x in w["objects"] if x["unreached"]}
+    assert w["csv"][0] == dict(section="change", name=f"Drop role {F}ENGINEER", privilege="", type="", object="", cls="",
+                               status="", path="", detail=f"DROP ROLE {F}ENGINEER;")
+    assert (a.roles, a.privs, a.role_grants, a.holds) == keep[:4] and a.roles is keep[0]
+    assert a.cached("findings", a.findings) is keep[4]  # the memo is back too
+    for bad in ([dict(op="grant_role")], [dict(op="drop_role", role="PUBLIC")], [dict(op="drop_role", role="SYSADMIN")],
+                [dict(op="revoke_role_from_user", role=F + "ENGINEER", user="ANALYST_01")],
+                [dict(op="revoke_priv", role=F + "ANALYST", privilege="SELECT", object="NO.SUCH.TABLE")]):
+        try:
+            a.what_if(bad)
+            raise AssertionError(bad)
+        except ValueError:
+            pass
+    for ch in ([dict(op="empty_public")], [dict(op="drop_role", role=F + "ENGINEER")],
+               [dict(op="revoke_role_from_user", role="GRP_ANALYSTS", user="ANALYST_02")],
+               [dict(op="revoke_role_from_role", role=F + "FINANCE_EDITOR", grantee=F + "FINANCE_REPORTING")],
+               [dict(op="revoke_priv", role=T + "SHARED_LOGGING_READ", privilege="INSERT", object="SHARED.LOGGING.TBL_LOGGING"),
+                dict(op="drop_role", role="GRP_DW_READERS")]):
+        w = a.what_if(ch)
+        b3 = {(f["num"], f["grantee"], f["user"]) for f in a.findings()}
+        a.build(a.without_cuts(a.fake(), a.changes_of(ch)[0]))
+        a3 = {(f["num"], f["grantee"], f["user"]) for f in a.findings()}
+        a.build(a.fake())
+        got = lambda st: {(f["num"], f["grantee"], f["kind"] == "user") for f in w["findings"]  # noqa: E731
+                          if f["status"] == st and not f["changed"]}
+        assert got("fixed") == b3 - a3 and got("new") == a3 - b3, ch
+
+
 def big():
     """2,000 objects (5 databases x 10 schemas x 40 tables), 300 roles (200 technical, 100 functional nested into
     earlier ones, so paths fan out), 500 users; BIG_01 holds the 10 last functional roles."""
@@ -717,6 +801,12 @@ def test_perf():
     assert g["header"] == f"{n:,} objects, grouped by {g['level']}" and g["level"] != "object"
     g = a.graph_input("BIG_01", groups[0]["group"])  # 40 tables in one schema: one type group
     assert g["level"] == "type" and g["lanes"][-1][1] == [groups[0]["group"] + " · TABLE"]
+    for ch in ([dict(op="revoke_role_from_role", role=F + "TEAM_005", grantee=a.held_by[F + "TEAM_005"][0])],
+               [dict(op="drop_role", role=F + "TEAM_010")]):  # what if: hundreds of users lose or keep access
+        t = time.perf_counter()
+        w = a.what_if(ch)
+        took = time.perf_counter() - t
+        assert w["counts"]["users"] > 10 and took < 3, f"{took:.1f} s"  # 1.5 - 2 s on a laptop
 
 
 def test_group_graph():
@@ -976,13 +1066,17 @@ def page_graphs():
 
 
 def test_graph_geometry():
-    n = 0
+    n, holders = 0, 0
     for where, (lanes, edges, notes), sel in page_graphs():
         for fit in (False, True):
             html = ui.lane_graph(lanes, edges, a.kind_of, "light", lambda x: "?n=" + x, sel, fit=fit, notes=notes)
             boxes, drawn, _ = geometry(html, (where, fit))
             n += 1
-    assert n > 100
+        if where.startswith("object "):  # lanes follow the chain: every line runs left to right
+            lane = {x: i for i, (_, ns) in enumerate(lanes) for x in ns}
+            assert all(lane[e[0]] < lane[e[1]] for e in edges), where
+            holders += any("also grant holder" in b for b, _ in notes.values())
+    assert n > 100 and holders
     # ENGINEER_01: T_SALES_CORE_READ once, at depth 2, also reached at depth 3 through the WRITE role (dotted, back edge)
     rows = a.grants("ENGINEER_01", True)
     lanes, edges, notes = a.down_graph("ENGINEER_01", rows, a.walk("ENGINEER_01", True))
@@ -1100,7 +1194,8 @@ if __name__ == "__main__":
     for t in (test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live, test_db_roles, test_pages):
+              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live, test_db_roles, test_builtin,
+              test_whatif, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

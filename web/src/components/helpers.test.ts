@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrivRow } from "../api/types";
-import { combine, expand, normKind, pathGraph } from "./graphs";
-import { wrap } from "./layout";
+import { buckets, combine, edgeTip, expand, foldRoles, makeNode, normKind, pathGraph, related } from "./graphs";
+import { labelSpots, roundPath, wrap } from "./layout";
 import { filterRows, sortRows, toCsv } from "./table";
 import { tabGraph } from "./tabgraph";
 import { privTab, tabList, tabRows } from "./tabs";
@@ -67,7 +67,8 @@ describe("graphs", () => {
 
   it("folds a crowded role lane and remaps edges of closed boxes", () => {
     const paths = Array.from({ length: 13 }, (_, i) => ({ path: ["U", `F${i}`, `X.S.T${i}`], cls: "read" as const }));
-    const g = combine(pathGraph(paths, { kinds: { U: "user" }, max: 99 }), 12);
+    const kinds = { U: "user", ...Object.fromEntries(paths.map((p) => [p.path[1], "functional"])) };
+    const g = combine(pathGraph(paths, { kinds, max: 99 }), 12);
     expect(g.nodes.map((n) => n.id).sort()).toEqual(["U", "db:X", "lane:1"]);
     const open = expand(g, new Set(["lane:1"]));
     expect(open.nodes).toHaveLength(15);
@@ -84,6 +85,61 @@ describe("graphs", () => {
     const p = g.nodes.find((n) => n.label === "VIEW LINEAGE")!;
     expect(p.kind).toBe("admin");
     expect(g.edges.find((e) => e.target === p.id)).toMatchObject({ source: "PUBLIC", cls: "admin" });
+  });
+});
+
+describe("folding and opening", () => {
+  it("folds the database roles of one database into one box counted by grant class, and opens it", () => {
+    const cls = ["read", "write", "manage"] as const;
+    const paths = Array.from({ length: 9 }, (_, i) => ({ path: ["U", "G", `HR.R${i}`, `HR.S.T${i}`], cls: cls[i % 3], privilege: "X" }));
+    const kinds = { U: "user", G: "group", ...Object.fromEntries(paths.map((p) => [p.path[2], "database"])) };
+    const g = pathGraph(paths, { kinds, max: 99 });
+    const box = g.nodes.find((n) => n.id === "fold:2:db:HR")!;
+    expect([box.kind, box.label, box.sub, box.badge]).toEqual(["database_role", "HR", "9 database roles", "3 read · 3 write · 3 manage"]);
+    expect(g.edges.find((e) => e.source === "G" && e.target === box.id)!.count).toBe(9);
+    expect(foldRoles(g)).toBe(g); // nothing left to fold
+    const open = expand(g, new Set([box.id]));
+    expect(open.nodes.filter((n) => n.kind === "database_role")).toHaveLength(9);
+    expect(open.groups[box.id]).toBeUndefined();
+  });
+
+  it("opens a huge box by schema, then type, never member by member", () => {
+    const ms = Array.from({ length: 500 }, (_, i) => makeNode(`SNOWFLAKE.${i < 380 ? "CORE" : "ML"}.F${i}`, "object", 2,
+      { db: "SNOWFLAKE", schema: i < 380 ? "CORE" : "ML", type: i % 50 ? "FUNCTION" : "PROCEDURE", label: `F${i}` }));
+    const g = combine(pathGraph(ms.map((n) => ({ path: ["U", "R", n.id], cls: "use" as const })), { kinds: { U: "user" }, max: 99 }), 12);
+    const g2 = { ...g, groups: { ...g.groups, "db:SNOWFLAKE": { ...g.groups["db:SNOWFLAKE"], nodes: ms } } };
+    const one = expand(g2, new Set(["db:SNOWFLAKE"]));
+    expect(one.nodes.filter((n) => n.lane === 2).map((n) => [n.label, n.sub])).toEqual([["SNOWFLAKE.CORE", "380 objects"], ["SNOWFLAKE.ML", "120 objects"]]);
+    const two = expand(g2, new Set(["db:SNOWFLAKE", "db:SNOWFLAKE/SNOWFLAKE.CORE"]));
+    expect(two.nodes.filter((n) => n.lane === 2).map((n) => n.sub)).toEqual(["120 objects", "372 functions", "8 procedures"]);
+    expect(buckets(ms.slice(0, 20))).toBeNull();
+    const many = buckets(ms.slice(0, 300).map((n) => ({ ...n, type: "FUNCTION" })))!;
+    expect(many.length).toBeLessThanOrEqual(12);
+    expect(many.reduce((s, b) => s + b.members.length, 0)).toBe(300);
+  });
+
+  it("lights up every path through a node or a line, and says what a line is", () => {
+    const g = pathGraph([
+      { path: ["U", "F", "T", "S.C.T1"], cls: "read", privilege: "SELECT" },
+      { path: ["U", "F2", "T2", "S.C.T2"], cls: "write", privilege: "INSERT" },
+    ], { kinds: { U: "user", F: "functional", F2: "functional", T: "technical", T2: "technical" } });
+    expect([...related(g, "T")].filter((x) => !x.includes(">")).sort()).toEqual(["F", "S.C.T1", "T", "U"]);
+    expect(related(g, "F>T>inherit").has("T2")).toBe(false);
+    const by = new Map(g.nodes.map((n) => [n.id, n]));
+    expect(edgeTip(g.edges.find((e) => e.id === "F>T>inherit")!, by, g.groups)).toBe("F is granted role T");
+    expect(edgeTip(g.edges.find((e) => e.target === "S.C.T2")!, by, g.groups)).toBe("T2 has INSERT on object S.C.T2");
+  });
+});
+
+describe("routes", () => {
+  it("rounds corners and puts a count on a stretch the line has to itself", () => {
+    expect(roundPath([{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }], 8)).toBe("M0,0 L12,0 Q20,0 20,8 L20,20");
+    const spots = labelSpots(new Map([
+      ["a", [{ x: 0, y: 0 }, { x: 100, y: 0 }]],
+      ["b", [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 30 }, { x: 100, y: 30 }]],
+    ]));
+    expect(spots.get("a")).toEqual({ x: 70, y: 0 });
+    expect(spots.get("b")).toEqual({ x: 70, y: 30 });
   });
 });
 

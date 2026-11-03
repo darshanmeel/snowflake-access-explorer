@@ -38,7 +38,8 @@ TABS = [("account", "Account"), ("granted", "Granted roles"), ("database_roles",
 GKIND = {"schema": "schema_group", "database": "database_group", "type-group": "type_group", "fold": "fold",
          "lane_group": "lane_group"}
 ROWS_WORD = {"all": "all rows", "filtered": "filtered rows", "none": "no rows", "unknown": "rows unknown"}
-MAX_MEMBERS = 200  # members of a combined box sent for expansion; the rest through the drill action
+MAX_MEMBERS = 1000  # members of a combined box sent for expansion (the graph groups them by schema, then type); the
+# rest through the drill action
 MAX_BOX = a.MAX_OBJECTS  # a tab diagram draws one box each up to this many objects / roles per lane
 
 LOCK = threading.RLock()  # access.py keeps its lookups in module globals: build + answer under one lock
@@ -128,8 +129,9 @@ def load_mine(sid):
 
 
 @contextmanager
-def session(view, sid):
-    """The lookups of the view's data built, under the lock; S holds sensitive objects, rule rows and graph rule hits."""
+def session(view, sid, builtin=False):
+    """The lookups of the view's data built, under the lock; S holds sensitive objects, rule rows and graph rule hits.
+    builtin: with Snowflake's built-in grants (a.BUILTIN); switching it rebuilds, rule checks included."""
     if view not in ("shared", "mine"):
         raise ApiError(400, "bad_param", "view must be shared or mine")
     if view == "shared":
@@ -141,7 +143,7 @@ def session(view, sid):
             raise ApiError(409, "mine_not_loaded", "Load My access first.")
         d, key = m["data"], m["key"]
     with LOCK:
-        a.build(d, key)
+        a.build(d, key, builtin)
         a.capped.clear()
         S["view"], S["known"] = view, None
         S["sens"] = a.cached("sens", a.sensitive)
@@ -442,8 +444,8 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
                 typ = types.get(n) or (n.split(" · ", 1)[1] if " · " in n else None)
                 db, _, sc = scope.partition(".")
             elif gk in ("schema", "database"):
-                db, _, sc = n.partition(".")
-            label = n.strip("⋯ ").join(["⋯ ", " ⋯"]) if gk == "fold" else n
+                db, _, sc = n.split(" · ")[0].partition(".")  # a tab box id is "DB · 19 objects": the count is the sub
+            label = n.strip("⋯ ").join(["⋯ ", " ⋯"]) if gk == "fold" else n.split(" · ")[0] if gk == "database" else n
         elif kind == "object":
             nl = node_label(n)
             if nl:
@@ -461,9 +463,12 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
             f"Rule {x['num']} ({x['severity']}): {x['title']}" for x in rules[:5]]
         marks = [m for m, on in (("disabled", kind == "user" and a.is_disabled(name)), ("sensitive", n in S["sens"]),
                                  ("bad", n in bad)) if on]
+        classes = None if gk or kind in ("user", "object") else [  # what the role's own grants allow (folded box counts)
+            c for c in a.CLS_ORDER if c in {a.priv_class(pv, k) for pv, k, _ in a.granted.get(name, [])}]
         return dict(id=n, name=name, label=label, sub=sub, kind=kind, raw_kind=None if gk else raw_of(n), type=typ,
                     db=db, schema=sc, lane=i, depth=lane_depth(lanes[i][0]) if i < len(lanes) else None, badge=badge,
-                    tip="\n".join(lines), marks=marks, rules=rules, action=action(n, gk), group=n if gx.get(n) else None)
+                    tip="\n".join(lines), marks=marks, rules=rules, action=action(n, gk), group=n if gx.get(n) else None,
+                    classes=classes)
 
     def edge_list(es, lanes_of, inf):
         out = {}
@@ -578,8 +583,8 @@ def input_graph(start, user, rows, schema=None, otype=None, default_only=False, 
 
 
 def combine_tab(lanes, edges, notes, kinds):
-    """Tab diagram with many boxes: objects over MAX_BOX become one box per database, a depth lane with more than MAX_BOX
-    roles one box. Returns lanes, edges, notes, kinds, gx."""
+    """Tab diagram with many boxes: objects over MAX_BOX become one box per database (the graph component folds crowded
+    role lanes: database roles per database, group roles, then the rest). Returns lanes, edges, notes, kinds, gx."""
     gx, to = {}, {}  # to: member -> its box
     lanes = [(lab, list(ns)) for lab, ns in lanes]
     for i, (lab, ns) in enumerate(lanes):
@@ -598,12 +603,6 @@ def combine_tab(lanes, edges, notes, kinds):
                 to.update({o: gid for o in os_})
                 ids.append(gid)
             lanes[i] = (lab, ids)
-        elif lab.startswith("Depth") and len(ns) > MAX_BOX:
-            gid = f"{lab} · {len(ns)} roles"
-            gx[gid] = dict(members=ns, count=len(ns), noun="roles")
-            kinds[gid] = "lane_group"
-            to.update({n: gid for n in ns})
-            lanes[i] = (lab, [gid])
     if not gx:
         return lanes, edges, notes, kinds, gx
     new, per = [], {}
@@ -1277,6 +1276,40 @@ def rules_csv(p, view):
     return f"findings_{sev or 'all'}_{now:%Y-%m-%d}.csv", text
 
 
+# ---------- what if ----------
+
+WHATIF_KEYS = ["section", "name", "privilege", "type", "object", "cls", "status", "path", "detail"]
+
+
+def what_if(p, cap):
+    """a.what_if() of the changes param (a JSON list of {op, ...}); 400 on a malformed or unknown change."""
+    try:
+        changes = json.loads(p.get("changes") or "")
+    except ValueError:
+        changes = None
+    if not (isinstance(changes, list) and changes and all(isinstance(c, dict) for c in changes)):
+        raise ApiError(400, "bad_param", 'changes must be a JSON list of changes, e.g. [{"op": "empty_public"}]')
+    try:
+        return a.what_if(changes, cap)
+    except ValueError as x:
+        raise ApiError(400, "bad_change", str(x))
+
+
+def whatif_page(p, view):
+    out = what_if(p, a.MAX_PATHS)
+    out.pop("csv")
+    return out
+
+
+def whatif_csv(p, view):
+    now, out = datetime.now(), what_if(p, None)
+    text = csv_text([k.capitalize() for k in WHATIF_KEYS], [[x[k] for k in WHATIF_KEYS] for x in out["csv"]],
+                    [["What if", out["summary"]], ["Run", a.run.get("RUN_ID"), str(a.run.get("FINISHED_AT"))[:16]],
+                     ["Generated", f"{now:%Y-%m-%d %H:%M}"], ["Infrastructure as code", out["iac"]],
+                     ["SQL (never run by this app)", out["sql"]]])
+    return f"what_if_{now:%Y-%m-%d}.csv", text
+
+
 # ---------- access review ----------
 
 REVIEW_KEYS = ["database", "schema", "object", "type", "user", "user_type", "status", "last_login", "privileges", "classes",
@@ -1418,7 +1451,7 @@ def meta(p, sid):
                 governance=None, tokens=theme_tokens(), help=ui.HELP,
                 type_icon={k: list(v) for k, v in ui.TYPE_ICON.items()}, pclass=ui.PCLASS)
     try:
-        with session(view, sid) as d:
+        with session(view, sid, p.get("builtin") == "1") as d:
             run = a.run
             when, old = snap_time(run) if view == "shared" else ("live", False)
             badge = {"rules": len(S["rows"]), "sensitive": len(S["sens"])}
@@ -1428,6 +1461,7 @@ def meta(p, sid):
                         pages=[dict(key=k, label=lab, badge=badge.get(k) or None) for k, lab in PAGES.items()
                                if not (view == "mine" and k in SHARED_ONLY)],
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
+                        builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
                         default_user=DEMO_USER if DEMO_USER in a.users else (a.users[0] if a.users else DEMO_USER))
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)
@@ -1481,15 +1515,16 @@ def mkrefs(out):
 
 
 ROUTES = {"user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
-          "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page}
-WITH_REFS = {"user", "role", "object", "check", "sensitive", "rules", "review"}
-CSV = {"rules": rules_csv, "review": review_csv}
+          "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
+          "whatif": whatif_page}
+WITH_REFS = {"user", "role", "object", "check", "sensitive", "rules", "review", "whatif"}
+CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
 def serve(name, params=None, sid=None):
     """The JSON answer of one endpoint (a dict), as the local server and the Streamlit components get it."""
     p = {k: str(v) for k, v in (params or {}).items()}
-    with session(p.get("view", "shared"), sid):
+    with session(p.get("view", "shared"), sid, p.get("builtin") == "1"):
         out = ROUTES[name](p, p.get("view", "shared"))
         if name in WITH_REFS:
             out["refs"] = mkrefs(out)
@@ -1498,7 +1533,7 @@ def serve(name, params=None, sid=None):
 
 def serve_csv(name, params=None, sid=None):
     p = {k: str(v) for k, v in (params or {}).items()}
-    with session(p.get("view", "shared"), sid):
+    with session(p.get("view", "shared"), sid, p.get("builtin") == "1"):
         return CSV[name](p, p.get("view", "shared"))
 
 
@@ -1548,7 +1583,7 @@ def make_app():
             return serve(name, dict(request.query_params), sid_of(request))
         return h
 
-    for n in ("user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph"):
+    for n in ("user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph", "whatif"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

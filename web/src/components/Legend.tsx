@@ -24,8 +24,10 @@ export function Legend({ legend, theme = "light" }: { legend: Graph["legend"]; t
               </svg>
             ) : (
               <span className="ae-swatch" style={{
-                background: s.bg, borderColor: s.border, borderStyle: group ? "double" : s.dash,
-                borderWidth: group ? 3 : 1.5, borderRadius: k === "user" ? 999 : k === "object" ? "6px / 5px" : 3,
+                background: s.bg, borderColor: s.border, borderStyle: s.dash, borderWidth: 1.5,
+                borderRadius: k === "user" ? 999 : k === "object" ? "6px / 5px" : 3,
+                boxShadow: group ? `2px 2px 0 -1px ${s.bg}, 2px 2px 0 0 ${s.border}, 4px 4px 0 -1px ${s.bg}, 4px 4px 0 0 ${s.border}` : undefined,
+                width: group ? 18 : undefined, height: group ? 10 : undefined, marginRight: group ? 4 : undefined,
               }} />
             )}
             {KIND_LABEL[k] ?? k}

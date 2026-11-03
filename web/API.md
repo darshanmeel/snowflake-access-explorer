@@ -32,6 +32,16 @@ TypeScript types: `web/src/api/types.ts` (keep both in step).
 | Param | Values | Default | Meaning |
 |---|---|---|---|
 | `view` | `shared` \| `mine` | `shared` | Which data: the shared snapshot, or My access of this browser session |
+| `builtin` | `1` | off | Keep Snowflake's built-in grants (see below); switching it rebuilds the lookups and rule checks |
+
+**Snowflake built-in grants.** Grants Snowflake makes to every account through PUBLIC (fnmatch patterns `BUILTIN`,
+default `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*`: the SNOWFLAKE.* database roles and their
+functions / views, application role SNOWFLAKE.PUBLIC, system compute pools and warehouses, the learning role,
+warehouse and database). `a.build(d, key, builtin=False)` leaves them out of every walk, count, table and rule
+(kept in `a.hidden`); never rule 9 or 13 either way. Graphs (`a.graph_input`, the PUBLIC role graph) then show one
+box `a.BUILTIN_NODE` = "Snowflake built-in (via PUBLIC)" under PUBLIC: kind `fold`, edge `PUBLIC -> box` class `use`
+with the object count, note `("hidden", tooltip)`, info `{count: grants, noun: "built-in grants"}`. `builtin=1`
+draws the real grants instead. `meta.builtin` tells what is hidden.
 
 Every page endpoint accepts `view`. `review` is shared only (`400 shared_only` in mine). URL state of the React app
 mirrors app.py (`?page=user&name=...&depth=3&data=mine`), so links stay shareable; `data=mine` becomes `view=mine`.
@@ -122,7 +132,8 @@ computed once per build key.
     "marks": ["sensitive"],              // disabled | sensitive | bad
     "rules": [{"num": "3", "severity": "Low", "title": "READ held directly and through another role"}],
     "action": {"kind": "page", "page": "role", "params": {"name": "T_SALES_CORE_READ"}},
-    "group": null                        // GroupInfo for a combined box, see below
+    "group": null,                       // GroupInfo for a combined box, see below
+    "classes": ["read"]                  // roles: classes of their own grants (counts on a folded box); null otherwise
   }],
   "edges": [{
     "id": "F_ENGINEER>T_SALES_CORE_READ>inherit",
@@ -139,7 +150,7 @@ computed once per build key.
       "sensitive": 1, "findings": 3, "classes": ["read", "manage"],
       "nodes": [ /* GraphNode of each member, lane = the group's lane */ ],
       "edges": [ /* holder -> member edges that replace the edges into the group */ ],
-      "truncated": 0,                    // members left out (over 200): use the drill action
+      "truncated": 0,                    // members left out (over 1000): use the drill action
       "drill": {"kind": "drill", "schema": "SALES.PIPELINE"}   // or {"kind": "otype", "otype": "TABLE"}
     }
   },
@@ -150,7 +161,7 @@ computed once per build key.
 
 - **NodeKind**: `user`, `functional`, `technical`, `group`, `database_role`, `admin`, `object`, and the combined boxes
   `schema_group`, `database_group`, `type_group` (graph_input's `kinds`: schema | database | type-group),
-  `fold` (`a.summary()` "⋯ N roles ⋯" box), `lane_group` (many roles of one lane in one box, tab graphs only).
+  `fold` (`a.summary()` "⋯ N roles ⋯" box), `lane_group` (many roles of one lane in one box, folded by the component).
 - **Styles** (from `ui.TOKENS`, `meta.tokens`): user pill, functional blue, technical coffee, group dashed amber,
   database role tab-corner grey-blue box with its database under the name, object grey, admin red; account privileges
   red (edge `admin`). Edge `inherit_db`: a role link whose target is a database role (grey-blue, dotted double line).
@@ -164,8 +175,13 @@ computed once per build key.
   Rules as in `app.node_href`: schema/database/type-group boxes -> `expand` (with `drill` / `otype` in the group);
   fold -> `full`; on the user page an object -> Can they? for this user; else the node's own page.
 - **Tab graphs** (Privileges tabs): at most 12 object boxes (`a.MAX_OBJECTS`), else objects combine into one
-  `database_group` per database (`group.nodes` = its objects), and a lane with more than 12 role boxes becomes one
-  `lane_group` per lane. Over `MAX_OBJECTS` rows only the shortest path of each row is drawn (as `app.tab_graph`).
+  `database_group` per database (`group.nodes` = its objects). Over `MAX_OBJECTS` rows only the shortest path of each
+  row is drawn (as `app.tab_graph`).
+- **Folding in the component** (`graphs.ts` `foldRoles`, every graph): 6+ database roles of one database in one lane
+  become one box ("DW · 9 database roles", badge "3 read · 3 write · 3 manage" by the strongest class of each role's
+  own grants), as do 6+ group roles; a lane still over 24 boxes folds the rest into one `lane_group`. Folded lines carry
+  counts. Opening a box with over 24 members draws buckets instead (`buckets`): objects by schema, then type; roles by
+  kind and database; then name ranges.
 
 ## Endpoints
 
@@ -192,9 +208,14 @@ Answers even when the data is not loaded (`loaded: false`, no run).
              "meaning": "...", "fix": "..."}],
   "governance": {"Row access policies used": "2 tables", "Masking": "5 columns", "Tags": "not used"},
   "tokens": {"light": {"...": "ui.TOKENS"}, "dark": {}}, "help": {"Depth": "ui.HELP"},
-  "type_icon": {"TABLE": ["▦", "table"]}, "pclass": {"read": "Read"}
+  "type_icon": {"TABLE": ["▦", "table"]}, "pclass": {"read": "Read"},
+  "builtin": {"label": "Snowflake built-in (via PUBLIC)", "grants": 367, "objects": 353,
+              "roles": ["SNOWFLAKE.CORTEX_USER", "SNOWFLAKE.PUBLIC", "SNOWFLAKE_LEARNING_ROLE", "..."]},
+  "what_if_ops": ["revoke_role_from_user", "revoke_role_from_role", "revoke_priv", "drop_role", "empty_public"]
 }
 ```
+
+`builtin`: `a.builtin_info()`, the built-in grants left out (null with `builtin=1` or when there are none).
 
 `notes` titles and meanings: `app.note_info(key, source, view)`; `old`: snapshot older than 24 h (`app.snap_time`).
 `governance` is shared only (null in mine). `pages` leaves out `review` in mine; badges: rules = findings count,
@@ -494,6 +515,72 @@ Access review, shared only. Producer: `a.review(None if db == "*" else db)`, sor
 included), columns Database, Schema, Object, Type, User, User type, Status, Last login, Privileges, Classes,
 Sensitive, Granted roles, Path, Reviewer, Keep/Revoke, with the header lines of `app.review_page` (Access review, Run,
 Filter, Generated). Other tables export CSV in the browser from the JSON rows.
+
+### GET /api/whatif?view=&changes=&builtin=
+
+What if grants went: `a.what_if(changes, cap=a.MAX_PATHS)`. Read-only: the loaded lookups are rebuilt in memory
+without the changes, diffed, and put back; nothing runs in Snowflake, `iac` / `sql` are text to apply through
+infrastructure as code. The rules recheck only the users and roles a change can touch (`a.SCOPED`, `a.GROW`).
+`changes`: URL-encoded JSON list, one or more of
+
+| op | fields | SQL text |
+|---|---|---|
+| `revoke_role_from_user` | `role`, `user` | `REVOKE ROLE R FROM USER U;` |
+| `revoke_role_from_role` | `role`, `grantee` | `REVOKE ROLE R FROM ROLE G;` (DATABASE ROLE for a database role) |
+| `revoke_priv` | `role`, `privilege`, `object` | `REVOKE P ON <type> O FROM ROLE R;` (OWNERSHIP: a transfer) |
+| `drop_role` | `role` | `DROP ROLE R;` (not PUBLIC, not an admin role) |
+| `empty_public` | | every grant to PUBLIC revoked (PUBLIC itself stays: every user holds it) |
+
+400 `bad_param` (not a JSON list of objects), 400 `bad_change` (unknown op, a grant that is not there, PUBLIC or an
+admin role dropped; the message names it).
+
+```json
+{
+  "changes": [{"change": {"op": "revoke_role_from_role", "role": "T_SALES_CORE_READ", "grantee": "F_ANALYST"},
+               "label": "Revoke role T_SALES_CORE_READ from role F_ANALYST",
+               "iac": "Remove in the infrastructure-as-code repo: role T_SALES_CORE_READ granted to role F_ANALYST",
+               "sql": "REVOKE ROLE T_SALES_CORE_READ FROM ROLE F_ANALYST;"}],
+  "summary": "2 users lose access to 3 objects; 3 keep access through another path (most via T_SALES_MART_READ); 0 findings fixed, 0 new, 2 changed",
+  "counts": {"users": 2, "objects": 3, "kept": 3, "unreached": 0, "ownerless": 0, "orphans": 0, "unreached_roles": 0,
+             "fixed": 0, "new": 0, "changed": 2},
+  "users": [{"user": "ANALYST_01", "status": "active", "lost": 3, "objects": 3, "kept": 1,
+             "lost_rows": [{"object": "SALES.CORE.TBL_CUSTOMER", "type": "TABLE", "privileges": ["SELECT"],
+                            "classes": ["read"], "path": ["ANALYST_01", "GRP_ANALYSTS", "F_ANALYST", "T_SALES_CORE_READ",
+                                                          "SALES.CORE.TBL_CUSTOMER"]}],
+             "kept_rows": [{"object": "SALES", "type": "DATABASE", "privileges": ["USAGE"], "classes": ["read"],
+                            "path": ["ANALYST_01", "...", "T_SALES_CORE_READ", "SALES"],
+                            "via": ["ANALYST_01", "GRP_ANALYSTS", "F_ANALYST", "T_SALES_MART_READ", "SALES"],
+                            "through": "T_SALES_MART_READ"}],
+             "kept_roles": []},
+            {"user": "ENGINEER_01", "status": "active", "lost": 0, "objects": 0, "kept": 0, "lost_rows": [], "kept_rows": [],
+             "kept_roles": [{"role": "T_SALES_CORE_READ", "path": ["ENGINEER_01", "F_ENGINEER", "T_SALES_CORE_READ"],
+                             "via": ["ENGINEER_01", "F_ENGINEER", "T_SALES_CORE_READ"], "through": "F_ENGINEER"}]}],
+  "objects": [{"object": "SALES.MART.VW_CUSTOMER", "type": "VIEW", "sensitive": true, "unreached": false, "ownerless": true}],
+  "roles": [{"role": "T_SALES_CORE_WRITE", "kind": "technical", "orphan": true, "unreached": true}],
+  "findings": [{"num": "4", "title": "OWNER role held by a consumer", "severity": "High", "grantee": "F_ENGINEER",
+                "kind": "functional", "detail": "T_SALES_MART_OWNER", "path": ["F_ENGINEER", "T_SALES_MART_OWNER"],
+                "status": "fixed", "changed": false}],
+  "iac": "Remove in the infrastructure-as-code repo: ...", "sql": "REVOKE ROLE T_SALES_CORE_READ FROM ROLE F_ANALYST;",
+  "refs": {"kinds": {}, "types": {}, "labels": {}, "sensitive": [], "disabled": []}
+}
+```
+
+(`objects`, `roles` and `findings` above are from other changes, to show their shape.)
+
+- `users`: everyone who reaches something under a change, most objects lost first. `lost` / `kept`: privileges
+  (exact); `lost_rows` / `kept_rows`: one row per object, the first `max_paths` objects; `path` = the shortest path
+  before, `via` = the path left, `through` = its first role the old path did not use; `kept_roles`: the roles right
+  under a cut the user still reaches. `objects`: objects nobody reaches any more (`unreached`) or left without an
+  OWNERSHIP grant (`ownerless`). `roles`: roles left without users or parent roles (`orphan`), or that no user reaches
+  any more (`unreached`). `findings`: rule findings that go (`fixed`) or come (`new`); `changed`: the rule still
+  fires on that grantee with another detail (counted once per rule and grantee in `counts.changed`).
+- Entry points (UI): a "What if revoked?" button on role pages, grant / path rows, findings and Can they?, each
+  adding one change to the list.
+
+`GET /api/whatif.csv` (same params): `text/csv`, `what_if_<yyyy-mm-dd>.csv`, every row (no cap), columns Section
+(change | user | object | role | finding), Name, Privilege, Type, Object, Cls, Status (lost | kept | kept role |
+unreached | ownerless | orphan | fixed | new), Path, Detail, with the header lines What if (summary), Run, Generated,
+Infrastructure as code, SQL (never run by this app).
 
 ### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0
 

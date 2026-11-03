@@ -9,6 +9,6 @@ export { PathText } from "./PathText";
 export { Banner, Card, Chips, KpiRow, Root, Tabs, type ChipItem, type Kpi, type TabItem } from "./parts";
 export { TOKENS, themeVars, kindStyle, KIND_LABEL, PCLASS, type ThemeName } from "./theme";
 export { TAB_ORDER, TAB_LABEL, privTab, tabList, tabRows, tabRoles } from "./tabs";
-export { combine, expand, fold, legendOf, normKind, pathGraph, MAX_BOXES } from "./graphs";
+export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind, pathGraph, related, MAX_BOXES } from "./graphs";
 export { tabGraph, tabPaths } from "./tabgraph";
 export { cellText, filterRows, sortRows, toCsv } from "./table";

@@ -82,5 +82,5 @@ export const PCLASS: Record<string, string> = {
 export const KIND_LABEL: Record<string, string> = {
   user: "User", functional: "Functional", technical: "Technical", group: "Group / other", database_role: "Database role",
   admin: "Admin / account", object: "Object", schema_group: "Schema (combined)", database_group: "Database (combined)",
-  type_group: "Object type (combined)", fold: "Folded roles", lane_group: "Roles (combined)",
+  type_group: "Object type (combined)", fold: "Folded roles (click opens)", lane_group: "Roles (combined)",
 };
