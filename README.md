@@ -112,6 +112,7 @@ SNOWFLAKE_WAREHOUSE=<WH>
 | `CACHE_HOURS` | `24` | Hours the local copy in `.cache/` is used; `0` = memory only |
 | `BUILTIN` | `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*` | Names of Snowflake's built-in roles and objects, folded under PUBLIC and left out of rule checks (`?builtin=1` shows them) |
 | `APP`, `WEB_PORT`, `STREAMLIT_PORT` | `web`, `8000`, `8501` | What `run.py` starts, and where |
+| `HOST` | `127.0.0.1` | Address the local web app listens on; `0.0.0.0` on a shared server ([Deploy](#deploy)) |
 
 More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, ...): README.html.
 
@@ -138,11 +139,79 @@ Then set `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` in `.env` (and `SNOWFLAKE_ROLE=<APP_ROL
 - Without the app, in a worksheet: `SELECT * FROM TABLE(TF_ACCESS_OF('<USER>', NULL));`, `TF_WHO_CAN`, `TF_CAN`, `CALL SP_ACCESS_FINDINGS('{}')`.
 - SnowSQL instead of `run_sql.py`: `!source` the same `sql/` files in order. Remove everything: `python run_sql.py sql/3_cleanup.sql`.
 
+## Deploy
+Four ways to run it. All of them only read; none of them changes grants.
+
+| Where | Who uses it | Login to Snowflake | Data |
+|---|---|---|---|
+| [Your own machine](#on-your-own-machine) | you | your own (browser SSO or key pair) | what your role can read |
+| [A shared server](#on-a-shared-server-local-web-app-or-streamlit) | a team, in the browser | one service user (key pair) | what that user's role can read |
+| [Streamlit in Snowflake](#streamlit-in-snowflake-sis) | anyone with the app role, in Snowsight | none extra: Snowflake's own login | what the owner role can read |
+| [Streamlit elsewhere](#streamlit-anywhere-else) | a team, in the browser | one service user (key pair) | what that user's role can read |
+
+### On your own machine
+The [Quick start](#quick-start) and steps 1 to 3 above: `python run.py` (React, http://localhost:8000) or `python run.py streamlit`
+(http://localhost:8501). It listens on your machine only (`127.0.0.1`). Nothing to install in Snowflake with `SOURCE=direct`.
+
+### On a shared server (local web app or Streamlit)
+A VM or container your team can reach, with Python 3.10+:
+```
+git clone https://github.com/darshanmeel/snowflake-access-explorer.git
+cd snowflake-access-explorer
+python3 -m venv .venv; source .venv/bin/activate; pip install -r requirements-web.txt
+HOST=0.0.0.0 python run.py                                                   # React on port 8000
+python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true   # or Streamlit
+```
+- Browser SSO can't work on a server (the login tab would open there): create a service user with a **key pair** and set
+  `SNOWFLAKE_PRIVATE_KEY_FILE` (and `SNOWFLAKE_PRIVATE_KEY_PWD`) in `.env`. Everyone then sees what that user's role sees.
+- Prefer `SOURCE=objects` with the daily snapshot task: the service role then needs only `SELECT` on the `TBL_ACCESS_` tables.
+- The app has no login of its own and shows who can reach what: put it behind your company sign-in (VPN, a reverse proxy
+  with SSO) and never on the open internet.
+- Keep it running with your usual tool (systemd, Docker, a Windows service). Update: `git pull; pip install -r requirements-web.txt`, then restart.
+
 ### Streamlit in Snowflake (SiS)
-`app.py` also runs as a Streamlit app inside Snowflake: one Streamlit component (`web/dist-st/`) holds the same React app, and its data calls are answered in Python by the same code as the local server (`st_react.app`). If Snowflake blocks the component, `ST_REACT=native` runs plain Streamlit pages instead. It reads as the viewer, keeps data in memory only (no local disk, so no `.cache/`) for 24 h and writes nothing. Use `SOURCE=objects` there, with the daily task above so the data is fresh.
+The app runs inside Snowflake and opens in Snowsight; nobody installs anything. It runs the same React app as one Streamlit
+component (`web/dist-st/`, committed); its data calls are answered in Python by the same code as the local server.
+It uses the app's own Snowflake session, keeps data in memory only (24 h) and writes nothing.
+
+1. Do the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) setup first (`1_setup.sql`, `2_snapshot.sql`, the daily task):
+   inside Snowflake the app reads the `TBL_ACCESS_` tables.
+2. Settings for the app go in `sis/.env` (git-ignored, optional), uploaded as the app's `.env`:
+   ```
+   SOURCE=objects
+   ACCESS_SNAPSHOT=<DB>.<SCHEMA>
+   ```
+   Never put `SNOWFLAKE_ACCOUNT` or a key there: without it the app knows it runs inside Snowflake and uses the app's session.
+3. Upload the files and create the app, from the repo folder with the same `.env` and `settings.local.sql` as step 1:
+   ```
+   python run_sql.py sql/4_streamlit.sql;  python run_sql.py sql/4_streamlit_verify.sql
+   ```
+   It creates the stage `STG_ACCESS_APP`, uploads the Python files, `environment.yml` (packages: `streamlit`,
+   `snowflake-snowpark-python`) and `web/dist-st`, creates the Streamlit app `ST_ACCESS_EXPLORER` (warehouse `WH`) and grants
+   `USAGE` on it to `APP_ROLE`. SnowSQL: `!source sql/4_streamlit.sql`.
+4. Open it in Snowsight: **Projects > Streamlit > ST_ACCESS_EXPLORER**. To update after `git pull`, run step 3 again.
+
+- The app runs with its **owner's rights** (`DEV_ROLE`): every viewer sees what that role reads, not their own access.
+  My access (each person's own view) is a feature of the local version.
+- If the page stays blank (custom components blocked in your account), add `ST_REACT=html` to `sis/.env` and run step 3
+  again; `ST_REACT=native` runs the plain Streamlit pages instead.
+- Remove it: `python run_sql.py sql/3_cleanup.sql` (drops the app and its stage too).
+
+### Streamlit anywhere else
+Any host that runs Python (a VM, Docker, Kubernetes, a Streamlit hosting service):
+```
+pip install -r requirements.txt
+python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
+```
+- Settings as environment variables or a `.env` next to `app.py`, with a **key pair** login as on a shared server.
+  Hosting services that offer "secrets" usually turn them into environment variables; the key itself must be a file the app
+  can read (`SNOWFLAKE_PRIVATE_KEY_FILE`).
+- The same warnings as for a shared server: one service user's view, no login of its own, so keep it private, never public.
+- Fake data to try a host first: `FAKE=1`.
 
 ### Container Services (optional)
-Only to give everyone the local web app without each person installing it: run `server.py` as a service. Not needed to use the app.
+Only to give everyone the local web app without each person installing it: run `server.py` as a Snowpark Container Services
+service (any container image with Python and `requirements-web.txt`, `HOST=0.0.0.0`). Not needed to use the app.
 
 ## Also in this repo
 - **`sf.py` runs plain SQL from your machine.** It uses the same `.env` and logins. Run `python sf.py "select current_user(), current_role()"` or `python sf.py -f query.sql`, or from Python: `from sf import run; cols, rows = run("select 1")`.

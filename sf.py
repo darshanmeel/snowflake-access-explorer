@@ -4,7 +4,7 @@
     python sf.py -f query.sql
 
 Settings: env vars or .env. Login: key pair when SNOWFLAKE_PRIVATE_KEY_FILE is set, else SSO in the browser.
-No other method (no password).
+No other method (no password). Inside Snowflake (SiS): the app's own session.
 
 In Python:
     from sf import connect, run
@@ -19,6 +19,12 @@ import access  # noqa: F401  (loads .env)
 
 
 def connect():
+    if "SNOWFLAKE_ACCOUNT" not in os.environ:  # Streamlit in Snowflake has no account variable: use the app's session
+        try:
+            from snowflake.snowpark.context import get_active_session
+            return get_active_session().connection
+        except Exception:
+            pass  # not inside Snowflake: the KeyError below names the missing setting
     args = dict(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         user=os.environ["SNOWFLAKE_USER"],

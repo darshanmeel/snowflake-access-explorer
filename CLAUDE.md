@@ -31,7 +31,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   identical pages. `ST_REACT=native` (or `html`) runs the plain Streamlit pages in `app.py` + `ui.py` as a fallback.
 - Built bundles `web/dist` and `web/dist-st` are committed: users only run Python, never npm. After any change in
   `web/src`, rebuild both (`npm run build`, `npm run build:st`) and commit them.
-  Must keep running as a Streamlit app inside Snowflake. Container Services: optional, only to give everyone the local version.
+  Must keep running as a Streamlit app inside Snowflake: `sql/4_streamlit.sql` deploys it (stage + `CREATE STREAMLIT`,
+  settings from `sis/.env`); there `sf.connect()` uses the app's session (no `SNOWFLAKE_ACCOUNT`) and it is never closed. Container Services: optional, only to give everyone the local version.
 - `access.py` is the only place for data, walks and rules; both versions call it, neither has its own logic.
 - **If you change one version, change the other in the same task:** a page, tab, column, graph style or rule shown
   locally must show in Streamlit too (and the reverse). Shared React components change once in `web/src/components/`;

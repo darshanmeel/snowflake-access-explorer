@@ -5,3 +5,4 @@ settings.local.sql
 local.ps1
 web/node_modules/
 .cache/
+sis/

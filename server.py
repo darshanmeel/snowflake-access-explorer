@@ -75,7 +75,8 @@ def with_query(fn):
     try:
         return fn(query)
     finally:
-        conn.close()
+        if "SNOWFLAKE_ACCOUNT" in os.environ:  # inside Snowflake it is the app's session: keep it open
+            conn.close()
 
 
 def read_shared():

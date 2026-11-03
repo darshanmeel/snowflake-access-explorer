@@ -1,0 +1,7 @@
+# Packages for Streamlit in Snowflake (warehouse runtime), uploaded by sql/4_streamlit.sql. Everything else is the standard library.
+name: access_explorer
+channels:
+  - snowflake
+dependencies:
+  - streamlit
+  - snowflake-snowpark-python
