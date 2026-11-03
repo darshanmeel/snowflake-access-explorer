@@ -94,6 +94,7 @@ function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page) => v
         <>
           <h4>Data</h4>
           <p>{meta.mode === "fake" ? "Demo data (FAKE=1)" : meta.source === "direct" ? "Read directly from Snowflake" : "Snapshot tables"}</p>
+          {meta.fetched_at && <p className="ae-muted">Data from {meta.fetched_at}</p>}
           <p className={meta.run.old ? "ae-muted" : undefined}>{meta.run.when}</p>
           {meta.run.old && <p>The snapshot is older than a day.</p>}
         </>
@@ -146,8 +147,8 @@ export function App() {
     setBusy(label);
     try { await f(); } catch (e) { alert((e as Error).message); } finally { clearCache(); setBusy(""); }
   };
-  const loadMine = () => run("Loading your access…", async () => { await post<MineState>("mine/load"); setView(true); });
-  const reload = () => run("Reloading…", () => post("reload", { what: "page" }));
+  const loadMine = (fresh = false) => run("Loading your access…", async () => { await post<MineState>(fresh ? "mine/load?fresh=1" : "mine/load"); setView(true); });
+  const reload = () => run("Reading Snowflake…", () => post("reload", { what: "page" }));
   const rebuild = () => run("Rebuilding snapshot…", async () => {
     const r = await post<{ ok: boolean; message: string }>("reload", { what: "rebuild" });
     if (r.message) alert(r.message);
@@ -171,8 +172,8 @@ export function App() {
             <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)}>Shared snapshot</button>
             <button className={loc.mine ? "on" : ""} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>
           </div>
-          {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={loadMine} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
-          {!loc.mine && <button className="ae-btn" onClick={reload}>Reload data</button>}
+          {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
+          {!loc.mine && <button className="ae-btn" onClick={reload} title="Reads Snowflake again; the data is otherwise kept for a day">Read Snowflake again</button>}
           {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
           <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           {busy && <span className="ae-muted">{busy}</span>}
@@ -184,7 +185,7 @@ export function App() {
           {needMine && (
             <Card title="My access">
               <p>This reads what you can reach, once, and keeps it in server memory for an hour. Nothing is written anywhere.</p>
-              <button className="ae-btn" onClick={loadMine}>Load my access</button>
+              <button className="ae-btn" onClick={() => loadMine()}>Load my access</button>
             </Card>
           )}
           {ctx && !needMine && (

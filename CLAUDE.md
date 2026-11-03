@@ -5,11 +5,17 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 ## Hard rules
 - Read-only. The app never runs GRANT, REVOKE, CREATE, ALTER or DROP. RBAC changes go through
   infrastructure as code; manual grants get removed by reconciliation.
-- The app writes nothing itself. Shared view: reads the `TBL_ACCESS_` tables and may CALL `SP_ACCESS_SNAPSHOT`
-  (owner's rights). My-access view: read-only queries as the logged-in user, kept in server memory only (per browser, 1 h; links reload the page).
+- The app writes nothing to Snowflake. Shared view: reads the `TBL_ACCESS_` tables and may CALL `SP_ACCESS_SNAPSHOT`
+  (owner's rights). My-access view: read-only queries as the logged-in user. Locally the only thing written is
+  `.cache/` (git-ignored, `cache.py`: one file per account + source, one per user for My access, `CACHE_HOURS`=24, 0 = memory
+  only); in memory 24 h per process. Inside Snowflake (SiS) memory only, no disk. Data needs no real time: the UI shows
+  "Data from <time>" and a refresh (Read Snowflake again) that reads again.
 - The app reads only the `TBL_ACCESS_` snapshot tables in the shared view. `SP_ACCESS_SNAPSHOT` (sql/1_setup.sql) fills them from
   ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable, and writes nothing else.
-- Direct mode (`ACCESS_SNAPSHOT` empty, for accounts where procedures can't be created): `access.live()` reads the same
+- `SOURCE=direct|objects` (default direct; `objects` if only `ACCESS_SNAPSHOT` is set; objects location = `ACCESS_SNAPSHOT` or
+  `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA`, else an error; `cache.config()`). Fake data only with `FAKE=1` (`run.py --fake`);
+  tests set it themselves.
+- Direct mode (`SOURCE=direct`, for accounts where procedures can't be created): `access.live()` reads the same
   sources with the user's role into memory, same dict as `snapshot()`. Keep it in step with `SP_ACCESS_SNAPSHOT`; `test_live` checks it.
 - No credentials, account names or company names in code or the repo. Real values live in git-ignored
   `settings.local.sql` and `.env` (env vars, template `.env.example`). Connection via `sf.py` (`connect()`), all files at the repo root.
@@ -17,7 +23,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Don't commit or push unless asked. Commits pass `.githooks/pre-commit` (company-term check, `git config core.hooksPath .githooks`); never bypass it with `--no-verify`.
 
 ## Two versions, one logic
-- **Local (recommended):** `server.py` (FastAPI, JSON API over `access.py`) + `web/` (React). Runs on your machine.
+- **Local (recommended, default):** `server.py` (FastAPI, JSON API over `access.py`) + `web/` (React). Runs on your machine.
+  `python run.py` (web), `run.py streamlit`, `--fake`, `--direct` / `--objects`, `--port N`; env `APP`, `WEB_PORT` (8000),
+  `STREAMLIT_PORT` (8501) so both run side by side.
 - **Streamlit in Snowflake:** `app.py` + `ui.py`, using the same React components from `web/` as Streamlit
   components (built bundle committed under `web/dist-st/`) wherever Streamlit in Snowflake allows; plain Streamlit otherwise.
   Must keep running as a Streamlit app inside Snowflake. Container Services: optional, only to give everyone the local version.
@@ -60,6 +68,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   admin role / account privilege = red. Put the legend next to each graph.
 - Keep `FAKE=1` mode on the fake data in `access.py`, so it runs without Snowflake. Fake data keeps at least
   one finding per rule.
+- UI: sections are tabs, never stacked one under the other; a long page is split into tabs.
 - Short names, comments only for the non-obvious "why", no extra error handling or logging.
 
 ## Verify before saying done

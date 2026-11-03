@@ -1,5 +1,5 @@
 """JSON API of the access explorer (contract: web/API.md). Run: python server.py -> http://localhost:8000
-Data: FAKE=1 (default) fake data · FAKE=0 Snowflake via sf.py (ACCESS_SNAPSHOT=DB.SCHEMA snapshot tables, or empty = direct).
+Data: Snowflake via sf.py (SOURCE=direct, or objects = the TBL_ACCESS_ tables), FAKE=1 fake data. Kept once a day (cache.py).
 No logic of its own: every number, path and rule comes from access.py; this file picks, filters, renames to JSON.
 FastAPI is imported only in make_app(), so st_react.py can `import server` and call serve() for the same JSON."""
 import csv
@@ -15,14 +15,14 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import access as a
+import cache
 import ui
 
-MODE = "fake" if os.environ.get("FAKE", "1") != "0" else "snowflake"
-WHERE = os.environ.get("ACCESS_SNAPSHOT", "")  # DB.SCHEMA of the tables
-DIRECT = MODE == "snowflake" and not WHERE  # no tables: read the grants straight from Snowflake (a.live)
-SOURCE = "fake" if MODE == "fake" else "direct" if DIRECT else "snapshot"
+MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|objects (README > Settings)
+DIRECT = SOURCE == "direct"  # no tables: read the grants straight from Snowflake (a.live)
+KEY = cache.name(SOURCE)
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
-TTL = 3600  # shared data and My access stay in memory this long (seconds)
+TTL = cache.TTL  # shared data and My access stay in memory this long (seconds)
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
 
 PAGES = {"user": "User", "role": "Role", "object": "Object", "sensitive": "Sensitive data", "check": "Can they?",
@@ -43,7 +43,7 @@ MAX_BOX = a.MAX_OBJECTS  # a tab diagram draws one box each up to this many obje
 
 LOCK = threading.RLock()  # access.py keeps its lookups in module globals: build + answer under one lock
 LOAD = threading.Lock()  # one Snowflake read at a time
-SHARED, MINE = {}, {}
+MINE = {}
 S = dict(sens={}, rows=[], breaks={}, view="shared", known=None)  # per request, set under LOCK
 
 
@@ -76,22 +76,21 @@ def with_query(fn):
         conn.close()
 
 
+def read_shared():
+    return (a.fake() if MODE == "fake" else with_query(a.live) if DIRECT else with_query(lambda q: a.snapshot(q, WHERE)))
+
+
 def load_shared():
     with LOAD:
-        s = SHARED.get("s")
-        if s and time.time() - s["at"] < TTL:
-            return s["data"]
         try:
-            d = (a.fake() if MODE == "fake" else with_query(a.live) if DIRECT
-                 else with_query(lambda q: a.snapshot(q, WHERE)))
+            return cache.get(KEY, read_shared, disk=MODE == "snowflake")[0]
         except Exception as x:
             raise ApiError(503, "shared_unreadable", a.line(x))
-        SHARED["s"] = dict(data=d, at=time.time())
-        return d
 
 
-def drop_shared():
-    SHARED.pop("s", None)
+def fetched():
+    """When the shared data was read from its source (memory or the local file)."""
+    return datetime.fromtimestamp(cache.MEM[KEY][1]).strftime("%Y-%m-%d %H:%M") if KEY in cache.MEM else None
 
 
 def mine_entry(sid):
@@ -109,12 +108,17 @@ def mine_state(sid):
                 expires_at=when(m["at"] + TTL) if m else None)
 
 
-def load_mine(sid):
-    """Read the logged-in user's own access and keep it in server memory under sid (1 h, never written anywhere)."""
+def load_mine(sid, fresh=False):
+    """The logged-in user's own access: read with their rights, kept in server memory under sid and, like the shared
+    data, in .cache/ for CACHE_HOURS (fresh: read again)."""
     for k in list(MINE):
         mine_entry(k)  # drops the expired ones
+    at = time.time()
     if MODE == "snowflake":
-        d = with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None))
+        key = cache.name("mine", os.environ.get("SNOWFLAKE_USER") or sid)
+        if fresh:
+            cache.drop(key)
+        d, at = cache.get(key, lambda: with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None)))
     else:
         d0 = load_shared()
         with LOCK:
@@ -123,7 +127,7 @@ def load_mine(sid):
     with LOCK:
         a.build(d, key)
         user = a.users[0] if a.users else ""
-    MINE[sid] = dict(data=d, key=key, user=user, at=time.time())
+    MINE[sid] = dict(data=d, key=key, user=user, at=at)
     return mine_state(sid) | dict(notes=notes_of(d["run"], "mine"))
 
 
@@ -1403,7 +1407,7 @@ def theme_tokens():
 
 def meta(p, sid):
     view = p.get("view", "shared")
-    base = dict(mode=MODE, source=SOURCE, where=WHERE, view=view, loaded=False, run=None, sources={}, notes=[],
+    base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
                 mine=mine_state(sid), pages=[dict(key=k, label=lab, badge=None) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
@@ -1438,14 +1442,14 @@ def reload(body):
     what = (body or {}).get("what", "page")
     if what == "rebuild":
         if MODE != "snowflake":
-            return dict(ok=False, result=None, message="Demo: the CALL runs only on Snowflake (FAKE=0).")
+            return dict(ok=False, result=None, message="Demo: the CALL runs only on Snowflake (not FAKE=1).")
         res = None
         if not DIRECT:
             r = with_query(lambda q: q(f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"))
             res = json.loads(list(r[0].values())[0])
-        drop_shared()
+        cache.drop(KEY)
         return dict(ok=True, result=res, message="Snapshot rebuilt." if not DIRECT else "Read Snowflake again.")
-    drop_shared()
+    cache.drop(KEY)  # read the source again (Snowflake), not the local copy
     return dict(ok=True, result=None, message="Reloaded.")
 
 
@@ -1533,7 +1537,7 @@ def make_app():
     def mine_load(request: Request):
         old = sid_of(request)
         sid = os.urandom(16).hex()
-        out = load_mine(sid)
+        out = load_mine(sid, request.query_params.get("fresh") == "1")
         MINE.pop(old, None)
         r = JSONResponse(clean(out))
         r.set_cookie("ae_sid", sid, max_age=TTL, httponly=True, samesite="strict", path="/api")
@@ -1585,4 +1589,4 @@ def __getattr__(name):  # `uvicorn server:app` builds the app on first use
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(make_app(), host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8000")))
+    uvicorn.run(make_app(), host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("WEB_PORT", "8000")))

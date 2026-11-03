@@ -1,6 +1,6 @@
 """Snowflake access explorer. Run: streamlit run app.py
-Data: FAKE=1 (default) fake data · FAKE=0 Snowflake via sf.py, as the logged-in user: the snapshot tables
-(ACCESS_SNAPSHOT=DB.SCHEMA) or, with ACCESS_SNAPSHOT empty, the grants read directly.
+Data: Snowflake via sf.py, as the logged-in user: SOURCE=direct (the grants read directly) or objects (the snapshot
+tables, ACCESS_SNAPSHOT=DB.SCHEMA); FAKE=1 fake data. Kept once a day (cache.py): memory only inside Snowflake.
 Page, entity and filters live in the URL (?page=role&name=...&depth=3), so chips and graph nodes are plain links."""
 import csv
 import importlib
@@ -15,11 +15,12 @@ from urllib.parse import urlencode
 import streamlit as st
 
 import access as a
+import cache
 import ui
 
-MODE = "fake" if os.environ.get("FAKE", "1") != "0" else "snowflake"
-WHERE = os.environ.get("ACCESS_SNAPSHOT", "")  # DB.SCHEMA of the tables
-DIRECT = MODE == "snowflake" and not WHERE  # no tables: read the grants straight from Snowflake (a.live)
+MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|objects (README > Settings)
+DIRECT = SOURCE == "direct"  # no tables: read the grants straight from Snowflake (a.live)
+KEY = cache.name(SOURCE)
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")  # "My access" without Snowflake, and the default user
 # nav order; a page shows in the nav once it has a function in VIEW (sensitive and review come next)
 PAGES = {"user": "User", "role": "Role", "object": "Object", "sensitive": "Sensitive data", "check": "Can they?",
@@ -79,10 +80,10 @@ def with_query(fn):
         conn.close()
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def shared():  # the same for every viewer
-    return (a.fake() if MODE == "fake" else with_query(a.live) if DIRECT
+    read = (a.fake if MODE == "fake" else lambda: with_query(a.live) if DIRECT
             else with_query(lambda q: a.snapshot(q, WHERE)))
+    return cache.get(KEY, read, disk=MODE == "snowflake")[0]
 
 
 def mine():  # per viewer only, never in the shared cache
@@ -94,10 +95,13 @@ def mine():  # per viewer only, never in the shared cache
 
 
 # Links reload the page, which starts a new Streamlit session. Keyed by the browser's XSRF cookie, the viewer's
-# own access survives that in server memory for an hour; it is never written anywhere and no other browser sees it.
-@st.cache_data(ttl=3600, show_spinner=False)
+# own access survives that in server memory for a day; locally also in .cache/. No other browser sees it.
+def mine_key(browser):
+    return cache.name("mine", os.environ.get("SNOWFLAKE_USER") or str(browser))
+
+
 def mine_for(browser):
-    return stamp(mine())
+    return cache.get(mine_key(browser), lambda: stamp(mine()), disk=MODE == "snowflake")[0]
 
 
 def stamp(d):
@@ -109,20 +113,20 @@ def stamp(d):
 def refresh():
     """CALL the snapshot procedure: owner's rights, whoever clicks, so the shared tables always hold the full picture."""
     if MODE != "snowflake":
-        st.sidebar.info("Demo: the CALL runs only on Snowflake (FAKE=0).")
+        st.sidebar.info("Demo: the CALL runs only on Snowflake (not FAKE=1).")
         return
     if DIRECT:  # no procedure: read everything again
-        shared.clear()
+        cache.drop(KEY)
         return
     with st.spinner("Running SP_ACCESS_SNAPSHOT ..."):
         res = with_query(lambda q: q(f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"))
     st.sidebar.json(json.loads(list(res[0].values())[0]))
-    shared.clear()
+    cache.drop(KEY)
 
 
 def load_mine(who):  # a click callback: runs before the page, so the button label is already right
-    if who:
-        mine_for.clear(who)
+    if who and "mine" in st.session_state:  # "Reload my access": read again
+        cache.drop(mine_key(who))
     st.session_state.mine = mine_for(who) if who else stamp(mine())
 
 
@@ -130,8 +134,8 @@ def load(view, box):
     """The data for the view, or None (with the reason shown). box: the sidebar snapshot card."""
     if view == "shared":
         if not DIRECT and box.button("Reload page data", width="stretch",
-                      help="Reads the snapshot tables again. Does not read the grants from Snowflake again."):
-            shared.clear()
+                      help="Reads the snapshot tables again (the data is kept for a day). Does not run the procedure."):
+            cache.drop(KEY)
         if box.button("Read Snowflake again (slow)" if DIRECT else "Rebuild snapshot in Snowflake (slow, admin)",
                       key="refresh", width="stretch",
                       help="Reads grants, users, tags and policies again with your role. Takes minutes on the SHOW "
@@ -2161,6 +2165,8 @@ def main():
         if d is not None:
             src = a.run["SOURCES"] or {"all": "fake data"}
             when, old = snap_time() if view == "shared" else ("live", False)
+            if KEY in cache.MEM and view == "shared":
+                when += f" · read {datetime.fromtimestamp(cache.MEM[KEY][1]):%Y-%m-%d %H:%M}"
             html(ui.snapshot_card("live" if view == "mine" else "direct" if DIRECT else WHERE if MODE == "snowflake" else MODE, when,
                                   list(src.items())), snap)
             if old:

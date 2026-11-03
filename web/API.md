@@ -40,13 +40,15 @@ mirrors app.py (`?page=user&name=...&depth=3&data=mine`), so links stay shareabl
 
 ### Modes (meta.mode / meta.source)
 
-Same switches as app.py:
+Same switches as app.py (`cache.config()`):
 
-| `FAKE` | `ACCESS_SNAPSHOT` | source | Shared data | My access |
+| `FAKE` | `SOURCE` | source | Shared data | My access |
 |---|---|---|---|---|
-| `1` (default, no `.env`) | any | `fake` | `a.fake()` | `a.only(a.fake(), DEMO_USER)` |
-| `0` | `DB.SCHEMA` | `snapshot` | `a.snapshot(query, WHERE)` | `a.mine(query, WHERE.split(".")[0])` |
-| `0` | empty | `direct` | `a.live(query)` | `a.mine(query, None)` |
+| `1` | any | `fake` | `a.fake()` | `a.only(a.fake(), DEMO_USER)` |
+| not `1` | `objects` (or `ACCESS_SNAPSHOT` set) | `objects` | `a.snapshot(query, WHERE)`, WHERE = `ACCESS_SNAPSHOT` or `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA` | `a.mine(query, WHERE.split(".")[0])` |
+| not `1` | `direct` (default) | `direct` | `a.live(query)` | `a.mine(query, None)` |
+
+The data is read once a day (`cache.get`: memory 24 h, and `.cache/` for `CACHE_HOURS`); `meta.fetched_at` is when.
 
 `query(sql)` runs on a fresh connection from `sf.connect()` per load, closed afterwards (as `app.with_query`).
 
@@ -202,14 +204,14 @@ sensitive = sensitive objects.
 
 ### POST /api/reload
 
-Body `{"what": "page" | "rebuild"}`. `page`: drop the shared cache (snapshot tables read again on the next request).
-`rebuild`: fake -> `{"ok": false, "message": "Demo: the CALL runs only on Snowflake (FAKE=0)."}`; direct -> drop the
+Body `{"what": "page" | "rebuild"}`. `page`: drop the shared cache, memory and `.cache/` file (Snowflake is read again on the next request).
+`rebuild`: fake -> `{"ok": false, "message": "Demo: the CALL runs only on Snowflake (not FAKE=1)."}`; direct -> drop the
 cache (everything read again); snapshot -> `CALL <WHERE>.SP_ACCESS_SNAPSHOT('AUTO')`, then drop the cache.
 Answer: `{"ok": true, "result": <the procedure's JSON or null>, "message": "..."}`. Mirrors `app.refresh()`.
 
 ### POST /api/mine/load
 
-Reads the logged-in user's own access (see sessions), sets `ae_sid`. Answer: `{"loaded": true, "user": "ENGINEER_01",
+Reads the logged-in user's own access (see sessions; `?fresh=1` reads Snowflake again, else the cached copy), sets `ae_sid`. Answer: `{"loaded": true, "user": "ENGINEER_01",
 "loaded_at": "...", "expires_at": "...", "notes": [...]}`. Producer: `a.mine()` / `a.only()`.
 
 ### GET /api/mine

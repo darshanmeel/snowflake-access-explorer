@@ -2,7 +2,7 @@
 
 export type View = "shared" | "mine";
 export type Mode = "fake" | "snowflake";
-export type Source = "fake" | "snapshot" | "direct";
+export type Source = "fake" | "objects" | "direct";
 export type Severity = "High" | "Medium" | "Low";
 export type Tone = "info" | "warn" | "bad";
 
@@ -185,6 +185,7 @@ export interface Meta {
   mode: Mode;
   source: Source;
   where: string;
+  fetched_at: string | null;
   view: View;
   loaded: boolean;
   run: RunInfo | null;

@@ -7,6 +7,10 @@ import sys
 from collections import Counter
 from types import ModuleType, SimpleNamespace
 
+import os
+
+os.environ["FAKE"] = "1"
+
 import duckdb
 
 import access as a

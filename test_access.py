@@ -8,7 +8,10 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 
+os.environ["FAKE"] = "1"  # never Snowflake here, whatever .env says
+
 import access as a
+import cache
 import ui
 
 F, T = a.FUNC, a.TECH
@@ -1096,8 +1099,43 @@ def test_summary():
             assert sum(n.startswith("⋯") for n in boxes) == len(folds) and len(boxes) <= 1 + 3 * 13 + 13
 
 
+def test_cache():
+    import tempfile
+    from pathlib import Path
+    cache.DIR = Path(tempfile.mkdtemp())
+    os.environ["SNOWFLAKE_ACCOUNT"] = "T"
+    reads = []
+    def read():
+        reads.append(1)
+        return a.fake()
+    d, at = cache.get("k", read)
+    assert len(reads) == 1 and cache.file("k").is_file()
+    cache.MEM.clear()  # a new process: the local file answers
+    d2, at2 = cache.get("k", read)
+    assert len(reads) == 1 and d2["USER"] == d["USER"] and abs(at2 - at) < 5
+    cache.drop("k")  # "read again": memory and file gone
+    cache.get("k", read)
+    assert len(reads) == 2
+    cache.HOURS = 0  # memory only: nothing written
+    cache.drop("k")
+    cache.get("k", read)
+    assert not cache.file("k").exists()
+    cache.HOURS = 24
+    os.environ.pop("SNOWFLAKE_ACCOUNT")
+    for env, err in (({"SOURCE": "objects"}, "ACCESS_SNAPSHOT"), ({"SOURCE": "x"}, "SOURCE must be")):
+        try:
+            cache.config(env)
+        except ValueError as x:
+            assert err in str(x)
+        else:
+            raise AssertionError(env)
+    assert cache.config({"SOURCE": "objects", "SNOWFLAKE_DATABASE": "D", "SNOWFLAKE_SCHEMA": "S"}) == ("snowflake", "objects", "D.S")
+    assert cache.config({"ACCESS_SNAPSHOT": "D.S"}) == ("snowflake", "objects", "D.S")  # backward compatible
+    assert cache.config({}) == ("snowflake", "direct", "") and cache.config({"FAKE": "1"})[0] == "fake"
+
+
 if __name__ == "__main__":
-    for t in (test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
+    for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_live, test_db_roles, test_pages):
