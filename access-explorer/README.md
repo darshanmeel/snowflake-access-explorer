@@ -89,9 +89,11 @@ Details, screenshots and every KPI: [README.html](README.html).
 | Sensitive data | Which objects are sensitive, who reads them, which columns are unmasked; two roles compared. |
 | Can they? | Can user X do P on object Y? Every path, how to remove it, or which role to ask for. |
 | Rule checks | 23 rules with severity, findings, fix as infrastructure-as-code text + SQL, people with admin roles. |
-| Access review | One row per user and object in a database, CSV with blank Reviewer and Keep/Revoke columns. |
+| Access review | One row per user and object in a database, shortest path on a line under each row, CSV with blank Reviewer and Keep/Revoke columns. |
 
 - Data views (sidebar): **Shared snapshot** (the tables) or **My access (live, only me)** (own roles, own rights, nothing saved; kept in server memory per browser for 1 h).
+- Find (top bar): any user, role or object; opens its page.
+- Users and roles are separate: a user and a role with the same name get their own rows, counts, Find entries and graph boxes; the user shows as `NAME (user)` where both appear.
 - Page, entity and filters live in the URL (`?page=role&name=F_ANALYST&depth=3`): every view is a link.
 - Big accounts: objects roll up to schemas over 12 objects, to databases over 12 schemas (click a box: `?schema=`). Over 30 role boxes or 6 role lanes the User and Role graphs show a summary (`?full=1`: every role).
 

@@ -162,7 +162,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <section class="card" id="graph">
   <div class="eyebrow">Legend</div>
   <h2>How to read a graph</h2>
-  <p class="key">Every graph runs left to right: the start, one lane per depth, then objects. Click a box to open it; hover a box or line for details.</p>
+  <p class="key">Every graph runs left to right: the start, one lane per depth, then objects. Click a box to open it; hover a box or line for details. A user and a role with the same name are two boxes; the user reads <span class="mono">NAME (user)</span>. Find (top bar) lists both.</p>
   <div class="legend" style="margin-top:16px">
     <dl>
       <dt><span class="n user">ENGINEER_01</span></dt><dd>User (person or service)</dd>
@@ -228,7 +228,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>Graph: holders on the left (Held by · Dn), the role in the shaded lane, what it holds on the right (Holds · Dn).</li>
-      <li>Held by (up): every grantee with depth, <b>Only via</b> (roles every path passes through), path and path count. <b>If revoked from</b> a direct grantee: who loses the role and which privileges, net of other paths, with the fix text and REVOKE SQL.</li>
+      <li>Held by (up): every grantee with depth, <b>Only via</b> (roles every path passes through), path and path count. <b>If revoked from</b> a direct grantee (a user and a role of the same name are separate picks): who loses the role and which privileges, net of other paths, with the fix text and REVOKE SQL.</li>
       <li>Holds (down): one table per object type, one column per privilege: ✓ granted, dashed ✓ inherited, <i>owner</i> implied by OWNERSHIP, – lacks. <b>Show</b> keeps objects lacking one privilege.</li>
       <li>Then Effective privileges (inherited, with path) and Can read the data? with this role in use. Filters: Walk upward, Users only, Only sensitive.</li>
     </ul></div>
@@ -342,7 +342,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>Filters: Database (or all), Schema, Object, Exclude disabled users, Hide USAGE on database and schema (screen only).</li>
-      <li>One row per user and object: privileges with class badges, sensitive tags, granted roles, shortest path; plus one row per admin user.</li>
+      <li>One row per user and object: privileges with class badges, sensitive tags, granted roles; the shortest path on its own line under the row. Plus one row per admin user.</li>
       <li>Export CSV: every row, a header with run and filter, blank Reviewer and Keep/Revoke columns.</li>
     </ul></div>
     <div><h3>Numbers</h3><dl class="nums">
