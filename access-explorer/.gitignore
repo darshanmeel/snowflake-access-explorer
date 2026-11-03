@@ -4,4 +4,5 @@ demo.duckdb
 big.duckdb
 settings.local.sql
 local.ps1
+.env
 screens/

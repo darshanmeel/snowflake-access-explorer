@@ -10,7 +10,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - The app reads only the `TBL_ACCESS_` snapshot tables in the shared view. `SP_ACCESS_SNAPSHOT` (sql/1_setup.sql) fills them from
   ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable, and writes nothing else.
 - No credentials, account names or company names in code or the repo. Real values live in git-ignored
-  `settings.local.sql` and `local.ps1` (env vars). Connection via `../sf.py` (`connect()`).
+  `settings.local.sql` and `.env` (env vars, template `.env.example`). Connection via `../sf.py` (`connect()`).
 - The procedure uses only the read sources in README > "Data sources". No queries on business data.
 - Don't commit or push unless asked. Commits pass `../.githooks/pre-commit` (company-term check, `git config core.hooksPath .githooks`); never bypass it with `--no-verify`.
 

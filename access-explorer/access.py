@@ -7,8 +7,15 @@ import difflib
 import fnmatch
 import json
 import os
+import pathlib
 import re
 from datetime import datetime
+
+ENV = pathlib.Path(__file__).with_name(".env")  # NAME=value lines (template .env.example); real env vars win
+for line in ENV.read_text().splitlines() if ENV.is_file() else []:
+    k, _, v = line.partition("=")
+    if k.strip() and not k.lstrip().startswith("#") and _:
+        os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
 
 ADMIN = {"ACCOUNTADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "ORGADMIN"}
 MAX_HOPS = int(os.environ.get("MAX_HOPS", "50"))  # safety cap on role hops per walk

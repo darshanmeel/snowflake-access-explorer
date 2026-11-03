@@ -44,18 +44,12 @@ cd snowflake-access-explorer/access-explorer        # keep the folder layout: th
 python -m venv .venv; .venv\Scripts\activate          # macOS/Linux: python3 -m venv .venv; source .venv/bin/activate
 pip install -r requirements.txt
 ```
-Create `local.ps1` in this folder (git-ignored; macOS/Linux: `local.sh` with `export NAME="value"` lines, `source local.sh`):
+Create `.env` in this folder from the template (git-ignored) and fill in the `<...>` values:
 ```
-$env:SNOWFLAKE_ACCOUNT="<org>-<account>"       # from the URL https://<org>-<account>.snowflakecomputing.com
-$env:SNOWFLAKE_USER="<your Snowflake login name>"
-$env:SNOWFLAKE_ROLE="<APP_ROLE>"
-$env:SNOWFLAKE_WAREHOUSE="<WH>"
-$env:ACCESS_SNAPSHOT="<DB>.<SCHEMA>"
-$env:FAKE="0"; $env:DUCKDB=""
+copy .env.example .env                       # macOS/Linux: cp .env.example .env
 ```
 Run:
 ```
-. .\local.ps1
 streamlit run app.py                           # opens http://localhost:8501; a second tab asks for your Snowflake login
 ```
 ```mermaid
@@ -76,10 +70,9 @@ Key: solid = calls · dashed = data moves · numbers = order.
 - Update: `git pull`, then `pip install -r requirements.txt`.
 
 ## One-time setup in Snowflake (developer)
-Clone and install as above, then (`local.ps1` without `SNOWFLAKE_ROLE`: `run_sql.py` uses `DEV_ROLE`):
+Clone and install as above, with `.env` filled in (`run_sql.py` switches to `DEV_ROLE` itself):
 ```
 copy settings.sql settings.local.sql      # fill in DB, SCHEMA, WH, DEV_ROLE, APP_ROLE (SnowSQL: also HERE)
-. .\local.ps1                              # SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_WAREHOUSE
 python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql
 python run_sql.py sql/2_snapshot.sql;  python run_sql.py sql/2_snapshot_verify.sql   # = CALL SP_ACCESS_SNAPSHOT('AUTO')
 ```
@@ -144,6 +137,7 @@ Details, screenshots and every KPI: [README.html](README.html).
 - Big accounts: objects roll up to schemas over 12 objects, to databases over 12 schemas (click a box: `?schema=`). Over 30 role boxes or 6 role lanes the User and Role graphs show a summary (`?full=1`: every role).
 
 ## Settings (env vars)
+Set them in `.env` (template `.env.example`) or in the shell; the shell wins.
 README.html copies this table and the Limits list (`python docs/make_readme.py`): edit them here.
 
 | Variable | Default | Does |
