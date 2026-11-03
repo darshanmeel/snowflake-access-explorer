@@ -27,7 +27,7 @@ Key: solid = calls · dashed = data moves · numbers = order. Build and read flo
 
 ## Quick start
 
-Demo, no Snowflake (PowerShell, from this folder):
+### Demo, no Snowflake (PowerShell, from this folder)
 ```
 python -m venv .venv; .venv\Scripts\activate
 pip install -r requirements.txt
@@ -36,18 +36,52 @@ python make_demo_db.py; $env:DUCKDB="demo.duckdb"; streamlit run app.py      # s
 $env:BIG="1"; python make_demo_db.py; $env:DUCKDB="big.duckdb"; streamlit run app.py   # 2,000 objects, 300 roles
 ```
 
-Real data:
+## Install on another machine (browser login)
+Needs Python 3.10+, git and access to the private repo. The snapshot must already exist in Snowflake (one-time setup below).
+```
+git clone https://github.com/darshanmeel/snowflake-access-explorer.git
+cd snowflake-access-explorer/access-explorer        # keep the folder layout: the app imports ../sf.py
+python -m venv .venv; .venv\Scripts\activate          # macOS/Linux: python3 -m venv .venv; source .venv/bin/activate
+pip install -r requirements.txt
+```
+Create `local.ps1` in this folder (git-ignored; macOS/Linux: `local.sh` with `export NAME="value"` lines, `source local.sh`):
+```
+$env:SNOWFLAKE_ACCOUNT="<org>-<account>"       # from the URL https://<org>-<account>.snowflakecomputing.com
+$env:SNOWFLAKE_USER="<your Snowflake login name>"
+$env:SNOWFLAKE_ROLE="<APP_ROLE>"
+$env:SNOWFLAKE_WAREHOUSE="<WH>"
+$env:ACCESS_SNAPSHOT="<DB>.<SCHEMA>"
+$env:FAKE="0"; $env:DUCKDB=""
+```
+Run:
+```
+. .\local.ps1
+streamlit run app.py                           # opens http://localhost:8501; a second tab asks for your Snowflake login
+```
+```mermaid
+flowchart LR
+  A["streamlit run app.py<br/>your machine"] -- "1 connect" --> B["browser tab<br/>Snowflake / SSO login"]
+  B -- "2 token" --> A
+  A -. "3 read TBL_ACCESS_*" .-> C[("Snowflake")]
+```
+Key: solid = calls · dashed = data moves · numbers = order.
+
+- Browser login is used when `SNOWFLAKE_PRIVATE_KEY_FILE` is not set; no password or key is stored.
+- One login per new connection (app load, Rebuild, My access, each `run_sql.py` file). To reuse it for ~4 h, an admin runs
+  `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;` once (Linux also: `pip install "snowflake-connector-python[secure-local-storage]"`).
+- The login tab opens on the machine running Streamlit: run the app on your own machine. A shared server needs key pair
+  (`SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD`) instead.
+- App users need only `<APP_ROLE>` (table below); **My access** needs no extra grants.
+- Update: `git pull`, then `pip install -r requirements.txt`.
+
+## One-time setup in Snowflake (developer)
+Same `local.ps1`, with `SNOWFLAKE_ROLE` left out (`run_sql.py` uses `DEV_ROLE`):
 ```
 copy settings.sql settings.local.sql      # fill in DB, SCHEMA, WH, DEV_ROLE, APP_ROLE (SnowSQL: also HERE)
-$env:SNOWFLAKE_ACCOUNT="<org>-<account>"; $env:SNOWFLAKE_USER="<your user>"; $env:SNOWFLAKE_WAREHOUSE="<WH>"
-python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql      # run_sql.py uses DEV_ROLE itself
+python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql
 python run_sql.py sql/2_snapshot.sql;  python run_sql.py sql/2_snapshot_verify.sql   # = CALL SP_ACCESS_SNAPSHOT('AUTO')
-$env:DUCKDB=""; $env:FAKE="0"; $env:ACCESS_SNAPSHOT="<DB>.<SCHEMA>"; $env:SNOWFLAKE_ROLE="<APP_ROLE>"
-streamlit run app.py                      # DUCKDB="" clears a demo setting left in this shell (it wins over FAKE)
 ```
-- Connection: `../sf.py` (`SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, optional `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`,
-  `SNOWFLAKE_PRIVATE_KEY_FILE` + `SNOWFLAKE_PRIVATE_KEY_PWD` for key pair; else SSO in the browser).
-- Keep the env vars in a git-ignored `local.ps1`, load with `. .\local.ps1`. SnowSQL instead of `run_sql.py`: `deploy_snowsql.sql`.
+- SnowSQL instead of `run_sql.py`: `deploy_snowsql.sql`.
 - Fresh data: rerun `2_snapshot.sql` (or the app's **Rebuild snapshot in Snowflake**), then **Reload page data**.
 - `1_setup_verify.sql` shows which ACCOUNT_USAGE views the role can read (SKIPPED = that dataset uses its fallback, see Data sources).
 - Checks: `python test_access.py` (reruns itself with `ROLE_PREFIXES=ZF_,ZT_`), `python test_sql.py`.

@@ -26,8 +26,8 @@ def connect():
     if key:  # key pair (service accounts)
         args.update(authenticator="SNOWFLAKE_JWT", private_key_file=key,
                     private_key_file_pwd=os.environ.get("SNOWFLAKE_PRIVATE_KEY_PWD"))
-    else:  # SSO in the browser (human users)
-        args["authenticator"] = "externalbrowser"
+    else:  # SSO in the browser (human users); the token cache saves a login tab per connection (needs ALLOW_ID_TOKEN)
+        args.update(authenticator="externalbrowser", client_store_temporary_credential=True)
     return snowflake.connector.connect(**{k: v for k, v in args.items() if v})
 
 
