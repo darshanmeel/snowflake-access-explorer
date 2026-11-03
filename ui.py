@@ -8,11 +8,12 @@ from html import escape
 from itertools import combinations
 from urllib.parse import urlencode
 
-KINDS = ["user", "functional", "technical", "group", "admin", "object"]
+KINDS = ["user", "functional", "technical", "group", "database", "admin", "object"]
 LABELS = {"user": "User", "functional": "Functional", "technical": "Technical", "group": "Group / other",
-          "admin": "Admin", "object": "Object"}
+          "database": "Database role", "admin": "Admin", "object": "Object"}
 SHAPE = {"user": ("999px", "solid"), "functional": ("6px", "solid"), "technical": ("6px", "solid"),
-         "group": ("6px", "dashed"), "admin": ("6px", "solid"), "object": ("12px / 9px", "solid")}
+         "group": ("6px", "dashed"), "database": ("6px", "dashed"), "admin": ("6px", "solid"),
+         "object": ("12px / 9px", "solid")}
 
 
 def _kinds(rows):
@@ -31,7 +32,7 @@ TOKENS = {
         "e_read": "#2F5D9E", "e_write": "#B8650A", "e_own": "#8A3B1E", "e_use": "#2E7A4C", "e_manage": "#6A4C9C",
         "kind": _kinds([("#FFFFFF", "#2A241D", "#1F1A14"), ("#DFE9F6", "#30476B", "#1D2C44"),
                         ("#EEDDC8", "#8C5D34", "#4A2E14"), ("#FAEBCB", "#B07A1E", "#553806"),
-                        ("#F9DCD6", "#B4362A", "#8C271D"), ("#ECE6DB", "#5E554A", "#2A241D")]),
+                        ("#E6EBF2", "#56677F", "#24303F"), ("#F9DCD6", "#B4362A", "#8C271D"), ("#ECE6DB", "#5E554A", "#2A241D")]),
     },
     "dark": {
         "bg": "#14110D", "side": "#1A1612", "panel": "#1F1A15", "sunk": "#28221B", "line": "#3A3128",
@@ -43,7 +44,7 @@ TOKENS = {
         "e_read": "#82AAE3", "e_write": "#EBA84E", "e_own": "#E58F6E", "e_use": "#7DC896", "e_manage": "#B9A0E6",
         "kind": _kinds([("#1F1A15", "#E9E1D4", "#F2ECE2"), ("#1C2A3F", "#7EA3D6", "#D5E3F6"),
                         ("#35271A", "#C5926A", "#F1DCC5"), ("#352913", "#D7A443", "#F3DDAE"),
-                        ("#3A1B18", "#E27A6B", "#F6C3BA"), ("#2A251F", "#A39684", "#EDE5D8")]),
+                        ("#1D232C", "#93A6C0", "#DCE4EE"), ("#3A1B18", "#E27A6B", "#F6C3BA"), ("#2A251F", "#A39684", "#EDE5D8")]),
     },
 }
 SEV_TONE = {"High": "bad", "Medium": "warn", "Low": "low"}
@@ -64,6 +65,8 @@ HELP = {
                   "It holds technical roles, not objects.",
     "Technical": "Technical role: holds the privileges on one database or schema, as OWNER, READ, WRITE or EXECUTE.",
     "Group / other": "Any other role, e.g. a group role synced from the identity provider, or PUBLIC (every user has it).",
+    "Database role": "A role inside one database, named DB.ROLE. Granted to an account role, which then holds it and "
+                     "gets everything it holds (e.g. USAGE on a schema, SELECT on its tables). Never granted to users directly.",
     "Admin": "ACCOUNTADMIN, SECURITYADMIN or SYSADMIN, or an account-level privilege: can change access itself.",
     "Object": "What a privilege is granted on: database, schema, table, view, warehouse, procedure or function.",
     "Path": "The chain that gives the access: the start, each role granted to the one before, then the object.",
@@ -350,7 +353,10 @@ details.ae-mpd[open]>summary .ae-mp-less{{display:inline-flex;margin-bottom:3px}
 .ae-mpn{{display:inline-flex;align-items:center;white-space:nowrap}}
 .ae-table td .ae-mp,.ae-table td .ae-mps{{min-width:200px}}
 .ae-det{{display:block;min-width:170px;font-family:{MONO};font-size:12.5px}}
-.ae-table td .ae-wide{{min-width:360px}}
+.ae-table td .ae-wide{{min-width:240px}}
+/* tables with a Path column: scroll inside a viewport-high box, so the sideways scrollbar is in view, header kept */
+.ae-tablewrap:has(.ae-wide){{max-height:min(78vh,880px);overflow:auto}}
+.ae-tablewrap:has(.ae-wide) thead th{{position:sticky;top:0;z-index:1}}
 .ae-sub-path{{display:flex;align-items:center;gap:10px}}.ae-table td .ae-sub-path .ae-mp{{min-width:0}}
 .ae-rt{{display:inline-block;min-width:170px;max-width:240px;font-size:12px}}
 .ae-ty{{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:12px;color:var(--muted)}}.ae-ty i{{font-style:normal;font-family:{MONO};color:var(--ink)}}

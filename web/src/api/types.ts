@@ -1,0 +1,722 @@
+// Shapes of server.py's JSON answers. Contract: web/API.md (keep both in step).
+
+export type View = "shared" | "mine";
+export type Mode = "fake" | "snowflake";
+export type Source = "fake" | "snapshot" | "direct";
+export type Severity = "High" | "Medium" | "Low";
+export type Tone = "info" | "warn" | "bad";
+
+/** Kinds of users, roles and objects; the last five are combined graph boxes. */
+export type NodeKind =
+  | "user" | "functional" | "technical" | "group" | "database_role" | "admin" | "object"
+  | "schema_group" | "database_group" | "type_group" | "fold" | "lane_group";
+
+/** Privilege class (a.priv_class), used for arrows and badges. */
+export type PrivClass = "read" | "write" | "own" | "use" | "manage" | "admin";
+export type EdgeCls = "inherit" | "inherit_db" | PrivClass;
+export type Mark = "disabled" | "sensitive" | "bad";
+
+/** Privileges tabs, in this order. */
+export type TabKey =
+  | "account" | "granted" | "database_roles" | "usage" | "warehouses"
+  | "execute" | "read" | "write" | "own" | "manage" | "all";
+
+export type UserStatus = "active" | "dormant" | "never" | "disabled";
+export type Page = "user" | "role" | "object" | "check" | "sensitive" | "rules" | "review";
+
+/** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
+export type Path = string[];
+
+export interface Refs {
+  kinds: Record<string, NodeKind>;
+  types: Record<string, string>;
+  labels: Record<string, string>;
+  sensitive: string[];
+  disabled: string[];
+}
+
+export interface RuleHit {
+  num: string;
+  severity: Severity;
+  title: string;
+}
+
+export interface LinkTo {
+  label: string;
+  page: Page;
+  params: Record<string, string>;
+}
+
+export interface Banner {
+  tone: Tone;
+  title: string;
+  lines: string[];
+  links?: LinkTo[];
+}
+
+export interface ApiError {
+  detail: "not_found" | "mine_not_loaded" | "shared_unreadable" | "shared_only" | "bad_param" | string;
+  message: string;
+}
+
+// ---------- graph ----------
+
+export type NodeAction =
+  | { kind: "page"; page: Page; params: Record<string, string> }
+  | { kind: "expand"; group: string }
+  | { kind: "drill"; schema: string }
+  | { kind: "otype"; otype: string }
+  | { kind: "full" };
+
+export interface Lane {
+  index: number;
+  label: string;
+  depth: number | null;
+}
+
+export interface GraphNode {
+  id: string;
+  name: string;
+  label: string;
+  sub: string | null;
+  kind: NodeKind;
+  raw_kind: string | null;
+  type: string | null;
+  db: string | null;
+  schema: string | null;
+  lane: number;
+  depth: number | null;
+  badge: string;
+  tip: string;
+  marks: Mark[];
+  rules: RuleHit[];
+  action: NodeAction | null;
+  group: string | null; // id in Graph.groups when this is a combined box
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  cls: EdgeCls;
+  privs: string[];
+  count: number | null;
+  back: boolean;
+  rules: RuleHit[];
+  has: string[] | null;
+  lacks: string[] | null;
+}
+
+export interface GraphGroup {
+  kind: NodeKind;
+  label: string;
+  noun: string;
+  count: number;
+  sensitive: number;
+  findings: number;
+  classes: PrivClass[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: number;
+  drill: NodeAction | null;
+}
+
+export interface Graph {
+  title: string;
+  header: string;
+  level: "object" | "schema" | "database" | "type" | "summary";
+  note: string | null;
+  full: boolean;
+  selected: string | null;
+  lanes: Lane[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  groups: Record<string, GraphGroup>;
+  legend: { kinds: NodeKind[]; edges: EdgeCls[]; marks: Mark[]; rules: boolean };
+}
+
+// ---------- frame ----------
+
+export interface RunInfo {
+  run_id: string;
+  finished_at: string;
+  when: string;
+  old: boolean;
+}
+
+export interface Note {
+  key: string;
+  title: string;
+  meaning: string;
+  raw: string;
+}
+
+export interface MineState {
+  loaded: boolean;
+  user: string | null;
+  loaded_at: string | null;
+  expires_at: string | null;
+  notes?: Note[];
+}
+
+export interface RuleInfo {
+  num: string;
+  title: string;
+  why: string;
+  severity: Severity;
+  area: string;
+  spot: string;
+  meaning: string;
+  fix: string;
+}
+
+export interface KindStyle {
+  bg: string;
+  border: string;
+  text: string;
+  radius: string;
+  dash: string;
+}
+
+/** One theme of ui.TOKENS: colour strings plus the node styles per kind. */
+export type ThemeTokens = Record<string, string> & { kind: Record<string, KindStyle> };
+
+export interface Meta {
+  mode: Mode;
+  source: Source;
+  where: string;
+  view: View;
+  loaded: boolean;
+  run: RunInfo | null;
+  sources: Record<string, string>;
+  notes: Note[];
+  mine: MineState;
+  pages: { key: Page; label: string; badge: number | null }[];
+  default_user: string;
+  prefixes: { func: string; tech: string };
+  admin_roles: string[];
+  build_roles: string[];
+  limits: { max_paths: number; max_objects: number; max_hops: number; dormant_days: number; max_depth_rule: number };
+  read_privs: string[];
+  sensitive_tags: string;
+  rules: RuleInfo[];
+  governance: Record<string, string> | null;
+  tokens: { light: ThemeTokens; dark: ThemeTokens };
+  help: Record<string, string>;
+  type_icon: Record<string, [string, string]>;
+  pclass: Record<string, string>;
+}
+
+export interface ReloadAnswer {
+  ok: boolean;
+  result: unknown;
+  message: string;
+}
+
+export interface FindItem {
+  id: string;
+  name: string;
+  kind: NodeKind;
+  kind_label: string;
+  type: string | null;
+  sensitive: boolean;
+  page: Page;
+}
+
+export interface ListItem {
+  id: string;
+  name: string;
+  kind: NodeKind | null;
+  type: string | null;
+  status: UserStatus | null;
+}
+
+// ---------- shared row shapes ----------
+
+export interface Tab {
+  key: TabKey;
+  label: string;
+  count: number;
+}
+
+export interface PrivRow {
+  privilege: string;
+  cls: PrivClass;
+  tab: TabKey;
+  type: string;
+  object: string;
+  database: string;
+  schema: string;
+  name: string;
+  future_label: string | null;
+  granted?: string; // user page: the depth-1 role ("Use role")
+  holder: string;
+  depth: number;
+  path: Path;
+  count: number;
+  paths_note: string;
+  sensitive: boolean;
+  hidden: boolean;
+}
+
+export interface ReachRow {
+  role: string;
+  kind: NodeKind;
+  tab: "granted" | "database_roles";
+  depth: number;
+  direct: boolean;
+  path: Path;
+  count: number;
+  admin: boolean;
+}
+
+export interface Account {
+  admin: { role: string; path: Path }[];
+  privileges: { privilege: string; path: Path; via_public: boolean }[];
+  public: string[];
+}
+
+export interface FindingLine {
+  num: string;
+  severity: Severity;
+  title: string;
+  grantee: string;
+  kind: NodeKind;
+  details: string[];
+}
+
+export type RowsState = "all" | "filtered" | "none" | "unknown";
+export type ColState = "clear" | "masked" | "unknown";
+
+export interface StateWhy<S> {
+  state: S;
+  reason: string;
+  policy?: string | null;
+  body?: string | null;
+}
+
+export interface DataView {
+  object: string;
+  name: string;
+  can_read: boolean;
+  tags: string[];
+  columns: (StateWhy<ColState> & { column: string; tags: string[]; sensitive: boolean })[];
+  rows: StateWhy<RowsState> & { condition?: string | null };
+  summary: string;
+}
+
+export interface SensitiveReach {
+  object: string;
+  cols: string[];
+  role: string;
+  path: Path | null;
+  text: string; // "EMAIL masked · all rows" as the granted role sees it
+}
+
+export interface UsageCard {
+  days: number;
+  source: string;
+  readable: boolean;
+  rows: { kind: string; name: string; queries: number; last_used: string }[];
+}
+
+// ---------- pages ----------
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  type: string;
+  status: UserStatus;
+  disabled: boolean;
+  service: boolean;
+  default_role: string | null;
+  secondary_roles: "All" | "None";
+  default_warehouse: string | null;
+  last_login: string | null;
+  last_login_text: string;
+  login_mark: "" | "Dormant" | "Never";
+  login_days: number | null;
+}
+
+export interface UserPage {
+  view: View;
+  user: UserProfile;
+  filters: {
+    roles: "all" | "default";
+    depth: number | null;
+    dataonly: boolean;
+    schema: string;
+    otype: string;
+    on: string;
+    priv: string;
+    objects: string[];
+    privileges: string[];
+  };
+  banners: Banner[];
+  findings: FindingLine[];
+  findings_total: number;
+  kpis: {
+    privileges: number;
+    objects: number;
+    paths: number;
+    multi: number;
+    roles: number;
+    roles_direct: number;
+    deepest: number;
+    sensitive: number | null;
+    sensitive_known: boolean;
+    admin_roles: number;
+    account_privs: number;
+  };
+  account: Account;
+  graph: Graph | null;
+  tabs: Tab[];
+  privileges: PrivRow[];
+  roles: ReachRow[];
+  multi: { rows: { privilege: string; cls: PrivClass; object: string; depth: number; path: Path }[]; total: number; shown: number };
+  can_read: DataView[] | null;
+  sensitive: { known: boolean; roles: string[]; rows: SensitiveReach[] } | null;
+  granted: { role: string; kind: NodeKind; default: boolean; used: { queries: number; last_used: string } | null; used_text: string }[];
+  usage: UsageCard;
+  capped: string[];
+  refs: Refs;
+}
+
+export type HoldCell = "direct" | "inherited" | "owner" | "lacks";
+
+export interface HeldRow {
+  grantee: string;
+  id: string;
+  kind: NodeKind;
+  kind_label: string;
+  status: UserStatus | null;
+  depth: number;
+  direct: boolean;
+  only_via: string[];
+  path: Path;
+  count: number;
+  loses_it: boolean;
+  loses: [string, string][];
+}
+
+export interface RolePage {
+  view: View;
+  role: { id: string; name: string; kind: NodeKind; owner: string[]; admin: boolean };
+  filters: {
+    depth: number | null;
+    users: boolean;
+    sensitive: boolean;
+    schema: string;
+    otype: string;
+    cut: string;
+    lacks: string;
+    cuts: string[];
+    gaps: string[];
+  };
+  kpis: {
+    privileges: number;
+    future: number;
+    effective: number;
+    above: number;
+    above_direct: number;
+    users: number;
+    users_direct: number;
+    farthest: number;
+    sensitive: number;
+    holds_roles: string[];
+  };
+  scope_kpis: { direct: number; effective: number; objects: number; holders: number; sensitive: number } | null;
+  banners: Banner[];
+  findings: FindingLine[];
+  findings_total: number;
+  readonly_writes: {
+    object: string;
+    privileges: string[];
+    holder: string;
+    inherited: boolean;
+    how: string;
+    read_only: number;
+    objects: number;
+  }[];
+  account: Account;
+  graph: Graph | null;
+  held_by: {
+    rows: HeldRow[];
+    revoke: { grantee: string; lost: number; users: number; iac: string; sql: string } | null;
+  };
+  holds: {
+    types: {
+      type: string;
+      privs: string[];
+      rows: { object: string; name: string; cells: Record<string, HoldCell>; text: string }[];
+    }[];
+    other: { privilege: string; cls: PrivClass; type: string; object: string; name: string }[];
+    count: number;
+    objects: number;
+  };
+  tabs: Tab[];
+  privileges: PrivRow[];
+  roles: ReachRow[];
+  can_read: DataView[] | null;
+  capped: string[];
+  refs: Refs;
+}
+
+export interface MatrixCell {
+  has: boolean;
+  owner: boolean;
+  depth: number | null;
+  count: number;
+  title: string;
+}
+
+export interface MatrixRow {
+  user: string;
+  type: string;
+  status: UserStatus;
+  admin: string[];
+  real: boolean;
+  cells: Record<string, MatrixCell>;
+  seen: Record<string, StateWhy<ColState>>;
+  rows_state: StateWhy<RowsState> | null;
+  via: { classes: PrivClass[]; roles: string[]; holders: string[] }[];
+  depth: number | null;
+  paths: number;
+  path: Path | null;
+  admin_paths: Path[];
+}
+
+export interface Sensitivity {
+  object_tags: { label: string; origin: string; sensitive: boolean }[];
+  row_policies: { name: string; args: string; text: string; from_text: boolean }[];
+  columns: {
+    column: string;
+    tags: { label: string; sensitive: boolean }[];
+    semantic: string;
+    masking: string[];
+    clear_for: { role: string; how: "session" | "primary" }[];
+    clear_known: boolean;
+    unmasked_everyone: boolean;
+  }[];
+  policy_text: Record<string, string>;
+  readers: { people: number; admin: number; service: number };
+}
+
+export interface GranteeRow {
+  grantee: string;
+  id: string;
+  kind: NodeKind;
+  kind_label: string;
+  status: UserStatus | null;
+  privileges: { privilege: string; cls: PrivClass; tab: TabKey }[];
+  tabs: TabKey[];
+  depth: number;
+  path: Path;
+  count: number;
+}
+
+export interface ObjectPage {
+  view: View;
+  object: {
+    id: string;
+    type: string;
+    database: string;
+    schema: string;
+    name: string;
+    sensitive: boolean;
+    privileges: string[];
+  };
+  filters: { type: string; priv: string; active: boolean; users: boolean };
+  kpis: {
+    people: number;
+    disabled: number;
+    service: number;
+    admin: number;
+    read: number;
+    write: number;
+    own: number;
+    roles: number;
+    direct: number;
+    owners: string[];
+    deployers: string[];
+    owner_note: string;
+    longest: number;
+  };
+  admin_paths: Path[];
+  sensitivity: Sensitivity | null;
+  matrix: { privs: string[]; sensitive_cols: string[]; row_policy: boolean; rows: MatrixRow[] };
+  graph: Graph | null;
+  sees: {
+    cols: string[];
+    row_policy: boolean;
+    rows: { role: string; rows: StateWhy<RowsState>; columns: (StateWhy<ColState> & { column: string })[] }[];
+  } | null;
+  tabs: Tab[];
+  grantees: GranteeRow[];
+  capped: string[];
+  refs: Refs;
+}
+
+export interface CheckPage {
+  view: View;
+  user: string;
+  object: string;
+  type: string;
+  priv: string;
+  privileges: string[];
+  answer: {
+    yes: boolean;
+    how: "paths" | "owner" | "admin" | "none";
+    title: string;
+    text: string;
+    tone: "warn" | "low" | null;
+    stats: [string, number | string][];
+  };
+  status: UserStatus;
+  dormant_days: number | null;
+  admin_paths: Path[];
+  paths: { path: Path; depth: number; holder: string; how: string }[];
+  owner: Path[];
+  choke: string[];
+  closest: Path | null;
+  ask: { role: string; privileges: number; path: Path }[];
+  options: { iac: string; sql: string; affects: number; users: string[]; edges: number }[];
+  use_role: string | null;
+  warehouse: string | null;
+  read: { summary: string; rows: StateWhy<RowsState> | null; columns: (StateWhy<ColState> & { column: string })[]; role_only: string | null } | null;
+  graph: Graph | null;
+  usage: UsageCard;
+  capped: string[];
+  refs: Refs;
+}
+
+export interface SensitivePage {
+  view: View;
+  state: "ok" | "mine" | "unavailable" | "no_tags" | "none_sensitive";
+  governance: Record<string, string> | null;
+  filters: { tag: string; db: string; people: boolean; tags: string[]; dbs: string[] };
+  kpis: {
+    objects: number;
+    columns: number;
+    whole: number;
+    people: number;
+    admin: number;
+    disabled: number;
+    service: number;
+    unmasked: number;
+    stale: string[];
+  };
+  objects: {
+    object: string;
+    database: string;
+    schema: string;
+    name: string;
+    type: string;
+    tags: { label: string; origins: string[] }[];
+    cols: string[];
+    masked: [number, number];
+    row_policies: string[];
+    people: string[];
+    disabled: string[];
+    service: string[];
+    admin: string[];
+    roles: string[];
+  }[];
+  readers: {
+    user: string;
+    type: string;
+    status: UserStatus;
+    last_login_text: string;
+    objects: string[];
+    roles: string[];
+    path: Path | null;
+    via_admin: boolean;
+    admin_paths: Path[];
+  }[];
+  compare: { a: string; b: string; roles: string[]; rows: { object: string; a: string | null; b: string | null }[]; diff: string[] };
+  refs: Refs;
+}
+
+export interface FindingRow {
+  num: string;
+  title: string;
+  severity: Severity;
+  why: string;
+  grantees: { id: string; kind: NodeKind }[];
+  detail: string;
+  more: number;
+  paths: Path[];
+  edge_cls: EdgeCls | "";
+  iac: string;
+  sql: string;
+  affects: number | null;
+  impact: string;
+  same_fix: string;
+}
+
+export interface AdminPerson {
+  user: string;
+  service: boolean;
+  roles: string[];
+  account: string[];
+  paths: Path[];
+  status: UserStatus;
+  last_login: string | null;
+}
+
+export interface RulesPage {
+  view: View;
+  scope: "account" | "mine";
+  filters: { grantee: string; sev: Severity | "Passing" | ""; rule: string };
+  counts: Record<Severity | "Passing", number>;
+  per_rule: Record<string, number>;
+  findings: FindingRow[];
+  total: number;
+  rows_unknown: string[];
+  admins: AdminPerson[];
+  refs: Refs;
+}
+
+export interface ReviewRow {
+  database: string;
+  schema: string;
+  object: string;
+  type: string;
+  future_label: string | null;
+  user: string;
+  user_type: string;
+  status: UserStatus;
+  last_login: string | null;
+  privileges: string[];
+  classes: PrivClass[];
+  sensitive: string[];
+  granted: string[];
+  path: Path;
+  admin: boolean;
+  hidden: boolean;
+}
+
+export interface ReviewPage {
+  view: "shared";
+  filters: {
+    db: string;
+    dbs: string[];
+    schema: string;
+    schemas: string[];
+    object: string;
+    objects: string[];
+    active: boolean;
+    hideusage: boolean;
+  };
+  kpis: {
+    objects: number;
+    users: number;
+    not_active: number;
+    rows: number;
+    admin_rows: number;
+    hidden_usage: number;
+    sensitive: number;
+  };
+  rows: ReviewRow[];
+  refs: Refs;
+}

@@ -3,3 +3,5 @@ __pycache__/
 .env
 settings.local.sql
 local.ps1
+web/node_modules/
+.cache/

@@ -28,8 +28,8 @@ VIEWS = {"shared": "Shared snapshot", "mine": "My access (live, only me)"}
 DEPTHS = {"": "No limit (every level)", "1": "Up to depth 1", "3": "Up to depth 3", "5": "Up to depth 5",
           "10": "Up to depth 10"}
 ROLES = {"all": "All granted roles", "default": "Default role only"}
-KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role", "admin": "Admin role",
-        "object": "Object"}
+KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
+        "database": "Database role", "admin": "Admin role", "object": "Object"}
 SEVS = ["High", "Medium", "Low"]
 HEAD = {
     "user": ("User access", "What can this user reach — through every role, at any depth?",
@@ -97,7 +97,13 @@ def mine():  # per viewer only, never in the shared cache
 # own access survives that in server memory for an hour; it is never written anywhere and no other browser sees it.
 @st.cache_data(ttl=3600, show_spinner=False)
 def mine_for(browser):
-    return mine()
+    return stamp(mine())
+
+
+def stamp(d):
+    """The a.build key of one load: reruns and link reloads of the same load keep the lookups and rule findings.
+    Random, so two viewers never share a key (and so never each other's lookups)."""
+    return d | {"key": ("mine", os.urandom(16).hex())}
 
 
 def refresh():
@@ -117,7 +123,7 @@ def refresh():
 def load_mine(who):  # a click callback: runs before the page, so the button label is already right
     if who:
         mine_for.clear(who)
-    st.session_state.mine = mine_for(who) if who else mine()
+    st.session_state.mine = mine_for(who) if who else stamp(mine())
 
 
 def load(view, box):
@@ -161,7 +167,8 @@ def q(key, default=""):
 def put(key, value, default):
     """Write a filter to the URL; a value equal to default stays out (default None: always written)."""
     if q(key) != ("" if default is not None and value == default else str(value)):
-        st.query_params.pop("expand", None)  # the expanded lane belongs to the old view
+        for k in ("expand", "schema", "otype") if key == "name" else ("expand",):  # they belong to the old view
+            st.query_params.pop(k, None)
     if default is not None and value == default:
         st.query_params.pop(key, None)
     else:
@@ -225,23 +232,33 @@ def here(**params):
     return "?" + urlencode({k: v for k, v in qs.items() if v not in (None, "")})
 
 
-def scope_crumb(name, scope):
-    """"U › DB.SCHEMA" with a link back to the whole view; a bad ?schema= is said, then ignored."""
+def scope_crumb(name, scope, t=None):
+    """"U › DB.SCHEMA" with a link back to the whole view; a bad ?schema= is said, then ignored. t: the object type
+    filter in use (?otype= when the view has that type)."""
     if q("schema") and not scope:
-        html(ui.banner("info", f"{e(q('schema'))} is not reached by {e(name)}", ["Showing all of its access."]))
-    if scope:
-        html(f'<div class="ae ae-crumb"><a href="{e(here(schema=None))}" target="_self">{e(name)}</a> › '
-             f'<b class="ae-mono">{e(scope)}</b> <span class="ae-small">· graph, tiles and tables show only '
-             f'this {"schema" if "." in scope else "database"}</span></div>')
+        html(ui.banner("info", f"{e(q('schema'))} is not reached by {e(name)}",
+                       [f"Showing all of its {e(t.lower()) + 's' if t else 'access'}."]))
+    if scope or t:
+        where = f'<b class="ae-mono">{e(scope)}</b>' if scope else ""
+        if t:
+            where += (f'{" › " if scope else ""}<b class="ae-mono">{e(t.lower())}s</b> '
+                      f'<a href="{e(here(otype=None))}" target="_self" class="ae-small" title="Show every object type">'
+                      f'✕ all types</a>')
+        what = f'this {"schema" if "." in scope else "database"}' if scope else ""
+        what += (" and " if what and t else "") + (f"{t.lower()}s" if t else "")
+        html(f'<div class="ae ae-crumb"><a href="{e(here(schema=None, otype=None))}" target="_self">{e(name)}</a> › '
+             f'{where} <span class="ae-small">· graph, tiles and tables show only {e(what)}</span></div>')
 
 
-def node_href(start, kinds, check=False):
-    """Graph links: a schema or database node opens the drill-down (?schema=); check: an object node opens Can they?
-    for start."""
+def node_href(start, kinds, check=False, types=None):
+    """Graph links: a schema or database node opens the drill-down (?schema=); a type-group box filters to its
+    object type (?otype=, types: graph_input's); check: an object node opens Can they? for start."""
     def go(n):
         k = kinds.get(n)
         if k in ("schema", "database"):
-            return here(schema=n)
+            return here(schema=n, otype=None)
+        if k == "type-group" and (types or {}).get(n):
+            return here(otype=types[n])
         if k == "fold":
             return here(full="1")
         if k:
@@ -419,7 +436,7 @@ def obj_cell(o, k, name, where=False):
         return (f'<span class="ae-tip" title="applies to {e(what)} created later">All future {e(what)} in '
                 f'{e(o.rsplit(".", 1)[0])}</span>')
     head = o[:-len(name)] if where and o != name and o.endswith(name) else ""  # "SALES.CORE." in front of a table
-    pre = f'<span class="ae-small">{e(head)}</span>' if head else ""
+    pre = f'<span class="ae-small">{e(head).replace(".", ".<wbr>")}</span>' if head else ""  # long names may wrap
     return (pre + f'<a class="ae-mono" style="color:var(--ink);text-decoration:none" href="{e(href_k(o, "object"))}" '
             f'target="_self">{e(name)}</a>' + (f'<span class="ae-sens" title="sensitive data">{ui.icon("lock", 11, 2.4)}'
                                                f'</span>' if o in SENS else ""))
@@ -517,14 +534,8 @@ def merge(x, rs):
 
 def hits(lanes, edges, info=None, every=False):
     """Graph info: graph_input's (else a.graph_info's: rule hits, Has / Lacks) plus the BREAKS rule hits on the drawn
-    edges. every=False keeps only High rule hits, so they stand out. My access holds only your own roles: no rule hits
-    there."""
+    edges. every=False keeps only High rule hits, so they stand out. In My access the rules ran on your own roles."""
     out = {k: dict(v) for k, v in (a.graph_info(lanes, edges) if info is None else info).items()}
-    if VIEW_MODE != "shared":
-        for v in out.values():
-            v.pop("rules", None)
-            v.pop("findings", None)
-        return out
     for g in edges:
         k = (g[0], g[1], g[2] if len(g) > 2 else "inherit")
         if BREAKS.get(k):
@@ -549,21 +560,25 @@ def summarize(g):
 
 
 def graph_card(title, lanes, edges, notes=None, selected=None, sub="", bad=(), info=None, kinds=None, href_of=None,
-               note=""):
+               note="", key="graph", tools=True):
     """Graphs over 3 lanes (often wider than the card at full size) start fitted, so the answer on the right is in
     view. info: graph_input's (else a.graph_info's; BREAKS are added here); kinds: {group node: schema | database |
-    type-group}; href_of: node links (default: the node's own page). Node names are graph node ids (a.uid)."""
+    type-group}; href_of: node links (default: the node's own page). Node names are graph node ids (a.uid).
+    key: unique per graph on a page; tools=False: no Fit / All rule hits toggles (a second graph, e.g. in a tab)."""
     kinds = kinds or {}
-    with st.container(key="card_graph"):
-        left, right = st.columns([4, 1.2], vertical_alignment="center")
-        html(f'<div class="ae">{ui.title(title, sub)}</div>', left)
-        with right:
-            fit = flag("Fit to width", "fit", len(lanes) > 3, toggle=True,
-                       help="Scale the whole graph into the card (scrolls below a readable size). Off: full size, "
-                            "scroll sideways.")
-            every = VIEW_MODE == "shared" and flag("All rule hits", "allhits", toggle=True,
-                                                   help="Off: only High rule hits are marked on the graph. On: "
-                                                        "Medium and Low too.")
+    with st.container(key="card_" + key):
+        if tools:
+            left, right = st.columns([4, 1.2], vertical_alignment="center")
+            html(f'<div class="ae">{ui.title(title, sub)}</div>', left)
+            with right:
+                fit = flag("Fit to width", "fit", len(lanes) > 3, toggle=True,
+                           help="Scale the whole graph into the card (scrolls below a readable size). Off: full size, "
+                                "scroll sideways.")
+                every = flag("All rule hits", "allhits", toggle=True,
+                             help="Off: only High rule hits are marked on the graph. On: Medium and Low too.")
+        else:
+            html(f'<div class="ae">{ui.title(title, sub)}</div>')
+            fit, every = len(lanes) > 3, False
         info = hits(lanes, edges, info, every)
         names = {n for _, ns in lanes for n in ns}
         kind = {n: kinds.get(n) or a.node_kind(n) for n in names}
@@ -602,11 +617,19 @@ def admin_lines(paths, first="user"):
         len(paths) > 6)
 
 
+def acct_lines(acct, first):
+    """Account-level privileges, one mini chain each, and what "via PUBLIC" means when some come that way."""
+    pub = sorted({pv for pv, p in acct if p[-1] == "PUBLIC"})
+    return [f'<span class="ae-mono">{e(pv)}:</span>&nbsp;{mpath(p, "", first)}' for pv, p in acct] + [
+        f'<span class="ae-small">Via PUBLIC ({e(", ".join(pub))}): every user has {"it" if len(pub) == 1 else "these"}. '
+        f'PUBLIC is granted to everyone, and Snowflake grants some account privileges '
+        f'({e(", ".join(sorted(a.DEFAULT_PUBLIC)))}) to PUBLIC by default: not special to this one, and not a rule '
+        'finding. Any other privilege on PUBLIC is Rule 9.</span>'] * bool(pub)
+
+
 def findings_banner(name, user, skip=()):
     """Rule findings of a user or role and, for a user, of the roles granted to it directly: one line per rule and
     grantee, "● Rule 19 EXECUTE TASK ... · [GRANTEE] · detail" (details of several findings joined)."""
-    if VIEW_MODE != "shared":
-        return
     via = set(a.roles_of.get(name, [])) if user else set()
     xs = [x for x in ROWS if x["num"] not in skip and ((x["grantee"] == name and (x["kind"] == "user") == user)
                                                       or (x["grantee"] in via and x["kind"] != "user"))]
@@ -621,6 +644,56 @@ def findings_banner(name, user, skip=()):
         lines.append(f'<a href="{e(link(page="rules", grantee=name))}" target="_self">Show on Rule checks</a>')
         html(ui.banner("warn", f"{plural(len(xs), 'rule finding')} for {e(name)}"
                        + (" and the roles granted to it" if any(x["grantee"] != name for x in xs) else ""), lines))
+
+
+def tab_graph(key, start, user, rows, walked=(), what="privileges", gin=None):
+    """A Privileges tab's own graph: start, the roles on the way, the objects of just these rows (walked: role paths,
+    the Hold tab). gin(cat): a.graph_input of the tab, rolled up and summarized like the main graph; None (a filter
+    graph_input can't apply): over MAX_OBJECTS rows only the shortest path of each is drawn."""
+    g = gin and gin(key)
+    if g:
+        g, note = summarize(g)
+        kinds = g.get("kinds", {})
+        return graph_card("Graph", g["lanes"], g["edges"], g["notes"], sub=e(g["header"]), info=g.get("info"),
+                          kinds=kinds, href_of=node_href(start, kinds, check=user, types=g.get("types")), note=note,
+                          key="graph_" + key, tools=False)
+    big = len(rows) > a.MAX_OBJECTS
+    g = a.down_graph(start, [r | dict(paths=r["paths"][:1]) for r in rows] if big else rows, walked, user)
+    if g:
+        graph_card("Graph", [x for x in g[0] if x[1]], g[1], g[2], sub=f"{len(rows) or len(walked)} {what}"
+                   + (" · shortest path each" if big else ""), href_of=node_href(start, {}, check=user),
+                   key="graph_" + key, tools=False)
+
+
+def priv_tabs(start, user, rows, reach, table, usage=(), gin=None):
+    """Privileges split into tabs: All, then each a.CATS category with rows, its own graph and table(key, rows).
+    usage: rows the Data only toggle hides (database / schema USAGE), shown in the Usage tab only. reach: a.reach()
+    rows, the Hold tab (roles held, database roles too). gin: see tab_graph. The tab is kept in the URL (?tab=), so a
+    graph link (expand, full chain, type box) reopens it, and only the open tab is drawn: st.tabs draws them all."""
+    cats = {c: [] for c in a.CATS}
+    for r in list(rows) + list(usage):
+        cats[a.priv_cat(r["privilege"], r["type"])].append(r)
+    cats = {c: rs for c, rs in cats.items() if rs or (c == "hold" and reach)}
+    n = {c: len(rs) + (len(reach) if c == "hold" else 0) for c, rs in cats.items()} | {"": len(rows)}
+    c = radio("Privileges", [""] + list(cats), "tab", "", lambda x: f"{a.CATS.get(x, 'All')} · {n[x]}",
+              label_visibility="collapsed")
+    rs = cats.get(c, rows)
+    if not c:
+        return table("", rows)
+    if c != "hold":
+        tab_graph(c, start, user, rs, gin=gin)
+        return table(c, rs)
+    tab_graph(c, start, user, [], [x["path"] for x in reach], "roles held")
+    kind = a.role_kind(start) if not user else "user"
+    table_card("hold_" + str(user), "Roles held", f"{plural(len(reach), 'role')} reached, database roles "
+               "included · it gets every privilege they hold", ["Role", "Kind", "Depth", "Path", "Paths"],
+               [[rchip(x["role"]), e(KIND.get(x["kind"], x["kind"].capitalize() + " role")),
+                 ui.depth(x["depth"]), f'<div class="ae-wide">{mpath(x["path"], "", kind)}</div>',
+                 str(x["count"])] for x in reach],
+               [[x["role"], x["kind"], x["depth"], arrow(x["path"]), x["count"]] for x in reach],
+               "No roles held.", {"Paths"}, min_width=640, fname=f"{start}_roles_held.csv")
+    if rs:
+        table(c, rs)
 
 
 # ---------- pages ----------
@@ -653,8 +726,9 @@ def user_page():
         only_default = mode == "default"
         every = a.grants(u, True, only_default, limit)
         scope = q("schema") if q("schema") in a.scopes(every) else ""
-        rows = [r for r in every if a.in_scope(r, scope) and not (data_only and r["privilege"] == "USAGE"
-                                                                and r["type"] in ("DATABASE", "SCHEMA"))]
+        otype = q("otype") if q("otype") in {r["type"] for r in every} else None  # a type-group box: only that type
+        rows = [r for r in every if a.in_scope(r, scope) and otype in (None, r["type"])
+                and not (data_only and r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA"))]
         rows.sort(key=lambda r: (type_rank(r["type"]), r["object"], r["privilege"]))
         with top[1]:
             o = select("Only on object", [""] + sorted({r["object"] for r in rows}), "on", "",
@@ -664,7 +738,7 @@ def user_page():
             pv = select("Only privilege", [""] + sorted({r["privilege"] for r in rows}), "priv", "",
                         lambda x: x or "Any privilege")
         rows = [r for r in rows if not pv or r["privilege"] == pv]
-    scope_crumb(u, scope)
+    scope_crumb(u, scope, otype)
     p = a.profile.get(u) or {}
     reach = a.reach(u, True, only_default, limit)
     if scope:  # roles on a path into the scope
@@ -717,7 +791,7 @@ def user_page():
                                       'target="_self">see it in the shared snapshot</a>', help="Sensitive"),
         ui.kpi("Admin roles", n_admin, f"{plural(len(acct), 'account-level privilege')}" if acct else
                "no account-level privileges", "bad" if n_admin or acct else "ok", help="Admin")]))
-    lines = admin_lines(admin) + [f'<span class="ae-mono">{e(x)}:</span>&nbsp;{mpath(y, "", "user")}' for x, y in acct]
+    lines = admin_lines(admin) + acct_lines(acct, "user")
     if lines:
         html(ui.banner("bad", "Reaches an admin role, which inherits every role below it" if admin
                        else "Holds account-level privileges", lines))
@@ -726,33 +800,44 @@ def user_page():
         g = a.down_graph(u, rows, user=True)
         g = g and dict(lanes=g[0], edges=g[1], notes=g[2], header=f"{len(rows)} privileges shown")
     else:
-        g = a.graph_input(u, scope or None, default_only=only_default, limit=limit, user=True)
+        g = a.graph_input(u, scope or None, default_only=only_default, limit=limit, user=True, otype=otype)
     g, note = summarize(g) if not (o or pv) else (g, "")
     if g:
         kinds = g.get("kinds", {})
         graph_card("Role hierarchy, by depth", g["lanes"], g["edges"], g["notes"],
                    sub=e(g["header"]) + (" · click a schema or database box to open it"
                                          if {"schema", "database"} & set(kinds.values()) else "")
+                   + (" · click a type box to show its objects" if "type-group" in kinds.values() else "")
                    + " · click an object: can this user use it?", info=g.get("info"), kinds=kinds,
-                   href_of=node_href(u, kinds, check=True), note=note)
+                   href_of=node_href(u, kinds, check=True, types=g.get("types")), note=note)
     else:
         html(ui.card("Role hierarchy, by depth", "", f'<p class="ae-empty">{e(u)} reaches no roles at this depth.</p>'))
 
-    table_card("privileges", "Privileges", f"{len(rows)} privileges · {sum(r['count'] for r in rows)} paths · "
-                                           "shortest path shown" + (" · data only" if data_only else "")
-               + (f" · in {e(scope)}" if scope else ""),
-               ["Privilege", "Type", "Object", "Use role", "Depth", "Path", "Paths"],
-               [[ui.pclass(r["cls"], r["privilege"]), ui.type_tag(r["type"]),
-                 obj_cell(r["object"], r["type"], r["name"], True), rchip(r["granted"]),
-                 ui.depth(r["depth"]), f'<div class="ae-wide">{mpath(r["path"], r["cls"], "user")}</div>',
-                 f'<span class="ae-tip" title="{e(a.paths_note(r))}">{r["count"]}</span>' if a.paths_note(r)
-                 else str(r["count"])] for r in rows],
-               [[r["privilege"], r["cls"], r["type"], r["database"], r["schema"], r["name"], r["granted"], r["depth"],
-                 arrow(r["path"]), r["count"]] for r in rows],
-               f"{u} holds no privileges{' on ' + o if o else ''} at this depth.", {"Paths"}, min_width=820,
-               data_cols=["Privilege", "Class", "Type", "Database", "Schema", "Object", "Use role", "Depth", "Path",
-                          "Paths"],
-               fname=f"{u}_privileges.csv", head=[["User", u, a.status(u)]])
+    def table(c, rs):
+        hid = c == "usage" and data_only and any(r["type"] in ("DATABASE", "SCHEMA") for r in rs)
+        table_card("privileges" + (c and "_" + c), f"{a.CATS[c]} privileges" if c else "Privileges",
+                   f"{len(rs)} privileges · {sum(r['count'] for r in rs)} paths · shortest path shown"
+                   + (" · data only: database and schema USAGE in the Usage tab" if data_only and not c else "")
+                   + (" · database and schema USAGE included (Data only hides them elsewhere)" if hid else "")
+                   + (f" · in {e(scope)}" if scope else ""),
+                   ["Privilege", "Type", "Object", "Use role", "Depth", "Path", "Paths"],
+                   [[ui.pclass(r["cls"], r["privilege"]), ui.type_tag(r["type"]),
+                     obj_cell(r["object"], r["type"], r["name"], True), rchip(r["granted"]),
+                     ui.depth(r["depth"]), f'<div class="ae-wide">{mpath(r["path"], r["cls"], "user")}</div>',
+                     f'<span class="ae-tip" title="{e(a.paths_note(r))}">{r["count"]}</span>' if a.paths_note(r)
+                     else str(r["count"])] for r in rs],
+                   [[r["privilege"], r["cls"], r["type"], r["database"], r["schema"], r["name"], r["granted"],
+                     r["depth"], arrow(r["path"]), r["count"]] for r in rs],
+                   f"{u} holds no privileges{' on ' + o if o else ''} at this depth.", {"Paths"}, min_width=820,
+                   data_cols=["Privilege", "Class", "Type", "Database", "Schema", "Object", "Use role", "Depth", "Path",
+                              "Paths"],
+                   fname=f"{u}_privileges{c and '_' + c}.csv", head=[["User", u, a.status(u)]])
+
+    hidden_usage = [r for r in every if data_only and r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA")
+                    and a.in_scope(r, scope) and otype in (None, r["type"]) and (not o or r["object"] == o)
+                    and (not pv or r["privilege"] == pv)]
+    priv_tabs(u, True, rows, reach, table, hidden_usage, None if o or pv else lambda c: a.graph_input(
+        u, scope or None, default_only=only_default, limit=limit, user=True, otype=otype, cat=c))
     multi = [(r, x) for r in rows if r["count"] > 1 for x in r["paths"]]
     if multi:
         cut = 300  # on screen; the CSV has every listed path
@@ -900,16 +985,17 @@ def role_page():
     admin_role = r in a.ADMIN
     every = [] if admin_role else a.grants(r)
     scope = q("schema") if q("schema") in a.scopes(every) else ""
+    otype = q("otype") if q("otype") in {x["type"] for x in every} else None
     if scope:
         hold = [h for h in hold if a.in_scope(h, scope)]
     k = s["kind"]
     prefix = {"functional": a.FUNC, "technical": a.TECH}.get(k)
-    owner = [g for g, pv, t in a.on.get(r, []) if pv == "OWNERSHIP" and t == "ROLE"]
+    owner = [g for g, pv, t in a.on.get(r, []) if pv == "OWNERSHIP" and t in a.ROLE_ON]
     eff_cap = ("inherits every role below it" if admin_role else
                f"inherited from {plural(len(s['holds_roles']), 'role')} it holds" if s["holds_roles"] else "no roles held")
-    scope_crumb(r, scope)
+    scope_crumb(r, scope, otype)
     if scope:
-        sc = [x for x in every if a.in_scope(x, scope)]
+        sc =[x for x in every if a.in_scope(x, scope)]
         html(ui.grid([
             ui.kpi("Direct grants", len(hold), f"in {e(scope)}", "accent"),
             ui.kpi("Effective privileges", len(sc), f"on {plural(len({x['object'] for x in sc}), 'object')}"),
@@ -943,8 +1029,7 @@ def role_page():
             + (f' · mostly read: {x["read_only"]} of {x["objects"]} objects read-only' if x["how"] != "name" else "")
             + '</span>' for x in ro]))
     admin, acct = a.admin_paths(r), a.account_privs(r)
-    lines = admin_lines(admin, a.role_kind(r)) + [f'<span class="ae-mono">{e(pv)}:</span>&nbsp;'
-                                                   f'{mpath(x, "", a.role_kind(r))}' for pv, x in acct]
+    lines = admin_lines(admin, a.role_kind(r)) + acct_lines(acct, a.role_kind(r))
     if lines:
         html(ui.banner("bad", "Holds an admin role, which inherits every role below it" if admin
                        else "Holds account-level privileges", lines))
@@ -953,33 +1038,45 @@ def role_page():
         html(ui.card("Holds roles", f"direct grants: {s['privileges']} · it gets everything these roles hold",
                      '<div class="ae-path">' + " ".join(rchip(x) for x in s["holds_roles"]) + '</div>'))
 
-    role_graph_card(r, up, ro, scope)
+    role_graph_card(r, up, ro, scope, otype)
     held_card(r, up, only_users)
     holds_card(r, hold, s)
-    eff = [x for x in every if a.in_scope(x, scope) and (not only_sens or x["object"] in SENS)]
+    eff = [x for x in every if a.in_scope(x, scope) and (not only_sens or x["object"] in SENS)
+           and otype in (None, x["type"])]
     eff.sort(key=lambda x: (type_rank(x["type"]), x["object"], x["privilege"]))
-    table_card("effective", "Effective privileges (inherited)", f"{len(eff)} privileges · own grants and every "
-               "role it holds" + (" · sensitive only" if only_sens else ""),
-               ["Privilege", "Type", "Object", "Depth", "Path"],
-               [[ui.pclass(x["cls"], x["privilege"]), ui.type_tag(x["type"]),
-                 obj_cell(x["object"], x["type"], x["name"], True), ui.depth(x["depth"]),
-                 f'<div class="ae-wide">{mpath(x["path"], x["cls"], a.role_kind(r))}</div>'] for x in eff],
-               [[x["privilege"], x["cls"], x["type"], x["database"], x["schema"], x["name"], x["depth"],
-                 arrow(x["path"])] for x in eff],
-               f"{r} is an admin role: it inherits every role below it (hierarchy hidden)." if admin_role else
-               f"{r} reaches no {'sensitive ' if only_sens else ''}privileges.", min_width=720,
-               data_cols=["Privilege", "Class", "Type", "Database", "Schema", "Object", "Depth", "Path"])
+    def table(c, rs):
+        table_card("effective" + (c and "_" + c), f"{a.CATS[c]} privileges (inherited)" if c else
+                   "Effective privileges (inherited)", f"{len(rs)} privileges · own grants and every role it holds"
+                   + (" · sensitive only" if only_sens else ""),
+                   ["Privilege", "Type", "Object", "Depth", "Path"],
+                   [[ui.pclass(x["cls"], x["privilege"]), ui.type_tag(x["type"]),
+                     obj_cell(x["object"], x["type"], x["name"], True), ui.depth(x["depth"]),
+                     f'<div class="ae-wide">{mpath(x["path"], x["cls"], a.role_kind(r))}</div>'] for x in rs],
+                   [[x["privilege"], x["cls"], x["type"], x["database"], x["schema"], x["name"], x["depth"],
+                     arrow(x["path"])] for x in rs],
+                   f"{r} is an admin role: it inherits every role below it (hierarchy hidden)." if admin_role else
+                   f"{r} reaches no {'sensitive ' if only_sens else ''}privileges.", min_width=720,
+                   data_cols=["Privilege", "Class", "Type", "Database", "Schema", "Object", "Depth", "Path"],
+                   fname=f"{r}_effective{c and '_' + c}.csv")
+
+    held_roles = [] if admin_role else a.reach(r)
+    if scope or only_sens:  # roles on a path into what is shown
+        on_path = {n for x in eff for p in x["paths"] for n in p[1:-1]}
+        held_roles = [x for x in held_roles if x["role"] in on_path]
+    priv_tabs(r, False, eff, held_roles, table, gin=None if only_sens or admin_role else lambda c: a.graph_input(
+        r, scope or None, user=False, otype=otype, cat=c))
     data_card(r, False, {x["object"] for x in eff} if scope else None)
 
 
-def role_graph_card(r, up, ro, scope):
+def role_graph_card(r, up, ro, scope, otype=None):
     """Role page graph: who holds r (up, role_graph lanes), r, then everything r reaches (graph_input: grouped by
     schema / database on big accounts, only scope's objects in a drill-down)."""
     lanes, edges, notes, sel = a.role_graph(r, up, ro)
     above = {n for _, ns in lanes[:sel] for n in ns}
     lanes = [(lab.replace("Depth ", "Held by · D"), ns) for lab, ns in lanes[:sel]] + [lanes[sel]]
     edges = [x for x in edges if len(x) == 2 and x[0] in above]
-    g, note = summarize(None if r in a.ADMIN else a.graph_input(r, scope or None, user=False))
+    g, note = summarize(None if r in a.ADMIN else a.graph_input(r, scope or None, user=False,
+                                                                otype=otype))
     info, kinds, sub = a.graph_info(lanes, edges), {}, "read left to right: holders, the role, what it reaches"
     if g:
         for k, v in info.items():  # the holders' rule hits next to graph_input's (the role's own side)
@@ -989,9 +1086,10 @@ def role_graph_card(r, up, ro, scope):
         notes = notes | g["notes"]
         info, kinds = g["info"], g["kinds"]
         sub = g["header"] + (" · click a schema or database box to open it"
-                             if {"schema", "database"} & set(kinds.values()) else "")
+                             if {"schema", "database"} & set(kinds.values()) else "") + (
+            " · click a type box to show its objects" if "type-group" in kinds.values() else "")
     graph_card("Held by (up) and holds (down)", lanes, edges, notes, sel, sub=e(sub), bad={x["holder"] for x in ro},
-               info=info, kinds=kinds, href_of=node_href(r, kinds), note=note)
+               info=info, kinds=kinds, href_of=node_href(r, kinds, types=(g or {}).get("types")), note=note)
 
 
 def holds_card(r, hold, s):
@@ -1770,6 +1868,13 @@ AREAS = ["Role model", "Admin and account", "Sensitive data", "Read-only and wri
          "Users and hygiene"]
 
 
+def unchecked():
+    """Rules My access can't evaluate (no tags, streams or last logins read for you): not counted as passing."""
+    if VIEW_MODE != "mine":
+        return set()
+    return {"6", "7", "10", "11", "15", "22"} | ({"16"} if any(a.login_unknown(u) for u in a.users) else set())
+
+
 def rules_page(rows):
     gs = {x["grantee"] for x in rows}
     who = q("grantee") if q("grantee") in gs else ""
@@ -1789,7 +1894,8 @@ def rules_page(rows):
     if who:
         html(ui.banner("info", f"Findings for {chip(who)} · <a href=\"{e(link(page='rules', sev=sev))}\" "
                                "target=\"_self\">show everyone</a>"))
-    passing = [n for n in a.RULES if not count[n]]
+    nope = {n for n in unchecked() if not count[n]}
+    passing = [n for n in a.RULES if not count[n] and n not in nope]
     html(ui.strip([(ui.dot(s, True), sum(count[n] for n in a.RULES if lvl(n) == s), go(sev="" if sev == s else s),
                     sev == s) for s in SEVS]
                   + [(f'<span class="ae-sevdot">{ui.icon("ok", 13, 2.6)}Passing</span>', len(passing),
@@ -1802,13 +1908,15 @@ def rules_page(rows):
                  + ui.how(ui.MAP_HOW)))
 
     order = {s: i for i, s in enumerate(SEVS)}
-    keep = [n for n in a.RULES if not sev or (sev == "Passing" and not count[n]) or lvl(n) == sev]
+    keep = [n for n in a.RULES if not sev or (sev == "Passing" and n in passing) or lvl(n) == sev]
     top = max(count.values(), default=0)
 
     def row(n):
         ex = next((x for x in mine if x["num"] == n), None)
         example = (f'{chip(ex["grantee"], kind=ex["kind"])}&nbsp;<span class="ae-mono" style="font-size:12.5px">{e(ex["detail"])}</span>'
-                   if ex else '<span class="ae-muted">No finding in this snapshot.</span>')
+                   if ex else f'<span class="ae-muted">Not checked in My access: it needs sensitive-data tags or last '
+                   f'logins, which only the <a href="{e(shared_link(page="rules", rule=n))}" target="_self">shared '
+                   'snapshot</a> reads.</span>' if n in nope else '<span class="ae-muted">No finding in this snapshot.</span>')
         body = (f'<p><b>What it means:</b> {e(RULE_INFO[n][2])}</p><p><b>Why it matters:</b> {e(a.RULES[n][1])}</p>'
                 f'<p><b>How to fix:</b> {e(RULE_INFO[n][3])} Change it in the infrastructure-as-code repo.</p>'
                 f'<p><b>Example:</b> {example}</p>'
@@ -1821,7 +1929,11 @@ def rules_page(rows):
         ns = sorted((n for n in keep if RULE_INFO[n][1] == area and count[n]), key=lambda n: (order[lvl(n)], -count[n]))
         if ns:
             out.append(f'<p class="ae ae-rgroup">{e(area)}</p>' + "".join(row(n) for n in ns))
-    off = [n for n in keep if not count[n]]
+    off = [n for n in keep if n in passing]
+    if nope and not sev:
+        out.append(f'<details class="ae"{" open" if sel in nope else ""}><summary class="ae-rgroup" style="cursor:pointer">'
+                   f'Not checked here ({len(nope)}): needs the shared snapshot</summary>'
+                   + "".join(row(n) for n in sorted(nope, key=int)) + '</details>')
     if off:
         out.append(f'<details class="ae"{" open" if sev == "Passing" or sel in off else ""}><summary class="ae-rgroup" '
                    f'style="cursor:pointer">Passing ({len(off)})</summary>' + "".join(row(n) for n in off)
@@ -1942,6 +2054,45 @@ def snap_time():
     return f"{t:%Y-%m-%d %H:%M} UTC · " + (f"{h:.0f} h ago" if h < 48 else f"{h / 24:.0f} days ago"), h > 24
 
 
+def note_info(k, source, view, raw=""):
+    """A NOTES key in plain words: (title, what it means for the app). The raw message stays in Details."""
+    mine = view == "mine"
+    if k == "grants" and not mine and "skipped" not in str(raw):  # SHOW fallback, every role read
+        return ("grants read with SHOW", "ACCOUNT_USAGE grants are not readable, so every role was read with SHOW "
+                "GRANTS instead. No grants are missing.")
+    if k == "usage":
+        return (("query history: last 7 days only", "ACCOUNT_USAGE.QUERY_HISTORY is not readable, so it came from "
+                 "INFORMATION_SCHEMA (7 days, 10,000 queries), and only the queries your role may see: roles and "
+                 "warehouses used before that, or only by other users, look unused.")
+                if source == "INFORMATION_SCHEMA" else
+                ("query history not readable", "Your role can't read query history, so there is no 'last used' for "
+                 "roles and warehouses. Grants and paths are complete."))
+    return {
+        "applicable_roles": ("role list fallback not readable", "INFORMATION_SCHEMA.APPLICABLE_ROLES is not readable "
+                             "in the database used. It is only a fallback: role links come from SHOW GRANTS, complete "
+                             "unless another warning names roles that could not be read."),
+        "grants": ("some grants not read", "SHOW GRANTS failed for the roles listed in Details: their privileges are "
+                   "missing, only their role links are shown." if mine else "ACCOUNT_USAGE grants are not readable: "
+                   "read with SHOW instead; roles listed in Details could not be read and miss their privileges."),
+        "user_roles": ("your directly granted roles guessed" if mine else "user roles read with SHOW",
+                       "SHOW GRANTS TO USER failed, so the roles granted to you directly come from APPLICABLE_ROLES or "
+                       "from your roles no other role holds. What you reach is right; a path may start at another role."
+                       if mine else "Which roles each user holds came from SHOW, not ACCOUNT_USAGE: see Details."),
+        "users": ("user details not readable", "Default role, type, disabled state and last login are unknown, so "
+                  "dormant and disabled user checks can't judge them."),
+        "tags": ("sensitive-data tags not read", "Tags need the account-wide governance views, which only the shared "
+                 "snapshot reads: no sensitive marks or sensitive-data rules here." if mine else "Tags came from a "
+                 "fallback or are missing: sensitive marks may be incomplete."),
+        "policies": ("masking policies partly read", "Masking and row access policies came from a fallback or are "
+                     "missing: 'masked' / 'unmasked' on sensitive columns may be wrong."),
+        "future_grants": ("future grants partly read", "Future grants of the databases listed in Details are missing."),
+        "streams": ("streams not readable", "Stream sources are missing: the stream rule can't run."),
+        "database_roles": ("database roles partly read", "The grants of the database roles listed in Details could not "
+                           "be read: what they give is missing."),
+        "error": ("snapshot run failed", "The last run of SP_ACCESS_SNAPSHOT failed: see Details."),
+    }.get(k, (k.replace("_", " "), "Read with a fallback or partly: see Details."))
+
+
 @st.cache_resource
 def lock():
     """access.py keeps its lookups in module globals, shared by every session (thread): build + render under one lock."""
@@ -1950,7 +2101,7 @@ def lock():
 
 VIEW = {"user": user_page, "role": role_page, "object": object_page, "sensitive": sensitive_page, "check": check_page,
         "rules": None, "review": review_page}
-SHARED_ONLY = {"rules", "review"}  # pages about everyone: not in My access
+SHARED_ONLY = {"review"}  # pages about everyone: not in My access
 
 
 def fresh():
@@ -1989,13 +2140,18 @@ def main():
     head = HEAD[page]
     if view == "mine" and page == "user":
         head = ("My access", "What can I reach?", "Your own roles, read live with your own rights. Nothing is saved.")
+    if view == "mine" and page == "rules":
+        head = ("Rule checks", "Where your own roles break the role model",
+                "On your own roles only: the rules run on what My access read (you, your roles and their grants), "
+                "not on the whole account. Sensitive-data rules need the shared snapshot's tags.")
     html(ui.header(*head))
     body = st.empty()
     html(ui.skeleton(), body)
     d = load(view, card)
     with lock():
-        if d is not None:  # the shared snapshot is built once per run; My access every time (it is per viewer)
-            a.build(d, ("shared", d["run"].get("RUN_ID"), str(d["run"].get("FINISHED_AT"))) if view == "shared" else None)
+        if d is not None:  # built once per shared run and once per My access load (stamp); switching views rebuilds
+            a.build(d, ("shared", d["run"].get("RUN_ID"), str(d["run"].get("FINISHED_AT"))) if view == "shared"
+                    else d.get("key"))
         SENS = a.cached("sens", a.sensitive) if d is not None else {}
         rows = ROWS = a.cached("rows", a.rule_rows) if d is not None and a.roles else []
         BREAKS = a.cached("breaks", lambda: breaks(rows, a.cached("ro", a.readonly_writes))) if rows else {}
@@ -2010,8 +2166,9 @@ def main():
             if old:
                 html(ui.banner("warn", "Snapshot older than 24 h"), notes)
             for k, v in a.run["NOTES"].items():
-                html(ui.banner("warn", f"Incomplete: {e(k.replace('_', ' '))}"), notes)
-                with notes.expander("Details"):
+                title, meaning = note_info(k, src.get(k), view, v)
+                html(ui.banner("warn", f"Incomplete: {e(title)}", [e(meaning)]), notes)
+                with notes.expander("Details (raw message)"):
                     st.caption(str(v))
         # graph node ids (a.uid), so a role named like a user is listed too
         names = [a.uid(u, True) for u in a.users] + a.roles + a.objects if d is not None else []

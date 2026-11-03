@@ -194,14 +194,17 @@ def grants(session, run_id, mode):
     out = {}
     why = fallback(session, "GRANTS_TO_ROLES", mode) or fallback(session, "GRANTS_TO_USERS", mode)
     if why is None:
-        # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG
+        # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG;
+        # a database role grantee is a bare name: qualified with the database of what it is granted, DB.ROLE
         session.sql(f"""INSERT INTO {GRANT} ({", ".join(GRANT_COLS)})
-            SELECT '{run_id}', GRANTEE_NAME, PRIVILEGE, GRANTED_ON,
+            SELECT '{run_id}', IFF(GRANTED_TO = 'DATABASE_ROLE',
+                       IFF(GRANTED_ON = 'DATABASE', NAME, TABLE_CATALOG) || '.' || GRANTEE_NAME, GRANTEE_NAME),
+                   PRIVILEGE, GRANTED_ON,
                    CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
                         WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
                         ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END,
                    FALSE, GRANT_OPTION, GRANTED_BY
-            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO = 'ROLE'""").collect()
+            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')""").collect()
         session.sql(f"""INSERT INTO {USER_ROLE} (RUN_ID, USER_NAME, ROLE_NAME, GRANTED_BY)
             SELECT '{run_id}', GRANTEE_NAME, ROLE, GRANTED_BY FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""").collect()
         out["grants"] = out["user_roles"] = ("ACCOUNT_USAGE", None)
@@ -218,6 +221,17 @@ def grants(session, run_id, mode):
                     u.append([run_id, x["grantee_name"], role, x.get("granted_by")])
         except Exception as e:  # a role the owner may not inspect: keep going, list it in NOTES
             skipped.append(f"{role}: {first_line(e)}")
+    for d in rows(session, "SHOW DATABASES"):  # database roles: per database, their grants under DB.ROLE
+        if d.get("kind", "STANDARD") != "STANDARD":
+            continue
+        try:
+            for r in rows(session, f"SHOW DATABASE ROLES IN DATABASE {ident(d['name'])}"):
+                q = f"{d['name']}.{clean(r['name'])}"
+                for x in rows(session, f"SHOW GRANTS TO DATABASE ROLE {ident(d['name'])}.{ident(clean(r['name']))}"):
+                    g.append([run_id, q, x["privilege"], x["granted_on"], clean(x["name"]), False,
+                              str(x.get("grant_option")).lower() == "true", x.get("granted_by")])
+        except Exception as e:
+            skipped.append(f"database roles in {d['name']}: {first_line(e)}")
     save(session, GRANT, GRANT_COLS, g)
     save(session, USER_ROLE, ["RUN_ID", "USER_NAME", "ROLE_NAME", "GRANTED_BY"], u)
     note = why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else "")
@@ -236,10 +250,12 @@ def future(session, run_id):
             places = [f"DATABASE {ident(db)}"] + [f"SCHEMA {ident(db)}.{ident(s['name'])}"
                                                   for s in rows(session, f"SHOW SCHEMAS IN DATABASE {ident(db)}")
                                                   if s["name"] != "INFORMATION_SCHEMA"]
-            for p in places:
+            for p in places:  # to a database role of this database: DB.ROLE
                 for x in rows(session, f"SHOW FUTURE GRANTS IN {p}"):
-                    if x.get("grant_to") == "ROLE":
-                        out.append([run_id, x["grantee_name"], x["privilege"], x["grant_on"], clean(x["name"]), True,
+                    if x.get("grant_to") in ("ROLE", "DATABASE_ROLE"):
+                        who = x["grantee_name"] if x["grant_to"] == "ROLE" else clean(x["grantee_name"])
+                        who = who if x["grant_to"] == "ROLE" or who.startswith(db + ".") else f"{db}.{who}"
+                        out.append([run_id, who, x["privilege"], x["grant_on"], clean(x["name"]), True,
                                     str(x.get("grant_option")).lower() == "true", None])
         except Exception as e:
             skipped.append(f"{db}: {first_line(e)}")
@@ -469,8 +485,8 @@ $$;
 
 -- ---------- worksheet access without the app: table functions + findings procedure ----------
 -- The functions walk the last OK run with the same rules as access.py (test_sql.py runs this exact text on DuckDB):
--- role links = GRANTED_ON 'ROLE' + PRIVILEGE 'USAGE', minus links granted to an admin role (every custom role sits
--- under SYSADMIN), simple paths only (ROLES = the roles on the path, a user is not one), MAX_DEPTH NULL = every
+-- role links = GRANTED_ON 'ROLE' or 'DATABASE_ROLE' (a database role, named DB.ROLE) + PRIVILEGE 'USAGE', minus
+-- links granted to an admin role (every custom role sits under SYSADMIN), simple paths only (ROLES = the roles on the path, a user is not one), MAX_DEPTH NULL = every
 -- level, cut at a fixed 50 hops without a flag (the MAX_HOPS setting is not read here).
 -- Depth = roles from the start to the grant holder, holder included (a user is not a role). PATH = 'A > B > C'.
 -- Arguments are read once in ARGS, so they never clash with the column names of the snapshot tables.
@@ -504,7 +520,7 @@ ME AS (   -- joins, not IN / NOT IN: a NULL user name would empty NOT IN
 EDGE AS (
     SELECT G.GRANTEE_ROLE AS PARENT, G.OBJECT_NAME AS CHILD
     FROM &DB.&SCHEMA.TBL_ACCESS_GRANT G JOIN LAST_RUN L ON G.RUN_ID = L.RUN_ID
-    WHERE G.GRANTED_ON = 'ROLE' AND G.PRIVILEGE = 'USAGE'
+    WHERE G.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND G.PRIVILEGE = 'USAGE'
       AND G.GRANTEE_ROLE NOT IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'SYSADMIN', 'USERADMIN', 'ORGADMIN')),
 STARTS AS (   -- a user: each granted role row, plus PUBLIC unless granted (1 hop); a role: itself (0 hops)
     SELECT A.A_NAME || ' > ' || U.ROLE_NAME AS PATH, U.ROLE_NAME AS NODE, 1 AS HOPS, 1 AS IS_USER
@@ -539,7 +555,7 @@ SELECT P.PRIVILEGE AS PRIVILEGE,
 FROM WALK W
 JOIN &DB.&SCHEMA.TBL_ACCESS_GRANT P ON P.GRANTEE_ROLE = W.NODE
 JOIN LAST_RUN L ON P.RUN_ID = L.RUN_ID
-WHERE NOT (P.GRANTED_ON = 'ROLE' AND P.PRIVILEGE = 'USAGE')
+WHERE NOT (P.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND P.PRIVILEGE = 'USAGE')
 $$;
 
 -- name: FUNCTION_WHO_CAN (may fail)
@@ -563,14 +579,14 @@ MEMBER AS (   -- role -> user; every user holds PUBLIC, which is never listed
 EDGE AS (
     SELECT G.GRANTEE_ROLE AS PARENT, G.OBJECT_NAME AS CHILD
     FROM &DB.&SCHEMA.TBL_ACCESS_GRANT G JOIN LAST_RUN L ON G.RUN_ID = L.RUN_ID
-    WHERE G.GRANTED_ON = 'ROLE' AND G.PRIVILEGE = 'USAGE'
+    WHERE G.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND G.PRIVILEGE = 'USAGE'
       AND G.GRANTEE_ROLE NOT IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'SYSADMIN', 'USERADMIN', 'ORGADMIN')),
 UP (PRIV, PATH, ROLES, NODE, HOPS) AS (   -- grantee > ... > holder, walking up from each grant holder
     SELECT CAST(P.PRIVILEGE AS VARCHAR), CAST(P.GRANTEE_ROLE AS VARCHAR), ARRAY_CONSTRUCT(P.GRANTEE_ROLE),
            CAST(P.GRANTEE_ROLE AS VARCHAR), CAST(0 AS INTEGER)
     FROM &DB.&SCHEMA.TBL_ACCESS_GRANT P JOIN LAST_RUN L ON P.RUN_ID = L.RUN_ID CROSS JOIN ARGS A
     WHERE P.OBJECT_NAME = A.A_OBJ AND (A.A_PRIV IS NULL OR P.PRIVILEGE = A.A_PRIV)
-      AND NOT (P.GRANTED_ON = 'ROLE' AND P.PRIVILEGE = 'USAGE')
+      AND NOT (P.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND P.PRIVILEGE = 'USAGE')
     UNION ALL
     SELECT U.PRIV, E.PARENT || ' > ' || U.PATH, ARRAY_APPEND(U.ROLES, E.PARENT), E.PARENT, U.HOPS + 1
     FROM UP U JOIN EDGE E ON E.CHILD = U.NODE CROSS JOIN ARGS A

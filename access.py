@@ -21,6 +21,9 @@ for line in ENV.read_text(encoding="utf-8-sig").splitlines() if ENV.is_file() el
         os.environ.setdefault(k, v)
 
 ADMIN = {"ACCOUNTADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "ORGADMIN"}
+# account privileges Snowflake grants to PUBLIC by default (plus the SNOWFLAKE.* database roles): not rule 9
+DEFAULT_PUBLIC = set(os.environ.get("DEFAULT_PUBLIC",
+                                    "VIEW LINEAGE,USE AI FUNCTIONS,INGEST LINEAGE,BIND SERVICE ENDPOINT").split(","))
 MAX_HOPS = int(os.environ.get("MAX_HOPS", "50"))  # safety cap on role hops per walk
 # functional and technical role prefixes; another naming: ROLE_PREFIXES=<functional>,<technical>
 FUNC, TECH = os.environ.get("ROLE_PREFIXES", "F_,T_").split(",")
@@ -129,6 +132,7 @@ def fake():
            (f"{F}SECURITY", "MANAGE GRANTS", "ACCOUNT", "ACCOUNT"),  # fake: account privilege on a functional role
            (f"{F}ANALYST", "USAGE", "WAREHOUSE", "WH_SALES_XS"),  # fake: direct privilege on a functional role
            ("PUBLIC", "USAGE", "WAREHOUSE", "WH_SALES_XS"),  # fake: grant to PUBLIC (rule 9)
+           ("PUBLIC", "VIEW LINEAGE", "ACCOUNT", "ACCOUNT"),  # Snowflake's default on PUBLIC: no rule 9
            (f"{T}SHARED_LOGGING_READ", "INSERT", "TABLE", "SHARED.LOGGING.TBL_LOGGING"),  # fake: READ role writes (17)
            (f"{T}SALES_CORE_WRITE", "CREATE TABLE", "SCHEMA", "SALES.CORE"),
            (f"{T}FINANCE_REPORT_READ", "CREATE VIEW", "SCHEMA", "FINANCE.REPORT"),  # fake: read-only role creates (23)
@@ -194,7 +198,22 @@ def fake():
         (f"{F}SUPPORT", "SUPPORT_01"),
     ]
     ur += [(CHAIN[0], u) for u in FIN_USERS]
+    # database roles (DB.ROLE): hold grants inside their database, held by account roles like any role; schema
+    # HR.PEOPLE is reachable only through them. SC_W holds SC_R; F_ENGINEER holds SC_W
+    pv += [("HR.SC_R_PEOPLE", p, k, o) for p, k, o in [("USAGE", "DATABASE", "HR"), ("USAGE", "SCHEMA", "HR.PEOPLE"),
+                                                         ("SELECT", "TABLE", "HR.PEOPLE.TBL_EMPLOYEE")]]
+    pv += [("HR.SC_W_PEOPLE", p, "TABLE", "HR.PEOPLE.TBL_EMPLOYEE") for p in ("INSERT", "UPDATE")]
+    dbr = [("HR.SC_R_PEOPLE", "HR.SC_W_PEOPLE"), ("HR.SC_W_PEOPLE", f"{F}ENGINEER")]
+    # HR_01 reads 15 objects of one schema through a database role: over MAX_OBJECTS, so its graph groups them
+    # (by schema, and scoped to HR.PAYROLL by type: TABLE and VIEW boxes that open with ?otype=)
+    pay = [f"HR.PAYROLL.TBL_PAY_{i:02}" for i in range(13)] + ["HR.PAYROLL.VW_PAY_MONTH", "HR.PAYROLL.VW_PAY_YEAR"]
+    pv += [("HR.SC_R_PAYROLL", "USAGE", "DATABASE", "HR"), ("HR.SC_R_PAYROLL", "USAGE", "SCHEMA", "HR.PAYROLL")]
+    pv += [("HR.SC_R_PAYROLL", "SELECT", "VIEW" if ".VW_" in o else "TABLE", o) for o in pay]
+    dbr += [("HR.SC_R_PAYROLL", f"{F}HR")]
+    ur += [(f"{F}HR", "HR_01")]
     grants = [dict(GRANTEE_ROLE=p, PRIVILEGE="USAGE", GRANTED_ON="ROLE", OBJECT_NAME=c, IS_FUTURE=False) for c, p in rg]
+    grants += [dict(GRANTEE_ROLE=p, PRIVILEGE="USAGE", GRANTED_ON="DATABASE_ROLE", OBJECT_NAME=c, IS_FUTURE=False)
+               for c, p in dbr]
     grants += [dict(GRANTEE_ROLE=r, PRIVILEGE=p, GRANTED_ON=k.replace("FUTURE ", ""), OBJECT_NAME=o,
                     IS_FUTURE=k.startswith("FUTURE")) for r, p, k, o in pv]
     logins = {"ANALYST_01": "2026-11-01 08:40", "ANALYST_02": "2026-07-15 10:05", "ENGINEER_01": "2026-11-02 06:55",
@@ -211,7 +230,8 @@ def fake():
                                    ("REPORT_01", "PERSON", f"{F}REPORTING_RO", '["ALL"]', "WH_SALES_XS"),
                                    ("MARKETING_01", "PERSON", f"{F}MARKETING", '["ALL"]', "WH_SALES_XS"),
                                    ("OPS_01", "PERSON", "SYSADMIN", '["ALL"]', None),
-                                   ("SUPPORT_01", "PERSON", f"{F}SUPPORT", '["ALL"]', "WH_SALES_XS")]
+                                   ("SUPPORT_01", "PERSON", f"{F}SUPPORT", '["ALL"]', "WH_SALES_XS"),
+                                   ("HR_01", "PERSON", f"{F}HR", '["ALL"]', None)]
              + [(u, "PERSON", CHAIN[0], '["ALL"]', "WH_FINANCE_XS") for u in FIN_USERS]]  # FIN_14 disabled
     usage = [dict(USER_NAME=u, KIND=k, NAME=n, QUERIES=q, LAST_USED="2026-10-30 09:00")
              for u, k, n, q in [("ANALYST_01", "ROLE", "GRP_ANALYSTS", 412),
@@ -281,12 +301,38 @@ def line(e):
     return " ".join(str(e).split())[:300]
 
 
+def db_ident(name):
+    """A database role's qualified name DB.ROLE (unquoted) -> "DB"."ROLE"."""
+    return ".".join(ident(p) for p in name.split(".", 1))
+
+
+def qualify(db, name):
+    """A database role of db as DB.ROLE, whether SHOW gave it bare or qualified."""
+    return name if name.startswith(db + ".") else f"{db}.{name}"
+
+
+def held_db_roles(grants):
+    """Database roles granted in these GRANT rows (USAGE on DATABASE_ROLE)."""
+    return [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE_ROLE" and g["PRIVILEGE"] == "USAGE"]
+
+
+def info_schema(query, dbs, sql):
+    """sql(db) on the first database whose INFORMATION_SCHEMA works; the first error if none does."""
+    err = None
+    for d in dbs[:5]:
+        try:
+            return query(sql(ident(d)))
+        except Exception as e:
+            err = err or e
+    raise err
+
+
 def mine(query, db):
     """The logged-in user's own access, live, with their own rights. Writes nothing (no tables, no temp tables).
     query(sql) -> list of dicts; db: a database whose INFORMATION_SCHEMA the user can read
-    (None: the current one)."""
+    (None: the current one, else one the user's roles can use)."""
     me = query("SELECT CURRENT_USER() AS U")[0]["U"]
-    db = db or query("SELECT CURRENT_DATABASE() AS D")[0]["D"] or "SNOWFLAKE"  # direct mode: no tables
+    db = db or query("SELECT CURRENT_DATABASE() AS D")[0]["D"]
     query("USE SECONDARY ROLES ALL")  # every granted role counts, as with DEFAULT_SECONDARY_ROLES = ('ALL')
     roles = json.loads(query("SELECT CURRENT_AVAILABLE_ROLES() AS R")[0]["R"])  # granted + inherited, always readable
     src, notes, grants, skipped = {}, {}, [], []
@@ -297,9 +343,30 @@ def mine(query, db):
                        for x in query(f"SHOW GRANTS TO ROLE {ident(r)}")]
         except Exception as e:
             skipped.append(f"{r} ({line(e)})")
+    todo, seen, bad = held_db_roles(grants), set(), []  # database roles: their own SHOW, recursively
+    while todo:
+        r = todo.pop()
+        if r in seen:
+            continue
+        seen.add(r)
+        try:
+            got = [dict(GRANTEE_ROLE=r, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
+                        OBJECT_NAME=x["name"].replace('"', ""), IS_FUTURE=False)
+                   for x in query(f"SHOW GRANTS TO DATABASE ROLE {db_ident(r)}")]
+        except Exception as e:
+            bad.append(f"{r} ({line(e)})")
+            continue
+        grants += got
+        todo += held_db_roles(got)
+    if bad:
+        notes["database_roles"] = (f"{len(bad)} database roles not readable, held but their grants unknown: "
+                                   + " | ".join(bad[:10]))
     src["grants"] = "SHOW GRANTS TO ROLE"
+    # SNOWFLAKE last: without IMPORTED PRIVILEGES the user can't even see it, any usable database works
+    dbs = list(dict.fromkeys(([db] if db else []) + [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE"]
+                             + ["SNOWFLAKE"]))
     try:  # role links of the user's roles, and the roles granted to the user: no privileges needed
-        applicable = query(f"SELECT GRANTEE, ROLE_NAME FROM {db}.INFORMATION_SCHEMA.APPLICABLE_ROLES")
+        applicable = info_schema(query, dbs, lambda d: f"SELECT GRANTEE, ROLE_NAME FROM {d}.INFORMATION_SCHEMA.APPLICABLE_ROLES")
     except Exception as e:
         applicable, notes["applicable_roles"] = [], line(e)
     if skipped:
@@ -325,15 +392,22 @@ def mine(query, db):
                      LOGIN_UNKNOWN=True)  # DESC USER has no last login: unknown, not "never"
     except Exception as e:
         user, notes["users"] = {}, f"DESC USER: {line(e)}"
-    try:
-        usage = query(f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE({db}.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER(
-                USER_NAME => '{me.replace("'", "''")}', END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000)))
+    who, agg = me.replace("'", "''"), """
             SELECT 'ROLE' AS KIND, ROLE_NAME AS NAME, COUNT(*) AS QUERIES, MAX(START_TIME) AS LAST_USED FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 2
             UNION ALL
-            SELECT 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 2""")
-        src["usage"] = "INFORMATION_SCHEMA"
-    except Exception as e:
-        usage, src["usage"], notes["usage"] = [], "UNAVAILABLE", line(e)
+            SELECT 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 2"""
+    try:  # ACCOUNT_USAGE first (30 days, needs IMPORTED PRIVILEGES), else INFORMATION_SCHEMA (7 days, own queries)
+        usage = query(f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM {AU}.QUERY_HISTORY
+                WHERE USER_NAME = '{who}' AND START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP()))""" + agg)
+        src["usage"] = "ACCOUNT_USAGE"
+    except Exception as au:
+        try:
+            usage = info_schema(query, dbs, lambda d: f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE({d}.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER(
+                    USER_NAME => '{who}', END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000)))""" + agg)
+            src["usage"] = "INFORMATION_SCHEMA"
+        except Exception as e:
+            usage, src["usage"] = [], "UNAVAILABLE"
+            notes["usage"] = f"{AU}.QUERY_HISTORY: {line(au)}; INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER: {line(e)}"
     src["tags"] = src["policies"] = "UNAVAILABLE"
     notes["tags"] = "sensitivity needs the governance views of the shared snapshot"
     run = dict(RUN_ID="live", FINISHED_AT="now", SOURCES=src, NOTES=notes)
@@ -380,13 +454,16 @@ def live(query):
             notes[name] = why
 
     why = readable("GRANTS_TO_ROLES") or readable("GRANTS_TO_USERS")
-    if why is None:  # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG
-        d["GRANT"] = query(f"""SELECT GRANTEE_NAME AS GRANTEE_ROLE, PRIVILEGE, GRANTED_ON,
+    if why is None:  # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG;
+        # a database role grantee is a bare name: qualified with the database of what it is granted, DB.ROLE
+        d["GRANT"] = query(f"""SELECT IFF(GRANTED_TO = 'DATABASE_ROLE',
+                       IFF(GRANTED_ON = 'DATABASE', NAME, TABLE_CATALOG) || '.' || GRANTEE_NAME, GRANTEE_NAME) AS GRANTEE_ROLE,
+                   PRIVILEGE, GRANTED_ON,
                    CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
                         WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
                         ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END AS OBJECT_NAME,
                    FALSE AS IS_FUTURE, GRANT_OPTION, GRANTED_BY
-            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO = 'ROLE'""")
+            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')""")
         d["USER_ROLE"] = query(f"""SELECT GRANTEE_NAME AS USER_NAME, ROLE AS ROLE_NAME, GRANTED_BY
             FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""")
         note("grants", "ACCOUNT_USAGE", None)
@@ -402,6 +479,18 @@ def live(query):
                                    for x in rows(f"SHOW GRANTS OF ROLE {ident(role)}") if x.get("granted_to") == "USER"]
             except Exception as e:  # a role this role may not inspect: keep going, list it in the notes
                 skipped.append(f"{role}: {line(e)}")
+        for x in rows("SHOW DATABASES"):  # database roles: per database, their grants under DB.ROLE
+            if x.get("kind", "STANDARD") != "STANDARD":
+                continue
+            try:
+                for r in rows(f"SHOW DATABASE ROLES IN DATABASE {ident(x['name'])}"):
+                    q = f"{x['name']}.{clean(r['name'])}"
+                    d["GRANT"] += [dict(GRANTEE_ROLE=q, PRIVILEGE=g["privilege"], GRANTED_ON=g["granted_on"],
+                                        OBJECT_NAME=clean(g["name"]), IS_FUTURE=False,
+                                        GRANT_OPTION=str(g.get("grant_option")).lower() == "true",
+                                        GRANTED_BY=g.get("granted_by")) for g in rows(f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}")]
+            except Exception as e:
+                skipped.append(f"database roles in {x['name']}: {line(e)}")
         note("grants", "SHOW", why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else ""))
     note("user_roles", src["grants"], notes.get("grants"))
 
@@ -413,11 +502,12 @@ def live(query):
             places = [f"DATABASE {ident(x['name'])}"] + [
                 f"SCHEMA {ident(x['name'])}.{ident(s['name'])}"
                 for s in rows(f"SHOW SCHEMAS IN DATABASE {ident(x['name'])}") if s["name"] != "INFORMATION_SCHEMA"]
-            for p in places:
-                d["GRANT"] += [dict(GRANTEE_ROLE=f["grantee_name"], PRIVILEGE=f["privilege"], GRANTED_ON=f["grant_on"],
-                                    OBJECT_NAME=clean(f["name"]), IS_FUTURE=True,
+            for p in places:  # to a database role of this database: DB.ROLE
+                d["GRANT"] += [dict(GRANTEE_ROLE=f["grantee_name"] if f["grant_to"] == "ROLE" else
+                                    qualify(x["name"], clean(f["grantee_name"])), PRIVILEGE=f["privilege"],
+                                    GRANTED_ON=f["grant_on"], OBJECT_NAME=clean(f["name"]), IS_FUTURE=True,
                                     GRANT_OPTION=str(f.get("grant_option")).lower() == "true", GRANTED_BY=None)
-                               for f in rows(f"SHOW FUTURE GRANTS IN {p}") if f.get("grant_to") == "ROLE"]
+                               for f in rows(f"SHOW FUTURE GRANTS IN {p}") if f.get("grant_to") in ("ROLE", "DATABASE_ROLE")]
         except Exception as e:
             skipped.append(f"{x['name']}: {line(e)}")
     note("future_grants", "SHOW", f"{len(skipped)} databases skipped: " + " | ".join(skipped[:20]) if skipped else None)
@@ -579,7 +669,10 @@ def only(d, user):
     """Demo of mine() without Snowflake: one user's slice of a full data set."""
     build(d)
     seen = {r for s in starts(user, True) for p in down(s, user=True) for r in p[1:]}
-    run = dict(RUN_ID="live", FINISHED_AT="now", SOURCES={"all": f"demo: {user}'s slice of the fake data"}, NOTES={})
+    run = dict(RUN_ID="live", FINISHED_AT="now", SOURCES={"all": f"demo: {user}'s slice of the fake data",
+                                                          "usage": "INFORMATION_SCHEMA"},
+               NOTES={"usage": "demo: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY not readable",
+                      "applicable_roles": "demo: INFORMATION_SCHEMA.APPLICABLE_ROLES not readable"})
     return dict(run=run, GRANT=[g for g in d["GRANT"] if g["GRANTEE_ROLE"] in seen], TAG=[], POLICY=[], STREAM=[],
                 **{t: [x for x in d[t] if x["USER_NAME"] == user] for t in ("USER_ROLE", "USER", "USAGE")})
 
@@ -593,6 +686,8 @@ roles, users, objects, kinds, run = [], [], [], {}, {}
 tags, policies, sens = [], [], {}  # TAG rows, POLICY rows, sensitive(): object -> [(column, tag, value, origin)]
 streams = {}  # stream -> source table (STREAM rows)
 capped = set()  # start of every walk cut at MAX_HOPS; the UI clears it before a page and warns when it is not empty
+db_roles = set()  # database roles, by their qualified name DB.ROLE
+ROLE_ON = ("ROLE", "DATABASE_ROLE")  # GRANTED_ON of a role link (with USAGE): an account or a database role is held
 memo = {}  # results that only depend on the data set (rule findings, ...), cleared by build()
 
 
@@ -605,10 +700,10 @@ def build(d, key=None):
     memo.clear()
     memo["key"] = key
     for x in (role_grants, user_grants, privs, holds, held_by, users_of, roles_of, profile, used, kinds, granted, on,
-              capped, tags, policies, sens, streams):
+              capped, tags, policies, sens, streams, db_roles):
         x.clear()
     for g in d["GRANT"]:
-        if g["GRANTED_ON"] == "ROLE" and g["PRIVILEGE"] == "USAGE":  # role inheritance; OWNERSHIP on a role is not
+        if g["GRANTED_ON"] in ROLE_ON and g["PRIVILEGE"] == "USAGE":  # role inheritance; OWNERSHIP on a role is not
             # every custom role is also granted to SYSADMIN: dropped so admin roles don't swallow every graph;
             # holding an admin role is kept and flagged in red
             if g["GRANTEE_ROLE"] not in ADMIN:
@@ -616,8 +711,12 @@ def build(d, key=None):
         else:
             k = ("FUTURE " if g["IS_FUTURE"] else "") + g["GRANTED_ON"]
             privs.append((g["GRANTEE_ROLE"], g["PRIVILEGE"], k, g["OBJECT_NAME"]))
-            if g["GRANTED_ON"] != "ROLE":  # OWNERSHIP on a role: it stays a role, not an object
+            if g["GRANTED_ON"] not in ROLE_ON:  # OWNERSHIP on a role: it stays a role, not an object
                 kinds[g["OBJECT_NAME"]] = k
+        if g["GRANTED_ON"] == "DATABASE_ROLE":
+            db_roles.add(g["OBJECT_NAME"])
+        if "." in (g["GRANTEE_ROLE"] or ""):  # a grantee DB.ROLE: account role names have no dot (unless quoted)
+            db_roles.add(g["GRANTEE_ROLE"])
     user_grants.extend((g["ROLE_NAME"], g["USER_NAME"]) for g in d["USER_ROLE"])
     for child, parent in role_grants:
         holds.setdefault(parent, []).append(child)
@@ -653,7 +752,8 @@ def cached(name, fn):
 
 
 def kind_of(name):
-    """user | admin | functional | technical | group | object. Group = any other role, PUBLIC included."""
+    """user | admin | database | functional | technical | group | object. Group = any other role, PUBLIC included;
+    database = a database role (DB.ROLE)."""
     if name in profile or name in roles_of:
         return "user"
     return role_kind(name)
@@ -663,6 +763,8 @@ def role_kind(name):
     """kind_of for a name known to be a role or object: a role named like a user is still a role."""
     if name in ADMIN:
         return "admin"
+    if name in db_roles:
+        return "database"
     if name.startswith(FUNC):
         return "functional"
     if name.startswith(TECH):
@@ -707,6 +809,29 @@ def priv_class(pv, kind=""):
     if pv in ("SELECT", "REFERENCES", "READ") or (pv == "USAGE" and k in ("DATABASE", "SCHEMA")):
         return "read"
     return "use"
+
+
+CATS = {"usage": "Usage", "read": "Read", "write": "Write", "execute": "Execute", "own": "Own", "manage": "Manage",
+        "hold": "Hold"}  # Privileges tabs, in this order
+
+
+def priv_cat(pv, kind=""):
+    """Privileges tab of a privilege: usage (USAGE / MONITOR on a database, schema, warehouse, ...), read, write,
+    execute (USAGE on a function or procedure, EXECUTE ..., OPERATE on a task), own, manage (CREATE ..., MODIFY, account
+    privileges, the rest), hold (USAGE on a database role: holding it; the roles reached are reach())."""
+    k = (kind or "").replace("FUTURE ", "")
+    c = priv_class(pv, k)
+    if c == "own":
+        return c
+    if k in ROLE_ON:
+        return "hold"
+    if pv.startswith("EXECUTE ") or (pv == "USAGE" and k in ("FUNCTION", "PROCEDURE")) or (pv == "OPERATE" and k == "TASK"):
+        return "execute"
+    if c == "admin":
+        return "manage"
+    if pv in ("USAGE", "MONITOR") or c == "use":
+        return "usage"
+    return c if c in ("read", "write") else "manage"
 
 
 def tag_label(t, v):
@@ -1704,7 +1829,8 @@ def admin_people():
     """Users holding an admin role or an account-level privilege (MANAGE GRANTS, ...), service users included.
     Row: user, roles, paths (user->...->admin role), account [(privilege, path)], service, status, last_login, days."""
     ps = group((x, p) for x, p in admin_holders() if from_user(p))
-    acct = {u: account_privs(u, True) for u in users}
+    acct = {u: [(pv, p) for pv, p in account_privs(u, True) if not (p[-1] == "PUBLIC" and pv in DEFAULT_PUBLIC)]
+            for u in users}  # Snowflake's defaults on PUBLIC: every user has them
     return [dict(user=u, roles=sorted({p[-1] for p in ps.get(u, [])}), paths=ps.get(u, []), account=acct[u],
                  service=is_service(u), status=status(u), last_login=(profile.get(u) or {}).get("LAST_SUCCESS_LOGIN"),
                  days=login_days(u))
@@ -1885,7 +2011,8 @@ def group_objects(rows, level="schema"):
 MAX_OBJECTS = 12  # objects drawn one by one; more roll up into groups (ui.lane_graph shows 12 boxes per lane)
 
 
-def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False, limit=None, user=None):
+def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False, limit=None, user=None, otype=None,
+                cat=None):
     """User / role graph for any account size: grants() of start (USAGE on databases and schemas left out). Over
     max_objects objects, objects become schema nodes, or database nodes when there are more schemas than that; an
     object outside a schema (a database grant, a warehouse) stays an object node. schema="DB.SCHEMA" (or a database
@@ -1894,17 +2021,20 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
     edges [(a, b) role links, (holder, object, cls, privilege), (holder, group, cls, privilege, objects)], notes (see
     notes()), info (graph_info() plus {group: count, noun, sensitive, findings}), kinds {group node: schema | database
     | type-group}, header e.g. "1,234 objects, grouped by schema", level (object | schema | database | type), shown,
-    total, groups (group_objects() when grouped by schema or database)). default_only, limit: as grants()."""
+    total, groups (group_objects() when grouped by schema or database), types {type-group: object type}).
+    default_only, limit: as grants(). otype: only objects of this type ("TABLE"), drawn one by one. cat: only the
+    privileges of this priv_cat() (a Privileges tab; "usage" keeps database and schema USAGE), no role without one."""
     user = kind_of(start) == "user" if user is None else user
     sid = uid(start, user)
     every = [r for r in grants(start, user, default_only, limit)
-             if not (r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA"))]
-    rows = [r for r in every if in_scope(r, schema)]
+             if (priv_cat(r["privilege"], r["type"]) == cat if cat else
+                 not (r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA")))]
+    rows = [r for r in every if in_scope(r, schema) and otype in (None, r["type"])]
     if not rows:
         return None
     objs = list(dict.fromkeys(r["object"] for r in rows))
     n_schemas = len({group_key(r, "schema") for r in rows})
-    if len(objs) <= max_objects:
+    if len(objs) <= max_objects or otype:
         level = "object"
     elif schema and "." not in schema and n_schemas > 1:  # a database: its schemas
         level = "schema"
@@ -1926,7 +2056,7 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
         part = [x[:-1] for r in rows for x in r["paths"]]
     else:  # one listing per holder, not per object: thousands of objects share a few hundred holders
         part = [p for h in sorted({h for r in rows for h in r["holders"]}) for p in listed(sts, kids, hops, {h})]
-    if schema is None:  # roles that lead to no object still show
+    if schema is None and not cat:  # roles that lead to no object still show
         part += list(shortest(sts, kids, hops).values())
     part = [[sid] + p[1:] for p in part]
     ch = chains(part)
@@ -1954,12 +2084,14 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
                                       sensitive=sum(o in sens for o in os_),
                                       findings=len({i for o in os_ for i in fi.get(o, ())}))
     how = {"schema": ", grouped by schema", "database": ", grouped by database", "type": ", grouped by object type"}
-    header = (f"{len(objs):,} object{'s' * (len(objs) != 1)}" + (f" in {schema}" if schema else "")
+    header = (f"{len(objs):,} {otype.lower() + ' ' if otype else ''}object{'s' * (len(objs) != 1)}"
+              + (f" in {schema}" if schema else "")
               + how.get(level, ""))
     kinds_ = {g: "type-group" if level == "type" else level for g in members}
     return dict(lanes=lanes, edges=edges, notes=notes(ch, nodes), info=info, kinds=kinds_, header=header, level=level,
                 shown=len(objs), total=len({r["object"] for r in every}),
-                groups=group_objects(rows, level) if level in ("schema", "database") else [])
+                groups=group_objects(rows, level) if level in ("schema", "database") else [],
+                types={key(r): r["type"] for r in rows} if level == "type" else {})
 
 
 SUMMARY_ROLES, SUMMARY_LANES = 30, 6  # over this many role boxes or role lanes a graph is drawn as a summary
@@ -2089,6 +2221,11 @@ def holder_edge(role, pv, obj):
     return priv_edge(role, pv, next(k for p, k, o in granted[role] if p == pv and o == obj), obj)
 
 
+def role_sql(n):
+    """ROLE R, or DATABASE ROLE DB.R for a database role, in GRANT / REVOKE."""
+    return f"DATABASE ROLE {sql_obj(n)}" if role_kind(n) == "database" else f"ROLE {sql_name(n)}"
+
+
 def revoke(e, pvs=None):
     """(infrastructure-as-code text, equivalent SQL) to remove one grant edge; pvs: several privileges of the same role
     on the same object, in one statement. OWNERSHIP can't be revoked in Snowflake, only transferred."""
@@ -2096,21 +2233,21 @@ def revoke(e, pvs=None):
     if e["priv"] is None:
         who = "USER" if e["user"] else "ROLE"
         return (f"Remove in the infrastructure-as-code repo: role {x} granted to {who.lower()} {g}",
-                f"REVOKE ROLE {sql_name(x)} FROM {who} {sql_name(g)};")
-    pv = ", ".join(pvs or [e["priv"]])
+                f"REVOKE {role_sql(x)} FROM {'USER ' + sql_name(g) if e['user'] else role_sql(g)};")
+    pv, k = ", ".join(pvs or [e["priv"]]), k.replace("_", " ")  # DATABASE_ROLE -> DATABASE ROLE in SQL
     if k == "ACCOUNT":
         return (f"Remove in the infrastructure-as-code repo: {pv} on account granted to role {g}",
-                f"REVOKE {pv} ON ACCOUNT FROM ROLE {sql_name(g)};")
+                f"REVOKE {pv} ON ACCOUNT FROM {role_sql(g)};")
     if k.startswith("FUTURE"):
         kk, where = k.replace("FUTURE ", "") + "S", x.rsplit(".", 1)[0]
         place = "SCHEMA " if "." in where else "DATABASE "
         return (f"Remove in the infrastructure-as-code repo: {pv} on future {kk.lower()} in {place.lower()}{where} "
-                f"granted to role {g}", f"REVOKE {pv} ON FUTURE {kk} IN {place}{sql_obj(where)} FROM ROLE {sql_name(g)};")
+                f"granted to role {g}", f"REVOKE {pv} ON FUTURE {kk} IN {place}{sql_obj(where)} FROM {role_sql(g)};")
     if pv == "OWNERSHIP":
         return (f"Transfer ownership in the infrastructure-as-code repo: {k.lower()} {x}, now owned by role {g}",
                 f"GRANT OWNERSHIP ON {k} {sql_obj(x)} TO ROLE <new owner role> COPY CURRENT GRANTS;")
     return (f"Remove in the infrastructure-as-code repo: {pv} on {k.lower()} {x} granted to role {g}",
-            f"REVOKE {pv} ON {k} {sql_obj(x)} FROM ROLE {sql_name(g)};")
+            f"REVOKE {pv} ON {k} {sql_obj(x)} FROM {role_sql(g)};")
 
 
 def fix_text(edges):
@@ -2206,8 +2343,8 @@ def can(user, priv, obj, default_only=False):
     rows = []
     for p in ps:
         how = f"direct grant on {p[-2]}"
-        if len(p) > 3 and p[-3].startswith(TECH):
-            how = f"inherited through technical role {p[-3]}"
+        if len(p) > 3 and role_kind(p[-3]) in ("technical", "database"):
+            how = f"inherited through {role_kind(p[-3])} role {p[-3]}"
         if dr not in p[1:-1]:
             how += ", via secondary role"
         rows.append(dict(path=p, depth=len(p) - 2, holder=p[-2], how=how))
@@ -2368,32 +2505,32 @@ def rules_model():
     """Rules 1-4, 13, 14: the layered role model."""
     out = []
     for role, user in user_grants:
-        if role.startswith(TECH):
+        if role_kind(role) == "technical":
             out.append(find("1", user, role, [user, role], [role_edge(user, role, True)], user=True))
-    for child, parent in role_grants:
-        if child.startswith(TECH) and not parent.startswith((FUNC, TECH)) and parent not in ADMIN:  # group role
+    for child, parent in role_grants:  # kinds, not prefixes: a database role DB.ROLE may start like one
+        if role_kind(child) == "technical" and role_kind(parent) == "group":
             out.append(find("1", parent, child, [parent, child], [role_edge(parent, child)]))
     for r, pv, k, o in privs:
-        if r.startswith(FUNC):
+        if role_kind(r) == "functional":
             out.append(find("2", r, f"{pv} on ACCOUNT" if k == "ACCOUNT" else f"{pv} on {k} {o}", [r, o],
                             [priv_edge(r, pv, k, o)]))
     # rule 3 without parsing DB/schema from names: a consumer holds a technical ..._READ role directly and also through
     # another role it holds (READ inside WRITE); technical-to-technical links are the model's own, so not checked
     consumers = [(g, h, True) for g, h in roles_of.items()] + [(g, h, False) for g, h in holds.items()
-                                                               if not g.startswith(TECH)]
+                                                               if role_kind(g) != "technical"]
     for g, direct, u in consumers:  # one finding per (consumer, held role, READ role), shortest path
         for d in direct:
             best = bfs([d])
             for t in dict.fromkeys(direct):
                 p = best.get(t)
-                if t != d and p and t.startswith(TECH) and t.endswith("_READ"):
+                if t != d and p and role_kind(t) == "technical" and t.endswith("_READ"):
                     out.append(find("3", g, t, [g] + p, [role_edge(g, t, u)], paths=[[g, t], [g] + p], user=u))
     for r in roles:
-        if r.startswith(TECH) and r.endswith("_OWNER"):
+        if role_kind(r) == "technical" and r.endswith("_OWNER"):
             for g in users_of.get(r, []):
                 out.append(find("4", g, r, [g, r], [role_edge(g, r, True)], user=True))
             for g in held_by.get(r, []):
-                if not g.startswith(TECH) and not is_build(g):
+                if role_kind(g) != "technical" and not is_build(g):
                     out.append(find("4", g, r, [g, r], [role_edge(g, r)]))
     for r in roles:  # 13; technical roles without holders are the model's unused capability roles, by design
         if role_kind(r) in ("functional", "group") and r != "PUBLIC" and not users_of.get(r) and not held_by.get(r):
@@ -2421,10 +2558,10 @@ def rules_admin():
                 if not ADMIN & set(p[1:-1]):
                     out.append(find("5", u, r, p, [role_edge(p[-2], p[-1], len(p) == 2)], paths=ps, user=True))
     for r, pv, k, o in privs:
-        if r == "PUBLIC":
+        if r == "PUBLIC" and not (k == "ACCOUNT" and pv in DEFAULT_PUBLIC):
             out.append(find("9", r, f"{pv} on {k} {o}", [r, o], [priv_edge(r, pv, k, o)]))
     for child, parent in role_grants:
-        if parent == "PUBLIC":
+        if parent == "PUBLIC" and not child.startswith("SNOWFLAKE."):
             out.append(find("9", parent, f"role {child}", [parent, child], [role_edge(parent, child)]))
     for u in users:
         dr = (profile.get(u) or {}).get("DEFAULT_ROLE")

@@ -1,4 +1,5 @@
 """Walker tests on the fake data. Run: python test_access.py (no pytest needed)."""
+import json
 import os
 import random
 import re
@@ -23,7 +24,7 @@ def tiny(links, user_roles=(), pv=()):
 
 def test_user():
     g = a.grants("ANALYST_01", True)
-    assert len(g) == 11 and sum(r["count"] for r in g) == 13  # + INSERT on TBL_LOGGING (rule 17), PUBLIC warehouse
+    assert len(g) == 12 and sum(r["count"] for r in g) == 14  # + INSERT on TBL_LOGGING (rule 17), PUBLIC warehouse + lineage
     assert max(r["depth"] for r in g) == 3
     assert all(r["path"] == r["paths"][0] and len(r["path"]) == r["depth"] + 2 for r in g)
     reach = a.reach("ANALYST_01", True)
@@ -38,7 +39,8 @@ def test_user():
 
 def test_depth_limit():
     one = a.grants("ANALYST_01", True, limit=1)  # depth 1: the granted roles themselves (PUBLIC's warehouse)
-    assert [(r["privilege"], r["object"], r["holder"]) for r in one] == [("USAGE", "WH_SALES_XS", "PUBLIC")]
+    assert [(r["privilege"], r["object"], r["holder"]) for r in one] == [("VIEW LINEAGE", "ACCOUNT", "PUBLIC"),
+                                                                        ("USAGE", "WH_SALES_XS", "PUBLIC")]
     two = a.grants("ANALYST_01", True, limit=2)
     assert {r["depth"] for r in two} == {1, 2} and {r["holder"] for r in two} == {"PUBLIC", T + "SHARED_LOGGING_READ"}
     assert a.grants("GRP_ANALYSTS", limit=1) == []  # a role is depth 1 itself; GRP_ANALYSTS holds roles only
@@ -159,6 +161,14 @@ def test_classes():
     assert [c("OPERATE", "WAREHOUSE"), c("MODIFY", "WAREHOUSE"), c("OPERATE", "TASK"), c("CREATE TABLE", "SCHEMA"),
             c("APPLY MASKING POLICY", "TAG")] == ["manage"] * 5
     assert c("EXECUTE TASK", "ACCOUNT") == "admin" and c("SELECT", "STREAM") == "read"
+    t = a.priv_cat
+    assert [t("USAGE", "DATABASE"), t("USAGE", "SCHEMA"), t("USAGE", "WAREHOUSE"), t("MONITOR", "TASK")] == ["usage"] * 4
+    assert [t("SELECT", "FUTURE TABLE"), t("READ", "STAGE"), t("INSERT", "TABLE"), t("WRITE", "STAGE")] == [
+        "read", "read", "write", "write"]
+    assert [t("USAGE", "PROCEDURE"), t("EXECUTE TASK", "ACCOUNT"), t("OPERATE", "TASK")] == ["execute"] * 3
+    assert [t("OPERATE", "WAREHOUSE"), t("CREATE TABLE", "SCHEMA"), t("MANAGE GRANTS", "ACCOUNT")] == ["manage"] * 3
+    assert t("OWNERSHIP", "TABLE") == "own" and t("USAGE", "DATABASE_ROLE") == "hold"
+    assert {t(r["privilege"], r["type"]) for r in a.grants("ENGINEER_01", True)} <= set(a.CATS)
     assert {a.kinds[f"SALES.PIPELINE.{o}"] for o in a.SCHEMAS["SALES"]["PIPELINE"]} == {
         "TASK", "STREAM", "STAGE", "FUNCTION", "SEQUENCE", "PIPE", "DYNAMIC TABLE", "TABLE"}
     s = a.split_name
@@ -333,12 +343,36 @@ def test_demo_db():
         assert [{k: v for k, v in x.items() if k != "RUN_ID"} for x in s[t]] == d[t], t
 
 
+def au_grants(sql, plain):
+    """A GRANTS_TO_ROLES SELECT (live() or SP_ACCESS_SNAPSHOT) run in DuckDB on rows shaped like the view (bare
+    GRANTEE_NAME, NAME, TABLE_CATALOG, TABLE_SCHEMA), made from the GRANT rows plain: tests its qualification."""
+    import duckdb
+    import pandas as pd
+    view = []
+    for g in plain:
+        o, k, r = g["OBJECT_NAME"], g["GRANTED_ON"], g["GRANTEE_ROLE"]
+        p = o.split(".")
+        cat, sch, name = (o, None, o) if k == "DATABASE" else p if len(p) == 3 else             (None, None, o) if len(p) == 1 else (p[0], None, p[1])
+        view.append(dict(GRANTED_TO="DATABASE_ROLE" if "." in r else "ROLE", GRANTEE_NAME=r.split(".")[-1],
+                         PRIVILEGE=g["PRIVILEGE"], GRANTED_ON=k, NAME=name, TABLE_CATALOG=cat, TABLE_SCHEMA=sch,
+                         DELETED_ON=None, GRANT_OPTION=False, GRANTED_BY="X"))
+    con = duckdb.connect()
+    con.execute("CREATE MACRO IFF(c, x, y) AS CASE WHEN c THEN x ELSE y END")
+    con.execute("CREATE MACRO ARRAY_CONSTRUCT_COMPACT(a, b, c) AS list_filter([a, b, c], lambda x: x IS NOT NULL)")
+    con.register("v", pd.DataFrame(view))
+    cur = con.execute(sql.replace("SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES", "v"))
+    return [dict(zip([c[0] for c in cur.description], x)) for x in cur.fetchall()]
+
+
 def fake_snowflake(d, au):
-    """query(sql) answering live()'s SHOW commands from data set d; ACCOUNT_USAGE readable when au (canned rows)."""
+    """query(sql) answering live()'s SHOW commands from data set d; ACCOUNT_USAGE readable when au (canned rows).
+    Database roles (DB.ROLE in d) only show up in SHOW DATABASE ROLES, never in SHOW ROLES."""
     plain = [g for g in d["GRANT"] if not g["IS_FUTURE"]]
-    roles = sorted({g["GRANTEE_ROLE"] for g in d["GRANT"]} | {x["ROLE_NAME"] for x in d["USER_ROLE"]})
+    dbr = {g["OBJECT_NAME"] for g in plain if g["GRANTED_ON"] == "DATABASE_ROLE"} |         {g["GRANTEE_ROLE"] for g in plain if "." in g["GRANTEE_ROLE"]}
+    roles = sorted(({g["GRANTEE_ROLE"] for g in d["GRANT"]} | {x["ROLE_NAME"] for x in d["USER_ROLE"]}) - dbr)
     dbs = sorted({g["OBJECT_NAME"].split(".")[0] for g in plain if g["GRANTED_ON"] not in ("ROLE", "ACCOUNT", "WAREHOUSE")})
     name = lambda sql: sql.split('"')[1]  # noqa: E731  the first quoted name
+    qname = lambda sql: ".".join(sql.split('"')[1::2])  # noqa: E731  "DB"."ROLE" -> DB.ROLE
     calls = []
 
     def query(sql):
@@ -349,7 +383,9 @@ def fake_snowflake(d, au):
                 raise RuntimeError("Object does not exist or not authorized.")
             if "LIMIT 1" in s:
                 return [{"1": 1}]
-            for view, rows in (("GRANTS_TO_ROLES", plain), ("GRANTS_TO_USERS", d["USER_ROLE"]), ("USERS", d["USER"]),
+            if "ACCOUNT_USAGE.GRANTS_TO_ROLES " in s + " ":
+                return au_grants(s, plain)
+            for view, rows in (("GRANTS_TO_USERS", d["USER_ROLE"]), ("USERS", d["USER"]),
                                ("QUERY_HISTORY", d["USAGE"]), ("TAG_REFERENCES", d["TAG"]), ("POLICY_REFERENCES", d["POLICY"])):
                 if f"ACCOUNT_USAGE.{view} " in s + " ":
                     return [dict(x) for x in rows]
@@ -362,9 +398,15 @@ def fake_snowflake(d, au):
             return []
         if s == "SHOW ROLES":
             return [{"name": r} for r in roles]
-        if s.startswith("SHOW GRANTS TO ROLE"):
+        if s.startswith("SHOW GRANTS TO ROLE"):  # a database role comes back quoted, "DB"."ROLE"
+            return [{"privilege": g["PRIVILEGE"], "granted_on": g["GRANTED_ON"], "granted_to": "ROLE", "grant_option": "false",
+                     "name": '"' + g["OBJECT_NAME"].replace(".", '"."') + '"' if g["GRANTED_ON"] == "DATABASE_ROLE"
+                     else g["OBJECT_NAME"]} for g in plain if g["GRANTEE_ROLE"] == name(s)]
+        if s.startswith("SHOW DATABASE ROLES IN DATABASE"):
+            return [{"name": r.split(".", 1)[1]} for r in sorted(dbr) if r.startswith(name(s) + ".")]
+        if s.startswith("SHOW GRANTS TO DATABASE ROLE"):
             return [{"privilege": g["PRIVILEGE"], "granted_on": g["GRANTED_ON"], "name": g["OBJECT_NAME"],
-                     "granted_to": "ROLE", "grant_option": "false"} for g in plain if g["GRANTEE_ROLE"] == name(s)]
+                     "granted_to": "DATABASE_ROLE", "grant_option": "false"} for g in plain if g["GRANTEE_ROLE"] == qname(s)]
         if s.startswith("SHOW GRANTS OF ROLE"):
             return [{"grantee_name": x["USER_NAME"], "granted_to": "USER"} for x in d["USER_ROLE"] if x["ROLE_NAME"] == name(s)]
         if s == "SHOW DATABASES":
@@ -389,7 +431,7 @@ def fake_snowflake(d, au):
 
 
 def a_objects(grants):
-    return {g["OBJECT_NAME"] for g in grants if g["OBJECT_NAME"].count(".") >= 1}
+    return {g["OBJECT_NAME"] for g in grants if g["OBJECT_NAME"].count(".") >= 1 and g["GRANTED_ON"] not in a.ROLE_ON}
 
 
 def test_live():
@@ -406,11 +448,68 @@ def test_live():
         assert sum(g["IS_FUTURE"] for g in s["GRANT"]) == 1
         a.build(s)
         assert (sorted(a.role_grants), sorted(a.user_grants), sorted(a.privs), a.users, dict(a.profile)) == want, au
+        assert a.role_kind("HR.SC_R_PEOPLE") == "database" and "HR.SC_R_PEOPLE" not in a.objects
+        sql = " ".join(c for c in calls if "GRANTS_TO_ROLES" in c and "LIMIT 1" not in c)
+        assert ("GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')" in sql) == au  # the database role grantee qualified in SQL
+        assert any(c.startswith('SHOW GRANTS TO DATABASE ROLE "HR"."SC_R_PEOPLE"') for c in calls) != au
         if not au:  # tags and policies: per-object INFORMATION_SCHEMA, every object skipped here, the run still loads
             assert src["tags"] == src["policies"] == "INFORMATION_SCHEMA" and "skipped" in s["run"]["NOTES"]["tags"]
             assert src["usage"] == "UNAVAILABLE" and s["STREAM"] == d["STREAM"]
         else:
             assert s["TAG"] == d["TAG"] and s["POLICY"] == d["POLICY"] and s["USAGE"] == d["USAGE"]
+    # SP_ACCESS_SNAPSHOT's copy of that SELECT (sql/1_setup.sql grants()) qualifies the same way
+    setup = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql", "1_setup.sql"), encoding="utf-8").read()
+    sel = re.search(r"SELECT '\{run_id\}', (IFF\(GRANTED_TO = 'DATABASE_ROLE'.*?GRANTED_TO IN \('ROLE', 'DATABASE_ROLE'\))",
+                    setup, re.S).group(1).replace("{AU}", a.AU)
+    plain = [g for g in d["GRANT"] if not g["IS_FUTURE"]]
+    got = au_grants("SELECT " + sel, plain)
+    key = lambda x: tuple(x.values())[:4]  # noqa: E731  grantee, privilege, granted on, object
+    assert sorted(map(key, got)) == sorted((g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"])
+                                           for g in plain)
+
+
+def test_db_roles():
+    """A database role is a role that is held: role link, kind "database", its grants count for the user; mine()
+    follows it with SHOW GRANTS TO DATABASE ROLE, recursively, and notes one it can't read."""
+    w, r = "HR.SC_W_PEOPLE", "HR.SC_R_PEOPLE"
+    assert (w, F + "ENGINEER") in a.role_grants and (r, w) in a.role_grants and w not in a.objects
+    assert [a.kind_of(w), a.node_kind(r)] == ["database", "database"]
+    reach = {x["role"]: x for x in a.reach("ENGINEER_01", True)}
+    assert reach[w]["depth"] == 2 and reach[r]["depth"] == 3 and reach[r]["path"] == ["ENGINEER_01", F + "ENGINEER", w, r]
+    got = {(x["privilege"], x["object"]) for x in a.grants("ENGINEER_01", True)}
+    assert {("USAGE", "HR.PEOPLE"), ("SELECT", "HR.PEOPLE.TBL_EMPLOYEE"), ("INSERT", "HR.PEOPLE.TBL_EMPLOYEE")} <= got
+    assert not [x for x in a.privs if x[2] == "DATABASE_ROLE"]  # USAGE on a database role is a link, not a privilege
+    assert not [x for x in a.rule_rows() if x["kind"] == "database" and x["num"] in ("1", "2", "13")]
+    assert a.revoke(a.role_edge(F + "ENGINEER", w))[1] == f"REVOKE DATABASE ROLE HR.SC_W_PEOPLE FROM ROLE {F}ENGINEER;"
+    assert a.revoke(a.role_edge(w, r))[1] == "REVOKE DATABASE ROLE HR.SC_R_PEOPLE FROM DATABASE ROLE HR.SC_W_PEOPLE;"
+    own = a.revoke(a.priv_edge(F + "ENGINEER", "OWNERSHIP", "DATABASE_ROLE", r))  # SQL keyword, not GRANTED_ON
+    assert own[1].startswith(f"GRANT OWNERSHIP ON DATABASE ROLE {r} TO") and "database role " + r in own[0]
+    d, want = a.fake(), sorted(x for x in got if "<" not in x[1])  # mine() reads no future grants
+    mine_roles = [x["role"] for x in reach.values() if x["kind"] != "database"]
+    for bad in (None, r):
+        show, calls = fake_snowflake(d, False)
+
+        def query(sql):
+            if sql.startswith("SELECT CURRENT_USER()"):
+                return [{"U": "ENGINEER_01"}]
+            if sql.startswith("SELECT CURRENT_AVAILABLE_ROLES()"):
+                return [{"R": json.dumps(mine_roles)}]
+            if sql.startswith("SHOW GRANTS TO USER"):
+                return [{"role": x} for x in a.roles_of["ENGINEER_01"]]
+            if bad and sql == f'SHOW GRANTS TO DATABASE ROLE {a.db_ident(bad)}':
+                raise RuntimeError("Insufficient privileges")
+            return show(sql)
+
+        m = a.mine(query, None)
+        assert sum(c.startswith("SHOW GRANTS TO DATABASE ROLE") for c in calls) == (1 if bad else 2)  # each once
+        a.build(m)
+        assert a.kind_of(r) == "database" and r in {x["role"] for x in a.reach("ENGINEER_01", True)}
+        mine_got = sorted({(x["privilege"], x["object"]) for x in a.grants("ENGINEER_01", True)})
+        if bad:
+            assert "HR.SC_R_PEOPLE (Insufficient" in m["run"]["NOTES"]["database_roles"]
+            assert ("USAGE", "HR.PEOPLE") not in mine_got and ("INSERT", "HR.PEOPLE.TBL_EMPLOYEE") in mine_got
+        else:
+            assert mine_got == want and "database_roles" not in m["run"]["NOTES"]
 
 
 def test_pages():
@@ -421,11 +520,31 @@ def test_pages():
     for q in (dict(page="user", name="ANALYST_01"), dict(page="role", name=T + "SALES_CORE_READ"),
               dict(page="object", name=c), dict(page="sensitive"), dict(page="check", name="ENGINEER_01", priv="SELECT", obj=c),
               dict(page="check", name="ANALYST_01", priv="INSERT", obj=c), dict(page="rules"), dict(page="review"),
-              dict(page="user", data="mine")):
+              dict(page="user", data="mine"), dict(page="rules", data="mine"),
+              dict(page="user", name="SVC_DEPLOY", schema="SALES.PIPELINE", otype="TASK"),
+              dict(page="role", name=F + "DEPLOY", schema="SALES.PIPELINE", otype="TASK"),
+              dict(page="user", name="HR_01", schema="HR.PAYROLL"), dict(page="role", name="HR.SC_R_PAYROLL")):
         at = AppTest.from_file(app, default_timeout=120)
         at.query_params.update(q)
         at.run()
         assert not at.exception, (q, [x.value for x in at.exception])
+        md = " ".join(m.value for m in at.markdown)
+        if q == dict(page="user", name="ANALYST_01"):  # VIEW LINEAGE via PUBLIC, explained
+            assert "Via PUBLIC (VIEW LINEAGE)" in md and "not a rule finding" in md
+        if q == dict(page="rules", data="mine"):
+            assert "Not checked here" in md
+    at = AppTest.from_file(app, default_timeout=120)  # My access, loaded: its notes are explained
+    at.query_params.update(dict(page="user", data="mine"))
+    at.run()
+    for b in at.button:
+        if "Load" in b.label:
+            b.click().run()
+    md = " ".join(m.value for m in at.markdown)
+    assert not at.exception and "Incomplete: role list fallback not readable" in md and "last 7 days only" in md
+    at = AppTest.from_file(app, default_timeout=120)  # one Privileges tab, kept in the URL
+    at.query_params.update(dict(page="user", name="HR_01", tab="read"))
+    at.run()
+    assert not at.exception and "Read privileges" in " ".join(m.value for m in at.markdown)
 
 
 def test_kinds():
@@ -449,6 +568,11 @@ def test_public():
     assert a.object_stats("DB.S.T")["users"] == 2 and len(a.matrix("DB.S.T")) == 2
     assert a.role_stats("PUBLIC")["users"] == 2
     assert a.can("U1", "SELECT", "DB.S.T")["options"][0]["affects"] == 2  # only the PUBLIC grant can be revoked
+    # Snowflake's defaults on PUBLIC (account privileges, SNOWFLAKE.* database roles) are not rule 9
+    a.build(tiny([("SNOWFLAKE.CORTEX_USER", "PUBLIC")], [("R1", "U1")],
+                 [("PUBLIC", "VIEW LINEAGE", "ACCOUNT", "ACCOUNT"), ("PUBLIC", "SELECT", "TABLE", "DB.S.T")]))
+    assert [x["detail"] for x in a.rules_admin() if x["num"] == "9"] == ["SELECT on TABLE DB.S.T"]
+    assert not a.admin_people() and a.account_privs("U1", True)
 
 
 def test_graph():
@@ -604,19 +728,19 @@ def test_group_graph():
     # CREATE SCHEMA on database SALES: an object of its own at schema level, not a "SALES" group of 1
     assert gs["WH_SALES_XS"]["level"] == "object" and gs["SALES"]["level"] == "object"
     assert {g["group"] for g in a.group_objects(rows, "database")} == {"SALES", "SHARED", "FINANCE", "WH_SALES_XS",
-                                                                      "WH_FINANCE_XS"}
+                                                                      "WH_FINANCE_XS", "ACCOUNT"}
     holders = {h for r in a.grants("ANALYST_01", True) if r["database"] == "SALES" for h in r["holders"]}
     assert set(next(g for g in a.group_objects(a.grants("ANALYST_01", True), "database")
                     if g["group"] == "SALES")["holders"]) == holders  # every holder, not one per row
     g = a.graph_input("SVC_DEPLOY", max_objects=40)
-    assert g["level"] == "object" and g["header"] == "32 objects" and g["kinds"] == {}
+    assert g["level"] == "object" and g["header"] == "33 objects" and g["kinds"] == {}
     g = a.graph_input("SVC_DEPLOY", max_objects=20)  # over the cap: grouped by schema (14 groups, under 20)
-    assert g["header"] == "32 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
+    assert g["header"] == "33 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
     assert g["kinds"]["SALES.PIPELINE"] == "schema" and "SALES" not in g["kinds"] and "WH_SALES_XS" not in g["kinds"]
     assert (T + "SALES_PIPELINE_OWNER", "SALES.PIPELINE", "own", "OWNERSHIP", 9) in g["edges"]
     assert g["info"]["SALES.PIPELINE"]["count"] == 9 and "count" not in g["info"].get("SALES", {})
     g = a.graph_input("SVC_DEPLOY")  # over a lane's 12, and 14 schema groups: grouped by database
-    assert g["header"] == "32 objects, grouped by database" and g["kinds"]["SALES"] == "database"
+    assert g["header"] == "33 objects, grouped by database" and g["kinds"]["SALES"] == "database"
     assert g["info"]["SALES"]["count"] == 19 and g["info"]["SALES"]["noun"] == "objects"
     d = a.graph_input("SVC_DEPLOY", "SALES")  # a database: its schemas, its own grants as objects
     assert d["level"] == "schema" and "SALES" in d["lanes"][-1][1] and "SALES" not in d["kinds"]
@@ -624,9 +748,15 @@ def test_group_graph():
     assert g["header"] == "9 objects in SALES.PIPELINE, grouped by object type"
     assert [n for _, ns in g["lanes"][1:-1] for n in ns] == [F + "DEPLOY", T + "SALES_OWNER", T + "SALES_PIPELINE_OWNER"]
     assert set(g["kinds"].values()) == {"type-group"} and "SALES.PIPELINE · TASK" in g["kinds"]
+    assert g["types"]["SALES.PIPELINE · TASK"] == "TASK"  # a type box links to ?otype=TASK
+    t = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE", max_objects=3, otype="TASK")  # one type: its objects, one by one
+    assert t["level"] == "object" and t["lanes"][-1][1] and all(a.kinds[o] == "TASK" for o in t["lanes"][-1][1])
     g = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE")
     assert g["level"] == "object" and len(g["lanes"][-1][1]) == 9
     assert a.graph_input("SVC_DEPLOY", "NO.SUCH") is None
+    h = a.graph_input("HR_01", "HR.PAYROLL")  # the fake data's own type boxes, at the default MAX_OBJECTS
+    assert h["types"] == {"HR.PAYROLL · TABLE": "TABLE", "HR.PAYROLL · VIEW": "VIEW"}
+    assert len(a.graph_input("HR_01", "HR.PAYROLL", otype="TABLE")["lanes"][-1][1]) == 13
     e = a.graph_input("ENGINEER_01")
     task = e["info"][(T + "SALES_PIPELINE_EXECUTE", "SALES.PIPELINE.TSK_LOAD_CUSTOMER", "manage")]
     assert [r[0] for r in task["rules"]] == ["18", "20"] and task["has"] == ["OPERATE"] and task["lacks"] == ["MONITOR"]
@@ -970,7 +1100,7 @@ if __name__ == "__main__":
     for t in (test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live, test_pages):
+              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live, test_db_roles, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

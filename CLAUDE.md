@@ -16,8 +16,20 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - The procedure uses only the read sources in README > "Data sources". No queries on business data.
 - Don't commit or push unless asked. Commits pass `.githooks/pre-commit` (company-term check, `git config core.hooksPath .githooks`); never bypass it with `--no-verify`.
 
+## Two versions, one logic
+- **Local (recommended):** `server.py` (FastAPI, JSON API over `access.py`) + `web/` (React). Runs on your machine.
+- **Streamlit in Snowflake:** `app.py` + `ui.py`, using the same React components from `web/` as Streamlit
+  components (built bundle committed under `web/dist-st/`) wherever Streamlit in Snowflake allows; plain Streamlit otherwise.
+  Must keep running as a Streamlit app inside Snowflake. Container Services: optional, only to give everyone the local version.
+- `access.py` is the only place for data, walks and rules; both versions call it, neither has its own logic.
+- **If you change one version, change the other in the same task:** a page, tab, column, graph style or rule shown
+  locally must show in Streamlit too (and the reverse). Shared React components change once in `web/src/components/`;
+  rebuild both bundles. `test_server.py` and `test_pages` both cover every page.
+
 ## RBAC model
-- Account roles only; database roles are not used.
+- Account roles, plus database roles: a database role (named `DB.ROLE`, kind "database") is a role that is held, not
+  an object. USAGE on `GRANTED_ON = 'DATABASE_ROLE'` is a role link like `'ROLE'`; its own grants come from
+  `SHOW GRANTS TO DATABASE ROLE` (or ACCOUNT_USAGE `GRANTED_TO = 'DATABASE_ROLE'`, grantee qualified with its database).
 - Chain: user / service user / group role -> functional role (`FUNC`) -> technical role (`TECH`) -> objects.
   Prefixes `F_` / `T_` by default, `ROLE_PREFIXES` env var for another naming. Use `a.FUNC` / `a.TECH`, never literals.
 - Technical roles: `<TECH><DB>_OWNER`, and `<TECH><DB>_<SCHEMA>_OWNER|READ|WRITE|EXECUTE` per schema.
@@ -28,8 +40,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   Show account-level privileges (MANAGE GRANTS, CREATE DATABASE, ...) in red too.
 
 ## Code style
-- Simple and minimal: plain functions, no classes or frameworks, standard library + streamlit + pandas
-  + snowflake-connector-python only.
+- Simple and minimal: plain functions, no classes. Python: standard library + streamlit + pandas
+  + snowflake-connector-python, plus fastapi + uvicorn for the local web version only.
+  Web: React + TypeScript + Vite, @xyflow/react + elkjs for graphs; nothing else without asking.
 - App: `access.py` (fake data, snapshot loader, graph walks, rule checks; no Streamlit import, testable, `test_access.py`),
   `ui.py` (theme tokens, CSS, HTML components, SVG lane graph; no data logic) and `app.py` (pages, URL state).
 - Snowflake side: names in `settings.local.sql` (template `settings.sql`), `sql/<n>_<step>.sql` with `-- name:` statements
@@ -43,7 +56,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Big accounts: `graph_input()` rolls objects up to schema / database nodes over `MAX_OBJECTS` (12, a lane's boxes); tables list every object.
   Over 30 role boxes or 6 role lanes, `summary()` draws granted roles -> one fold box each -> grant holders -> groups (`?full=1`: all).
 - Graphs: `ui.lane_graph` (own SVG, one lane per depth, nodes are links). Node styles from `ui.TOKENS`:
-  user = pill, functional = blue, technical = coffee, group role = dashed amber, object = grey,
+  user = pill, functional = blue, technical = coffee, group role = dashed amber, database role = dashed grey-blue, object = grey,
   admin role / account privilege = red. Put the legend next to each graph.
 - Keep `FAKE=1` mode on the fake data in `access.py`, so it runs without Snowflake. Fake data keeps at least
   one finding per rule.

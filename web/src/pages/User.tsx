@@ -1,0 +1,88 @@
+import { useApi } from "../api/client";
+import type { ListItem, SensitiveReach, UserPage } from "../api/types";
+import { Banner, Card, DataTable, KpiRow, PrivilegeTabs } from "../components";
+import { apiParams, useApp, useOpen } from "../ctx";
+import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog, Usage } from "./common";
+
+export function UserPage() {
+  const c = useApp();
+  const mine = c.view === "mine";
+  const name = c.params.name ?? c.meta.default_user;
+  const s = useApi<UserPage>("user", { ...apiParams(c), name });
+  const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
+  const o = useOpen(s.data?.refs);
+  return (
+    <>
+      <Head title={mine ? "My access" : "User"} sub="What this user can reach, and through which roles." />
+      <Controls>
+        {!mine && <Pick label="User" value={name} options={users.data?.items.map((i) => i.id) ?? [name]} onPick={(v) => c.nav("user", { name: v })} />}
+        <Sel label="Roles" value={c.params.roles ?? "all"} options={[["all", "All roles"], ["default", "Default role only"]]} onPick={(v) => c.set({ roles: v === "all" ? null : v })} />
+        <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />
+        <Tog label="Data only" on={c.params.dataonly !== "0"} help="Hide USAGE on databases and schemas outside the Usage tab"
+          onPick={(v) => c.set({ dataonly: v ? null : "0" })} />
+        {s.data && <Sel label="Only on object" value={s.data.filters.on} onPick={(v) => c.set({ on: v })}
+          options={[["", "Any object"], ...s.data.filters.objects.map((o): [string, string] => [o, o])]} />}
+        {s.data && <Sel label="Only privilege" value={s.data.filters.priv} onPick={(v) => c.set({ priv: v })}
+          options={[["", "Any privilege"], ...s.data.filters.privileges.map((o): [string, string] => [o, o])]} />}
+      </Controls>
+      <Load s={s}>{(d) => {
+        const u = d.user;
+        return (
+          <>
+            <Banners list={d.banners} />
+            {u.disabled && <Banner tone="warn" title="Disabled user" lines={["This user cannot log in, but still holds the roles below."]} />}
+            <Card title={u.name} sub={`${u.type.toLowerCase()} · ${u.status}${u.login_mark ? ` · ${u.login_mark}` : ""}`}>
+              <KpiRow items={[
+                { label: "Default role", value: u.default_role ?? "none" },
+                { label: "Secondary roles", value: u.secondary_roles },
+                { label: "Default warehouse", value: u.default_warehouse ?? "none" },
+                { label: "Last login", value: u.last_login_text || "never", tone: u.login_mark ? "warn" : null },
+              ]} />
+            </Card>
+            <KpiRow items={[
+              { label: "Privileges", value: d.kpis.privileges, caption: `${d.kpis.objects} objects` },
+              { label: "Paths", value: d.kpis.paths, caption: `${d.kpis.multi} reached more than one way` },
+              { label: "Roles", value: d.kpis.roles, caption: `${d.kpis.roles_direct} direct` },
+              { label: "Deepest chain", value: d.kpis.deepest },
+              { label: "Sensitive objects", value: d.kpis.sensitive_known ? d.kpis.sensitive ?? 0 : "unknown", tone: d.kpis.sensitive ? "warn" : null },
+              { label: "Admin roles", value: d.kpis.admin_roles, tone: d.kpis.admin_roles ? "bad" : null },
+              { label: "Account privileges", value: d.kpis.account_privs, tone: d.kpis.account_privs ? "bad" : null },
+            ]} />
+            <Findings list={d.findings} total={d.findings_total} refs={d.refs} />
+            <GraphCard g={d.graph} refs={d.refs} />
+            {d.capped.length > 0 && <Banner tone="warn" title="Some walks were cut" lines={[`Chains longer than the hop limit were stopped: ${d.capped.slice(0, 5).join(", ")}`]} />}
+            <Card title="Privileges" sub="Split by what they allow. Each tab has its own diagram.">
+              <PrivilegeTabs rows={d.privileges.filter((r) => !r.hidden || r.tab === "usage" || r.tab === "account")} roles={d.roles} account={d.account}
+                refs={d.refs} tabs={d.tabs} theme={c.theme} csvName={`${u.name}_privileges`} onNodeClick={o.node} onOpen={o.open} />
+            </Card>
+            {d.multi.rows.length > 0 && (
+              <Card title="Privileges reached more than one way" sub={`${d.multi.shown} of ${d.multi.total} paths`}>
+                <DataTable csv={`${u.name}_multi_paths.csv`} rows={d.multi.rows}
+                  columns={[col("p", "Privilege", (r: UserPage["multi"]["rows"][number]) => r.privilege), col("o", "Object", (r: UserPage["multi"]["rows"][number]) => r.object, { wrap: "wrap" }),
+                    col("d", "Depth", (r: UserPage["multi"]["rows"][number]) => r.depth, { num: true }), pathCol<UserPage["multi"]["rows"][number]>(d.refs)]} />
+              </Card>
+            )}
+            <DataViews views={d.can_read} title="What they see when they read" />
+            {d.sensitive && d.sensitive.known && d.sensitive.rows.length > 0 && (
+              <Card title="Sensitive data, by granted role" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
+                <DataTable csv="sensitive_reach.csv" rows={d.sensitive.rows}
+                  columns={[col("o", "Object", (r: SensitiveReach) => r.object, { wrap: "wrap" }),
+                    col("c", "Columns", (r: SensitiveReach) => r.cols.join(", "), { wrap: "wrap" }),
+                    col("r", "Granted role", (r: SensitiveReach) => r.role, { render: (r: SensitiveReach) => <NameLink id={r.role} refs={d.refs} /> }),
+                    col("t", "Sees", (r: SensitiveReach) => r.text, { wrap: "wrap" }),
+                    pathCol<SensitiveReach>(d.refs)]} />
+              </Card>
+            )}
+            <Card title="Granted roles and how much they are used">
+              <DataTable csv={`${u.name}_granted_roles.csv`} rows={d.granted}
+                columns={[col("r", "Role", (r: UserPage["granted"][number]) => r.role, { render: (r: UserPage["granted"][number]) => <NameLink id={r.role} refs={d.refs} /> }),
+                  col("k", "Kind", (r: UserPage["granted"][number]) => r.kind), col("d", "Default", (r: UserPage["granted"][number]) => (r.default ? "yes" : "")),
+                  col("u", "Use", (r: UserPage["granted"][number]) => r.used_text)]} />
+            </Card>
+            <Usage u={d.usage} />
+          </>
+        );
+      }}</Load>
+    </>
+  );
+}
