@@ -17,7 +17,9 @@ $env:SNOWFLAKE_ROLE="<role>"            # optional
 $env:SNOWFLAKE_WAREHOUSE="<warehouse>"  # optional
 # key pair instead of browser SSO:
 # $env:SNOWFLAKE_PRIVATE_KEY_FILE="C:\path\rsa_key.p8"
+# $env:SNOWFLAKE_PRIVATE_KEY_PWD="<passphrase>"   # if the key is encrypted
 ```
+Two logins only: key pair when `SNOWFLAKE_PRIVATE_KEY_FILE` is set, else browser SSO. Passwords are not supported.
 ## Use
 ```
 python sf.py "select current_user(), current_role(), current_warehouse()"
