@@ -151,9 +151,9 @@ def test_edges():
     assert got[("X", "role", "SELECT", 2, "X > R2")] == 1 and got[("X", "user", "SELECT", 1, "X > R2")] == 1
     assert check_access_of(con, "U2", True, None) == 2  # the duplicate row counts twice, as in access.py
     assert check_access_of(con, "U3", True, None) == 1  # 'B > C' is one role, B is not on the path yet
-    # role Z under user Z: the SQL cycle check covers roles only (access.down() also skips a role named like the user)
+    # role Z under user Z: users and roles are separate namespaces, the cycle checks cover roles only
     got = rows(con, "SELECT PATH, DEPTH FROM TF_ACCESS_OF('Z', NULL) WHERE OBJECT_NAME = 'D.S.Z'", [])
-    assert got == Counter([("Z > R9 > Z", 2)])
+    assert got == Counter([("Z > R9 > Z", 2)]) and check_access_of(con, "Z", True, None) == 1
     n = con.execute("SELECT COUNT(*) FROM TF_ACCESS_OF('R1', NULL)").fetchone()[0]
     con = load(dict(d, USER=d["USER"] + [dict(USER_NAME=None)]), build=False)
     assert n == 1 and con.execute("SELECT COUNT(*) FROM TF_ACCESS_OF('R1', NULL)").fetchone()[0] == 1
@@ -203,7 +203,30 @@ def test_findings():
         pass
 
 
+def test_streams():
+    """SP_ACCESS_SNAPSHOT's streams step: SHOW STREAMS rows -> TBL_ACCESS_STREAM; an error -> UNAVAILABLE."""
+    con = load(a.fake(), build=False)
+    body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
+    ns = {}
+    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    session = fake_session(con)
+    show = [dict(database_name="D", schema_name="S", name='"ST 1"', table_name='D.S."T"', source_type="Table")]
+    sql = session.sql
+
+    def fake_sql(text, params=None):
+        if not text.startswith("SHOW STREAMS"):
+            return sql(text, params)
+        return SimpleNamespace(collect=lambda: [SimpleNamespace(as_dict=lambda r=r: r) for r in show])
+
+    session.sql = fake_sql
+    assert ns["streams"](session, "run-9") == ("SHOW", None)
+    got = con.execute("SELECT * FROM TBL_ACCESS_STREAM WHERE RUN_ID = 'run-9'").fetchall()
+    assert got == [("run-9", "D.S.ST 1", "D.S.T", "Table")]
+    show = None  # not iterable: the SHOW fails
+    assert ns["streams"](session, "run-8")[0] == "UNAVAILABLE"
+
+
 if __name__ == "__main__":
-    for t in (test_demo, test_cap_and_admin, test_edges, test_findings):
+    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams):
         t()
         print("ok", t.__name__)

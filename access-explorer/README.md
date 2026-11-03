@@ -82,13 +82,14 @@ Key: diamond = decision · the check runs once per view.
 | Roles, secondary roles, warehouses used | `QUERY_HISTORY`, 30 days | `INFORMATION_SCHEMA.QUERY_HISTORY`, 7 days, else none | `TBL_ACCESS_USAGE` |
 | Tags on databases, schemas, tables/views, columns | `TAG_REFERENCES`, `object_deleted is null` (Enterprise edition) | per table/view: `<db>.INFORMATION_SCHEMA.TAG_REFERENCES` + `TAG_REFERENCES_ALL_COLUMNS`, max 300 (`TAG_FALLBACK_MAX`), else none | `TBL_ACCESS_TAG` |
 | Masking and row access policies, with their text | `POLICY_REFERENCES` + `MASKING_POLICIES` / `ROW_ACCESS_POLICIES` | per table/view: `<db>.INFORMATION_SCHEMA.POLICY_REFERENCES`, text from `DESCRIBE` (empty without rights), else none | `TBL_ACCESS_POLICY` |
+| Streams and their source table (rule 22) | none | always `SHOW STREAMS IN ACCOUNT` (streams the owner can see), else none | `TBL_ACCESS_STREAM` |
 | Run log: source, row counts, notes per dataset | | | `TBL_ACCESS_RUN` |
 
 - `P_SOURCE`: `AUTO` (default) · `ACCOUNT_USAGE` (fail if not readable) · `SHOW` (live, 2 queries per role, slower).
 - Readers never see half a snapshot: the app reads only the last `STATUS = 'OK'` run.
 - Grant rows keep the ACCOUNT_USAGE shape, so both sources give the same tables.
-- Tags and policies: an error sets the source to `UNAVAILABLE` and the run stays OK (as with usage). Tag inheritance (database > schema > table > column) is resolved in the app.
-- Column names of the tag/policy views are marked "to verify" in `sql/1_setup.sql` until checked on a real account.
+- Tags, policies and streams: an error sets the source to `UNAVAILABLE` and the run stays OK (as with usage). Tag inheritance (database > schema > table > column) is resolved in the app.
+- Column names of the tag/policy views and `SHOW STREAMS` are marked "to verify" in `sql/1_setup.sql` until checked on a real account.
 
 ## What the app answers
 | Tab | Question |
@@ -97,7 +98,7 @@ Key: diamond = decision · the check runs once per view.
 | Role | Down: what it holds, with paths. Up: roles and users that hold it. Red: admin roles, account-level privileges. |
 | Object | Type filter, then who has which privilege, with paths. Red: admin role holders. |
 | Combination | "Only on object" + "Only privilege" in User and Role: can X do P on Y, and how? |
-| Rule checks | 1 technical role on a user or group role · 2 direct privilege on a functional role · 3 READ held directly and through WRITE · 4 OWNER role held by a consumer (except `BUILD_ROLES`, default `<functional prefix>DEPLOY`) · 5 admin role held by a person · 6 sensitive column without a masking policy · 7 dormant or disabled person can read sensitive data · 8 disabled user still holds roles · 9 privilege granted to PUBLIC · 10 person can write to a sensitive object · 11 sensitive object reachable through a group role · 12 admin role as default role · 13 orphan functional/group role · 14 chain deeper than `MAX_DEPTH_RULE` · 15 future grant in a schema with sensitive data · 16 dormant user still holds roles · 17 read-only role can write (by name or by behaviour). Each finding: fix as infrastructure-as-code text + equivalent SQL, users affected. |
+| Rule checks | 1 technical role on a user or group role · 2 direct privilege on a functional role · 3 READ held directly and through WRITE · 4 OWNER role held by a consumer (except `BUILD_ROLES`, default `<functional prefix>DEPLOY`) · 5 admin role held by a person · 6 sensitive column without a masking policy · 7 dormant or disabled person can read sensitive data · 8 disabled user still holds roles · 9 privilege granted to PUBLIC · 10 person can write to a sensitive object · 11 sensitive object reachable through a group role · 12 admin role as default role · 13 orphan functional/group role · 14 chain deeper than `MAX_DEPTH_RULE` · 15 future grant in a schema with sensitive data · 16 dormant user still holds roles · 17 read-only role can write (by name or by behaviour) · 18 unusual privilege set for the capability suffix (`CAP_PRIVS`; extra privileges or a partial write set) · 19 EXECUTE TASK held by a person or consumer role · 20 OPERATE on a task outside owner/build roles (it runs with the owner's privileges) · 21 warehouse MODIFY or OPERATE outside owner/build roles · 22 stream on a sensitive table readable by a role that cannot read the table · 23 CREATE privilege on a schema held by a read-only role. Each finding: the graph edge it applies to (from, to, privilege), fix as infrastructure-as-code text + equivalent SQL, users affected. |
 
 Each row shows the full path, e.g. `ANALYST_01 -> GRP_ANALYSTS -> F_ANALYST -> T_SALES_CORE_READ`.
 
@@ -106,15 +107,15 @@ Each row shows the full path, e.g. `ANALYST_01 -> GRP_ANALYSTS -> F_ANALYST -> T
 |---|---|
 | `settings.sql` | Template of the names: database, schema, warehouse, developer role, app role |
 | `settings.local.sql` | Real names (git-ignored): `settings.sql` copied and filled in |
-| `sql/1_setup.sql` | 7 tables, the procedure, SELECT for the app role |
+| `sql/1_setup.sql` | 8 snapshot tables + findings table, the procedures, table functions, SELECT for the app role |
 | `sql/2_snapshot.sql` | `CALL SP_ACCESS_SNAPSHOT('AUTO')` |
 | `sql/3_cleanup.sql` | Drops the procedure and the tables |
 | `sql/*_verify.sql` | Checks per step: OK / MISSING / WRONG / SKIPPED, then VERIFIED |
 | `run_sql.py` | Runs a `sql/` file through `../sf.py` (or use SnowSQL: `deploy_snowsql.sql`) |
 | `access.py` | Fake data, `snapshot()`, `mine()`, graph walks, rule checks (no Streamlit) |
-| `app.py` | Streamlit UI: data loaders, one function per tab, `main()`; graphs from `ui.lane_graph` (inputs from `access.down_graph` / `role_graph` / `object_graph`) |
-| `make_demo_db.py` | Fake data into `demo.duckdb`, same tables as Snowflake (`write(con, data)` for tests) |
-| `take_screens.py` | Screenshots of the DuckDB demo (Playwright + Edge, app on port 8599) |
+| `app.py` | Streamlit UI: data loaders, one function per tab, `main()`; graphs from `ui.lane_graph` (inputs from `access.graph_input` (User, Role; `?schema=` drill-down), `role_graph` (holders), `object_graph`, `down_graph`); paths in tables as `ui.mini_path` |
+| `make_demo_db.py` | Fake data into `demo.duckdb`, same tables as Snowflake (`write(con, data)` for tests); `BIG=1`: the perf test account into `big.duckdb` |
+| `take_screens.py` | Screenshots of the DuckDB demo (Playwright + Edge, app on port 8599; `BIG=1` adds big-account screens from `big.duckdb` on port 8598) |
 | `.streamlit/config.toml` | "Paper" look: warm paper, ink, burnt amber; Fraunces / IBM Plex in `app.py` |
 
 ## Run
@@ -142,7 +143,7 @@ $env:FAKE="0"; $env:ACCESS_SNAPSHOT="<DB>.<SCHEMA>"; streamlit run app.py
 | Role | Needs |
 |---|---|
 | Developer `<DEV_ROLE>` (owns the tables and procedure) | Create tables and procedures in `<SCHEMA>`. To see every grant, one of: `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, the latter also for tags and policies) · `MANAGE GRANTS` on account for SHOW. Without them the snapshot holds only what the role can see. |
-| App `<APP_ROLE>` | USAGE on database, schema and warehouse · SELECT on the 7 `TBL_ACCESS_` tables · USAGE on the procedure (Refresh button only) |
+| App `<APP_ROLE>` | USAGE on database, schema and warehouse · SELECT on the 9 `TBL_ACCESS_` tables · USAGE on the procedure (Refresh button only) |
 | Any user, "My access" | Nothing extra: a warehouse and a database whose INFORMATION_SCHEMA they can read |
 
 ## Settings (env vars, defaults)
@@ -151,6 +152,8 @@ $env:FAKE="0"; $env:ACCESS_SNAPSHOT="<DB>.<SCHEMA>"; streamlit run app.py
 | `ROLE_PREFIXES` | `F_,T_` | Functional and technical role prefixes |
 | `BUILD_ROLES` | `<functional prefix>DEPLOY` | fnmatch patterns allowed to hold OWNER roles (rule 4), skipped by rule 17 |
 | `MAX_HOPS` | `50` | Safety cap on role hops per walk |
+| `MAX_PATHS` | `200` | Full chains listed per row ("first 200 of N"); path counts are always exact |
+| `CAP_PRIVS` | `{"READ": ["SELECT","REFERENCES","USAGE"], "WRITE": [READ + "INSERT","UPDATE","DELETE","TRUNCATE"], "EXECUTE": ["USAGE"], "OWNER": ["OWNERSHIP"]}` | Rule 18: standard privileges per capability suffix (`..._READ`, ...), JSON |
 | `SENSITIVE_TAGS` | `PRIVACY_CATEGORY=IDENTIFIER\|QUASI_IDENTIFIER\|SENSITIVE,SENSITIVITY=PII\|CONFIDENTIAL` | Tag (last part of its name, any case) = values that make data sensitive; no `=` = any value. `SEMANTIC_CATEGORY` is detail only |
 | `READ_PRIVS` | `SELECT,OWNERSHIP` | Privileges that count as "can read" (owners read) |
 | `DORMANT_DAYS` | `90` | No login for this long, from the run's `FINISHED_AT`; never logged in counts (rules 7, 16) |
@@ -159,7 +162,12 @@ $env:FAKE="0"; $env:ACCESS_SNAPSHOT="<DB>.<SCHEMA>"; streamlit run app.py
 | `READ_SHARE`, `READ_MIN_OBJECTS` | `0.8`, `5` | Rule 17 behaviour heuristic: share of tables/views a role can only read, over at least this many |
 
 - Depth = number of roles from the start to the role holding the grant, holder included (a user is not a role). `ANALYST_01 > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ` = 3; a grant holder alone = 1. The same on every page.
-- Privilege classes (arrows, badges): read = SELECT, REFERENCES, USAGE on database/schema · write = INSERT, UPDATE, DELETE, TRUNCATE, CREATE ... · own = OWNERSHIP, account privileges · use = everything else (USAGE on procedure/function/warehouse, OPERATE, MONITOR).
+- Privilege classes (arrows, badges): read = SELECT, REFERENCES, USAGE on database/schema · write = INSERT, UPDATE, DELETE, TRUNCATE · own = OWNERSHIP · manage = CREATE ..., MODIFY, OPERATE, APPLY ... · admin = account-level (MANAGE GRANTS, EXECUTE TASK, ...) · use = everything else (USAGE on procedure/function/warehouse, MONITOR).
+- Walks: path counts come from a count over the role graph (no listing), the shortest path from a BFS, full chains are listed lazily up to `MAX_PATHS`. A link that closes a loop is not followed.
+- Big accounts: the graph rolls objects up to schemas over 12 objects (a lane's boxes), to databases over 12 schemas ("1,234 objects, grouped by schema"); a database grant or a warehouse stays its own box; tables still list every object. Click a schema or database box to open it (`?schema=`).
+- Graphs over 3 lanes open fitted to the card, never below 75 % (then they scroll). Only High rule hits are marked unless "All rule hits" is on; a rule hit is a badge plus a halo, so the arrow keeps its privilege colour.
+- Users and roles are separate namespaces: a user named like a role is drawn as its own box ("NAME (user)").
+- Rows / columns a role sees (row access and masking policies) are read from the policy text: role listed = all rows / clear; role not listed and the body ignores the argument columns = no rows; role check AND argument condition = filtered (condition shown); anything else = unknown. `IS_ROLE_IN_SESSION` counts inherited roles, `CURRENT_ROLE()` only the primary role.
 
 ## SQL access without the app
 `sql/1_setup.sql` also creates three table functions and a findings procedure. All read the last OK snapshot run,
@@ -188,14 +196,14 @@ WHERE RUN_ID = (SELECT RUN_ID FROM TBL_ACCESS_RUN WHERE STATUS = 'OK' ORDER BY F
 
 - Same rules as the app: every simple path, links granted to an admin role dropped, depth as in Settings, `PATH` = `A > B > C`.
 - `P_SETTINGS`: JSON text with any of `ROLE_PREFIXES, BUILD_ROLES, SENSITIVE_TAGS, READ_PRIVS, DORMANT_DAYS, MAX_DEPTH_RULE,
-  READ_ROLE_PATTERNS, READ_SHARE, READ_MIN_OBJECTS, MAX_HOPS` (table above); missing keys use the defaults. Unknown keys fail.
+  READ_ROLE_PATTERNS, READ_SHARE, READ_MIN_OBJECTS, MAX_HOPS, MAX_PATHS, CAP_PRIVS` (table above); missing keys use the defaults. Unknown keys fail.
 - The procedure runs `access.py`, which setup PUTs to stage `STG_ACCESS_CODE`: rerun `1_setup.sql` after changing `access.py`.
 - App role: SELECT on `TBL_ACCESS_FINDING`, USAGE on the three functions (not on `SP_ACCESS_FINDINGS`, which writes).
 - `python test_sql.py` runs the function bodies from `1_setup.sql` on DuckDB and compares them with `access.py`.
 - Names are matched as stored, case-sensitive: `'ANALYST_01'`, not `'analyst_01'`.
 - Walks stop at 50 hops without a flag (the `MAX_HOPS` setting is not read): `MAX(DEPTH)` of 50 (user) or 51 (role)
   means the result may be cut. Every simple path is listed, so a dense role graph can return very many rows.
-- A role cycle check covers roles only, so a role named like the user is walked (the app skips it).
+- Users and roles are separate namespaces: a role named like the user is walked (the app does the same).
 - If setup prints `SKIPPED: FUNCTION_...`, the functions did not compile on this account; the rest of setup still runs.
 - Setup from a worksheet only (no `run_sql.py` / SnowSQL, so no `PUT`): upload `access.py` uncompressed to
   `STG_ACCESS_CODE` with Snowsight's "+ Files" before `PROCEDURE_FINDINGS`.
@@ -223,7 +231,9 @@ Key: solid arrow = then/calls · dashed arrow = data moves.
 - SHOW fallback: 2 queries per role (slow for many roles); query history then covers 7 days or nothing.
 - One viewer at a time per app process: `access.build()` keeps the lookups in module variables.
 - Database roles are not modelled; function signatures can differ between ACCOUNT_USAGE and SHOW.
-- Masked / clear comes from the policy text (`IS_ROLE_IN_SESSION`, `CURRENT_ROLE()`), not evaluated; subqueries, mapping tables, UDFs and database roles give "cannot derive".
+- Masked / clear and all / filtered / no rows come from the policy text (`IS_ROLE_IN_SESSION`, `CURRENT_ROLE()`), not evaluated; subqueries, mapping tables, UDFs, NOT, CASE in row policies, user checks and database roles give "unknown".
+- Loops in the role graph: a path that closes a loop is not counted (rare; every role is still reached).
+- The Object page, Can they? and the access review still list every path into an object, so they are the slow part on very large, heavily nested accounts.
 - Tags lag up to ~2 h (ACCOUNT_USAGE) and need Enterprise edition; tag-based policies match only tags present in `TBL_ACCESS_TAG`.
 - Sensitive reach counts `READ_PRIVS` on the object only; USAGE on its database/schema is not checked.
 - My access (live) mode has no tags or policies, so no sensitivity.

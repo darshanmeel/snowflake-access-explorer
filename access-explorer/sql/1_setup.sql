@@ -1,4 +1,4 @@
--- 1 · setup (developer role): the 7 snapshot tables, the snapshot procedure, the findings table, stage and procedure,
+-- 1 · setup (developer role): the 8 snapshot tables, the snapshot procedure, the findings table, stage and procedure,
 -- the worksheet table functions TF_ACCESS_OF / TF_WHO_CAN / TF_CAN, read access for the app role. Safe to run again.
 -- run_sql.py runs each "-- name:" statement in order; "(may fail)" = skipped on error.
 -- Names marked with & come from settings.local.sql. Real set-up: schema, roles and grants via infrastructure as code.
@@ -86,6 +86,14 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_POLICY (   -- masking and row 
     POLICY_BODY VARCHAR              -- policy text; the app reads role checks from it (not evaluated)
 );
 
+-- name: TABLE_STREAM
+CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_STREAM (   -- streams and their source (rule 22), from SHOW STREAMS
+    RUN_ID VARCHAR(36),
+    STREAM_NAME VARCHAR(2000),       -- DB.SCHEMA.STREAM
+    SOURCE_NAME VARCHAR(2000),       -- DB.SCHEMA.TABLE the stream reads
+    SOURCE_TYPE VARCHAR(50)          -- Table, View, ...
+);
+
 -- name: TABLE_FINDING
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings per run, filled by SP_ACCESS_FINDINGS
     RUN_ID VARCHAR(36),
@@ -107,7 +115,7 @@ RUNTIME_VERSION = '3.11'
 PACKAGES = ('snowflake-snowpark-python')
 HANDLER = 'run'
 EXECUTE AS OWNER
-COMMENT = 'Access explorer: copies grants, users, role usage, tags and policies into the TBL_ACCESS_ tables'
+COMMENT = 'Access explorer: copies grants, users, role usage, tags, policies and streams into the TBL_ACCESS_ tables'
 AS
 $$
 # P_SOURCE: AUTO = ACCOUNT_USAGE where the owner can read it, else the SHOW fallback; ACCOUNT_USAGE or SHOW = force one.
@@ -123,7 +131,8 @@ USER = "&DB.&SCHEMA.TBL_ACCESS_USER"
 USAGE = "&DB.&SCHEMA.TBL_ACCESS_USAGE"
 TAG = "&DB.&SCHEMA.TBL_ACCESS_TAG"
 POLICY = "&DB.&SCHEMA.TBL_ACCESS_POLICY"
-DATA = [GRANT, USER_ROLE, USER, USAGE, TAG, POLICY]
+STREAM = "&DB.&SCHEMA.TBL_ACCESS_STREAM"
+DATA = [GRANT, USER_ROLE, USER, USAGE, TAG, POLICY, STREAM]
 GRANT_COLS = ["RUN_ID", "GRANTEE_ROLE", "PRIVILEGE", "GRANTED_ON", "OBJECT_NAME", "IS_FUTURE", "GRANT_OPTION", "GRANTED_BY"]
 TAG_COLS = ["RUN_ID", "OBJECT_NAME", "DOMAIN", "COLUMN_NAME", "TAG_NAME", "TAG_VALUE", "APPLY_METHOD"]
 POLICY_COLS = ["RUN_ID", "POLICY_NAME", "POLICY_KIND", "OBJECT_NAME", "COLUMN_NAME", "ARG_COLUMNS", "TAG_NAME", "POLICY_BODY"]
@@ -358,7 +367,7 @@ def policies(session, run_id, mode):
     try:
         if why is None:
             # to verify: a policy set on a tag comes as REF_ENTITY_DOMAIN = 'TAG'; REF_ARG_COLUMN_NAMES type;
-            # whether rows of detached policies stay (POLICY_STATUS)
+            # whether rows of detached policies stay (POLICY_STATUS); POLICY_BODY in MASKING_POLICIES / ROW_ACCESS_POLICIES
             session.sql(f"""INSERT INTO {POLICY} ({", ".join(POLICY_COLS)})
                 SELECT '{run_id}', R.POLICY_DB || '.' || R.POLICY_SCHEMA || '.' || R.POLICY_NAME, R.POLICY_KIND,
                        IFF(R.REF_ENTITY_DOMAIN = 'TAG', NULL,
@@ -383,7 +392,7 @@ def policies(session, run_id, mode):
                     name = f"{x['policy_db']}.{x['policy_schema']}.{x['policy_name']}"
                     if name not in body:
                         what = "MASKING POLICY" if x["policy_kind"] == "MASKING_POLICY" else "ROW ACCESS POLICY"
-                        try:
+                        try:  # to verify: DESCRIBE returns the text in column "body"
                             body[name] = rows(session, f"DESCRIBE {what} {quoted(name)}")[0].get("body")
                         except Exception:  # no rights on the policy: its text stays empty, "cannot derive" in the app
                             body[name] = None
@@ -397,6 +406,20 @@ def policies(session, run_id, mode):
     except Exception as e:
         session.sql(f"DELETE FROM {POLICY} WHERE RUN_ID = '{run_id}'").collect()
         return "UNAVAILABLE", "; ".join(filter(None, [why, first_line(e)]))
+
+
+def streams(session, run_id):
+    """Streams and the table they read: no ACCOUNT_USAGE view, so always SHOW STREAMS IN ACCOUNT (only the streams the
+    owner's role can see). An error: UNAVAILABLE, the run stays OK (rule 22 then finds nothing).
+    to verify: columns database_name, schema_name, name, table_name (fully qualified, may be quoted), source_type."""
+    try:
+        data = [[run_id, f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}", clean(x.get("table_name") or ""),
+                 blank(x.get("source_type"))] for x in rows(session, "SHOW STREAMS IN ACCOUNT")]
+        save(session, STREAM, ["RUN_ID", "STREAM_NAME", "SOURCE_NAME", "SOURCE_TYPE"], data)
+        return "SHOW", None
+    except Exception as e:
+        session.sql(f"DELETE FROM {STREAM} WHERE RUN_ID = '{run_id}'").collect()
+        return "UNAVAILABLE", first_line(e)
 
 
 def run(session, p_source):
@@ -424,11 +447,12 @@ def run(session, p_source):
         keep("usage", *usage(session, run_id, mode))
         keep("tags", *tags(session, run_id, mode))
         keep("policies", *policies(session, run_id, mode))
+        keep("streams", *streams(session, run_id))
         result["status"] = "OK"
     except Exception as e:
         result["status"], result["notes"]["error"] = "FAILED", first_line(e)
     for name, t in [("grants", GRANT), ("user_roles", USER_ROLE), ("users", USER), ("usage", USAGE), ("tags", TAG),
-                    ("policies", POLICY)]:
+                    ("policies", POLICY), ("streams", STREAM)]:
         result["row_counts"][name] = count(session, t, run_id)
     if result["status"] == "FAILED":  # drop this run's partial rows
         for t in DATA:
@@ -607,7 +631,7 @@ from snowflake.snowpark.types import StringType, StructField, StructType
 WHERE = "&DB.&SCHEMA"
 FINDING = "&DB.&SCHEMA.TBL_ACCESS_FINDING"
 SETTINGS = ["ROLE_PREFIXES", "BUILD_ROLES", "SENSITIVE_TAGS", "READ_PRIVS", "DORMANT_DAYS", "MAX_DEPTH_RULE",
-            "READ_ROLE_PATTERNS", "READ_SHARE", "READ_MIN_OBJECTS", "MAX_HOPS"]
+            "READ_ROLE_PATTERNS", "READ_SHARE", "READ_MIN_OBJECTS", "MAX_HOPS", "MAX_PATHS", "CAP_PRIVS"]
 COLS = ["RUN_ID", "RULE_NUM", "TITLE", "SEVERITY", "GRANTEE", "KIND", "DETAIL", "PATH"]  # CREATED_AT: column default
 # every column a string: Snowpark infers mixed or all-None columns badly
 SCHEMA = StructType([StructField(c, StringType()) for c in COLS])
@@ -677,6 +701,9 @@ GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_TAG TO ROLE &APP_ROLE;
 
 -- name: GRANT_TABLE_POLICY_APP (may fail)
 GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_POLICY TO ROLE &APP_ROLE;
+
+-- name: GRANT_TABLE_STREAM_APP (may fail)
+GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_STREAM TO ROLE &APP_ROLE;
 
 -- name: GRANT_TABLE_FINDING_APP (may fail)
 GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_FINDING TO ROLE &APP_ROLE;

@@ -1,8 +1,10 @@
 """Walker tests on the fake data. Run: python test_access.py (no pytest needed)."""
 import os
+import random
 import re
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 
 import access as a
@@ -151,9 +153,14 @@ def test_classes():
     c = a.priv_class
     assert [c("SELECT", "TABLE"), c("REFERENCES", "VIEW"), c("USAGE", "DATABASE"), c("USAGE", "SCHEMA")] == ["read"] * 4
     assert [c(p, "TABLE") for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")] == ["write"] * 4
-    assert c("OWNERSHIP", "TABLE") == "own" and c("CREATE SCHEMA", "DATABASE") == "write"
+    assert c("OWNERSHIP", "TABLE") == "own" and c("CREATE SCHEMA", "DATABASE") == "manage"
     assert [c("USAGE", k) for k in ("PROCEDURE", "FUNCTION", "WAREHOUSE")] == ["use"] * 3
-    assert c("OPERATE", "WAREHOUSE") == c("MONITOR", "WAREHOUSE") == "use" and c("SELECT", "FUTURE TABLE") == "read"
+    assert c("MONITOR", "WAREHOUSE") == c("MONITOR", "TASK") == "use" and c("SELECT", "FUTURE TABLE") == "read"
+    assert [c("OPERATE", "WAREHOUSE"), c("MODIFY", "WAREHOUSE"), c("OPERATE", "TASK"), c("CREATE TABLE", "SCHEMA"),
+            c("APPLY MASKING POLICY", "TAG")] == ["manage"] * 5
+    assert c("EXECUTE TASK", "ACCOUNT") == "admin" and c("SELECT", "STREAM") == "read"
+    assert {a.kinds[f"SALES.PIPELINE.{o}"] for o in a.SCHEMAS["SALES"]["PIPELINE"]} == {
+        "TASK", "STREAM", "STAGE", "FUNCTION", "SEQUENCE", "PIPE", "DYNAMIC TABLE", "TABLE"}
     s = a.split_name
     assert s("SALES.CORE.TBL_CUSTOMER") == ("SALES", "CORE", "TBL_CUSTOMER") and s("FINANCE") == ("FINANCE", "", "FINANCE")
     assert s("WH_SALES_XS") == ("", "", "WH_SALES_XS") and s("SALES.CORE.<TABLE>", "FUTURE TABLE") == ("SALES", "CORE", "<TABLE>")
@@ -218,7 +225,9 @@ def test_users():
     a.profile["FIN_12"]["LOGIN_UNKNOWN"] = True  # My access: no last login readable for yourself, not "never"
     assert a.status("FIN_12") == "active" and not a.is_dormant("FIN_12")
     a.profile["FIN_12"]["LOGIN_UNKNOWN"] = False
-    assert [x["user"] for x in a.admin_people()] == ["ADMIN_01", "OPS_01"]
+    ap = {x["user"]: x for x in a.admin_people()}  # ENGINEER_01: EXECUTE TASK, an account-level privilege
+    assert list(ap) == ["ADMIN_01", "ENGINEER_01", "OPS_01"] and ap["ENGINEER_01"]["roles"] == []
+    assert [pv for pv, _ in ap["ENGINEER_01"]["account"]] == ["EXECUTE TASK"]
     assert a.used_roles("ENGINEER_01")[F + "ANALYST"]["kind"] == "SECONDARY ROLE"
     assert a.search("REVENUE", a.objects + a.roles) == ["FINANCE.REPORT.VW_REVENUE_MONTHLY", "FINANCE.REPORT.TBL_REVENUE"]
     assert a.search("ANALYST_0", a.users)[:2] == ["ANALYST_01", "ANALYST_02"] and a.search("ANALYTS", a.users + a.roles)
@@ -235,8 +244,8 @@ def test_rules():
         n[x["num"]] = n.get(x["num"], 0) + 1
     # old 9 findings for rules 1-5, + F_MARKETING READ inside WRITE (3) and OPS_01 holding SYSADMIN (5)
     assert n == {"1": 2, "2": 2, "3": 3, "4": 1, "5": 3, "6": 3, "7": 4, "8": 1, "9": 1, "10": 17, "11": 2, "12": 1,
-                 "13": 1, "14": 1, "15": 1, "16": 3, "17": 4}
-    assert set(a.SEVERITY) == set(a.RULES) == {str(i) for i in range(1, 18)}
+                 "13": 1, "14": 1, "15": 1, "16": 3, "17": 4, "18": 3, "19": 2, "20": 1, "21": 1, "22": 1, "23": 4}
+    assert set(a.SEVERITY) == set(a.RULES) == {str(i) for i in range(1, 24)}
     assert all(x["severity"] == a.SEVERITY[x["num"]] for x in rows)
     assert a.BUILD == [F + "DEPLOY"] or "BUILD_ROLES" in os.environ
     by = lambda num: [x for x in rows if x["num"] == num]
@@ -275,7 +284,9 @@ def without(d, edges):
 def test_fixes_clear():
     """Applying a finding's fix removes that finding."""
     for num, g in [("10", "ENGINEER_01"), ("10", "FIN_01"), ("11", "GRP_ANALYSTS"), ("17", F + "REPORTING_RO"),
-                   ("17", T + "SHARED_LOGGING_READ"), ("7", "ANALYST_02")]:
+                   ("17", T + "SHARED_LOGGING_READ"), ("7", "ANALYST_02"), ("18", T + "SHARED_LOGGING_READ"),
+                   ("19", F + "ENGINEER"), ("20", T + "SALES_PIPELINE_EXECUTE"), ("21", T + "SALES_CORE_EXECUTE"),
+                   ("22", F + "SUPPORT"), ("23", F + "MARKETING")]:
         a.build(a.fake())
         f = next(x for x in a.rule_rows() if x["num"] == num and x["grantee"] == g)
         assert f["edges"], (num, g)
@@ -360,6 +371,261 @@ def test_cap():
     a.capped.clear()
     a.walk("U", True, limit=10)
     assert not a.capped  # a depth limit is not the safety cap
+
+
+def test_new_rules():
+    rows = a.rule_rows()
+    by = lambda num: {x["grantee"]: x for x in rows if x["num"] == num}
+    assert all("edge" in x for x in rows) and all(x["edge"] for x in rows if int(x["num"]) >= 18)
+    r18 = by("18")
+    assert set(r18) == {T + "SHARED_LOGGING_READ", T + "SALES_PIPELINE_EXECUTE", T + "SALES_PIPELINE_WRITE"}
+    assert r18[T + "SALES_PIPELINE_WRITE"]["detail"].endswith("missing DELETE, TRUNCATE")
+    assert r18[T + "SALES_PIPELINE_WRITE"]["sql"] == "" and r18[T + "SHARED_LOGGING_READ"]["edge"] == \
+        (T + "SHARED_LOGGING_READ", "SHARED.LOGGING.TBL_LOGGING", "INSERT")
+    assert set(by("19")) == {F + "ENGINEER", "ENGINEER_01"}  # SVC_DEPLOY (service) and F_DEPLOY (build) are fine
+    assert by("19")["ENGINEER_01"]["edge"] == (T + "SALES_PIPELINE_EXECUTE", "ACCOUNT", "EXECUTE TASK")
+    t = by("20")[T + "SALES_PIPELINE_EXECUTE"]
+    assert "runs as its owner " + T + "SALES_PIPELINE_OWNER" in t["detail"] and t["severity"] == "High"
+    assert list(by("21")) == [T + "SALES_CORE_EXECUTE"]  # MODIFY by the owner role is fine
+    assert by("21")[T + "SALES_CORE_EXECUTE"]["sql"] == f"REVOKE OPERATE ON WAREHOUSE WH_SALES_XS FROM ROLE {T}SALES_CORE_EXECUTE;"
+    s = by("22")[F + "SUPPORT"]
+    assert s["edge"] == (T + "SALES_PIPELINE_READ", "SALES.PIPELINE.STR_CUSTOMER", "SELECT") and s["path"][-1] == \
+        "SALES.PIPELINE.STR_CUSTOMER"
+    r23 = by("23")
+    assert set(r23) == {T + "FINANCE_REPORT_READ", F + "REPORTING_RO", F + "FINANCE_REPORTING", F + "MARKETING"}
+    assert r23[F + "MARKETING"]["detail"].endswith("heuristic: behaviour") and r23[F + "REPORTING_RO"]["detail"].endswith("both")
+    assert all(x["edge"] == (T + "FINANCE_REPORT_READ", "FINANCE.REPORT", "CREATE VIEW") for x in r23.values())
+    assert by("6")["SALES.CORE.TBL_CUSTOMER"]["edge"] is None  # object finding: no edge
+    assert by("14")["GRP_EMEA_ALL"]["edge"][1:] == ("FINANCE.REPORT.TBL_REVENUE", "SELECT")
+    # CAP_PRIVS is a setting: READ may INSERT too, no EXECUTE / OWNER sets -> only the partial write set is left
+    env = dict(os.environ, CAP_PRIVS='{"READ": ["SELECT", "USAGE", "INSERT"], "WRITE": ["INSERT", "UPDATE", "DELETE", '
+                                     '"TRUNCATE"]}')
+    out = subprocess.run([sys.executable, "-c", "import access as a; a.build(a.fake()); "
+                          "print(sorted(x['grantee'] for x in a.rule_rows() if x['num'] == '18'))"],
+                         env=env, capture_output=True, text=True, check=True).stdout
+    assert out.strip() == f"['{T}SALES_PIPELINE_WRITE']"
+    # a stage's own privileges are READ and WRITE: standard for READ / WRITE roles, no rule 18
+    a.build(tiny([], [], [(T + "D_S_READ", "USAGE", "STAGE", "D.S.STG"), (T + "D_S_READ", "READ", "STAGE", "D.S.STG"),
+                          (T + "D_S_WRITE", "READ", "STAGE", "D.S.STG"), (T + "D_S_WRITE", "WRITE", "STAGE", "D.S.STG")]))
+    assert a.unusual() == []
+    # rule 17 review hint: no fix edges, but its edge is still the write arrow (holder, object, privilege)
+    a.build(a.fake())
+    r17 = [x for x in a.rule_rows() if x["num"] == "17" and not x["edges"]]
+    assert r17 and all(x["edge"][2] and a.role_kind(x["edge"][1]) == "object" for x in r17)
+
+
+def test_fast():
+    """Counted paths and lazily listed chains equal the full enumeration on the fake data."""
+    for n, user in [(u, True) for u in a.users] + [(r, False) for r in a.roles]:
+        for lim in (None, 1, 2, 3, 5):
+            for only in ([False, True] if user else [False]):
+                slow = a.group(((pv, k, o), p + [o]) for pv, k, o, p in a.access_of(n, user, only, lim))
+                fast = {(r["privilege"], r["type"], r["object"]): r for r in a.grants(n, user, only, lim)}
+                assert set(slow) == set(fast), (n, lim)
+                assert all(fast[k]["paths"] == ps and fast[k]["count"] == len(ps) for k, ps in slow.items()), (n, lim)
+                slow = a.group((p[-1], p) for p in a.walk(n, user, only, lim) if len(p) > 1)
+                fast = {r["role"]: r for r in a.reach(n, user, only, lim)}
+                assert set(slow) == set(fast) and all(fast[r]["paths"] == ps for r, ps in slow.items()), (n, lim)
+    assert a.paths_note(a.grants("FIN_01", True)[0]) == ""
+    a.MAX_PATHS = 1  # cut lists: counts stay exact, the shortest path is kept
+    try:
+        r = next(x for x in a.grants("ENGINEER_01", True) if x["privilege"] == "SELECT"
+                 and x["object"] == "SALES.CORE.TBL_CUSTOMER")
+        assert r["count"] == 3 and len(r["paths"]) == 1 and len(r["path"]) == 4 and a.paths_note(r) == "first 1 of 3"
+    finally:
+        a.MAX_PATHS = int(os.environ.get("MAX_PATHS", "200"))
+    a.build(tiny([("B", "A"), ("C", "B"), ("C", "A"), ("A", "C")], [("A", "U")], [("C", "SELECT", "TABLE", "D.S.T")]))
+    r = a.grants("U", True)[0]  # the loop C -> A is cut, both ways to C count
+    assert r["count"] == 2 and r["paths"] == [["U", "A", "C", "D.S.T"], ["U", "A", "B", "C", "D.S.T"]] and not a.capped
+
+
+def big():
+    """2,000 objects (5 databases x 10 schemas x 40 tables), 300 roles (200 technical, 100 functional nested into
+    earlier ones, so paths fan out), 500 users; BIG_01 holds the 10 last functional roles."""
+    rnd, g = random.Random(7), []
+
+    def grant(r, pv, k, o):
+        g.append(dict(GRANTEE_ROLE=r, PRIVILEGE=pv, GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False))
+
+    techs = []
+    for d in range(5):
+        for s in range(10):
+            base = f"{T}DB{d}_S{s}"
+            techs += [f"{base}_READ", f"{base}_WRITE", f"{base}_OWNER", f"{base}_EXECUTE"]
+            grant(f"{base}_WRITE", "USAGE", "ROLE", f"{base}_READ")
+            for i in range(40):
+                o = f"DB{d}.S{s}.TBL_{i:02}"
+                grant(f"{base}_OWNER", "OWNERSHIP", "TABLE", o)
+                grant(f"{base}_READ", "SELECT", "TABLE", o)
+                for pv in ("INSERT", "UPDATE", "DELETE", "TRUNCATE"):
+                    grant(f"{base}_WRITE", pv, "TABLE", o)
+    funcs = [f"{F}TEAM_{i:03}" for i in range(100)]
+    for i, f in enumerate(funcs):
+        for t in rnd.sample(techs, 6):
+            grant(f, "USAGE", "ROLE", t)
+        for j in rnd.sample(range(i), min(i, 3)):
+            grant(f, "USAGE", "ROLE", funcs[j])
+    users = [f"U_{i:03}" for i in range(499)] + ["BIG_01"]
+    ur = [(u, f) for u in users[:-1] for f in rnd.sample(funcs, 2)] + [("BIG_01", f) for f in funcs[-10:]]
+    pc = "SNOWFLAKE.CORE.PRIVACY_CATEGORY"  # some sensitive columns and a row policy, so the sensitive rules work too
+    tags = [dict(OBJECT_NAME=f"DB{d}.S0.TBL_{i:02}", DOMAIN="COLUMN", COLUMN_NAME="EMAIL", TAG_NAME=pc,
+                 TAG_VALUE="IDENTIFIER", APPLY_METHOD="CLASSIFIED") for d in range(5) for i in range(10)]
+    pol = [dict(POLICY_NAME="D.S.RAP", POLICY_KIND="ROW_ACCESS_POLICY", OBJECT_NAME="DB0.S0.TBL_00", COLUMN_NAME=None,
+                ARG_COLUMNS="REGION", TAG_NAME=None, POLICY_BODY=f"IS_ROLE_IN_SESSION('{funcs[0]}')")]
+    return dict(run={}, GRANT=g, USER_ROLE=[dict(USER_NAME=u, ROLE_NAME=r) for u, r in ur],
+                USER=[dict(USER_NAME=u) for u in users], USAGE=[], TAG=tags, POLICY=pol)
+
+
+def test_perf():
+    d = big()
+    t = time.perf_counter()
+    a.build(d)
+    rows = a.grants("BIG_01", True)
+    groups = a.group_objects(rows, "schema")
+    took = time.perf_counter() - t
+    assert len(a.objects) == 2000 and len(a.roles) >= 299 and len(a.users) == 500
+    assert len({r["object"] for r in rows}) > 1000 and max(r["count"] for r in rows) > a.MAX_PATHS
+    assert sum(g["objects"] for g in groups) == len({r["object"] for r in rows})
+    assert took < 3, f"{took:.1f} s"
+    t = time.perf_counter()  # second budget: the graph, the rule checks, the summary and one busy object
+    g, n = a.graph_input("BIG_01"), len({r["object"] for r in rows})
+    a.rule_rows()
+    a.has_lacks_summary("BIG_01", True)
+    a.grantees("DB0.S0.TBL_00")
+    a.data_view("BIG_01", "DB0.S0.TBL_00", True)
+    took = time.perf_counter() - t
+    assert took < 8, f"{took:.1f} s"
+    assert g["header"] == f"{n:,} objects, grouped by {g['level']}" and g["level"] != "object"
+    g = a.graph_input("BIG_01", groups[0]["group"])  # 40 tables in one schema: one type group
+    assert g["level"] == "type" and g["lanes"][-1][1] == [groups[0]["group"] + " · TABLE"]
+
+
+def test_group_graph():
+    rows = a.grants("SVC_DEPLOY", True)
+    gs = {g["group"]: g for g in a.group_objects(rows, "schema")}
+    p = gs["SALES.PIPELINE"]
+    assert p["objects"] == 9 and p["classes"] == ["own"] and p["holders"] == [T + "SALES_PIPELINE_OWNER"]
+    assert gs["FINANCE.REPORT"]["sensitive"] == 2 and gs["FINANCE.REPORT"]["findings"] > 0
+    # CREATE SCHEMA on database SALES: an object of its own at schema level, not a "SALES" group of 1
+    assert gs["WH_SALES_XS"]["level"] == "object" and gs["SALES"]["level"] == "object"
+    assert {g["group"] for g in a.group_objects(rows, "database")} == {"SALES", "SHARED", "FINANCE", "WH_SALES_XS",
+                                                                      "WH_FINANCE_XS"}
+    holders = {h for r in a.grants("ANALYST_01", True) if r["database"] == "SALES" for h in r["holders"]}
+    assert set(next(g for g in a.group_objects(a.grants("ANALYST_01", True), "database")
+                    if g["group"] == "SALES")["holders"]) == holders  # every holder, not one per row
+    g = a.graph_input("SVC_DEPLOY", max_objects=40)
+    assert g["level"] == "object" and g["header"] == "32 objects" and g["kinds"] == {}
+    g = a.graph_input("SVC_DEPLOY", max_objects=20)  # over the cap: grouped by schema (14 groups, under 20)
+    assert g["header"] == "32 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
+    assert g["kinds"]["SALES.PIPELINE"] == "schema" and "SALES" not in g["kinds"] and "WH_SALES_XS" not in g["kinds"]
+    assert (T + "SALES_PIPELINE_OWNER", "SALES.PIPELINE", "own", "OWNERSHIP", 9) in g["edges"]
+    assert g["info"]["SALES.PIPELINE"]["count"] == 9 and "count" not in g["info"].get("SALES", {})
+    g = a.graph_input("SVC_DEPLOY")  # over a lane's 12, and 14 schema groups: grouped by database
+    assert g["header"] == "32 objects, grouped by database" and g["kinds"]["SALES"] == "database"
+    assert g["info"]["SALES"]["count"] == 19 and g["info"]["SALES"]["noun"] == "objects"
+    d = a.graph_input("SVC_DEPLOY", "SALES")  # a database: its schemas, its own grants as objects
+    assert d["level"] == "schema" and "SALES" in d["lanes"][-1][1] and "SALES" not in d["kinds"]
+    g = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE", max_objects=3)
+    assert g["header"] == "9 objects in SALES.PIPELINE, grouped by object type"
+    assert [n for _, ns in g["lanes"][1:-1] for n in ns] == [F + "DEPLOY", T + "SALES_OWNER", T + "SALES_PIPELINE_OWNER"]
+    assert set(g["kinds"].values()) == {"type-group"} and "SALES.PIPELINE · TASK" in g["kinds"]
+    g = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE")
+    assert g["level"] == "object" and len(g["lanes"][-1][1]) == 9
+    assert a.graph_input("SVC_DEPLOY", "NO.SUCH") is None
+    e = a.graph_input("ENGINEER_01")
+    task = e["info"][(T + "SALES_PIPELINE_EXECUTE", "SALES.PIPELINE.TSK_LOAD_CUSTOMER", "manage")]
+    assert [r[0] for r in task["rules"]] == ["18", "20"] and task["has"] == ["OPERATE"] and task["lacks"] == ["MONITOR"]
+    assert e["info"][(F + "ENGINEER", T + "SALES_MART_OWNER", "inherit")]["rules"][0][:2] == ("4", "High")
+    assert a.in_scope(dict(database="SALES", schema=""), "SALES") and not a.in_scope(dict(database="", schema=""), "X")
+    assert a.scopes(a.grants("SVC_DEPLOY", True)) >= {"SALES", "SALES.PIPELINE"}
+
+
+def test_has_lacks():
+    x = a.has_lacks(T + "SALES_PIPELINE_WRITE", "SALES.PIPELINE.TBL_CUSTOMER_CHANGES")
+    assert x["has"] == ["SELECT", "INSERT", "UPDATE"] and x["lacks"] == ["DELETE", "TRUNCATE", "REFERENCES"]
+    assert x["text"] == "SELECT, INSERT, UPDATE but not DELETE, TRUNCATE, REFERENCES"
+    o = a.has_lacks(F + "DEPLOY", "SALES.CORE.TBL_CUSTOMER")
+    assert o["has"] == ["OWNERSHIP"] and o["lacks"] == [] and "INSERT" in o["implied"]
+    assert a.has_lacks("ANALYST_01", "SALES.CORE.TBL_CUSTOMER", True)["has"] == ["SELECT"]
+    s = a.has_lacks_summary(T + "SALES_CORE_READ")
+    assert {(x["type"], x["text"]) for x in s} >= {("TABLE", "SELECT but not INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES")}
+    assert sum(x["count"] for x in s) == len({o for _, k, o in a.granted[T + "SALES_CORE_READ"] if not k.startswith("FUTURE")})
+    assert a.valid_privs("TASK") == ["OWNERSHIP", "MONITOR", "OPERATE"]
+
+
+def test_data_view():
+    rev, order, raw, cust = ("FINANCE.REPORT.TBL_REVENUE", "SALES.CLEAN.TBL_ORDER", "SALES.RAW.TBL_ORDER_RAW",
+                             "SALES.CORE.TBL_CUSTOMER")
+    v = a.data_view("MARKETING_01", rev)
+    assert v["can_read"] and v["rows"]["state"] == "none" and v["summary"] == "can read: no rows"
+    assert v["rows"]["reason"].startswith(f"RAP_REGION allows only {F}FINANCE (in session) or {F}DEPLOY (primary role); "
+                                          "MARKETING_01 holds neither -> sees no rows")
+    assert "IS_ROLE_IN_SESSION" in v["rows"]["body"] and a.masked("MARKETING_01", rev) == "masked"
+    assert a.data_view("FIN_01", rev)["rows"]["state"] == "all"  # F_FINANCE is inherited: in session
+    assert a.data_view(F + "DEPLOY", rev)["rows"]["state"] == "all"  # primary role
+    assert a.data_view(F + "DEPLOY", order)["rows"]["state"] == "all"
+    assert a.data_view(F + "FINANCE_EDITOR", rev)["rows"]["state"] == "none"  # holds F_FINANCE? no: F_FINANCE holds it
+    f = a.data_view("MARKETING_01", order)["rows"]
+    assert f["state"] == "filtered" and f["condition"] == "REGION = 'EU'" and "only rows where REGION = 'EU'" in f["reason"]
+    assert a.data_view(F + "MARKETING", order)["rows"]["state"] == "filtered"
+    assert a.data_view("REPORT_01", order)["rows"]["state"] == "none"
+    u = a.data_view("REPORT_01", raw)
+    assert u["rows"]["state"] == "unknown" and "depends on policy logic" in u["rows"]["reason"] and a.masked("REPORT_01", raw) == "?"
+    c = {x["column"]: x for x in a.data_view("ENGINEER_01", cust)["columns"]}
+    assert c["EMAIL"]["state"] == "clear" and c["PHONE"]["state"] == "clear" and c["PHONE"]["reason"] == "no masking policy"
+    assert c["EMAIL"]["tags"] and c["PHONE"]["sensitive"]
+    m = {x["column"]: x for x in a.data_view(F + "ANALYST", cust)["columns"]}
+    assert m["EMAIL"]["state"] == "masked" and m["EMAIL"]["reason"].startswith(f"MP_EMAIL shows the value only to {F}ENGINEER")
+    assert a.data_view("FIN_01", cust)["summary"] == "cannot read it (no SELECT or OWNERSHIP)"
+    assert {v["object"] for v in a.data_views("MARKETING_01")} >= {rev, order, cust}
+    t = {p["name"].split(".")[-1]: a.policy_text(p) for p in a.policy_list()}
+    assert t["RAP_REGION"] == f"RAP_REGION: {F}FINANCE (in session): all rows; {F}DEPLOY (primary role): all rows; " \
+                              "everyone else: no rows"
+    assert "only rows where REGION = 'EU'" in t["RAP_ORDER_REGION"] and "unknown" in t["RAP_ORDER_MAP"]
+    assert t["MP_EMAIL"] == f"MP_EMAIL: clear for {F}ENGINEER (in session); everyone else: masked"
+    p = dict(name="X.Y.P", kind="ROW_ACCESS_POLICY", args='["REGION"]', clear=None, body=None)
+    for body, want in [("CURRENT_ROLE() IN ('A', 'B')", ["A", "B"]), ("NOT IS_ROLE_IN_SESSION('A')", None),
+                       ("IS_ROLE_IN_SESSION('A') AND CURRENT_USER() = 'U'", None), ("1 = 1", None),
+                       ("(IS_ROLE_IN_SESSION('A') OR CURRENT_ROLE() = 'B') AND REGION = 'EU'", None)]:
+        q = p | dict(body=body, clear=a.clear_for(body))
+        got = a.row_terms(q)
+        assert (got and [r for g in got[0]["roles"] for r, _ in g]) == want if want else got is None, body
+    k = a.governance_kpis()
+    assert (k["row_tables"], k["masked_columns"]) == (3, 2) and k["text"]["Masking"] == "2 columns"
+    gr = {g["object"]: g for g in a.governance_rows()}
+    assert gr[rev]["row_policies"] and gr[cust]["masking"]["EMAIL"] and "EMAIL" in gr[cust]["column_tags"]
+    a.build(tiny([], [("R", "U")], [("R", "SELECT", "TABLE", "D.S.T")]))
+    assert set(a.governance_kpis()["text"].values()) == {"not used"} and a.data_view("U", "D.S.T")["summary"] == \
+        "can read: all rows"
+
+
+def test_namespaces():
+    """Users and roles are separate namespaces: user Z holds R9, R9 holds role Z, role Z reads D.S.Z; role X and
+    user X both hold R2."""
+    a.build(tiny([("Z", "R9"), ("R2", "X")], [("R9", "Z"), ("R2", "X")],
+                 [("Z", "SELECT", "TABLE", "D.S.Z"), ("R2", "SELECT", "TABLE", "D.S.T")]))
+    assert ["Z", "R9", "Z"] in a.walk("Z", True)  # down() does not block role Z under user Z
+    g = a.grants("Z", True)
+    assert [(r["object"], r["path"], r["depth"]) for r in g] == [("D.S.Z", ["Z", "R9", "Z", "D.S.Z"], 2)]
+    assert {r["role"]: r["kind"] for r in a.reach("Z", True)}["Z"] == "group"  # the role, not the user
+    ge = {(r["grantee"], r["kind"]): r for r in a.grantees("D.S.Z")}
+    assert ge[("Z", "group")]["depth"] == 1 and ge[("Z", "user")]["depth"] == 2
+    assert not a.from_user(["Z"]) and a.from_user(["Z", "R9", "Z"])
+    assert {(r["grantee"], r["kind"]) for r in a.held("R9")} == {("Z", "user")}
+    a.build(tiny([("R2", "X")], [], [("R2", "SELECT", "TABLE", "D.S.T")]) | dict(USER=[dict(USER_NAME="X")]))
+    assert not a.from_user(["X", "R2"])  # a user X exists, but only role X holds R2
+    assert [(r["grantee"], r["kind"]) for r in a.grantees("D.S.T")] == [("R2", "group"), ("X", "group")]
+    # graphs: user Z and role Z are two boxes; the role page walks the role, not the user
+    a.build(tiny([("Z", "R9"), ("T2", "Z")], [("R9", "Z"), ("A", "Z")],
+                 [("A", "SELECT", "TABLE", "D.S.T1"), ("T2", "SELECT", "TABLE", "D.S.T2")]))
+    g = a.graph_input("Z", user=True)
+    names = [n for _, ns in g["lanes"] for n in ns]
+    assert names[0] == "Z" + a.UTAG and "Z" in names[1:] and a.node_kind(names[0]) == "user" and a.node_kind("Z") == "group"
+    assert a.node_name(names[0]) == "Z" and ("Z" + a.UTAG, "R9") in g["edges"] and ("R9", "Z") in g["edges"]
+    r = a.graph_input("Z", user=False)
+    assert r["lanes"][-1][1] == ["D.S.T2"] and r["lanes"][0][1] == ["Z"]
+    lanes, edges, _ = a.down_graph("Z", a.grants("Z", True), user=True)
+    assert lanes[0][1] == ["Z" + a.UTAG] and "Z" in {n for _, ns in lanes[1:] for n in ns}
 
 
 # ---------- graph geometry: every page graph of the fake data, parsed back from the SVG ----------
@@ -486,13 +752,89 @@ def test_graph_geometry():
     back = [e for e in drawn if e[3]]
     assert [(e[0], e[1]) for e in back] == [(T + "SALES_CORE_WRITE", T + "SALES_CORE_READ")]
     assert "D3: ENGINEER_01 &gt; " + F + "ENGINEER &gt; " + T + "SALES_CORE_WRITE" in html
-    assert ui.plabel(["INSERT", "UPDATE", "DELETE", "TRUNCATE"]) == "INSERT · UPDATE +2"
+    assert ui.plabel(["INSERT", "UPDATE", "DELETE", "TRUNCATE"]) == "INSERT · UPDATE · DELETE +1"
+
+
+# ---------- render kit: group nodes, rule hits, dotted also-deeper edges, long labels ----------
+
+def kit_graph():
+    """A small graph with every render feature: (lanes, edges, kind_of, notes, info)."""
+    f1, f2 = F + "KIT_ANALYST", F + "KIT_ENGINEER"
+    tr, tw, tx, ty = T + "KIT_SALES_READ", T + "KIT_SALES_WRITE", T + "KIT_HUB_READ", T + "KIT_HUB_LINK"
+    lanes = [("Start", ["KIT_USER"]), ("D1", [f1, f2]), ("D2", [tr, tw, tx]), ("D3", [ty]),
+             ("Objects", ["KITDB.SALES", "KITDB.HUB", "KITDB.SALES.ORDERS", "KITDB"])]
+    kinds = {"KIT_USER": "user", f1: "functional", f2: "functional", "KITDB.SALES": "schema", "KITDB.HUB": "schema",
+             "KITDB.SALES.ORDERS": "object", "KITDB": "database"}
+    edges = [("KIT_USER", f1), ("KIT_USER", f2), (f1, tr), (f2, tw), (f2, tx), (tx, ty),
+             (tw, tr), (ty, tr),  # also deeper: dotted, back into tr's left side
+             (tr, "KITDB.SALES", "read", "SELECT", 120), (tr, "KITDB.SALES", "read", "REFERENCES", 120),
+             (tw, "KITDB.SALES", "write", "INSERT", 8), (tw, "KITDB.SALES", "write", "UPDATE", 8),
+             (tw, "KITDB.SALES", "write", "DELETE", 3), (tw, "KITDB.SALES", "write", "TRUNCATE", 1),
+             (tr, "KITDB.SALES.ORDERS", "read", "SELECT"),
+             (tw, "KITDB.SALES.ORDERS", "write", "INSERT"), (tw, "KITDB.SALES.ORDERS", "write", "UPDATE"),
+             (tw, "KITDB.SALES.ORDERS", "write", "DELETE"), (tw, "KITDB.SALES.ORDERS", "write", "TRUNCATE"),
+             (tx, "KITDB.HUB", "read", "SELECT", 40), (ty, "KITDB", "use", "USAGE")]
+    notes = {tr: ("D2 · also D3", "D2: KIT_USER > " + f1 + " > " + tr)}
+    hit = [("17", "High", "Read-only role can write")]
+    info = {"KITDB.SALES": {"count": 128, "noun": "objects", "sensitive": 3, "findings": 2},
+            "KITDB.HUB": {"count": 40, "noun": "objects"}, "KITDB": {"count": 1, "noun": "database"},
+            tw: {"rules": hit + [("4", "Medium", "Role with no users"), ("9", "Low", "Unused"), ("2", "Low", "x")]},
+            (tw, "KITDB.SALES", "write"): {"rules": hit, "has": ["INSERT"], "lacks": ["SELECT"]},
+            (ty, tr, "inherit"): {"rules": [("6", "Medium", "Technical role holds a technical role")]},
+            (f2, tx, "inherit"): {"rules": [("5", "Low", "Cross-database link")]}}
+    return lanes, edges, lambda x: kinds.get(x, "technical"), notes, info
+
+
+def test_graph_kit():
+    lanes, edges, kind_of, notes, info = kit_graph()
+    n = 0
+    for theme in ("light", "dark"):
+        for fit in (False, True):
+            html = ui.lane_graph(lanes, edges, kind_of, theme, lambda x: "?n=" + x, fit=fit, notes=notes, info=info)
+            boxes, drawn, labels = geometry(html, ("kit", theme, fit))
+            for a_, b_, c, back, pts in drawn:
+                assert pts[-2][0] < pts[-1][0] and abs(pts[-1][0] - boxes[b_][0]) < .2, (a_, b_, "enters from the left")
+                if back:  # dotted, and no detour: x never grows before the last run into the target
+                    assert all(q[0] <= p[0] + .05 for p, q in zip(pts[:-1], pts[1:-1])), (a_, b_, "backward detour")
+                else:
+                    assert all(q[0] >= p[0] - .05 for p, q in zip(pts, pts[1:])), (a_, b_, "x goes back")
+            n += 1
+            svg = ET.fromstring(html[html.index("<svg"):html.index("</svg>") + 6])
+            for p in svg.iter("path"):  # every drawn edge and its hit stroke has a title naming both ends
+                if p.get("data-a"):
+                    tip = p.find("title").text
+                    assert p.get("data-a") in tip and p.get("data-b") in tip, tip
+            back = [e for e in drawn if e[3]]
+            assert sorted((e[0], e[1]) for e in back) == sorted([(T + "KIT_SALES_WRITE", T + "KIT_SALES_READ"),
+                                                                 (T + "KIT_HUB_LINK", T + "KIT_SALES_READ")])
+            assert 'stroke-dasharray="2 3"' in html and "128 objects" in html and "D2 · also D3" in html
+            assert "Rule 17 (High): Read-only role can write" in html and "Has: INSERT" in html and "Lacks: SELECT" in html
+            assert "INSERT ×8 · UPDATE ×8 · DELETE ×3 +1" in html  # at most 3 privileges, then +N
+            assert "INSERT · UPDATE · DELETE +1" in html and "SELECT ×120 · REFERENCES ×120" in html
+            assert "+1</text>" in html  # 4 rules on one node: 3 badges, then +1
+            if fit:  # scaled into the card, but never below a readable size: then it scrolls
+                tag = html[html.index("<svg"):html.index(">", html.index("<svg"))]
+                w = float(re.search(r'viewBox="0 0 (\d+)', tag).group(1))
+                assert f"min-width:{w * ui.MIN_SCALE:.0f}px" in tag and "scroll sideways" not in html
+    assert n == 4
+    # every page graph again with rule hits on every edge and node: badges never break the layout
+    k = 0
+    for where, (lanes, edges, notes), sel in page_graphs():
+        k += 1
+        if k % 7:
+            continue
+        rs = [("17", "High", "x"), ("4", "Medium", "y")]
+        inf = {ui._norm(e)[:2] + (ui._norm(e)[2],): {"rules": rs} for e in edges}
+        inf |= {x: {"rules": rs} for _, ns in lanes for x in ns}
+        geometry(ui.lane_graph(lanes, edges, a.kind_of, "light", lambda x: "?n=" + x, sel, notes=notes, info=inf),
+                 (where, "rules"))
 
 
 if __name__ == "__main__":
     for t in (test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
-              test_cap, test_graph_geometry):
+              test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
+              test_data_view, test_namespaces, test_graph_kit):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

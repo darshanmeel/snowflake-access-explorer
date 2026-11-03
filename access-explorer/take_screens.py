@@ -1,6 +1,9 @@
 """Screenshots of the running demo app (DuckDB), light and dark, into OUT; zipped to ZIP when given. Needs playwright + Edge.
     $env:DUCKDB="demo.duckdb"; streamlit run app.py --server.port 8599   (other terminal)
-    python take_screens.py screens [zip path]"""
+    python take_screens.py screens [zip path]
+BIG=1 adds the big-account screens (grouped graph, drill-down) from a second app on port 8598:
+    $env:BIG="1"; python make_demo_db.py; $env:DUCKDB="big.duckdb"; streamlit run app.py --server.port 8598"""
+import os
 import sys
 import time
 import zipfile
@@ -13,6 +16,7 @@ import access as a
 OUT = sys.argv[1]
 ZIP = sys.argv[2] if len(sys.argv) > 2 else None
 URL = "http://localhost:8599/?"
+BIG_URL = "http://localhost:8598/?" if os.environ.get("BIG") == "1" else None
 C, R = "SALES.CORE.TBL_CUSTOMER", "FINANCE.REPORT.TBL_REVENUE"
 SCREENS = [  # name, what, query, card to also capture on its own (container key) or None
     ("01_user", "User: access through a group role, depth lanes, paths", dict(page="user", name="ANALYST_01"), None),
@@ -39,6 +43,25 @@ SCREENS = [  # name, what, query, card to also capture on its own (container key
     ("15_sensitive", "Sensitive data: objects, readers, role comparison",
      dict(page="sensitive", a=a.FUNC + "ENGINEER", b=a.FUNC + "ANALYST"), "card_compare"),
     ("16_review", "Access review: SALES, for sign-off", dict(page="review", db="SALES"), None),
+    ("19_user_schema", "User: schema drill-down, roles and objects of SALES.PIPELINE only",
+     dict(page="user", name="SVC_DEPLOY", schema="SALES.PIPELINE"), "card_graph"),
+    ("20_role_holds", "Role: has / lacks grid of a read role, arrows with Has / Lacks",
+     dict(page="role", name=a.TECH + "SALES_CORE_READ"), "card_holds"),
+    ("21_rule_hits", "Role: graph with rule breaks highlighted (read-only role writes)",
+     dict(page="role", name=a.FUNC + "FINANCE_REPORTING"), "card_graph"),
+    ("22_rules_23", "Rule checks: rule 22 open, 23 rules on the map", dict(page="rules", rule="22"), None),
+    ("23_object_sees", "Object: what each role sees (rows, masked columns)",
+     dict(page="object", name="FINANCE.REPORT.TBL_REVENUE"), "card_sees"),
+    ("24_object_task", "Object: a task with OPERATE, new object type", dict(page="object", type="TASK"), "card_graph"),
+    ("25_user_pipeline", "User: tasks, streams, stages and warehouses in the graph", dict(page="user", name="ENGINEER_01"),
+     "card_graph"),
+]
+BIG = [  # big account (big.duckdb, port 8598)
+    ("30_big_grouped", "Big account: 2,000 objects grouped by database", dict(page="user", name="BIG_01"), "card_graph"),
+    ("31_big_database", "Big account: one database, grouped by schema", dict(page="user", name="BIG_01", schema="DB0"),
+     "card_graph"),
+    ("32_big_schema", "Big account: one schema drill-down", dict(page="user", name="BIG_01", schema="DB0.S1"),
+     "card_graph"),
 ]
 done = []
 
@@ -53,7 +76,7 @@ def settle(page):
 
 def shot(page, name, what, card=None):
     # the app scrolls inside an inner element: the tallest scrollHeight is the page height
-    h = page.evaluate("Math.max(...[...document.querySelectorAll('*')].map(e => e.scrollHeight))")
+    h = page.evaluate("[...document.querySelectorAll('*')].reduce((m, e) => Math.max(m, e.scrollHeight), 0)")
     page.set_viewport_size({"width": 1440, "height": min(h + 50, 16000)})
     time.sleep(1)
     page.wait_for_selector(".ae-crumb", timeout=30000)
@@ -70,8 +93,9 @@ with sync_playwright() as p:
     b = p.chromium.launch(channel="msedge", headless=True)
     for theme in ("light", "dark"):
         page = b.new_page(viewport={"width": 1440, "height": 1000})
-        for name, what, query, card in SCREENS:
-            page.goto(URL + urlencode(query | {"theme": theme}))
+        for name, what, query, card in SCREENS + ([(n, w, q | {"_big": 1}, c) for n, w, q, c in BIG] if BIG_URL else []):
+            base = BIG_URL if query.pop("_big", None) else URL
+            page.goto(base + urlencode(query | {"theme": theme}))
             settle(page)
             shot(page, f"{name}_{theme}", f"{what} ({theme})", card)
         page.goto(URL + urlencode({"page": "user", "theme": theme}))
@@ -107,4 +131,4 @@ if ZIP:
     print("zip:", ZIP)
 bad = [n for n, _, errs in done if errs]
 print(len(done), "screens; with exceptions:", bad)
-assert len(done) == 2 * (len(SCREENS) + 1) + 1 and not bad
+assert len(done) == 2 * (len(SCREENS) + len(BIG) * bool(BIG_URL) + 1) + 1 and not bad

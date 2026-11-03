@@ -1,4 +1,4 @@
--- 3 · cleanup (developer role): deletes the procedures, table functions, code stage and the 8 TBL_ACCESS_ tables with their
+-- 3 · cleanup (developer role): deletes the procedures, table functions, code stage and the 9 TBL_ACCESS_ tables with their
 -- data. The schema stays.
 -- SnowSQL: !source sql/3_cleanup.sql (from the access-explorer folder)
 !source settings.local.sql
@@ -46,6 +46,9 @@ DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_TAG;
 
 -- name: DROP_TABLE_POLICY (may fail)
 DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_POLICY;
+
+-- name: DROP_TABLE_STREAM (may fail)
+DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_STREAM;
 
 -- name: DROP_TABLE_FINDING (may fail)
 DROP TABLE IF EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING;

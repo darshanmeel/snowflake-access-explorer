@@ -32,8 +32,13 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   `ui.py` (theme tokens, CSS, HTML components, SVG lane graph; no data logic) and `app.py` (pages, URL state).
 - Snowflake side: names in `settings.local.sql` (template `settings.sql`), `sql/<n>_<step>.sql` with `-- name:` statements
   (`(may fail)`, `(expect N)`) plus `_verify.sql`, run by `run_sql.py` or SnowSQL. Use `&NAME`, never hard-code names.
-- Load the snapshot once and cache it (`st.cache_data`, ttl 1h). Do the walks in Python, not SQL.
-- Every walk returns full paths and lists all paths, not just the shortest. Guard against cycles.
+- Load the snapshot once and cache it (`st.cache_data`, ttl 1h). The app does its walks in Python, not SQL. For use
+  without the app, `sql/1_setup.sql` also creates the table functions `TF_ACCESS_OF` / `TF_WHO_CAN` / `TF_CAN` and the
+  procedure `SP_ACCESS_FINDINGS` (runs `access.py`); `test_sql.py` keeps them equal to `access.py`.
+- Walks give full paths: exact path counts without listing (count over the role graph), the shortest by BFS, every chain
+  listed lazily up to `MAX_PATHS` ("first 200 of N"). Guard against cycles. Users and roles are separate namespaces.
+- Depth = roles from the start to the grant holder, holder included, the same on every page; graph lanes by shortest depth.
+- Big accounts: `graph_input()` rolls objects up to schema / database nodes over `MAX_OBJECTS` (12, a lane's boxes); tables list every object.
 - Graphs: `ui.lane_graph` (own SVG, one lane per depth, nodes are links). Node styles from `ui.TOKENS`:
   user = pill, functional = blue, technical = coffee, group role = dashed amber, object = grey,
   admin role / account privilege = red. Put the legend next to each graph.
@@ -42,6 +47,14 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Short names, comments only for the non-obvious "why", no extra error handling or logging.
 
 ## Verify before saying done
-- `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists all 17 rules (each has a finding on the fake data).
+- `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists all 23 rules (each has a finding on the fake data):
+  1 technical role on user/group · 2 direct privilege on functional · 3 READ direct + inherited · 4 OWNER on consumer ·
+  5 admin role on person · 6 sensitive column unmasked · 7 dormant/disabled reads sensitive · 8 disabled holds roles ·
+  9 PUBLIC grant · 10 person writes sensitive · 11 sensitive via group role · 12 admin default role · 13 orphan role ·
+  14 deep chain · 15 future grant on sensitive schema · 16 dormant holds roles · 17 read-only role writes ·
+  18 unusual privilege set · 19 EXECUTE TASK on person/consumer · 20 task OPERATE outside owner/build ·
+  21 warehouse MODIFY/OPERATE outside owner/build · 22 stream on sensitive table without table read ·
+  23 schema CREATE on read-only role.
+- `python test_access.py` and `python test_sql.py` green (test_access reruns itself with `ROLE_PREFIXES=ZF_,ZT_`).
 - Spot-check paths: a user via a group role, a role reached through 2 paths, an admin holder.
 - DuckDB demo + `take_screens.py`: 0 exceptions on every screen.
