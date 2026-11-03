@@ -830,11 +830,37 @@ def test_graph_kit():
                  (where, "rules"))
 
 
+def test_summary():
+    """Big graphs are drawn as a summary (granted roles -> one fold box each -> grant holders -> groups) that fits the
+    card; the fake data's graphs never are."""
+    assert not [n for n in a.users + a.roles if (g := a.graph_input(n)) and a.too_big(g)]
+    a.build(big())
+    for scope in (None, "DB0", "DB0.S1"):
+        g = a.graph_input("BIG_01", scope, user=True)
+        assert a.too_big(g), scope
+        s = a.summary(g)
+        assert [lb for lb, _ in s["lanes"][1:-1]] == ["Granted roles", "Roles between", "Grant holders"], scope
+        folds = [n for n, k in s["kinds"].items() if k == "fold"]
+        assert folds and s["folded"] > 0 and all(s["notes"][f][0].startswith("down to D") for f in folds)
+        assert s["lanes"][-1] == g["lanes"][-1]  # the same groups as the full graph
+        kind = lambda n: s["kinds"].get(n) or a.node_kind(n)
+        for fit in (False, True):
+            html = ui.lane_graph(s["lanes"], s["edges"], kind, "light", lambda x: "?n=" + x, fit=fit, notes=s["notes"],
+                                 info=s["info"])
+            boxes, drawn, _ = geometry(html, ("summary", scope, fit))
+            assert not [e for e in drawn if e[3]], "no also-deeper edges in a summary"
+            w = float(re.search(r'viewBox="0 0 ([\d.]+)', html).group(1))
+            assert all(b[0] >= 0 and b[0] + b[2] <= w for b in boxes.values()), (scope, "node outside the SVG")
+            if fit:  # fits a 1440 px page's graph card without scrolling
+                assert w * ui.MIN_SCALE <= ui.WIDE and "scroll sideways" not in html, (scope, w)
+            assert sum(n.startswith("⋯") for n in boxes) == len(folds) and len(boxes) <= 1 + 3 * 13 + 13
+
+
 if __name__ == "__main__":
     for t in (test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_graph_kit):
+              test_data_view, test_namespaces, test_graph_kit, test_summary):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

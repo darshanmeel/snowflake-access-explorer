@@ -1716,6 +1716,81 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
                 groups=group_objects(rows, level) if level in ("schema", "database") else [])
 
 
+SUMMARY_ROLES, SUMMARY_LANES = 30, 6  # over this many role boxes or role lanes a graph is drawn as a summary
+
+
+def too_big(g):
+    """Does a graph_input() graph need the summary? Role lanes counted as ui.fold_chain draws them: a run of 3+
+    lanes of one role each is one lane."""
+    sizes = [len(ns) for _, ns in g["lanes"][1:-1]]
+    n, i = 0, 0
+    while i < len(sizes):
+        j = i
+        while j < len(sizes) and sizes[j] == 1:
+            j += 1
+        i = j if j - i >= 3 else i + 1
+        n += 1
+    return sum(sizes) > SUMMARY_ROLES or n > SUMMARY_LANES
+
+
+def summary(g):
+    """A big graph_input() graph as start -> roles granted directly -> one "⋯ N roles ⋯" box per granted role (the
+    roles between it and its grant holders) -> grant holders -> objects / groups. Granted roles and holders ranked by
+    objects reached (ui.lane_graph shows the first 12, then "+N more"); no also-deeper links. Returns a copy of g with
+    kinds[fold box] = "fold" and folded = the number of roles hidden in fold boxes."""
+    lanes, edges = g["lanes"], g["edges"]
+    sid, ends = lanes[0][1][0], lanes[-1][1]
+    depth = {n: int(lab.split()[-1]) for lab, ns in lanes[1:-1] for n in ns}
+    kids, objs = {}, {}
+    for e in edges:
+        if len(e) == 2:
+            kids.setdefault(e[0], []).append(e[1])
+        else:  # objects a holder grants on; a group counts its objects (the most of any privilege)
+            t = objs.setdefault(e[0], {})
+            t[e[1]] = max(t.get(e[1], 0), e[4] if len(e) > 4 else 1)
+    objs = {h: sum(t.values()) for h, t in objs.items()}
+    direct = lanes[1][1]
+    below = {}
+    for r in direct:
+        seen, todo = set(), list(kids.get(r, []))
+        while todo:
+            x = todo.pop()
+            if x not in seen and x != r:
+                seen.add(x)
+                todo += kids.get(x, [])
+        below[r] = seen
+    rank = lambda xs, n: sorted(xs, key=lambda x: (-n(x), x))
+    reached = lambda r: sum(objs.get(h, 0) for h in below[r] | {r})
+    direct = rank(direct, reached)
+    by_end = {}
+    for e in edges:
+        if len(e) > 2 and e[0] not in direct:
+            by_end.setdefault(e[1], set()).add(e[0])
+    # the best holder of every object / group first, then the second best of each: no group is left without a line
+    queues = [rank(hs, objs.get) for hs in by_end.values()]
+    holders = list(dict.fromkeys(q[i] for i in range(max(map(len, queues), default=0)) for q in queues if i < len(q)))
+    out, folds, notes, hidden = [(sid, r) for r in direct], [], {}, set()
+    for i, r in enumerate(direct[:12]):  # lane_graph shows 12: no fold box for a granted role behind "+N more"
+        mids = {x for x in below[r] if x not in objs and x not in direct}
+        word = f"{len(mids)} role" + "s" * (len(mids) != 1)
+        fid = f"⋯ {word} ⋯" + " " * i  # unique when two boxes fold as many roles
+        if mids:
+            folds.append(fid)
+            hidden |= mids
+            deep = max(depth.get(x, 0) for x in mids)
+            notes[fid] = (f"down to D{deep}", f"{word} between {r} and its grant holders, the deepest at "
+                                             f"depth {deep}\nShow full chain draws them")
+            out.append((r, fid))
+        for h in sorted(below[r] & set(holders)):
+            out.append((r, h) if h in kids.get(r, []) or not mids else (fid, h))
+    out += [e for e in edges if len(e) > 2]
+    keep = set(direct) | set(holders) | {sid}
+    new = [lanes[0], ("Granted roles", direct)] + [("Roles between", folds)] * bool(folds) \
+        + [("Grant holders", holders)] * bool(holders) + [lanes[-1]]
+    return g | dict(lanes=new, edges=out, notes={n: v for n, v in g["notes"].items() if n in keep} | notes,
+                    kinds=g["kinds"] | {f: "fold" for f in folds}, folded=len(hidden))
+
+
 def graph_info(lanes, edges, okey=None):
     """Rule hits and Has / Lacks of any graph (ui.lane_graph info): {node: {rules}} for the drawn nodes with
     findings, {(a, b, cls): {rules, has, lacks}} for the drawn edges a finding applies to, Has / Lacks on arrows into

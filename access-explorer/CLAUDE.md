@@ -11,7 +11,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable, and writes nothing else.
 - No credentials, account names or company names in code or the repo. Real values live in git-ignored
   `settings.local.sql` and `local.ps1` (env vars). Connection via `../sf.py` (`connect()`).
-- The procedure uses only the read sources in README > "Source per dataset". No queries on business data.
+- The procedure uses only the read sources in README > "Data sources". No queries on business data.
 - Don't commit or push unless asked. Commits pass `../.githooks/pre-commit` (company-term check, `git config core.hooksPath .githooks`); never bypass it with `--no-verify`.
 
 ## RBAC model
@@ -21,7 +21,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Technical roles: `<TECH><DB>_OWNER`, and `<TECH><DB>_<SCHEMA>_OWNER|READ|WRITE|EXECUTE` per schema.
 - Default links: schema OWNER -> DB OWNER, READ -> WRITE. Cross-schema and cross-database links exist.
 - Never parse role names to get the DB or schema (names contain underscores). Use grant data.
-- Admin roles `ACCOUNTADMIN`, `SECURITYADMIN`, `SYSADMIN`: hide the "every role -> SYSADMIN"
+- Admin roles `ACCOUNTADMIN`, `SECURITYADMIN`, `SYSADMIN`, `USERADMIN`, `ORGADMIN`: hide the "every role -> SYSADMIN"
   hierarchy. Show any user or role that holds an admin role in red, with its path.
   Show account-level privileges (MANAGE GRANTS, CREATE DATABASE, ...) in red too.
 
@@ -39,6 +39,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   listed lazily up to `MAX_PATHS` ("first 200 of N"). Guard against cycles. Users and roles are separate namespaces.
 - Depth = roles from the start to the grant holder, holder included, the same on every page; graph lanes by shortest depth.
 - Big accounts: `graph_input()` rolls objects up to schema / database nodes over `MAX_OBJECTS` (12, a lane's boxes); tables list every object.
+  Over 30 role boxes or 6 role lanes, `summary()` draws granted roles -> one fold box each -> grant holders -> groups (`?full=1`: all).
 - Graphs: `ui.lane_graph` (own SVG, one lane per depth, nodes are links). Node styles from `ui.TOKENS`:
   user = pill, functional = blue, technical = coffee, group role = dashed amber, object = grey,
   admin role / account privilege = red. Put the legend next to each graph.

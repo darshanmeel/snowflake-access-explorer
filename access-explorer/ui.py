@@ -322,6 +322,7 @@ a.ae-chip:hover{{outline:1.5px solid var(--accent);outline-offset:1px}}
 .ae-graph svg a:focus{{outline:none}}
 .ae-graph svg path title{{pointer-events:none}}
 .ae-graph::-webkit-scrollbar{{height:10px}}.ae-graph::-webkit-scrollbar-thumb{{background:var(--edge);border-radius:6px}}.ae-graph::-webkit-scrollbar-track{{background:var(--sunk);border-radius:6px}}
+.ae-graph-note{{font-size:13px;color:var(--muted);margin:-4px 0 2px}}
 .ae-graph-hint{{align-self:flex-end;font-size:12px;color:var(--muted);margin-bottom:-6px}}
 .ae-graph a{{text-decoration:none!important}}
 /* help, privilege classes, markers */
@@ -1049,8 +1050,8 @@ def lane_graph(lanes, edges, kind_of, theme, href_of, selected_lane=None, max_pe
             own = None if isinstance(x, tuple) or x in folded or not label else label(x)
             if isinstance(x, tuple):
                 big, small = [f"+{x[2]} more" if x[0] == "more" else "Show fewer"], ""
-            elif x in folded:
-                big, small = [x], "click to show them"
+            elif kind_of(x) == "fold":  # fold_chain's run, or a summary's box (graph data, its badge in notes)
+                big, small = [x.strip()], "click to show them" if x in folded else notes.get(x, ("", ""))[0]
             elif own:
                 big, small = wrap(own[0], cap, max(nl - 1, 1)), own[1]
             elif kind_of(x) in GROUPS:
@@ -1230,6 +1231,8 @@ def lane_graph(lanes, edges, kind_of, theme, href_of, selected_lane=None, max_pe
             tip = f"{a} → {b}: {PCLASS.get(c, c).lower()} · {full}"
         if a in folded or b in folded:
             tip = f"{a} → {b}: through " + " > ".join(folded.get(a) or folded.get(b))
+        elif "fold" in (kind_of(a), kind_of(b)):
+            tip = f"{a.strip()} → {b.strip()}: through the folded roles; Show full chain draws them"
         elif edge_tip:
             tip = edge_tip(a, b, c, links[k], back_edge) or tip
         e = info.get(k, {})
@@ -1317,10 +1320,12 @@ def lane_graph(lanes, edges, kind_of, theme, href_of, selected_lane=None, max_pe
             w, h, big, small, pl = size[x]
             x0, y0 = cx[x] - w / 2, cy[x] - h / 2
             badge, sk, sw = False, 0, 1.5
-            if x in folded:
-                q = dict(query or {}) | {"unfold": "1"}
-                href, flags, key, rx = "?" + urlencode(q), (), x, 10
-                tip = "Show every role: " + " > ".join(folded[x])
+            if not isinstance(x, tuple) and kind_of(x) == "fold":
+                href, flags, key, rx = href_of(x), (), x, 10
+                tip = notes.get(x, ("", x))[1]
+                if x in folded:
+                    href = "?" + urlencode(dict(query or {}) | {"unfold": "1"})
+                    tip = "Show every role: " + " > ".join(folded[x])
                 k = {"bg": t["panel"], "border": t["edge"], "text": t["accent"], "dash": "dashed"}
             elif isinstance(x, tuple):
                 more = x[0] == "more"

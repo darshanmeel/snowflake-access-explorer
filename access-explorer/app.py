@@ -219,8 +219,8 @@ def kept():
 
 
 def here(**params):
-    """This view with params changed (None or "" drops one); the expanded graph lane is reset."""
-    qs = {k: v for k, v in st.query_params.items() if k not in ("expand", "unfold")} | params
+    """This view with params changed (None or "" drops one); the expanded graph lane and the full chain are reset."""
+    qs = {k: v for k, v in st.query_params.items() if k not in ("expand", "unfold", "full")} | params
     return "?" + urlencode({k: v for k, v in qs.items() if v not in (None, "")})
 
 
@@ -241,6 +241,8 @@ def node_href(start, kinds, check=False):
         k = kinds.get(n)
         if k in ("schema", "database"):
             return here(schema=n)
+        if k == "fold":
+            return here(full="1")
         if k:
             return here()
         if check and n in a.kinds and a.role_kind(n) == "object":
@@ -529,7 +531,20 @@ def hits(lanes, edges, info=None, every=False):
     return out
 
 
-def graph_card(title, lanes, edges, notes=None, selected=None, sub="", bad=(), info=None, kinds=None, href_of=None):
+def summarize(g):
+    """A big graph as a.summary(), unless ?full=1; a note above the graph links to the other view."""
+    if not g or not a.too_big(g):
+        return g, ""
+    if q("full") == "1":
+        return g, f'Full chain of a big graph. <a href="{e(here())}" target="_self">Show summary</a>'
+    g = a.summary(g)
+    return g, (f'Summary: {plural(g["folded"], "role")} between granted roles and grant holders '
+               f'{"is" if g["folded"] == 1 else "are"} folded. <a href="{e(here(full="1"))}" target="_self">'
+               f'Show full chain</a>')
+
+
+def graph_card(title, lanes, edges, notes=None, selected=None, sub="", bad=(), info=None, kinds=None, href_of=None,
+               note=""):
     """Graphs over 3 lanes (often wider than the card at full size) start fitted, so the answer on the right is in
     view. info: graph_input's (else a.graph_info's; BREAKS are added here); kinds: {group node: schema | database |
     type-group}; href_of: node links (default: the node's own page). Node names are graph node ids (a.uid)."""
@@ -552,6 +567,8 @@ def graph_card(title, lanes, edges, notes=None, selected=None, sub="", bad=(), i
                  | ({"rule"} if any(v.get("rules") for v in info.values()) else set()))
         html(ui.legend(edges=True, marks={f for v in mk.values() for f in v}, extra=extra,
                        kinds={"object" if k in ui.GROUPS else k for k in kind.values()}))
+        if note:
+            html(f'<div class="ae ae-graph-note">{note}</div>')
         html(ui.lane_graph(lanes, edges, lambda n: kind.get(n) or a.node_kind(n), THEME, href_of or node_link, selected,
                            expand=q("expand"), query=dict(st.query_params), fit=fit, marks=mk,
                            notes=notes, edge_tip=edge_tip, node_tip={n: node_tip(n) for n in names if n not in kinds},
@@ -705,13 +722,14 @@ def user_page():
         g = g and dict(lanes=g[0], edges=g[1], notes=g[2], header=f"{len(rows)} privileges shown")
     else:
         g = a.graph_input(u, scope or None, default_only=only_default, limit=limit, user=True)
+    g, note = summarize(g) if not (o or pv) else (g, "")
     if g:
         kinds = g.get("kinds", {})
         graph_card("Role hierarchy, by depth", g["lanes"], g["edges"], g["notes"],
                    sub=e(g["header"]) + (" · click a schema or database box to open it"
                                          if {"schema", "database"} & set(kinds.values()) else "")
                    + " · click an object: can this user use it?", info=g.get("info"), kinds=kinds,
-                   href_of=node_href(u, kinds, check=True))
+                   href_of=node_href(u, kinds, check=True), note=note)
     else:
         html(ui.card("Role hierarchy, by depth", "", f'<p class="ae-empty">{e(u)} reaches no roles at this depth.</p>'))
 
@@ -956,7 +974,7 @@ def role_graph_card(r, up, ro, scope):
     above = {n for _, ns in lanes[:sel] for n in ns}
     lanes = [(lab.replace("Depth ", "Held by · D"), ns) for lab, ns in lanes[:sel]] + [lanes[sel]]
     edges = [x for x in edges if len(x) == 2 and x[0] in above]
-    g = None if r in a.ADMIN else a.graph_input(r, scope or None, user=False)
+    g, note = summarize(None if r in a.ADMIN else a.graph_input(r, scope or None, user=False))
     info, kinds, sub = a.graph_info(lanes, edges), {}, "read left to right: holders, the role, what it reaches"
     if g:
         for k, v in info.items():  # the holders' rule hits next to graph_input's (the role's own side)
@@ -968,7 +986,7 @@ def role_graph_card(r, up, ro, scope):
         sub = g["header"] + (" · click a schema or database box to open it"
                              if {"schema", "database"} & set(kinds.values()) else "")
     graph_card("Held by (up) and holds (down)", lanes, edges, notes, sel, sub=e(sub), bad={x["holder"] for x in ro},
-               info=info, kinds=kinds, href_of=node_href(r, kinds))
+               info=info, kinds=kinds, href_of=node_href(r, kinds), note=note)
 
 
 def holds_card(r, hold, s):
