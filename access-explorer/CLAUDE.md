@@ -9,6 +9,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   (owner's rights). My-access view: read-only queries as the logged-in user, kept in server memory only (per browser, 1 h; links reload the page).
 - The app reads only the `TBL_ACCESS_` snapshot tables in the shared view. `SP_ACCESS_SNAPSHOT` (sql/1_setup.sql) fills them from
   ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable, and writes nothing else.
+- Direct mode (`ACCESS_SNAPSHOT` empty, for accounts where procedures can't be created): `access.live()` reads the same
+  sources with the user's role into memory, same dict as `snapshot()`. Keep it in step with `SP_ACCESS_SNAPSHOT`; `test_live` checks it.
 - No credentials, account names or company names in code or the repo. Real values live in git-ignored
   `settings.local.sql` and `.env` (env vars, template `.env.example`). Connection via `../sf.py` (`connect()`).
 - The procedure uses only the read sources in README > "Data sources". No queries on business data.

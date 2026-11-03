@@ -21,7 +21,8 @@ import ui
 
 DUCK = os.environ.get("DUCKDB")
 MODE = "duckdb" if DUCK else "fake" if os.environ.get("FAKE", "1") != "0" else "snowflake"
-WHERE = os.environ["ACCESS_SNAPSHOT"] if MODE == "snowflake" else "main"  # DB.SCHEMA of the tables
+WHERE = os.environ.get("ACCESS_SNAPSHOT", "") if MODE == "snowflake" else "main"  # DB.SCHEMA of the tables
+DIRECT = MODE == "snowflake" and not WHERE  # no tables: read the grants straight from Snowflake (a.live)
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")  # "My access" without Snowflake, and the default user
 # nav order; a page shows in the nav once it has a function in VIEW (sensitive and review come next)
 PAGES = {"user": "User", "role": "Role", "object": "Object", "sensitive": "Sensitive data", "check": "Can they?",
@@ -87,12 +88,13 @@ def with_query(fn):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def shared():  # the same for every viewer
-    return a.fake() if MODE == "fake" else with_query(lambda q: a.snapshot(q, WHERE))
+    return (a.fake() if MODE == "fake" else with_query(a.live) if DIRECT
+            else with_query(lambda q: a.snapshot(q, WHERE)))
 
 
 def mine():  # per viewer only, never in the shared cache
     if MODE == "snowflake":
-        return with_query(lambda q: a.mine(q, WHERE.split(".")[0]))
+        return with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None))
     d = shared()
     with lock():  # only() rebuilds the shared lookups; called before main takes the lock, so no deadlock
         return a.only(d, DEMO_USER)
@@ -110,6 +112,9 @@ def refresh():
     if MODE != "snowflake":
         st.sidebar.info("Demo: the CALL runs only on Snowflake (FAKE=0).")
         return
+    if DIRECT:  # no procedure: read everything again
+        shared.clear()
+        return
     with st.spinner("Running SP_ACCESS_SNAPSHOT ..."):
         res = with_query(lambda q: q(f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"))
     st.sidebar.json(json.loads(list(res[0].values())[0]))
@@ -125,11 +130,14 @@ def load_mine(who):  # a click callback: runs before the page, so the button lab
 def load(view, box):
     """The data for the view, or None (with the reason shown). box: the sidebar snapshot card."""
     if view == "shared":
-        if box.button("Reload page data", width="stretch",
+        if not DIRECT and box.button("Reload page data", width="stretch",
                       help="Reads the snapshot tables again. Does not read the grants from Snowflake again."):
             shared.clear()
-        if box.button("Rebuild snapshot in Snowflake (slow, admin)", key="refresh", width="stretch",
-                      help="CALL SP_ACCESS_SNAPSHOT with the owner's rights. Takes minutes on the SHOW fallback."):
+        if box.button("Read Snowflake again (slow)" if DIRECT else "Rebuild snapshot in Snowflake (slow, admin)",
+                      key="refresh", width="stretch",
+                      help="Reads grants, users, tags and policies again with your role. Takes minutes on the SHOW "
+                           "fallback." if DIRECT else "CALL SP_ACCESS_SNAPSHOT with the owner's rights. Takes minutes "
+                                                     "on the SHOW fallback."):
             refresh()
         try:
             return shared()
@@ -2004,7 +2012,7 @@ def main():
         if d is not None:
             src = a.run["SOURCES"] or {"all": "fake data"}
             when, old = snap_time() if view == "shared" else ("live", False)
-            html(ui.snapshot_card("live" if view == "mine" else WHERE if MODE == "snowflake" else MODE, when,
+            html(ui.snapshot_card("live" if view == "mine" else "direct" if DIRECT else WHERE if MODE == "snowflake" else MODE, when,
                                   list(src.items())), snap)
             if old:
                 html(ui.banner("warn", "Snapshot older than 24 h"), notes)

@@ -19,58 +19,107 @@ flowchart LR
   T -. "7 last OK run" .-> TF
   U -- "4 open" --> APP
   U -- "6 SQL" --> TF
+  SF -. "direct mode: read at app start" .-> APP
 ```
 Key: solid = calls · dashed = data moves · numbers = order. Build and read flow (L1): [README.html#flow](README.html#flow).
 
 ![User page: findings, profile, KPIs and the role graph](docs/img/user-graph.png)
 ![Rule checks: severity counts, rule map and rules by area](docs/img/rule-checks.png)
 
-## Quick start
-
-### Demo, no Snowflake (PowerShell, from this folder)
+## How to run
+```mermaid
+flowchart LR
+  I["1 Install once<br/>clone · venv · pip"] --> E["2 .env<br/>pick a mode"]
+  E --> M{"Snowflake?"}
+  M -- "no" --> D["Demo<br/>FAKE=1 or DUCKDB=demo.duckdb"]
+  M -- "yes, no setup allowed" --> L["Direct<br/>ACCESS_SNAPSHOT empty"]
+  M -- "yes, tables set up" --> T["Snapshot tables<br/>ACCESS_SNAPSHOT=DB.SCHEMA"]
+  D --> R["3 streamlit run app.py<br/>http://localhost:8501"]
+  L --> R
+  T --> R
 ```
-python -m venv .venv; .venv\Scripts\activate
-pip install -r requirements.txt
-$env:FAKE="1"; streamlit run app.py                                         # fake data in memory (FAKE=1 is the default)
-python make_demo_db.py; $env:DUCKDB="demo.duckdb"; streamlit run app.py      # same data through the snapshot SQL
-$env:BIG="1"; python make_demo_db.py; $env:DUCKDB="big.duckdb"; streamlit run app.py   # 2,000 objects, 300 roles
-```
+Key: box = step · diamond = choice.
 
-## Install on another machine (browser login)
-Needs Python 3.10+, git and access to the private repo. The snapshot must already exist in Snowflake (one-time setup below).
+### 1. Install once (PowerShell; needs Python 3.10+ and git)
 ```
 git clone https://github.com/darshanmeel/snowflake-access-explorer.git
 cd snowflake-access-explorer/access-explorer        # keep the folder layout: the app imports ../sf.py
 python -m venv .venv; .venv\Scripts\activate          # macOS/Linux: python3 -m venv .venv; source .venv/bin/activate
 pip install -r requirements.txt
+copy .env.example .env                                # macOS/Linux: cp .env.example .env
 ```
-Create `.env` in this folder from the template (git-ignored) and fill in the `<...>` values:
+Next time only: `cd snowflake-access-explorer/access-explorer; .venv\Scripts\activate`. Update: `git pull; pip install -r requirements.txt`.
+
+### 2. Pick a mode in `.env`
+| Mode | Set in `.env` | Needs in Snowflake |
+|---|---|---|
+| **Demo** (no Snowflake) | `FAKE=1` (fake data) or `DUCKDB=demo.duckdb` after `python make_demo_db.py` | Nothing |
+| **Direct** (no procedures allowed) | `FAKE=0`, `DUCKDB=`, `ACCESS_SNAPSHOT=`, the `SNOWFLAKE_*` lines | A role and a warehouse; full account: `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or `MANAGE GRANTS`) |
+| **My access only** (no extra rights) | Same as Direct; open `http://localhost:8501/?data=mine` | A warehouse. Shows your own roles and what they reach |
+| **Snapshot tables** | `FAKE=0`, `DUCKDB=`, `ACCESS_SNAPSHOT=<DB>.<SCHEMA>`, the `SNOWFLAKE_*` lines | One-time setup below; you need `<APP_ROLE>` |
+
+`.env` for direct mode:
 ```
-copy .env.example .env                       # macOS/Linux: cp .env.example .env
+FAKE=0
+DUCKDB=
+ACCESS_SNAPSHOT=
+SNOWFLAKE_ACCOUNT=<org>-<account>
+SNOWFLAKE_USER=<your Snowflake login name>
+SNOWFLAKE_ROLE=<role>
+SNOWFLAKE_WAREHOUSE=<WH>
 ```
-Run:
+Login: browser SSO by default (a tab opens). Key pair instead: add these two lines (the second only if the key is encrypted):
 ```
-streamlit run app.py                           # opens http://localhost:8501; a second tab asks for your Snowflake login
+SNOWFLAKE_PRIVATE_KEY_FILE=C:\keys\rsa_key.p8
+SNOWFLAKE_PRIVATE_KEY_PWD=<passphrase>
 ```
+`<org>-<account>` is the start of your Snowflake URL `https://<org>-<account>.snowflakecomputing.com`. Nothing after a
+value (no comments on the same line). A variable set in the shell wins over `.env`.
+
+### 3. Run
+```
+streamlit run app.py          # opens http://localhost:8501; with Snowflake a second tab asks for your login
+```
+Stop with Ctrl+C. Big demo (2,000 objects, 300 roles): `$env:BIG="1"; python make_demo_db.py; $env:DUCKDB="big.duckdb"; streamlit run app.py`.
+
+### Login
 ```mermaid
 flowchart LR
   A["streamlit run app.py<br/>your machine"] -- "1 connect" --> B["browser tab<br/>Snowflake / SSO login"]
   B -- "2 token" --> A
-  A -. "3 read TBL_ACCESS_*" .-> C[("Snowflake")]
+  A -. "3 read grants or TBL_ACCESS_*" .-> C[("Snowflake")]
 ```
 Key: solid = calls · dashed = data moves · numbers = order.
 
-- Two logins only: key pair when `SNOWFLAKE_PRIVATE_KEY_FILE` is set, else browser SSO. Passwords are not supported;
-  nothing is stored in the repo.
-- One login per new connection (app load, Rebuild, My access, each `run_sql.py` file). To reuse it for ~4 h, an admin runs
-  `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;` once (Linux also: `pip install "snowflake-connector-python[secure-local-storage]"`).
-- The login tab opens on the machine running Streamlit: run the app on your own machine. A shared server needs key pair
-  (`SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD`) instead.
-- App users need only `<APP_ROLE>` (table below); **My access** needs no extra grants.
-- Update: `git pull`, then `pip install -r requirements.txt`.
+- Two logins only: key pair when `SNOWFLAKE_PRIVATE_KEY_FILE` is set, else browser SSO. No passwords; nothing stored in the repo.
+- One login per new connection (app load, Read again / Rebuild, My access, each `run_sql.py` file). To reuse it for ~4 h, an
+  admin runs `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;` once (Linux also: `pip install "snowflake-connector-python[secure-local-storage]"`).
+- The login tab opens on the machine running Streamlit: run the app on your own machine.
+
+### No IMPORTED PRIVILEGES? See your own access
+Without `IMPORTED PRIVILEGES` (or `MANAGE GRANTS`) you can still see everything **your** roles give you:
+1. Use the direct `.env` above (`SNOWFLAKE_ROLE` = any role you have).
+2. Run `streamlit run app.py`, open `http://localhost:8501/?data=mine` (or pick **My access (live, only me)** in the sidebar).
+3. Click **Load my access**.
+
+- Reads with your own rights: your roles (all granted roles, as secondary roles ALL), the roles under them, their grants,
+  your profile and your last 7 days of queries. Nothing is saved; nothing extra to grant.
+- Works on User, Role, Object and Can they?. Not on Rule checks and Access review (about everyone); no sensitivity (tags need
+  the governance views).
+- Starting with `?data=mine` skips the account-wide read, so it opens fast.
+- The **Shared snapshot** view still works in direct mode, but without those rights it holds only what `SHOW` lets your role
+  see (other roles listed as skipped under Incomplete).
+
+### Direct mode details
+- At app start the app reads grants, future grants, users, query history, tags, policies and streams with your role, keeps
+  them in memory for 1 h and writes nothing. **Read Snowflake again** (sidebar) reads again.
+- Same sources as the procedure: `ACCOUNT_USAGE` where your role can read it (fast), else `SHOW` / `INFORMATION_SCHEMA`
+  (one query per role and per schema: minutes on a big account). You see what your role sees.
+- The sidebar shows `direct` and, under Incomplete, which dataset fell back and why.
+- The SQL functions and `SP_ACCESS_FINDINGS` exist only with the snapshot tables setup.
 
 ## One-time setup in Snowflake (developer)
-Clone and install as above, with `.env` filled in (`run_sql.py` switches to `DEV_ROLE` itself):
+Only for the snapshot tables mode. Install as above, `.env` filled in (`run_sql.py` switches to `DEV_ROLE` itself):
 ```
 copy settings.sql settings.local.sql      # fill in DB, SCHEMA, WH, DEV_ROLE, APP_ROLE (SnowSQL: also HERE)
 python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql
@@ -144,7 +193,7 @@ README.html copies this table and the Limits list (`python docs/make_readme.py`)
 |---|---|---|
 | `FAKE` | `1` | `0` = Snowflake via `../sf.py` |
 | `DUCKDB` | | DuckDB file with the snapshot tables (wins over `FAKE`) |
-| `ACCESS_SNAPSHOT` | | `<DB>.<SCHEMA>` of the tables (Snowflake only) |
+| `ACCESS_SNAPSHOT` | | `<DB>.<SCHEMA>` of the tables (Snowflake only); empty = direct mode, no tables |
 | `DEMO_USER` | `ENGINEER_01` | Default user, and the "me" of My access outside Snowflake |
 | `ROLE_PREFIXES` | `F_,T_` | Functional and technical role prefixes |
 | `BUILD_ROLES` | `<functional prefix>DEPLOY` | fnmatch patterns of the build identity: may hold OWNER roles (rule 4), skipped by rules 17, 19–23 |

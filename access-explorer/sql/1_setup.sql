@@ -157,8 +157,8 @@ def blank(v):
     return None if v in ("", "null", None) else v
 
 
-def sq(text):  # inside a '...' SQL string
-    return text.replace("'", "''")
+def sq(text):  # inside a '...' SQL string, where backslash also escapes
+    return text.replace("\\", "\\\\").replace("'", "''")
 
 
 def first_line(e):  # the cause is on the 2nd line of "SQL compilation error:\n..."

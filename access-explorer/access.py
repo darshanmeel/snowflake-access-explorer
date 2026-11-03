@@ -12,7 +12,7 @@ import re
 from datetime import datetime
 
 ENV = pathlib.Path(__file__).with_name(".env")  # NAME=value lines (template .env.example); real env vars win
-for line in ENV.read_text().splitlines() if ENV.is_file() else []:
+for line in ENV.read_text(encoding="utf-8-sig").splitlines() if ENV.is_file() else []:
     k, _, v = line.partition("=")
     if k.strip() and not k.lstrip().startswith("#") and _:
         os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
@@ -280,8 +280,10 @@ def line(e):
 
 def mine(query, db):
     """The logged-in user's own access, live, with their own rights. Writes nothing (no tables, no temp tables).
-    query(sql) -> list of dicts; db: a database whose INFORMATION_SCHEMA the user can read."""
+    query(sql) -> list of dicts; db: a database whose INFORMATION_SCHEMA the user can read
+    (None: the current one)."""
     me = query("SELECT CURRENT_USER() AS U")[0]["U"]
+    db = db or query("SELECT CURRENT_DATABASE() AS D")[0]["D"] or "SNOWFLAKE"  # direct mode: no tables
     query("USE SECONDARY ROLES ALL")  # every granted role counts, as with DEFAULT_SECONDARY_ROLES = ('ALL')
     roles = json.loads(query("SELECT CURRENT_AVAILABLE_ROLES() AS R")[0]["R"])  # granted + inherited, always readable
     src, notes, grants, skipped = {}, {}, [], []
@@ -335,6 +337,239 @@ def mine(query, db):
     return dict(run=run, GRANT=grants, USER_ROLE=[dict(USER_NAME=me, ROLE_NAME=r) for r in direct],
                 USER=[dict(USER_NAME=me) | user], USAGE=[dict(USER_NAME=me) | u for u in usage], TAG=[], POLICY=[],
                 STREAM=[])
+
+
+AU = "SNOWFLAKE.ACCOUNT_USAGE"
+TAG_FALLBACK_MAX = 300  # tables/views read one by one when the ACCOUNT_USAGE views are not readable
+
+
+def live(query):
+    """The whole account, read now with the caller's role, kept in memory: what SP_ACCESS_SNAPSHOT('AUTO') writes to the
+    tables, for accounts where procedures can't be created. ACCOUNT_USAGE where readable, else SHOW / INFORMATION_SCHEMA
+    (keep in step with sql/1_setup.sql). Writes nothing. query(sql) -> list of dicts; same dict as snapshot()."""
+    def rows(sql):  # lower-case keys: SHOW columns are lower case, views upper case
+        return [{k.lower(): v for k, v in r.items()} for r in query(sql)]
+
+    def readable(view):
+        try:
+            query(f"SELECT 1 FROM {AU}.{view} LIMIT 1")
+            return None
+        except Exception as e:
+            return f"{AU}.{view} not readable: {line(e)}"
+
+    def clean(name):  # SHOW quotes names with special characters; ACCOUNT_USAGE does not
+        return (name or "").replace('"', "")
+
+    def blank(v):
+        return None if v in ("", "null", None) else v
+
+    src, notes, d = {}, {}, {t: [] for t in TABLES}
+    try:  # privileges of every granted role count (e.g. IMPORTED PRIVILEGES through another role)
+        query("USE SECONDARY ROLES ALL")
+    except Exception:
+        pass
+    now = query("SELECT CURRENT_TIMESTAMP() AS T")[0]["T"]
+    db = query("SELECT CURRENT_DATABASE() AS D")[0]["D"]
+
+    def note(name, source, why):
+        src[name] = source
+        if why:
+            notes[name] = why
+
+    why = readable("GRANTS_TO_ROLES") or readable("GRANTS_TO_USERS")
+    if why is None:  # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG
+        d["GRANT"] = query(f"""SELECT GRANTEE_NAME AS GRANTEE_ROLE, PRIVILEGE, GRANTED_ON,
+                   CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
+                        WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
+                        ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END AS OBJECT_NAME,
+                   FALSE AS IS_FUTURE, GRANT_OPTION, GRANTED_BY
+            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO = 'ROLE'""")
+        d["USER_ROLE"] = query(f"""SELECT GRANTEE_NAME AS USER_NAME, ROLE AS ROLE_NAME, GRANTED_BY
+            FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""")
+        note("grants", "ACCOUNT_USAGE", None)
+    else:
+        skipped = []
+        for role in [r["name"] for r in rows("SHOW ROLES")]:
+            try:
+                d["GRANT"] += [dict(GRANTEE_ROLE=role, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
+                                    OBJECT_NAME=clean(x["name"]), IS_FUTURE=False,
+                                    GRANT_OPTION=str(x.get("grant_option")).lower() == "true", GRANTED_BY=x.get("granted_by"))
+                               for x in rows(f"SHOW GRANTS TO ROLE {ident(role)}") if x.get("granted_to") in ("ROLE", None)]
+                d["USER_ROLE"] += [dict(USER_NAME=x["grantee_name"], ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
+                                   for x in rows(f"SHOW GRANTS OF ROLE {ident(role)}") if x.get("granted_to") == "USER"]
+            except Exception as e:  # a role this role may not inspect: keep going, list it in the notes
+                skipped.append(f"{role}: {line(e)}")
+        note("grants", "SHOW", why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else ""))
+    note("user_roles", src["grants"], notes.get("grants"))
+
+    skipped = []  # future grants: no ACCOUNT_USAGE view
+    for x in rows("SHOW DATABASES"):
+        if x.get("kind", "STANDARD") != "STANDARD":  # shares, applications: their grants are not ours
+            continue
+        try:
+            places = [f"DATABASE {ident(x['name'])}"] + [
+                f"SCHEMA {ident(x['name'])}.{ident(s['name'])}"
+                for s in rows(f"SHOW SCHEMAS IN DATABASE {ident(x['name'])}") if s["name"] != "INFORMATION_SCHEMA"]
+            for p in places:
+                d["GRANT"] += [dict(GRANTEE_ROLE=f["grantee_name"], PRIVILEGE=f["privilege"], GRANTED_ON=f["grant_on"],
+                                    OBJECT_NAME=clean(f["name"]), IS_FUTURE=True,
+                                    GRANT_OPTION=str(f.get("grant_option")).lower() == "true", GRANTED_BY=None)
+                               for f in rows(f"SHOW FUTURE GRANTS IN {p}") if f.get("grant_to") == "ROLE"]
+        except Exception as e:
+            skipped.append(f"{x['name']}: {line(e)}")
+    note("future_grants", "SHOW", f"{len(skipped)} databases skipped: " + " | ".join(skipped[:20]) if skipped else None)
+
+    why = readable("USERS")
+    if why is None:  # OBJECT_CONSTRUCT(*): the secondary roles column name differs between Snowflake versions
+        d["USER"] = query(f"""SELECT J:NAME::STRING AS USER_NAME, J:TYPE::STRING AS TYPE,
+                   TRY_TO_BOOLEAN(J:DISABLED::STRING) AS DISABLED, J:DEFAULT_ROLE::STRING AS DEFAULT_ROLE,
+                   COALESCE(J:DEFAULT_SECONDARY_ROLES, J:DEFAULT_SECONDARY_ROLE)::STRING AS DEFAULT_SECONDARY_ROLES,
+                   J:DEFAULT_WAREHOUSE::STRING AS DEFAULT_WAREHOUSE, J:DEFAULT_NAMESPACE::STRING AS DEFAULT_NAMESPACE,
+                   TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING) AS LAST_SUCCESS_LOGIN
+            FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)""")
+        note("users", "ACCOUNT_USAGE", None)
+    else:
+        d["USER"] = [dict(USER_NAME=x["name"], TYPE=blank(x.get("type")), DISABLED=str(x.get("disabled")).lower() == "true",
+                          DEFAULT_ROLE=blank(x.get("default_role")),
+                          DEFAULT_SECONDARY_ROLES=blank(x.get("default_secondary_roles")),
+                          DEFAULT_WAREHOUSE=blank(x.get("default_warehouse")),
+                          DEFAULT_NAMESPACE=blank(x.get("default_namespace")),
+                          LAST_SUCCESS_LOGIN=blank(x.get("last_success_login"))) for x in rows("SHOW USERS")]
+        note("users", "SHOW", why)
+
+    def usage(q, secondary):  # roles, secondary roles and warehouses used per user, aggregated in SQL
+        sql = f"""WITH Q AS ({q})
+            SELECT USER_NAME, 'ROLE' AS KIND, ROLE_NAME AS NAME, COUNT(*) AS QUERIES, MAX(START_TIME) AS LAST_USED
+            FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 1, 3
+            UNION ALL
+            SELECT USER_NAME, 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 1, 3"""
+        if secondary:  # SECONDARY_ROLE_STATS: JSON text, roleNames = comma-separated roles
+            sql += """
+            UNION ALL
+            SELECT Q.USER_NAME, 'SECONDARY ROLE', TRIM(S.VALUE::STRING), COUNT(*), MAX(Q.START_TIME)
+            FROM Q, LATERAL FLATTEN(SPLIT(TRY_PARSE_JSON(Q.SECONDARY_ROLE_STATS):roleNames::STRING, ',')) S
+            WHERE TRIM(S.VALUE::STRING) <> '' GROUP BY 1, 3"""
+        return query(sql)
+
+    why = readable("QUERY_HISTORY")
+    if why is None:
+        try:  # usage is extra: without it the rest still loads
+            d["USAGE"] = usage(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME
+                FROM {AU}.QUERY_HISTORY WHERE START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())""", True)
+            note("usage", "ACCOUNT_USAGE", None)
+        except Exception as e:
+            note("usage", "UNAVAILABLE", line(e))
+    else:
+        try:
+            d["USAGE"] = usage(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE({ident(db or "SNOWFLAKE")}.INFORMATION_SCHEMA.QUERY_HISTORY(
+                END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()),
+                RESULT_LIMIT => 10000))""", False)
+            note("usage", "INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries, "
+                                                      "only the queries this role may see")
+        except Exception as e:
+            note("usage", "UNAVAILABLE", why + f"; INFORMATION_SCHEMA.QUERY_HISTORY: {line(e)}")
+
+    objs = sorted({g["OBJECT_NAME"] for g in d["GRANT"] if not g["IS_FUTURE"]
+                   and ("TABLE" in g["GRANTED_ON"] or "VIEW" in g["GRANTED_ON"])})  # for the per-object fallbacks
+
+    def capped(why, skipped):
+        out = [why]
+        if len(objs) > TAG_FALLBACK_MAX:
+            out.append(f"{len(objs) - TAG_FALLBACK_MAX} objects past TAG_FALLBACK_MAX={TAG_FALLBACK_MAX} not read: "
+                       + ", ".join(objs[TAG_FALLBACK_MAX:TAG_FALLBACK_MAX + 20]))
+        if skipped:
+            out.append(f"{len(skipped)} objects skipped: " + " | ".join(skipped[:20]))
+        return "; ".join(out)
+
+    def quoted(name):  # DB.SCHEMA.OBJECT -> "DB"."SCHEMA"."OBJECT"
+        return ".".join(ident(p) for p in name.split(".", 2))
+
+    def sq(text):  # inside a '...' string, where backslash also escapes
+        return text.replace("\\", "\\\\").replace("'", "''")
+
+    why = readable("TAG_REFERENCES")
+    try:
+        if why is None:
+            d["TAG"] = query(f"""SELECT CASE DOMAIN WHEN 'DATABASE' THEN OBJECT_NAME
+                                          WHEN 'SCHEMA' THEN OBJECT_DATABASE || '.' || OBJECT_NAME
+                                          ELSE OBJECT_DATABASE || '.' || OBJECT_SCHEMA || '.' || OBJECT_NAME END AS OBJECT_NAME,
+                       DOMAIN, IFF(DOMAIN = 'COLUMN', COLUMN_NAME, NULL) AS COLUMN_NAME,
+                       TAG_DATABASE || '.' || TAG_SCHEMA || '.' || TAG_NAME AS TAG_NAME, TAG_VALUE, APPLY_METHOD
+                FROM {AU}.TAG_REFERENCES WHERE OBJECT_DELETED IS NULL AND DOMAIN IN ('DATABASE', 'SCHEMA', 'TABLE', 'COLUMN')""")
+            note("tags", "ACCOUNT_USAGE", None)
+        else:
+            skipped = []
+            for o in objs[:TAG_FALLBACK_MAX]:
+                fn = f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA"
+                try:
+                    for x in rows(f"SELECT * FROM TABLE({fn}.TAG_REFERENCES('{sq(quoted(o))}', 'table'))"):
+                        d["TAG"].append(dict(OBJECT_NAME=o, DOMAIN="TABLE", COLUMN_NAME=None,
+                                             TAG_NAME=f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}",
+                                             TAG_VALUE=x.get("tag_value"),
+                                             APPLY_METHOD="INHERITED" if x.get("level") not in (None, "TABLE") else "MANUAL"))
+                    for x in rows(f"SELECT * FROM TABLE({fn}.TAG_REFERENCES_ALL_COLUMNS('{sq(quoted(o))}', 'table'))"):
+                        if x.get("level") in (None, "COLUMN"):
+                            d["TAG"].append(dict(OBJECT_NAME=o, DOMAIN="COLUMN", COLUMN_NAME=x.get("column_name"),
+                                                 TAG_NAME=f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}",
+                                                 TAG_VALUE=x.get("tag_value"), APPLY_METHOD=x.get("apply_method") or "MANUAL"))
+                except Exception as e:
+                    skipped.append(f"{o}: {line(e)}")
+            note("tags", "INFORMATION_SCHEMA", capped(why, skipped))
+    except Exception as e:
+        d["TAG"] = []
+        note("tags", "UNAVAILABLE", "; ".join(filter(None, [why, line(e)])))
+
+    why = readable("POLICY_REFERENCES")
+    try:
+        if why is None:
+            d["POLICY"] = query(f"""SELECT R.POLICY_DB || '.' || R.POLICY_SCHEMA || '.' || R.POLICY_NAME AS POLICY_NAME,
+                       R.POLICY_KIND, IFF(R.REF_ENTITY_DOMAIN = 'TAG', NULL,
+                           R.REF_DATABASE_NAME || '.' || R.REF_SCHEMA_NAME || '.' || R.REF_ENTITY_NAME) AS OBJECT_NAME,
+                       R.REF_COLUMN_NAME AS COLUMN_NAME, R.REF_ARG_COLUMN_NAMES::STRING AS ARG_COLUMNS,
+                       IFF(R.REF_ENTITY_DOMAIN = 'TAG', R.REF_DATABASE_NAME || '.' || R.REF_SCHEMA_NAME || '.' || R.REF_ENTITY_NAME,
+                           IFF(R.TAG_NAME IS NULL, NULL, R.TAG_DATABASE || '.' || R.TAG_SCHEMA || '.' || R.TAG_NAME)) AS TAG_NAME,
+                       COALESCE(M.POLICY_BODY, A.POLICY_BODY) AS POLICY_BODY
+                FROM {AU}.POLICY_REFERENCES R
+                LEFT JOIN {AU}.MASKING_POLICIES M ON M.POLICY_ID = R.POLICY_ID AND M.DELETED IS NULL
+                LEFT JOIN {AU}.ROW_ACCESS_POLICIES A ON A.POLICY_ID = R.POLICY_ID AND A.DELETED IS NULL
+                WHERE R.POLICY_KIND IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY')""")
+            note("policies", "ACCOUNT_USAGE", None)
+        else:
+            skipped, body = [], {}
+            for o in objs[:TAG_FALLBACK_MAX]:
+                fn = f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA"
+                try:
+                    for x in rows(f"""SELECT * FROM TABLE({fn}.POLICY_REFERENCES(
+                            REF_ENTITY_NAME => '{sq(quoted(o))}', REF_ENTITY_DOMAIN => 'table'))"""):
+                        if x.get("policy_kind") not in ("MASKING_POLICY", "ROW_ACCESS_POLICY"):
+                            continue
+                        name = f"{x['policy_db']}.{x['policy_schema']}.{x['policy_name']}"
+                        if name not in body:
+                            what = "MASKING POLICY" if x["policy_kind"] == "MASKING_POLICY" else "ROW ACCESS POLICY"
+                            try:
+                                body[name] = rows(f"DESCRIBE {what} {quoted(name)}")[0].get("body")
+                            except Exception:  # no rights on the policy: its text stays empty, "cannot derive" in the app
+                                body[name] = None
+                        tag = f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}" if x.get("tag_name") else None
+                        d["POLICY"].append(dict(POLICY_NAME=name, POLICY_KIND=x["policy_kind"], OBJECT_NAME=o,
+                                                COLUMN_NAME=x.get("ref_column_name"),
+                                                ARG_COLUMNS=blank(x.get("ref_arg_column_names")), TAG_NAME=tag,
+                                                POLICY_BODY=body[name]))
+                except Exception as e:
+                    skipped.append(f"{o}: {line(e)}")
+            note("policies", "INFORMATION_SCHEMA", capped(why, skipped))
+    except Exception as e:
+        d["POLICY"] = []
+        note("policies", "UNAVAILABLE", "; ".join(filter(None, [why, line(e)])))
+
+    try:  # streams: no ACCOUNT_USAGE view; only the streams this role can see
+        d["STREAM"] = [dict(STREAM_NAME=f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}",
+                            SOURCE_NAME=clean(x.get("table_name")), SOURCE_TYPE=blank(x.get("source_type")))
+                       for x in rows("SHOW STREAMS IN ACCOUNT")]
+        note("streams", "SHOW", None)
+    except Exception as e:
+        note("streams", "UNAVAILABLE", line(e))
+    return d | {"run": dict(RUN_ID="direct", FINISHED_AT=now, SOURCES=src, NOTES=notes)}
 
 
 def only(d, user):

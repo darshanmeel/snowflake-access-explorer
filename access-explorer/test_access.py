@@ -333,6 +333,86 @@ def test_demo_db():
         assert [{k: v for k, v in x.items() if k != "RUN_ID"} for x in s[t]] == d[t], t
 
 
+def fake_snowflake(d, au):
+    """query(sql) answering live()'s SHOW commands from data set d; ACCOUNT_USAGE readable when au (canned rows)."""
+    plain = [g for g in d["GRANT"] if not g["IS_FUTURE"]]
+    roles = sorted({g["GRANTEE_ROLE"] for g in d["GRANT"]} | {x["ROLE_NAME"] for x in d["USER_ROLE"]})
+    dbs = sorted({g["OBJECT_NAME"].split(".")[0] for g in plain if g["GRANTED_ON"] not in ("ROLE", "ACCOUNT", "WAREHOUSE")})
+    name = lambda sql: sql.split('"')[1]  # noqa: E731  the first quoted name
+    calls = []
+
+    def query(sql):
+        calls.append(sql)
+        s = " ".join(sql.split())
+        if "ACCOUNT_USAGE" in s or "INFORMATION_SCHEMA" in s:
+            if not au or "INFORMATION_SCHEMA" in s:
+                raise RuntimeError("Object does not exist or not authorized.")
+            if "LIMIT 1" in s:
+                return [{"1": 1}]
+            for view, rows in (("GRANTS_TO_ROLES", plain), ("GRANTS_TO_USERS", d["USER_ROLE"]), ("USERS", d["USER"]),
+                               ("QUERY_HISTORY", d["USAGE"]), ("TAG_REFERENCES", d["TAG"]), ("POLICY_REFERENCES", d["POLICY"])):
+                if f"ACCOUNT_USAGE.{view} " in s + " ":
+                    return [dict(x) for x in rows]
+            raise AssertionError(s)
+        if s.startswith("SELECT CURRENT_TIMESTAMP()"):
+            return [{"T": "2026-11-03 10:00"}]
+        if s.startswith("SELECT CURRENT_DATABASE()"):
+            return [{"D": None}]
+        if s == "USE SECONDARY ROLES ALL":
+            return []
+        if s == "SHOW ROLES":
+            return [{"name": r} for r in roles]
+        if s.startswith("SHOW GRANTS TO ROLE"):
+            return [{"privilege": g["PRIVILEGE"], "granted_on": g["GRANTED_ON"], "name": g["OBJECT_NAME"],
+                     "granted_to": "ROLE", "grant_option": "false"} for g in plain if g["GRANTEE_ROLE"] == name(s)]
+        if s.startswith("SHOW GRANTS OF ROLE"):
+            return [{"grantee_name": x["USER_NAME"], "granted_to": "USER"} for x in d["USER_ROLE"] if x["ROLE_NAME"] == name(s)]
+        if s == "SHOW DATABASES":
+            return [{"name": x, "kind": "STANDARD"} for x in dbs] + [{"name": "SNOWFLAKE", "kind": "IMPORTED DATABASE"}]
+        if s.startswith("SHOW SCHEMAS IN DATABASE"):
+            return [{"name": x} for x in sorted({o.split(".")[1] for o in a_objects(plain) if o.startswith(name(s) + ".")})
+                    ] + [{"name": "INFORMATION_SCHEMA"}]
+        if s.startswith("SHOW FUTURE GRANTS IN SCHEMA"):
+            where = ".".join(s.split('"')[1::2]) + "."
+            return [{"grantee_name": g["GRANTEE_ROLE"], "privilege": g["PRIVILEGE"], "grant_on": g["GRANTED_ON"],
+                     "name": g["OBJECT_NAME"], "grant_to": "ROLE"} for g in d["GRANT"]
+                    if g["IS_FUTURE"] and g["OBJECT_NAME"].startswith(where)]
+        if s.startswith("SHOW FUTURE GRANTS IN DATABASE"):
+            return []
+        if s == "SHOW USERS":
+            return [{k.lower(): ("" if v is None else v) for k, v in x.items()} | {"name": x["USER_NAME"]} for x in d["USER"]]
+        if s == "SHOW STREAMS IN ACCOUNT":
+            return [dict(zip(("database_name", "schema_name", "name"), x["STREAM_NAME"].split(".")),
+                         table_name=x["SOURCE_NAME"], source_type=x["SOURCE_TYPE"]) for x in d["STREAM"]]
+        raise AssertionError(s)
+    return query, calls
+
+
+def a_objects(grants):
+    return {g["OBJECT_NAME"] for g in grants if g["OBJECT_NAME"].count(".") >= 1}
+
+
+def test_live():
+    """live() without ACCOUNT_USAGE (SHOW fallback) and with it gives the same lookups as the data it read; writes nothing."""
+    d = a.fake()
+    a.build(d)
+    want = (sorted(a.role_grants), sorted(a.user_grants), sorted(a.privs), a.users[:], dict(a.profile))
+    for au in (False, True):
+        query, calls = fake_snowflake(d, au)
+        s = a.live(query)
+        assert not [c for c in calls if re.match(r"\s*(INSERT|CREATE|UPDATE|DELETE|MERGE|DROP|ALTER|GRANT|CALL)", c, re.I)]
+        src = s["run"]["SOURCES"]
+        assert src["grants"] == src["users"] == ("ACCOUNT_USAGE" if au else "SHOW") and src["future_grants"] == "SHOW"
+        assert sum(g["IS_FUTURE"] for g in s["GRANT"]) == 1
+        a.build(s)
+        assert (sorted(a.role_grants), sorted(a.user_grants), sorted(a.privs), a.users, dict(a.profile)) == want, au
+        if not au:  # tags and policies: per-object INFORMATION_SCHEMA, every object skipped here, the run still loads
+            assert src["tags"] == src["policies"] == "INFORMATION_SCHEMA" and "skipped" in s["run"]["NOTES"]["tags"]
+            assert src["usage"] == "UNAVAILABLE" and s["STREAM"] == d["STREAM"]
+        else:
+            assert s["TAG"] == d["TAG"] and s["POLICY"] == d["POLICY"] and s["USAGE"] == d["USAGE"]
+
+
 def test_kinds():
     assert {"USERADMIN", "ORGADMIN", "ACCOUNTADMIN"} <= a.ADMIN
     k = a.kind_of
@@ -875,7 +955,7 @@ if __name__ == "__main__":
     for t in (test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_graph_kit, test_summary):
+              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals
