@@ -701,6 +701,26 @@ def test_builtin():
     assert Counter(c[0] for c in a.checks()) == rules  # the same findings: no rule 9 on them, no orphan learning role
 
 
+def test_whatif_indirect():
+    """A role held further down can be taken away: cut where it is granted, on the grantee's paths; then unreached."""
+    r, g = next((r, g) for r in sorted(a.roles) for g in sorted(a.ups(r)[0] - {r})
+                if r not in a.holds.get(g, []) and g != "PUBLIC" and not any(x in a.ADMIN for x in a.ups(r)[0]))
+    via = {h for h in a.held_by[r] if g in a.ups(h)[0]}
+    w = a.what_if([dict(op="revoke_role_from_role", role=r, grantee=g)])
+    assert "held through" in w["changes"][0]["label"] and all(h in w["sql"] for h in via), w["changes"][0]
+    cut, _ = a.changes_of([dict(op="revoke_role_from_role", role=r, grantee=g)])
+    assert cut["link"] == {(r, h) for h in via}
+    u = next(u for u in sorted(a.users) if a.roles_of.get(u) and r not in a.roles_of[u] and u in a.ups(r)[1]
+             and "PUBLIC" not in a.held_by.get(r, []))
+    cut, _ = a.changes_of([dict(op="revoke_role_from_user", role=r, user=u)])
+    assert cut["link"] and not cut["user"]
+    try:
+        a.changes_of([dict(op="revoke_role_from_role", role=r, grantee=r + "_NOPE")])
+        raise AssertionError("no error")
+    except ValueError as x:
+        assert "does not reach" in str(x)
+
+
 def test_whatif():
     """What if: revokes simulated in memory, the loaded lookups untouched; the scoped rule recheck equals a rebuild."""
     keep = (a.roles, list(a.privs), list(a.role_grants), dict(a.holds), a.cached("findings", a.findings))
@@ -1245,7 +1265,7 @@ if __name__ == "__main__":
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_pages):
+              test_whatif, test_whatif_indirect, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

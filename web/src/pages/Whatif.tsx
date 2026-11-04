@@ -57,9 +57,15 @@ function Builder({ onAdd }: { onAdd: (ch: WhatIfChange) => void }) {
   const [other, setOther] = useState("");
   const [priv, setPriv] = useState("SELECT");
   const roles = useApi<{ items: ListItem[] }>("list", { what: "roles", view: c.view });
-  const users = useApi<{ items: ListItem[] }>(op === "revoke_role_from_user" ? "list" : null, { what: "users", view: c.view });
+  // only who reaches the chosen role, directly first, then through other roles (cut where it is granted)
+  const holders = useApi<{ items: ListItem[] }>(
+    role && (op === "revoke_role_from_user" || op === "revoke_role_from_role") ? "list" : null,
+    { what: op === "revoke_role_from_user" ? "user_holders" : "role_holders", role, view: c.view });
   const objs = useApi<{ items: ListItem[] }>(op === "revoke_priv" ? "list" : null, { what: "objects", view: c.view });
   const ids = (s: typeof roles) => s.data?.items.map((i) => i.id) ?? [];
+  const nDirect = holders.data?.items.filter((i) => i.type === "direct").length ?? 0;
+  const nVia = (holders.data?.items.length ?? 0) - nDirect;
+  const holderHint = !role ? "pick a role first" : holders.data ? `${nDirect} direct · ${nVia} through other roles` : "…";
   const ch: WhatIfChange | null =
     op === "empty_public" ? { op } :
     !role ? null :
@@ -71,9 +77,9 @@ function Builder({ onAdd }: { onAdd: (ch: WhatIfChange) => void }) {
   return (
     <Controls>
       <Sel label="Change" value={op} onPick={(v) => { setOp(v as WhatIfOp); setOther(""); }} options={OPS} />
-      {op !== "empty_public" && <Pick label={op === "revoke_role_from_role" ? "Role taken away" : "Role"} value={role} options={ids(roles)} onPick={setRole} />}
-      {op === "revoke_role_from_user" && <Pick label="From user" value={other} options={ids(users)} onPick={setOther} />}
-      {op === "revoke_role_from_role" && <Pick label="From role" value={other} options={ids(roles)} onPick={setOther} />}
+      {op !== "empty_public" && <Pick label={op === "revoke_role_from_role" ? "Role taken away" : "Role"} value={role} options={ids(roles)} onPick={(v) => { setRole(v); setOther(""); }} />}
+      {op === "revoke_role_from_user" && <Pick label={`From user (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
+      {op === "revoke_role_from_role" && <Pick label={`From role (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
       {op === "revoke_priv" && <Sel label="Privilege" value={priv} onPick={setPriv} options={PRIVS.map((p): [string, string] => [p, p])} />}
       {op === "revoke_priv" && <Pick label="On object" value={other} width={340} options={ids(objs)} onPick={setOther} />}
       <button className="ae-btn" disabled={!ch} onClick={() => ch && onAdd(ch)}>Add</button>

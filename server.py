@@ -1461,12 +1461,22 @@ def list_page(p, view):
     elif what == "objects":
         t = p.get("type", "")
         items = [dict(id=o, name=o, kind="object", type=a.kinds[o], status=None) for o in a.objects if not t or a.kinds[o] == t]
+    elif what in ("role_holders", "user_holders"):  # who reaches role=X, directly or further down (What if)
+        r = p.get("role", "")
+        rs, us = a.ups(r) if r in a.roles else (set(), set())
+        if what == "role_holders":
+            items = [dict(id=x, name=x, kind=nk(x), type="direct" if r in a.holds.get(x, []) else "inherited", status=None)
+                     for x in sorted(rs - {r})]
+        else:
+            items = [dict(id=u, name=u, kind="user", type="direct" if r in a.roles_of.get(u, []) else "inherited",
+                          status=a.status(u)) for u in sorted(us)]
+        items.sort(key=lambda i: i["type"] != "direct")
     elif what == "types":
         items = [dict(id=t, name=t, kind=None, type=t, status=None) for t in sorted(set(a.kinds.values()))]
     elif what == "databases":
         items = [dict(id=d, name=d, kind=None, type="DATABASE", status=None) for d in sorted({a.split_name(o)[0] for o in a.objects} - {""})]
     else:
-        raise ApiError(400, "bad_param", "what must be users, roles, objects, types or databases")
+        raise ApiError(400, "bad_param", "what must be users, roles, objects, types, databases, role_holders or user_holders")
     return dict(items=items)
 
 

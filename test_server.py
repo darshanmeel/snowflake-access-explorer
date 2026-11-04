@@ -223,6 +223,10 @@ def test_whatif():
     assert d["counts"]["users"] and d["users"][0]["lost_rows"] and "DROP ROLE" in d["sql"]
     assert "What if" in get(f"/api/whatif.csv?changes={ch}").text
     get("/api/whatif?changes=nope", 400)
+    hs = js(f"/api/list?what=role_holders&role={a.TECH}SALES_CORE_READ")["items"]
+    assert hs and {i["type"] for i in hs} == {"direct", "inherited"} and hs[0]["type"] == "direct", hs[:3]
+    us = js(f"/api/list?what=user_holders&role={a.TECH}SALES_CORE_READ")["items"]
+    assert us and all(i["kind"] == "user" for i in us)
     get("/api/whatif?changes=" + quote(json.dumps([{"op": "drop_role", "role": "NOPE"}])), 400)
 
 

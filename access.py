@@ -2547,18 +2547,22 @@ def changes_of(changes):
     cut, out = dict(user=set(), link=set(), priv=set(), drop=set(), public=False), []
     for c in changes:
         op, r = c.get("op"), c.get("role")
-        if op == "revoke_role_from_user":
-            u = c.get("user")
-            if r not in roles_of.get(u, []):
-                raise ValueError(f"Role {r} is not granted to user {u}")
-            cut["user"].add((u, r))
-            label, (iac, sql) = f"Revoke role {r} from user {u}", revoke(role_edge(u, r, True))
-        elif op == "revoke_role_from_role":
-            g = c.get("grantee")
-            if r not in holds.get(g, []):
-                raise ValueError(f"Role {r} is not granted to role {g}")
-            cut["link"].add((r, g))
-            label, (iac, sql) = f"Revoke role {r} from role {g}", revoke(role_edge(g, r))
+        if op in ("revoke_role_from_user", "revoke_role_from_role"):
+            user = op == "revoke_role_from_user"
+            g = c.get("user" if user else "grantee")
+            direct = r in (roles_of if user else holds).get(g, [])
+            # held further down: cut r where it is granted, at every role on g's paths that holds it directly
+            via = sorted(h for h in dict.fromkeys(held_by.get(r, [])) if h != g and (g in ups(h)[1] if user else g in ups(h)[0]))
+            if not direct and not via:
+                raise ValueError(f"{'User' if user else 'Role'} {g} does not reach role {r}")
+            if direct:
+                cut["user" if user else "link"].add((g, r) if user else (r, g))
+            cut["link"].update((r, h) for h in via)
+            edges = ([role_edge(g, r, user)] if direct else []) + [role_edge(h, r) for h in via]
+            label = f"Revoke role {r} from {'user' if user else 'role'} {g}" + (
+                f" (held through {', '.join(via)}: revoked there too, so their other holders lose it as well)" if via and direct else
+                f" (held through {', '.join(via)}: revoked there, so their other holders lose it as well)" if via else "")
+            iac, sql = fix_text(edges)
         elif op == "revoke_priv":
             pv, o = c.get("privilege"), c.get("object")
             ks = sorted({k for p, k, x in granted.get(r, []) if p == pv and x == o})
