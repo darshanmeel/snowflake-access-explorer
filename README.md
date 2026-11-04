@@ -63,6 +63,11 @@ The **local web app (React)** is the recommended and default version: it runs on
 | Use it when | You can't (or don't want to) create objects, or you just want to try it | A team wants one shared, scheduled copy, viewers with low rights, and SQL in worksheets without the app |
 | Settings | nothing more | `ACCESS_SNAPSHOT=<DB>.<SCHEMA>`, or `SNOWFLAKE_DATABASE` and `SNOWFLAKE_SCHEMA` |
 
+With `SOURCE=direct` the shared data is read only when you click **Load shared data** (a copy from the last 24 h opens at
+once), so **My access** works without waiting for it. Without ACCOUNT_USAGE it reads with one `SHOW` per role, sent 16 at a
+time (`SHOW_THREADS`); `IMPORTED PRIVILEGES` on database `SNOWFLAKE` makes it one fast query. The sidebar's
+**Incomplete** box says what could not be read and which grant fixes it.
+
 Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). The sidebar shows **Data from &lt;time&gt;**; **Read Snowflake again** reads it again. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
 
 ### 1. Install once (PowerShell; needs Python 3.10+ and git, no Node or npm)
@@ -112,6 +117,7 @@ SNOWFLAKE_WAREHOUSE=<WH>
 | `CACHE_HOURS` | `24` | Hours the local copy in `.cache/` is used; `0` = memory only |
 | `BUILTIN` | `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*` | Names of Snowflake's built-in roles and objects, folded under PUBLIC and left out of rule checks (`?builtin=1` shows them) |
 | `APP`, `WEB_PORT`, `STREAMLIT_PORT` | `web`, `8000`, `8501` | What `run.py` starts, and where |
+| `SHOW_THREADS` | `16` | SHOW statements sent at once when ACCOUNT_USAGE is not readable (`1` = one after another) |
 | `HOST` | `127.0.0.1` | Address the local web app listens on; `0.0.0.0` on a shared server ([Deploy](#deploy)) |
 
 More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, ...): README.html.

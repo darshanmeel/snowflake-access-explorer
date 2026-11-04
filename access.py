@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 # .env (template .env.example) fills in what the environment lacks: no file, a missing name or an empty value
@@ -353,6 +354,23 @@ def qualify(db, name):
     return name if name.startswith(db + ".") else f"{db}.{name}"
 
 
+SHOW_THREADS = int(os.environ.get("SHOW_THREADS", "16"))  # SHOW statements sent at once (one per role is slow in a row)
+
+
+def each(query, sqls):
+    """query(sql) for every sql, SHOW_THREADS at a time, in order: the rows, or the exception of a failed one."""
+    def one(sql):
+        try:
+            return query(sql)
+        except Exception as e:
+            return e
+    sqls = list(sqls)
+    if len(sqls) < 2 or SHOW_THREADS < 2:
+        return [one(s) for s in sqls]
+    with ThreadPoolExecutor(min(SHOW_THREADS, len(sqls))) as pool:
+        return list(pool.map(one, sqls))
+
+
 def held_db_roles(grants):
     """Database roles granted in these GRANT rows (USAGE on DATABASE_ROLE)."""
     return [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE_ROLE" and g["PRIVILEGE"] == "USAGE"]
@@ -378,28 +396,25 @@ def mine(query, db):
     query("USE SECONDARY ROLES ALL")  # every granted role counts, as with DEFAULT_SECONDARY_ROLES = ('ALL')
     roles = json.loads(query("SELECT CURRENT_AVAILABLE_ROLES() AS R")[0]["R"])  # granted + inherited, always readable
     src, notes, grants, skipped = {}, {}, [], []
-    for r in roles:
-        try:
+    for r, got in zip(roles, each(query, [f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles])):
+        if isinstance(got, Exception):
+            skipped.append(f"{r} ({line(got)})")
+        else:
             grants += [dict(GRANTEE_ROLE=r, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
-                            OBJECT_NAME=x["name"].replace('"', ""), IS_FUTURE=False)
-                       for x in query(f"SHOW GRANTS TO ROLE {ident(r)}")]
-        except Exception as e:
-            skipped.append(f"{r} ({line(e)})")
-    todo, seen, bad = held_db_roles(grants), set(), []  # database roles: their own SHOW, recursively
+                            OBJECT_NAME=x["name"].replace('"', ""), IS_FUTURE=False) for x in got]
+    todo, seen, bad = held_db_roles(grants), set(), []  # database roles: their own SHOW, recursively, a wave at a time
     while todo:
-        r = todo.pop()
-        if r in seen:
-            continue
-        seen.add(r)
-        try:
+        wave = sorted(set(todo) - seen)
+        seen |= set(wave)
+        todo = []
+        for r, got in zip(wave, each(query, [f"SHOW GRANTS TO DATABASE ROLE {db_ident(r)}" for r in wave])):
+            if isinstance(got, Exception):
+                bad.append(f"{r} ({line(got)})")
+                continue
             got = [dict(GRANTEE_ROLE=r, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
-                        OBJECT_NAME=x["name"].replace('"', ""), IS_FUTURE=False)
-                   for x in query(f"SHOW GRANTS TO DATABASE ROLE {db_ident(r)}")]
-        except Exception as e:
-            bad.append(f"{r} ({line(e)})")
-            continue
-        grants += got
-        todo += held_db_roles(got)
+                        OBJECT_NAME=x["name"].replace('"', ""), IS_FUTURE=False) for x in got]
+            grants += got
+            todo += held_db_roles(got)
     if bad:
         notes["database_roles"] = (f"{len(bad)} database roles not readable, held but their grants unknown: "
                                    + " | ".join(bad[:10]))
@@ -469,6 +484,9 @@ def live(query):
     def rows(sql):  # lower-case keys: SHOW columns are lower case, views upper case
         return [{k.lower(): v for k, v in r.items()} for r in query(sql)]
 
+    def many(sqls):  # rows of each sql, SHOW_THREADS at a time; a failed one gives its exception
+        return [r if isinstance(r, Exception) else [{k.lower(): v for k, v in x.items()} for x in r] for r in each(query, sqls)]
+
     def readable(view):
         try:
             query(f"SELECT 1 FROM {AU}.{view} LIMIT 1")
@@ -511,47 +529,57 @@ def live(query):
         note("grants", "ACCOUNT_USAGE", None)
     else:
         skipped = []
-        for role in [r["name"] for r in rows("SHOW ROLES")]:
-            try:
-                d["GRANT"] += [dict(GRANTEE_ROLE=role, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
-                                    OBJECT_NAME=clean(x["name"]), IS_FUTURE=False,
-                                    GRANT_OPTION=str(x.get("grant_option")).lower() == "true", GRANTED_BY=x.get("granted_by"))
-                               for x in rows(f"SHOW GRANTS TO ROLE {ident(role)}") if x.get("granted_to") in ("ROLE", None)]
-                d["USER_ROLE"] += [dict(USER_NAME=x["grantee_name"], ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
-                                   for x in rows(f"SHOW GRANTS OF ROLE {ident(role)}") if x.get("granted_to") == "USER"]
-            except Exception as e:  # a role this role may not inspect: keep going, list it in the notes
-                skipped.append(f"{role}: {line(e)}")
-        for x in rows("SHOW DATABASES"):  # database roles: per database, their grants under DB.ROLE
-            if x.get("kind", "STANDARD") != "STANDARD":
+        roles = [r["name"] for r in rows("SHOW ROLES")]
+        got = many([f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [f"SHOW GRANTS OF ROLE {ident(r)}" for r in roles])
+        for role, to, of in zip(roles, got[:len(roles)], got[len(roles):]):
+            bad = next((x for x in (to, of) if isinstance(x, Exception)), None)
+            if bad:  # a role this role may not inspect: keep going, list it in the notes
+                skipped.append(f"{role}: {line(bad)}")
                 continue
-            try:
-                for r in rows(f"SHOW DATABASE ROLES IN DATABASE {ident(x['name'])}"):
-                    q = f"{x['name']}.{clean(r['name'])}"
-                    d["GRANT"] += [dict(GRANTEE_ROLE=q, PRIVILEGE=g["privilege"], GRANTED_ON=g["granted_on"],
-                                        OBJECT_NAME=clean(g["name"]), IS_FUTURE=False,
-                                        GRANT_OPTION=str(g.get("grant_option")).lower() == "true",
-                                        GRANTED_BY=g.get("granted_by")) for g in rows(f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}")]
-            except Exception as e:
-                skipped.append(f"database roles in {x['name']}: {line(e)}")
+            d["GRANT"] += [dict(GRANTEE_ROLE=role, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
+                                OBJECT_NAME=clean(x["name"]), IS_FUTURE=False,
+                                GRANT_OPTION=str(x.get("grant_option")).lower() == "true", GRANTED_BY=x.get("granted_by"))
+                           for x in to if x.get("granted_to") in ("ROLE", None)]
+            d["USER_ROLE"] += [dict(USER_NAME=x["grantee_name"], ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
+                               for x in of if x.get("granted_to") == "USER"]
+        dbs = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+        qs = []  # database roles: per database, their grants under DB.ROLE
+        for name, got in zip(dbs, many([f"SHOW DATABASE ROLES IN DATABASE {ident(x)}" for x in dbs])):
+            if isinstance(got, Exception):
+                skipped.append(f"database roles in {name}: {line(got)}")
+            else:
+                qs += [(name, f"{name}.{clean(r['name'])}") for r in got]
+        for (name, q), got in zip(qs, many([f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}" for _, q in qs])):
+            if isinstance(got, Exception):
+                skipped.append(f"database roles in {name}: {line(got)}")
+                continue
+            d["GRANT"] += [dict(GRANTEE_ROLE=q, PRIVILEGE=g["privilege"], GRANTED_ON=g["granted_on"],
+                                OBJECT_NAME=clean(g["name"]), IS_FUTURE=False,
+                                GRANT_OPTION=str(g.get("grant_option")).lower() == "true",
+                                GRANTED_BY=g.get("granted_by")) for g in got]
         note("grants", "SHOW", why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else ""))
     note("user_roles", src["grants"], notes.get("grants"))
 
-    skipped = []  # future grants: no ACCOUNT_USAGE view
-    for x in rows("SHOW DATABASES"):
-        if x.get("kind", "STANDARD") != "STANDARD":  # shares, applications: their grants are not ours
+    skipped = []  # future grants: no ACCOUNT_USAGE view; shares and applications: their grants are not ours
+    dbs = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+    places, failed = [], set()
+    for name, got in zip(dbs, many([f"SHOW SCHEMAS IN DATABASE {ident(x)}" for x in dbs])):
+        if isinstance(got, Exception):
+            skipped.append(f"{name}: {line(got)}")
             continue
-        try:
-            places = [f"DATABASE {ident(x['name'])}"] + [
-                f"SCHEMA {ident(x['name'])}.{ident(s['name'])}"
-                for s in rows(f"SHOW SCHEMAS IN DATABASE {ident(x['name'])}") if s["name"] != "INFORMATION_SCHEMA"]
-            for p in places:  # to a database role of this database: DB.ROLE
-                d["GRANT"] += [dict(GRANTEE_ROLE=f["grantee_name"] if f["grant_to"] == "ROLE" else
-                                    qualify(x["name"], clean(f["grantee_name"])), PRIVILEGE=f["privilege"],
-                                    GRANTED_ON=f["grant_on"], OBJECT_NAME=clean(f["name"]), IS_FUTURE=True,
-                                    GRANT_OPTION=str(f.get("grant_option")).lower() == "true", GRANTED_BY=None)
-                               for f in rows(f"SHOW FUTURE GRANTS IN {p}") if f.get("grant_to") in ("ROLE", "DATABASE_ROLE")]
-        except Exception as e:
-            skipped.append(f"{x['name']}: {line(e)}")
+        places += [(name, f"DATABASE {ident(name)}")] + [
+            (name, f"SCHEMA {ident(name)}.{ident(s['name'])}") for s in got if s["name"] != "INFORMATION_SCHEMA"]
+    for (name, p), got in zip(places, many([f"SHOW FUTURE GRANTS IN {p}" for _, p in places])):
+        if isinstance(got, Exception):
+            if name not in failed:  # one note per database
+                failed.add(name)
+                skipped.append(f"{name}: {line(got)}")
+            continue
+        d["GRANT"] += [dict(GRANTEE_ROLE=f["grantee_name"] if f["grant_to"] == "ROLE" else  # to a database role: DB.ROLE
+                            qualify(name, clean(f["grantee_name"])), PRIVILEGE=f["privilege"],
+                            GRANTED_ON=f["grant_on"], OBJECT_NAME=clean(f["name"]), IS_FUTURE=True,
+                            GRANT_OPTION=str(f.get("grant_option")).lower() == "true", GRANTED_BY=None)
+                       for f in got if f.get("grant_to") in ("ROLE", "DATABASE_ROLE")]
     note("future_grants", "SHOW", f"{len(skipped)} databases skipped: " + " | ".join(skipped[:20]) if skipped else None)
 
     why = readable("USERS")

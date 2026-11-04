@@ -83,7 +83,11 @@ def read_shared():
     return (a.fake() if MODE == "fake" else with_query(a.live) if DIRECT else with_query(lambda q: a.snapshot(q, WHERE)))
 
 
-def load_shared():
+def load_shared(ask=False):
+    """ask: a page wants it. Read directly from Snowflake (SOURCE=direct) only on a click (reload what=load): it can
+    take minutes, and someone may want only My access; a copy in memory or .cache/ is used at once."""
+    if ask and MODE == "snowflake" and DIRECT and not cache.ready(KEY):
+        raise ApiError(409, "shared_not_loaded", "The shared data is read from Snowflake on request: Load shared data.")
     with LOAD:
         try:
             return cache.get(KEY, read_shared, disk=MODE == "snowflake")[0]
@@ -144,7 +148,7 @@ def session(view, sid, builtin=False):
     if view not in ("shared", "mine"):
         raise ApiError(400, "bad_param", "view must be shared or mine")
     if view == "shared":
-        d = load_shared()
+        d = load_shared(ask=True)
         key = ("shared", d["run"].get("RUN_ID"), str(d["run"].get("FINISHED_AT")))
     else:
         m = mine_entry(sid)
@@ -314,39 +318,38 @@ RULE_INFO = {
 }
 
 
+IP = "IMPORTED PRIVILEGES on database SNOWFLAKE"
+
+
 def note_info(k, source, view):
-    """A NOTES key in plain words: (title, what it means for the app)."""
+    """A NOTES key in plain words: (title, what it means for the app, how to fix it or None)."""
     mine = view == "mine"
     if k == "usage":
-        return (("query history: last 7 days only", "ACCOUNT_USAGE.QUERY_HISTORY is not readable, so it came from "
-                 "INFORMATION_SCHEMA (7 days, 10,000 queries): roles and warehouses used before that look unused.")
-                if source == "INFORMATION_SCHEMA" else
-                ("query history not readable", "Your role can't read query history, so there is no 'last used' for "
-                 "roles and warehouses. Grants and paths are complete."))
+        return (("Query history: 7 days only", "Roles and warehouses used before that look unused.",
+                 f"{IP} gives 30 days.") if source == "INFORMATION_SCHEMA" else
+                ("No query history", "No 'last used' for roles and warehouses. Grants and paths are complete.",
+                 f"{IP}." if not mine else "None needed: grants and paths are complete."))
     return {
-        "applicable_roles": ("role list fallback not readable", "INFORMATION_SCHEMA.APPLICABLE_ROLES is not readable "
-                             "in the database used. It is only a fallback: role links come from SHOW GRANTS, complete "
-                             "unless another warning names roles that could not be read."),
-        "grants": ("some grants not read", "SHOW GRANTS failed for the roles listed in Details: their privileges are "
-                   "missing, only their role links are shown." if mine else "ACCOUNT_USAGE grants are not readable: "
-                   "read with SHOW instead; roles listed in Details could not be read and miss their privileges."),
-        "user_roles": ("your directly granted roles guessed" if mine else "user roles read with SHOW",
-                       "SHOW GRANTS TO USER failed, so the roles granted to you directly come from APPLICABLE_ROLES or "
-                       "from your roles no other role holds. What you reach is right; a path may start at another role."
-                       if mine else "Which roles each user holds came from SHOW, not ACCOUNT_USAGE: see Details."),
-        "users": ("user details not readable", "Default role, type, disabled state and last login are unknown, so "
-                  "dormant and disabled user checks can't judge them."),
-        "tags": ("sensitive-data tags not read", "Tags need the account-wide governance views, which only the shared "
-                 "snapshot reads: no sensitive marks or sensitive-data rules here." if mine else "Tags came from a "
-                 "fallback or are missing: sensitive marks may be incomplete."),
-        "policies": ("masking policies partly read", "Masking and row access policies came from a fallback or are "
-                     "missing: 'masked' / 'unmasked' on sensitive columns may be wrong."),
-        "future_grants": ("future grants partly read", "Future grants of the databases listed in Details are missing."),
-        "streams": ("streams not readable", "Stream sources are missing: the stream rule can't run."),
-        "database_roles": ("database roles partly read", "The grants of the database roles listed in Details could not "
-                           "be read: what they give is missing."),
-        "error": ("snapshot run failed", "The last run of SP_ACCESS_SNAPSHOT failed: see Details."),
-    }.get(k, (k.replace("_", " "), "Read with a fallback or partly: see Details."))
+        "applicable_roles": ("Role list fallback unread", "Only a fallback: role links come from SHOW GRANTS.", None),
+        "grants": ("Some roles unreadable", "Their privileges are missing; their role links are shown.",
+                   "Ask the owner of those roles, or use the shared snapshot.") if mine else
+                  ("Grants read with SHOW", "Slow (one query per role). Roles named in the error are missing.",
+                   f"{IP}: one fast, complete read."),
+        "user_roles": ("Your direct roles guessed", "What you reach is right; a path may start at another role.", None)
+                      if mine else ("User roles read with SHOW", "Complete, but slow.", f"{IP}."),
+        "users": ("User details unread", "Default role, disabled state and last login unknown: dormant checks can't judge.",
+                  f"{IP}."),
+        "tags": ("No sensitive tags", "My access can't read tags: no sensitive marks or rules here.",
+                 "Use the shared snapshot.") if mine else
+                ("Tags partly read", "Sensitive marks may be incomplete.", f"{IP}."),
+        "policies": ("Policies partly read", "'Masked' / 'unmasked' on sensitive columns may be wrong.", f"{IP}."),
+        "future_grants": ("Future grants partly read", "Future grants of the databases in the error are missing.",
+                          "MANAGE GRANTS, or ownership of those schemas."),
+        "streams": ("Streams unread", "The stream rule (22) can't run.", f"{IP}."),
+        "database_roles": ("Database roles partly read", "What the database roles in the error give is missing.",
+                           "USAGE on those databases."),
+        "error": ("Snapshot run failed", "The last SP_ACCESS_SNAPSHOT run failed.", "Run sql/2_snapshot.sql and read its error."),
+    }.get(k, (k.replace("_", " ").capitalize(), "Read with a fallback, or partly.", None))
 
 
 def snap_time(run):
@@ -366,8 +369,8 @@ def snap_time(run):
 
 def notes_of(run, view):
     src = run.get("SOURCES") or {}
-    return [dict(key=k, title=note_info(k, src.get(k), view)[0], meaning=note_info(k, src.get(k), view)[1], raw=str(v))
-            for k, v in (run.get("NOTES") or {}).items()]
+    return [dict(key=k, title=t, meaning=m, fix=f, raw=str(v))
+            for k, v in (run.get("NOTES") or {}).items() for t, m, f in [note_info(k, src.get(k), view)]]
 
 
 # ---------- rule hits on graph edges (app.breaks) ----------
@@ -1547,8 +1550,15 @@ def reload(body):
             r = with_query(lambda q: q(f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"))
             res = json.loads(list(r[0].values())[0])
         cache.drop(KEY)
+        if DIRECT:  # a click: read now, not at the next page
+            load_shared()
         return dict(ok=True, result=res, message="Snapshot rebuilt." if not DIRECT else "Read Snowflake again.")
+    if what == "load":  # the click that reads the shared data (SOURCE=direct)
+        load_shared()
+        return dict(ok=True, result=None, message="Loaded.")
     cache.drop(KEY)  # read the source again (Snowflake), not the local copy
+    if MODE == "snowflake" and DIRECT:  # a click: read now, not at the next page
+        load_shared()
     return dict(ok=True, result=None, message="Reloaded.")
 
 

@@ -149,6 +149,7 @@ export interface Note {
   key: string;
   title: string;
   meaning: string;
+  fix: string | null; // the grant or step that removes the gap
   raw: string;
 }
 
@@ -194,6 +195,7 @@ export interface Meta {
   notes: Note[];
   mine: MineState;
   mine_available: boolean; // false inside Snowflake (owner's rights)
+  error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click
   pages: { key: Page; label: string; badge: number | null; severity?: Severity | null }[]; // rules: count of the worst severity
   default_user: string;
   prefixes: { func: string; tech: string };

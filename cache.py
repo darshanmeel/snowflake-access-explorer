@@ -70,6 +70,16 @@ def get(key, fn, disk=True):
         return m
 
 
+def ready(key, disk=True):
+    """Whether get(key) answers from memory or the local file, without reading the source."""
+    m = MEM.get(key)
+    if m and time.time() - m[1] < TTL:
+        return True
+    f = file(key)
+    return (disk and HOURS > 0 and "SNOWFLAKE_ACCOUNT" in os.environ and f.is_file()
+            and time.time() - f.stat().st_mtime < HOURS * 3600)
+
+
 def drop(key):
     MEM.pop(key, None)
     file(key).unlink(missing_ok=True)

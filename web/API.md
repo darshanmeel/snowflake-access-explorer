@@ -225,7 +225,9 @@ sensitive = sensitive objects.
 
 ### POST /api/reload
 
-Body `{"what": "page" | "rebuild"}`. `page`: drop the shared cache, memory and `.cache/` file (Snowflake is read again on the next request).
+Body `{"what": "load" | "page" | "rebuild"}`. `load`: read the shared data now (with `SOURCE=direct` on Snowflake every
+shared request answers 409 `shared_not_loaded`, also in `meta.error`, until this click or a copy in memory or `.cache/`).
+`page`: drop the shared cache, memory and `.cache/` file (Snowflake is read again on the next request; direct: at once).
 `rebuild`: fake -> `{"ok": false, "message": "Demo: the CALL runs only on Snowflake (not FAKE=1)."}`; direct -> drop the
 cache (everything read again); snapshot -> `CALL <WHERE>.SP_ACCESS_SNAPSHOT('AUTO')`, then drop the cache.
 Answer: `{"ok": true, "result": <the procedure's JSON or null>, "message": "..."}`. Mirrors `app.refresh()`.

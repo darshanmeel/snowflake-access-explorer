@@ -104,9 +104,22 @@ function Side({ meta, page, nav, reload }: { meta: Meta; page: Page; nav: (p: Pa
       )}
       {meta.notes.length > 0 && (
         <details className="side-notes">
-          <summary className="ae-warn">Incomplete: {meta.notes.length} source{meta.notes.length === 1 ? "" : "s"}</summary>
-          <p className="ae-muted">Some data could not be read, so some answers may be missing things.</p>
-          {meta.notes.map((n) => <p key={n.key}><strong>{n.title}</strong> {n.meaning}{n.raw && <span className="ae-muted"> {n.raw}</span>}</p>)}
+          <summary><span className="side-notes-dot" />Incomplete · {meta.notes.length} source{meta.notes.length === 1 ? "" : "s"}</summary>
+          <ul>
+            {meta.notes.map((n) => (
+              <li key={n.key}>
+                <b>{n.title}</b>
+                <span>{n.meaning}</span>
+                {n.fix && <span className="side-notes-fix">Fix: {n.fix}</span>}
+                {n.raw && (
+                  <details className="side-notes-raw">
+                    <summary>Snowflake error</summary>
+                    <code>{n.raw}</code>
+                  </details>
+                )}
+              </li>
+            ))}
+          </ul>
         </details>
       )}
       {pr && (
@@ -151,6 +164,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   };
   const loadMine = (fresh = false) => run("Loading your access…", async () => { await post<MineState>(fresh ? "mine/load?fresh=1" : "mine/load"); setView(true); });
   const reload = () => run("Reading Snowflake…", () => post("reload", { what: "page" }));
+  const loadShared = () => run("Reading Snowflake… this can take a few minutes", () => post("reload", { what: "load" }));
   const rebuild = () => run("Rebuilding snapshot…", async () => {
     const r = await post<{ ok: boolean; message: string }>("reload", { what: "rebuild" });
     if (r.message) alert(r.message);
@@ -164,6 +178,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
 
   const Body = VIEWS[loc.page];
   const needMine = loc.mine && meta && !meta.mine.loaded;
+  const needShared = !loc.mine && meta?.error?.detail === "shared_not_loaded";
   return (
     <Root theme={theme}>
       <div className="app">
@@ -189,7 +204,17 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
               <button className="ae-btn" onClick={() => loadMine()}>Load my access</button>
             </Card>
           )}
-          {ctx && !needMine && (
+          {needShared && (
+            <Card title="Shared data">
+              <p>Reads every role, user and grant of the account with your role, once, and keeps it for 24 hours.
+                Without ACCOUNT_USAGE it sends a SHOW per role, so a big account can take a few minutes.</p>
+              <div className="ae-row">
+                <button className="ae-btn ae-btn-primary" onClick={loadShared} disabled={!!busy}>Load shared data</button>
+                {meta?.mine_available !== false && <button className="ae-btn" onClick={() => loadMine()} disabled={!!busy}>Only my access</button>}
+              </div>
+            </Card>
+          )}
+          {ctx && !needMine && !needShared && (
             <AppCtx.Provider value={ctx}>
               {meta?.mode === "fake" && <Banner tone="info" title="Demo data" lines={["Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake."]} />}
               <Body key={`${view}:${loc.page}`} />

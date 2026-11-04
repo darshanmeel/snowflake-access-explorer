@@ -438,6 +438,17 @@ def a_objects(grants):
     return {g["OBJECT_NAME"] for g in grants if g["OBJECT_NAME"].count(".") >= 1 and g["GRANTED_ON"] not in a.ROLE_ON}
 
 
+def test_each():
+    """SHOW statements run SHOW_THREADS at a time, answers in order, a failure as its exception."""
+    def query(sql):
+        if sql == "bad":
+            raise ValueError("no")
+        return [{"sql": sql}]
+    got = a.each(query, ["a", "bad", "c"] * 20)
+    assert [g if isinstance(g, Exception) else g[0]["sql"] for g in got][:3] == ["a", got[1], "c"]
+    assert isinstance(got[1], ValueError) and len(got) == 60
+
+
 def test_live():
     """live() without ACCOUNT_USAGE (SHOW fallback) and with it gives the same lookups as the data it read; writes nothing."""
     d = a.fake()
@@ -1233,7 +1244,7 @@ if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_graph_kit, test_summary, test_live, test_db_roles, test_builtin,
+              test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
               test_whatif, test_pages):
         a.build(a.fake())
         t()

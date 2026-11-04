@@ -153,6 +153,22 @@ def test_sensitive_rules_review():
     get("/api/review?db=NOPE", 404)
 
 
+def test_load_on_click():
+    """SOURCE=direct on Snowflake: no page reads the shared data until "Load shared data" (reload what=load)."""
+    old, reads = (server.MODE, server.DIRECT, server.read_shared), []
+    server.MODE, server.DIRECT = "snowflake", True
+    server.read_shared = lambda: reads.append(1) or a.fake()
+    server.cache.MEM.pop(server.KEY, None)
+    try:
+        assert js("/api/meta")["error"]["detail"] == "shared_not_loaded" and not reads
+        assert c.get("/api/user").json()["detail"] == "shared_not_loaded" and not reads
+        assert c.post("/api/reload", json={"what": "load"}).json()["ok"] and reads == [1]
+        assert js("/api/meta")["loaded"] and "error" not in js("/api/meta") and reads == [1]  # kept, not read again
+    finally:
+        server.MODE, server.DIRECT, server.read_shared = old
+        server.cache.MEM.pop(server.KEY, None)
+
+
 def test_mine():
     a.INSIDE = True  # inside Snowflake: the owner's rights, so no My access
     try:

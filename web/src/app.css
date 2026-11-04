@@ -44,7 +44,20 @@ body { background: #f6f4f1; }
 .st-embed .top { position: static; }
 .side-data { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ae-muted); margin-top: 14px; }
 .side-reload { font: inherit; font-size: 15px; background: none; border: 0; cursor: pointer; color: var(--ae-accent); padding: 0 4px; }
-.side-notes summary { cursor: pointer; font-size: 12px; margin: 8px 0; }
+.ae-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.ae-btn.ae-btn-primary { background: var(--ae-accent); border-color: var(--ae-accent); color: #fff; padding: 6px 14px; }
+.ae-btn:disabled { opacity: .6; cursor: progress; }
+.side-notes { margin: 10px 0; border: 1px solid var(--ae-warn_bd); background: var(--ae-warn_bg); border-radius: 8px; padding: 6px 10px; }
+.side-notes > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--ae-warn_ink); display: flex; align-items: center; gap: 6px; }
+.side-notes-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ae-warn_ink); flex: none; }
+.side-notes ul { list-style: none; margin: 8px 0 2px; padding: 0; display: grid; gap: 10px; }
+.side-notes li { display: grid; gap: 2px; font-size: 12px; line-height: 1.4; padding-left: 8px; border-left: 2px solid var(--ae-warn_bd); }
+.side-notes li b { color: var(--ae-ink); font-size: 12.5px; }
+.side-notes li span { color: var(--ae-muted); }
+.side-notes .side-notes-fix { color: var(--ae-ink); }
+.side-notes-raw summary { cursor: pointer; color: var(--ae-accent); font-size: 11px; margin-top: 2px; }
+.side-notes-raw code { display: block; margin-top: 4px; font: 10.5px/1.45 var(--ae-mono); color: var(--ae-muted);
+  background: var(--ae-panel); border: 1px solid var(--ae-line); border-radius: 6px; padding: 6px; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
 .side-link { all: unset; display: block; cursor: pointer; font-size: 13px; padding: 2px 0; }
 .side-link:hover { text-decoration: underline; }
 .ae-bad { color: var(--ae-bad_ink); font-weight: 600; } .ae-warn { color: var(--ae-warn_ink); }
