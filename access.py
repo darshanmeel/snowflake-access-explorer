@@ -20,6 +20,8 @@ for line in ENV.read_text(encoding="utf-8-sig").splitlines() if ENV.is_file() el
     k, v = k.strip(), v.strip().strip("\"'")
     if k and v and not k.startswith("#"):
         os.environ.setdefault(k, v)
+# Streamlit in Snowflake: no account variable there (the app uses its own session, with the owner's rights)
+INSIDE = "SNOWFLAKE_ACCOUNT" not in os.environ and os.environ.get("FAKE") != "1"
 
 ADMIN = {"ACCOUNTADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "ORGADMIN"}
 # account privileges Snowflake grants to PUBLIC by default (plus the SNOWFLAKE.* database roles): not rule 9

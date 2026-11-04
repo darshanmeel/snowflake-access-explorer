@@ -176,12 +176,14 @@ It uses the app's own Snowflake session, keeps data in memory only (24 h) and wr
 
 1. Do the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) setup first (`1_setup.sql`, `2_snapshot.sql`, the daily task):
    inside Snowflake the app reads the `TBL_ACCESS_` tables.
-2. Settings for the app go in `sis/.env` (git-ignored, optional), uploaded as the app's `.env`:
+2. Settings for the app go in `sis/.env` (required, git-ignored), uploaded as the app's `.env`:
+   `copy sis.env.example sis\.env` (macOS/Linux: `cp sis.env.example sis/.env`) and fill in:
    ```
    SOURCE=objects
    ACCESS_SNAPSHOT=<DB>.<SCHEMA>
    ```
-   Never put `SNOWFLAKE_ACCOUNT` or a key there: without it the app knows it runs inside Snowflake and uses the app's session.
+   Inside Snowflake the app reads the snapshot tables: direct reads need `SHOW`, which is restricted there. Never put
+   `SNOWFLAKE_ACCOUNT` or a key in this file: without it the app knows it runs inside Snowflake and uses the app's session.
 3. Upload the files and create the app, from the repo folder with the same `.env` and `settings.local.sql` as step 1:
    ```
    python run_sql.py sql/4_streamlit.sql;  python run_sql.py sql/4_streamlit_verify.sql
@@ -192,9 +194,9 @@ It uses the app's own Snowflake session, keeps data in memory only (24 h) and wr
 4. Open it in Snowsight: **Projects > Streamlit > ST_ACCESS_EXPLORER**. To update after `git pull`, run step 3 again.
 
 - The app runs with its **owner's rights** (`DEV_ROLE`): every viewer sees what that role reads, not their own access.
-  My access (each person's own view) is a feature of the local version.
-- If the page stays blank (custom components blocked in your account), add `ST_REACT=html` to `sis/.env` and run step 3
-  again; `ST_REACT=native` runs the plain Streamlit pages instead.
+  So **My access** (each person's own view) is hidden there; it is a feature of the local version.
+- If the page stays blank (the React component blocked in your account), add `ST_REACT=html` to `sis/.env` and run step 3
+  again: the app then shows its plain Streamlit pages (same data, simpler look).
 - Remove it: `python run_sql.py sql/3_cleanup.sql` (drops the app and its stage too).
 
 ### Streamlit anywhere else
@@ -212,6 +214,8 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 ### Container Services (optional)
 Only to give everyone the local web app without each person installing it: run `server.py` as a Snowpark Container Services
 service (any container image with Python and `requirements-web.txt`, `HOST=0.0.0.0`). Not needed to use the app.
+Snowflake sets `SNOWFLAKE_ACCOUNT` in the container, so the app logs in like on a shared server: give the service
+`SNOWFLAKE_USER` and a key pair (`SNOWFLAKE_PRIVATE_KEY_FILE`, mounted as a secret). Browser SSO can't work there.
 
 ## Also in this repo
 - **`sf.py` runs plain SQL from your machine.** It uses the same `.env` and logins. Run `python sf.py "select current_user(), current_role()"` or `python sf.py -f query.sql`, or from Python: `from sf import run; cols, rows = run("select 1")`.

@@ -193,6 +193,7 @@ export interface Meta {
   sources: Record<string, string>;
   notes: Note[];
   mine: MineState;
+  mine_available: boolean; // false inside Snowflake (owner's rights)
   pages: { key: Page; label: string; badge: number | null; severity?: Severity | null }[]; // rules: count of the worst severity
   default_user: string;
   prefixes: { func: string; tech: string };

@@ -1,8 +1,8 @@
 -- 4 · Streamlit in Snowflake (developer role): uploads the app to a stage and creates the Streamlit app the app role may open.
 -- Before: 1_setup.sql and 2_snapshot.sql (inside Snowflake the app reads the TBL_ACCESS_ tables). The React bundle
 -- web/dist-st is committed: no npm needed. The app runs with the owner's rights (&DEV_ROLE) and writes nothing.
--- Settings for the app inside Snowflake: the optional file sis/.env (git-ignored), uploaded as the app's .env,
--- e.g. SOURCE=objects and ACCESS_SNAPSHOT=<DB>.<SCHEMA>; ST_REACT=html if the page stays blank. Never SNOWFLAKE_ACCOUNT.
+-- Settings for the app inside Snowflake: sis/.env (required, git-ignored; template sis.env.example), uploaded as the
+-- app's .env: SOURCE=objects and ACCESS_SNAPSHOT=<DB>.<SCHEMA>; ST_REACT=html if the page stays blank. Never SNOWFLAKE_ACCOUNT.
 -- Safe to run again: files are overwritten and the app is replaced, which loads the new files.
 -- SnowSQL: !source sql/4_streamlit.sql (from the repo folder)
 !source settings.local.sql
@@ -45,7 +45,7 @@ PUT 'file://&HERE/web/dist-st/index.html' @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-s
 -- name: PUT_WEB_ASSETS
 PUT 'file://&HERE/web/dist-st/assets/*' @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-st/assets AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 
--- name: PUT_SETTINGS (may fail)
+-- name: PUT_SETTINGS
 PUT 'file://&HERE/sis/.env' @&DB.&SCHEMA.STG_ACCESS_APP AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 
 -- name: STREAMLIT

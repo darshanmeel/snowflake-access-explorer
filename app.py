@@ -27,6 +27,8 @@ DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")  # "My access" without Sn
 PAGES = {"user": "User", "role": "Role", "object": "Object", "sensitive": "Sensitive data", "check": "Can they?",
          "rules": "Rule checks", "review": "Access review"}
 VIEWS = {"shared": "Shared snapshot", "mine": "My access (live, only me)"}
+if a.INSIDE:  # inside Snowflake the app reads with its owner's rights, never as the viewer
+    VIEWS.pop("mine")
 DEPTHS = {"": "No limit (every level)", "1": "Up to depth 1", "3": "Up to depth 3", "5": "Up to depth 5",
           "10": "Up to depth 10"}
 ROLES = {"all": "All granted roles", "default": "Default role only"}
@@ -148,8 +150,9 @@ def load(view, box):
             return shared()
         except Exception as x:
             html(ui.banner("bad", "Shared snapshot not readable", [e(a.line(x))]))
-            html(ui.banner("info", f"Use {VIEWS['mine']} in the sidebar: it reads only your own roles, with your own "
-                                   "rights, and saves nothing."))
+            if "mine" in VIEWS:
+                html(ui.banner("info", f"Use {VIEWS['mine']} in the sidebar: it reads only your own roles, with your own "
+                                       "rights, and saves nothing."))
             return None
     who = st.context.cookies.get("_streamlit_xsrf")
     box.button("Reload my access" if "mine" in st.session_state else "Load my access", width="stretch",

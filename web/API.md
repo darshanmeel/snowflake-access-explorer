@@ -25,7 +25,7 @@ TypeScript types: `web/src/api/types.ts` (keep both in step).
   `"group"` with the raw value kept in `raw_kind`. Object types (`a.kinds`) pass through as strings; the UI falls back
   to a plain grey box for a type it does not know.
 - **Errors:** `{"detail": "<code>", "message": "<plain words>"}` with HTTP 400 (bad param), 404 (name not in the data:
-  `not_found`), 409 (`mine_not_loaded`), 503 (`shared_unreadable`, message = `a.line(error)`).
+  `not_found`), 409 (`mine_not_loaded`; `mine_unavailable` inside Snowflake, where the app has its owner's rights and `meta.mine_available` is false), 503 (`shared_unreadable`, message = `a.line(error)`).
 
 ## Common query params
 

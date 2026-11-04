@@ -114,6 +114,9 @@ def mine_state(sid):
 def load_mine(sid, fresh=False):
     """The logged-in user's own access: read with their rights, kept in server memory under sid and, like the shared
     data, in .cache/ for CACHE_HOURS (fresh: read again)."""
+    if a.INSIDE:  # the app's session has the owner's rights: it would show the owner's access as the viewer's
+        raise ApiError(409, "mine_unavailable", "My access is not available inside Snowflake: the app runs with its "
+                       "owner's rights, not yours. Use the local version for your own access.")
     for k in list(MINE):
         mine_entry(k)  # drops the expired ones
     at = time.time()
@@ -1494,7 +1497,7 @@ def theme_tokens():
 def meta(p, sid):
     view = p.get("view", "shared")
     base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
-                mine=mine_state(sid), pages=[dict(key=k, label=lab, badge=None) for k, lab in PAGES.items()
+                mine=mine_state(sid), mine_available=not a.INSIDE, pages=[dict(key=k, label=lab, badge=None) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),

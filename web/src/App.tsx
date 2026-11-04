@@ -172,7 +172,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           <Find view={view} onOpen={(i) => go({ page: i.page, params: { name: i.id }, mine: loc.mine })} />
           <div className="seg" role="group" aria-label="Data">
             <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)}>Shared snapshot</button>
-            <button className={loc.mine ? "on" : ""} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>
+            {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
           </div>
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
           {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}

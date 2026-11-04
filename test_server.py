@@ -46,7 +46,8 @@ def graph_ok(g):
 
 
 def test_frame():
-    m = js("/api/meta", ["mode", "source", "loaded", "run", "pages", "rules", "tokens", "limits", "type_icon", "mine"])
+    m = js("/api/meta", ["mode", "source", "loaded", "run", "pages", "rules", "tokens", "limits", "type_icon", "mine", "mine_available"])
+    assert m["mine_available"]
     assert m["loaded"] and m["source"] == "fake" and len(m["rules"]) == len(a.RULES)
     assert "database_role" in m["tokens"]["light"]["kind"]
     assert {p["key"] for p in m["pages"]} == set(server.PAGES)
@@ -153,6 +154,13 @@ def test_sensitive_rules_review():
 
 
 def test_mine():
+    a.INSIDE = True  # inside Snowflake: the owner's rights, so no My access
+    try:
+        r = c.post("/api/mine/load")
+        assert r.status_code == 409 and r.json()["detail"] == "mine_unavailable", r.text
+        assert not js("/api/meta")["mine_available"]
+    finally:
+        a.INSIDE = False
     get("/api/user?view=mine", 409)
     assert c.get("/api/user?view=mine").json()["detail"] == "mine_not_loaded"
     r = c.post("/api/mine/load")

@@ -3,7 +3,7 @@
 -- name: STREAMLIT (expect 1)
 SHOW STREAMLITS LIKE 'ST_ACCESS_EXPLORER' IN SCHEMA &DB.&SCHEMA;
 
--- app files on the stage: 8 at the root (9 with sis/.env), plus web/dist-st
+-- app files on the stage: 9 at the root (with .env), plus web/dist-st
 -- name: STAGE_FILES
 LIST @&DB.&SCHEMA.STG_ACCESS_APP;
 
