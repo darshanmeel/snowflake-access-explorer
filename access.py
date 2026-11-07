@@ -299,7 +299,8 @@ def fake():
                 ("SHARED.LOGGING.TBL_LOGGING", "COLUMN", "CLIENT_IP", sem, "IP_ADDRESS", "CLASSIFIED"),
                 ("SHARED.LOGGING.TBL_LOGGING", "COLUMN", "CLIENT_IP", pc, "QUASI_IDENTIFIER", "CLASSIFIED"),
                 ("FINANCE", "DATABASE", None, sens, "CONFIDENTIAL", "MANUAL"),  # inherited by every FINANCE object
-                ("SALES.RAW.TBL_ORDER_RAW", "TABLE", None, sens, "INTERNAL", "MANUAL")]]  # tagged, not sensitive
+                ("SALES.RAW.TBL_ORDER_RAW", "TABLE", None, sens, "INTERNAL", "MANUAL"),  # tagged, not sensitive
+                ("HR.PEOPLE", "SCHEMA", None, "SHARED.GOVERNANCE.OWNER", "HR data owner", "MANUAL")]]  # approver
     email = f"CASE WHEN IS_ROLE_IN_SESSION('{F}ENGINEER') THEN VAL ELSE '***MASKED***' END"
     policies = [dict(POLICY_NAME="SHARED.GOVERNANCE." + n, POLICY_KIND=k, OBJECT_NAME=o, COLUMN_NAME=c, ARG_COLUMNS=a,
                      TAG_NAME=t, POLICY_BODY=b) for n, k, o, c, a, t, b in [
@@ -2652,6 +2653,159 @@ def can(user, priv, obj, default_only=False):
                 options=removal(user, priv, obj), ask=[] if best else ask_for(priv, obj),
                 use_role=best[0][1] if best else None, warehouse=wh if wh in whs else (whs[0] if whs else None),
                 status=status(user))
+
+
+def lanes(paths):
+    """Can they? path lanes from can() paths (with privilege): one per distinct route user->...->holder->object with
+    the privileges it carries, shortest first; and the roles on every lane (a place to cut; never PUBLIC)."""
+    by = {}
+    for q in paths:
+        by.setdefault(tuple(q["path"]), []).append(q["privilege"])
+    ls = sorted((dict(path=list(p), privileges=list(dict.fromkeys(v))) for p, v in by.items()),
+                key=lambda x: (len(x["path"]), x["path"]))
+    cut = [r for r in ls[0]["path"][1:-1] if r != "PUBLIC" and all(r in x["path"] for x in ls)] if ls else []
+    return ls, cut
+
+
+def cut_points(user, privs, obj):
+    """Where to cut (Can they? Yes): one entry per grant link on every path from user to any of privs on obj, fewest
+    side effects first. Entry: edges, iac, sql, people (users who lose one of privs on obj, net of their other paths),
+    lost (the user's other privileges whose every path uses the link). OWNERSHIP held: transfer text, not a revoke."""
+    acc = access_of(user, True)
+    ps = [p + [obj] for pv, k, o, p in acc if pv in privs and o == obj]
+    if not ps:
+        return []
+    pairs = [set(zip(p, p[1:])) for p in ps]
+    by = {}
+    for pv, k, o, p in acc:
+        if o != obj:
+            by.setdefault((pv, o), []).append(set(zip(p, p[1:])))
+    out = []
+    for i, (x, y) in enumerate(zip(ps[0], ps[0][1:])):
+        if y == "PUBLIC" or x == "PUBLIC" or not all((x, y) in s for s in pairs):  # every user holds PUBLIC
+            continue
+        es = [holder_edge(x, pv, obj) for pv in privs if any(q == pv and o == obj for q, _, o in granted.get(x, []))] \
+            if y == obj else [role_edge(x, y, i == 0)]
+        iac, sql = fix_text(es)
+        us = set().union(*(losers(es, pv, obj) for pv in privs))
+        lost = 0 if y == obj else sum(all((x, y) in s for s in ss) for ss in by.values())
+        out.append(dict(edges=es, iac=iac, sql=sql, people=sorted(us), lost=lost, order=i))
+    return sorted(out, key=lambda r: (len(r["people"]), r["lost"], -r["order"]))
+
+
+def reverse(obj, priv):
+    """Reverse BFS from obj over the roles holding priv on it, up the role graph: {role: shortest path
+    role->...->holder}."""
+    best = {r: [r] for r, pv, k in on.get(obj, []) if pv == priv}
+    todo = list(best)
+    while todo:
+        nxt = []
+        for r in todo:
+            for g in held_by.get(r, []):
+                if g not in best:
+                    best[g] = [g] + best[r]
+                    nxt.append(g)
+        todo = nxt
+    return best
+
+
+def brings(role, obj):
+    """What else a role brings besides obj: extra (privilege rows), also [dict(level, count, where)] (other data objects
+    per schema at their highest step, most first)."""
+    def make():
+        rows = grants(role)
+        os_ = [x for x in access_objects([r for r in rows if r["object"] != obj]) if x["category"] == "data" and x["level"]]
+        g = {}
+        for x in os_:
+            k = (x["level"], f"{x['database']}.{x['schema']}" if x["schema"] else x["database"] or x["object"])
+            g[k] = g.get(k, 0) + 1
+        also = sorted((dict(level=lv, count=n, where=w) for (lv, w), n in g.items()),
+                      key=lambda e: (-e["count"], -LEVELS.index(e["level"]), e["where"]))
+        return dict(extra=sum(r["object"] != obj for r in rows), also=also[:4])
+    return cached(("brings", role, obj), make)
+
+
+def suggestable(r):
+    return r not in ADMIN and r != "PUBLIC" and not any(fnmatch.fnmatch(r, b) for b in BUILD) and not reaches_admin(r)
+
+
+BROAD = int(os.environ.get("BROAD_PEOPLE", "1"))  # a nearest way that also gives the access to more people: a warning
+
+
+def nearest(user, priv, obj, limit=5):
+    """Can they? No: the nearest ways in. For each role R reaching priv on obj (reverse()) that the user does not reach
+    (no admin, build or admin-reaching role, not PUBLIC): grant R to the user (1 grant; a database role can't be
+    granted to a user: a new account role between, 2 grants) or to a role the user is granted directly (1 grant, but
+    everyone holding that role gets it too). Ranked by grants needed, then people who would also get it, then what else
+    R brings. Option: path (user[, via], R, ..., holder, obj), missing (index i: the link path[i] -> path[i+1] is
+    missing), role, to, to_user, cost, people (others who would get it), holders (users holding R today), extra, also,
+    rule1 (a technical role on a user or group role), broad (warning or None)."""
+    have = set(best_paths(user, True))
+    rev = {r: p for r, p in reverse(obj, priv).items() if r not in have and suggestable(r)}
+    if not rev:
+        return []
+    already = set().union(*(ups(r)[1] for r, pv, k in on.get(obj, []) if pv == priv), {user})
+    direct = [h for h in roles_of.get(user, []) if h != "PUBLIC" and role_kind(h) != "database"]
+    out = []
+    for r, p in rev.items():
+        b, k = brings(r, obj), role_kind(r)
+        base = dict(role=r, holders=len(ups(r)[1]), extra=b["extra"], also=b["also"])
+        if k == "database":
+            out.append(base | dict(path=[user, "<NEW_ROLE>"] + p + [obj], missing=0, to=user, to_user=True, cost=2,
+                                   people=0, rule1=False, broad=None))
+        else:
+            out.append(base | dict(path=[user] + p + [obj], missing=0, to=user, to_user=True, cost=1, people=0,
+                                   rule1=k == "technical", broad=None))
+        for h in direct:
+            n = len(ups(h)[1] - already)
+            out.append(base | dict(path=[user, h] + p + [obj], missing=1, to=h, to_user=False, cost=1, people=n,
+                                   rule1=k == "technical" and role_kind(h) == "group",
+                                   broad=f"gives it to all {n} other people holding {h}" if n >= BROAD else None))
+    out.sort(key=lambda o: (o["cost"], o["people"], o["rule1"], o["extra"], len(o["path"]), o["role"], o["to"]))
+    return out[:limit]
+
+
+def basic_priv(kind):
+    """The privilege Can they? asks about when none is picked: read for data, else use."""
+    return next((p for p in ("SELECT", "USAGE", "READ", "OPERATE", "MONITOR") if p in valid_privs(kind)), "OWNERSHIP")
+
+
+def need_privs(kind, need):
+    """Privileges a request needs: read (one read privilege), change (INSERT and UPDATE on a table, else the type's
+    change privileges), own (OWNERSHIP)."""
+    vs = valid_privs(kind)
+    if need == "own":
+        return ["OWNERSHIP"]
+    if need == "change":
+        return [p for p in ("INSERT", "UPDATE") if p in vs] or [p for p in vs if obj_level(p, kind) == "change"][:2] \
+            or ["OWNERSHIP"]
+    return [basic_priv(kind)]
+
+
+OWNER_TAGS = os.environ.get("OWNER_TAGS", "OWNER,DATA_OWNER").upper().split(",")
+
+
+def approver(obj):
+    """The approver of an access request: the value of an owner tag on obj (inherited ones included), else None."""
+    return next((v for c, t, v, _ in tags_of(obj) if not c and t.split(".")[-1].upper() in OWNER_TAGS), None)
+
+
+def suggest(privs, obj, user=None, limit=5):
+    """Request access: existing functional roles that reach every one of privs on obj (no build role, nothing reaching
+    an admin role), smallest first (fewest other privileges), the ones the user already reaches left out. Entry: role,
+    path (role->...->holder->obj), holders (users holding it), extra, also, unmasked (sensitive columns of obj the role
+    sees in clear)."""
+    have = set(best_paths(user, True)) if user else set()
+    revs = [reverse(obj, pv) for pv in privs]
+    rs = [r for r in revs[0] if all(r in x for x in revs) and r not in have and role_kind(r) == "functional"
+          and suggestable(r)]
+    out = []
+    for r in rs:
+        b = brings(r, obj)
+        v = data_view(r, obj, False) if is_data(kinds.get(obj, "")) else None
+        out.append(dict(role=r, path=revs[0][r] + [obj], holders=len(ups(r)[1]), extra=b["extra"], also=b["also"],
+                        unmasked=[c["column"] for c in (v["columns"] if v else []) if c["sensitive"] and c["state"] == "clear"]))
+    return sorted(out, key=lambda e: (e["extra"], len(e["path"]), e["role"]))[:limit]
 
 
 def review(db=None):

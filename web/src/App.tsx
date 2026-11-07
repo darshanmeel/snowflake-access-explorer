@@ -10,6 +10,7 @@ import { CheckPageView } from "./pages/Check";
 import { ErrorBox } from "./pages/common";
 import { HomePageView, remember } from "./pages/Home";
 import { ObjectPageView } from "./pages/Object";
+import { RequestPageView } from "./pages/Request";
 import { ReviewPageView } from "./pages/Review";
 import { RolePageView } from "./pages/Role";
 import { RulesPageView } from "./pages/Rules";
@@ -17,9 +18,9 @@ import { SensitivePageView } from "./pages/Sensitive";
 import { WhatIfPageView } from "./pages/Whatif";
 import { UserPage } from "./pages/User";
 
-const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "whatif"];
+const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "request", "sensitive", "rules", "review", "whatif"];
 const LABEL: Record<Page, string> = {
-  home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "Object", check: "Can they?",
+  home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "Object", check: "Can they?", request: "Request access",
   sensitive: "Sensitive data", rules: "Risks & fixes", review: "Review & sign-off", whatif: "What if",
 };
 const GROUPS: [string, string][] = [["answers", "Answers"], ["admin", "Admin"], ["detail", "Detail"]];
@@ -31,6 +32,10 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     return { page: "object", params: { ...rest, preset: "admin" } };
   }
   if (page === "who") return { page: "object", params };
+  if ((page === "check" || page === "request") && (params.who || params.what)) { // the brief's ?who=&what=&do= links
+    const { who, what, ...rest } = params;
+    return { page, params: { ...rest, ...(who ? { name: who } : {}), ...(what ? { obj: what } : {}) } };
+  }
   if (!page || !PAGES.includes(page as Page)) return { page: "home", params };
   if (page === "access" && params.name) {
     const { name, ...rest } = params;
@@ -157,7 +162,7 @@ function DataTime({ meta, reload }: { meta: Meta; reload: () => void }) {
 }
 
 const VIEWS: Record<Page, () => JSX.Element> = {
-  home: HomePageView, access: AccessPageView, user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView,
+  home: HomePageView, access: AccessPageView, user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView, request: RequestPageView,
   sensitive: SensitivePageView, rules: RulesPageView, review: ReviewPageView, whatif: WhatIfPageView,
 };
 

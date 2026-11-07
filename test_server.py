@@ -128,8 +128,34 @@ def test_check():
     no = js("/api/check?name=ANALYST_01&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=DELETE")
     assert no["answer"]["how"] in ("none", "paths", "owner", "admin")
     for u in a.users:
-        js(f"/api/check?name={u}")
+        js(f"/api/check?name={u}", ["verdict", "held", "lanes", "cut", "cuts", "nearest", "layers", "roles_count"])
     get("/api/check?name=NOPE", 404)
+    y = js("/api/check?name=ENGINEER_01&obj=HR.PEOPLE.TBL_EMPLOYEE")
+    assert y["verdict"] == "yes" and y["lanes_total"] == 2 and y["cut"] == [a.FUNC + "ENGINEER", "HR.SC_W_PEOPLE"]
+    assert len(y["cuts"]) == 2 and y["cuts"][0]["people"] == ["ENGINEER_01"] and y["cuts"][0]["lost"] < y["cuts"][1]["lost"]
+    assert {x["privilege"] for x in y["held"] if x["held"]} == {"SELECT", "INSERT", "UPDATE"} and y["approver"] == "HR data owner"
+    n = js("/api/check?name=FIN_09&obj=HR.PEOPLE.TBL_EMPLOYEE&do=read")
+    assert n["verdict"] == "no" and n["priv"] == "SELECT" and n["nearest"] and not n["lanes"] and n["roles_count"] > 5
+    assert not any(x["held"] for x in n["held"]) and n["nearest"][0]["path"][0] == "FIN_09"
+    p = js("/api/check?name=MARKETING_01&obj=FINANCE.REPORT.TBL_REVENUE")
+    assert p["verdict"] == "partly" and [x["step"] for x in p["layers"]] == ["Grant", "Rows", "Columns"]
+    assert p["layers"][1]["result"] == "No rows" and "RAP_REGION" in p["layers"][1]["reason"]
+
+
+def test_request():  # screen 15: suggested role, approver, read / change, already held, the role picked on Can they?
+    keys = ["user", "object", "type", "need", "privileges", "level", "has", "asked", "suggestions", "approver", "owners", "refs"]
+    d = js("/api/request?name=FIN_09&obj=SALES.CORE.TBL_CUSTOMER", keys)
+    assert d["need"] == "read" and d["privileges"] == ["SELECT"] and not d["has"] and d["level"] is None
+    assert d["suggestions"][0]["role"] == a.FUNC + "ANALYST" and d["suggestions"][0]["holders"] >= 1
+    w = js("/api/request?name=FIN_09&obj=HR.PEOPLE.TBL_EMPLOYEE&need=change&role=HR.SC_R_PEOPLE&to=GRP_EMEA_ALL")
+    assert w["privileges"] == ["INSERT", "UPDATE"] and w["approver"] == "HR data owner"
+    assert w["asked"] == dict(role="HR.SC_R_PEOPLE", kind="database_role", to="GRP_EMEA_ALL")
+    h = js("/api/request?name=ENGINEER_01&obj=HR.PEOPLE.TBL_EMPLOYEE")
+    assert h["has"] and h["suggestions"] == [] and h["level"] == "change"
+    assert js("/api/request?name=FIN_09&role=NOPE")["asked"] is None
+    js("/api/request", keys)
+    get("/api/request?name=NOPE", 404)
+    get("/api/request?obj=NOPE", 404)
 
 
 def test_sensitive_rules_review():
@@ -251,6 +277,7 @@ def test_who():  # screen 2: who has access to an object, the admin preset, ware
     for o in a.objects:
         js(f"/api/who?name={o}", keys)
     assert js("/api/who?view=mine")["people"] is not None
+    assert js("/api/check?view=mine")["nearest"] == [] and js("/api/request?view=mine")["user"]  # Can they? / Request in mine
     get("/api/who?name=NOPE", 404)
 
 

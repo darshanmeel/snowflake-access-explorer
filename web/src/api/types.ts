@@ -22,7 +22,7 @@ export type TabKey =
   | "execute" | "read" | "write" | "own" | "manage" | "all";
 
 export type UserStatus = "active" | "dormant" | "never" | "disabled";
-export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "sensitive" | "rules" | "review" | "whatif";
+export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "request" | "sensitive" | "rules" | "review" | "whatif";
 
 /** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
 export type Path = string[];
@@ -587,7 +587,35 @@ export interface ObjectPage {
   refs: Refs;
 }
 
+export interface Also { level: string; count: number; where: string }
+
+export interface Nearest {
+  path: Path; // user[, via], role, ..., holder, object; "<NEW_ROLE>" when a database role needs an account role between
+  missing: number; // the link path[missing] -> path[missing + 1] is missing
+  role: string;
+  to: string;
+  to_user: boolean;
+  cost: number;
+  people: number; // others who would get it too
+  holders: number;
+  extra: number;
+  also: Also[];
+  rule1: boolean;
+  broad: string | null;
+}
+
 export interface CheckPage {
+  verdict: "yes" | "partly" | "no";
+  layers: { step: string; ok: boolean; result: string; reason: string }[] | null;
+  roles_count: number;
+  ask_priv: string;
+  held: { privilege: string; held: boolean }[];
+  lanes: { path: Path; privileges: string[] }[];
+  lanes_total: number;
+  cut: string[];
+  cuts: { iac: string; sql: string; people: string[]; lost: number; edges: { grantee: string; to: string; priv: string | null; user: boolean }[] }[];
+  nearest: Nearest[];
+  approver: string | null;
   view: View;
   user: string;
   object: string;
@@ -616,6 +644,22 @@ export interface CheckPage {
   read: { summary: string; rows: StateWhy<RowsState> | null; columns: (StateWhy<ColState> & { column: string })[]; role_only: string | null } | null;
   graph: Graph | null;
   capped: string[];
+  refs: Refs;
+}
+
+export interface RequestPage {
+  view: View;
+  user: string;
+  object: string;
+  type: string;
+  need: "read" | "change";
+  privileges: string[];
+  level: string | null; // the user's step on the object today
+  has: boolean;
+  asked: { role: string; kind: NodeKind; to: string | null } | null; // the role picked on Can they?
+  suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[] }[];
+  approver: string | null;
+  owners: string[];
   refs: Refs;
 }
 

@@ -434,7 +434,7 @@ Screen 2 (page key `object`): who has access to one object, or with `preset=admi
 ```
 A user holding an admin role is `admin` and shown by its shortest path to the admin role. 404 for an unknown name.
 
-### GET /api/check?view=&name=&obj=&priv=SELECT
+### GET /api/check?view=&name=&obj=&priv=SELECT|&do=read|change|own|any
 
 Can they? Producers: `a.can(u, priv, obj)`, `a.admin_paths(u, True)`, `a.login_days`, `a.is_dormant`,
 `a.data_view(u, obj, True)` and `a.data_view(use_role, obj, False)` (read line), `a.priv_class`, the usage card
@@ -457,9 +457,34 @@ Can they? Producers: `a.can(u, priv, obj)`, `a.admin_paths(u, True)`, `a.login_d
   "use_role": "F_ANALYST", "warehouse": "WH_ANALYST",
   "read": {"summary": "can read: all rows, EMAIL masked", "rows": {}, "columns": [], "role_only": "..."},  // or null
   "graph": { /* Graph */ },
-  "usage": { /* as user */ }, "capped": [], "refs": {}
+  "usage": { /* as user */ }, "capped": [], "refs": {},
+  // screens 3 and 12 (redesign)
+  "verdict": "yes" | "partly" | "no",
+  "held": [{"privilege": "SELECT", "held": true}],      // every privilege of the type; OWNERSHIP or an admin role: all
+  "lanes": [{"path": ["..."], "privileges": ["SELECT"]}], "lanes_total": 2,   // a.lanes: one per distinct route (first 20)
+  "cut": ["F_ENGINEER"],                                 // roles on every lane: a place to cut
+  "cuts": [{"iac": "...", "sql": "...", "people": ["..."], "lost": 19, "edges": [{"grantee", "to", "priv", "user"}]}],  // a.cut_points, shared only
+  "nearest": [{"path", "missing", "role", "to", "to_user", "cost", "people", "holders", "extra", "also", "rule1", "broad"}],  // a.nearest when No, shared only
+  "ask_priv": "SELECT", "roles_count": 11, "approver": "HR data owner" | null,   // a.approver: OWNER / DATA_OWNER tag
+  "layers": [{"step": "Grant" | "Rows" | "Columns", "ok": true, "result": "No rows", "reason": "..."}] | null  // Partly: rows none or columns masked
 }
 ```
+`do` picks the privilege when `priv` is not given: read = `a.basic_priv`, change = the first of `a.need_privs(type, "change")`,
+own = OWNERSHIP, else every privilege (`*`).
+
+### GET /api/request?view=&name=&obj=&need=read|change&role=&to=
+
+Screen 15, Request access (page key `request`). Read-only: the page writes SQL / Terraform / ticket text (`codegen.ts`).
+`a.need_privs`, `a.suggest` (functional roles reaching every needed privilege, fewest other privileges first; build and
+admin-reaching roles never), `a.approver`, `a.object_stats` owners.
+
+```
+{ view, user, object, type, need, privileges[], level (the user's step today, or null), has (already holds them),
+  asked: { role, kind, to } | null,          // the role picked on Can they? (role=, to=), checked against the roles
+  suggestions: [{ role, path, holders, extra, also: [{ level, count, where }], unmasked[] }],
+  approver, owners[], refs }
+```
+404 for an unknown user or object.
 
 ### GET /api/sensitive?view=&tag=&db=&people=0&a=&b=
 

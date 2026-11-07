@@ -37,8 +37,8 @@ stays, what changes, and the order of the work.
   (SQL / Terraform / ticket text), `ExpandableRow`, `EmptyState`, `IdentityCard`.
 - Derived fields in `access.py`: `level_of` (ladder), `category` (data / runnable / account / names / hold),
   `access_objects` (one row per object at its highest level, path summary), with tests.
-- New screens as page keys: `home` (0) and `access` (1, a person or a role). Next: Can they? (3 and 12),
-  graph (4), what they see (7), compare (9), then the admin screens.
+- New screens as page keys: `home` (0), `access` (1, a person or a role), `object` (2), `check` (3 and 12), `request`
+  (15). Next: graph (4), what they see (7), compare (9), then the admin screens.
 
 ## Done
 
@@ -56,6 +56,26 @@ stays, what changes, and the order of the work.
   holders preset: its default tab is the Rule checks Admin holders table, which links here. Redirects:
   `rules&tab=admins` and `admins` -> `object&preset=admin`, `who` -> `object`. Home search already lands objects here.
   `access.py`: `obj_level`, `who_entry`, `who_has`, `admin_access`, `same_paths`, `column_view`.
+
+- **Screens 3 and 12, Can they?** (`check`): the question as a sentence (Can [user] [privilege] [object]?), the
+  verdict Yes / Partly / No with the privilege row (held / not held, struck through), then tabs. "Answer & diagram"
+  (the old page: banner, combined diagram, paths, ownership, where to cut, ways to remove, closest, roles to ask for,
+  what they see) is the default tab. "Routes & where to cut" (`show=routes`): one lane per distinct route, roles on
+  every route marked as a place to cut; Where to cut with side effects (people who lose it, other privileges the user
+  loses), Simulate (What if) and the revoke as SQL / Terraform / ticket; What they see with the USE ROLE snippet.
+  "Nearest ways in" (`show=nearest`, No): reverse BFS from the object up the role graph, missing link dashed red,
+  ranked by grants needed, then people who would also get it, then what else the role brings; too broad and rule 1
+  warnings; Request (to screen 15) and What it brings (the role's access screen). "Rows & columns" (`show=layers`):
+  1 Grant, 2 Rows, 3 Columns with result and reason (`data_view`); Partly when rows are none or columns masked.
+  `do=read|change|own` picks the privilege; redirect `check&who=&what=` -> `name` / `obj`.
+  `access.py`: `lanes`, `cut_points`, `reverse`, `brings`, `nearest`, `basic_priv`, `need_privs`, `approver`
+  (`OWNER_TAGS`, the fake data has an OWNER tag on HR.PEOPLE), `suggest`.
+- **Screen 15, Request access** (`request`, endpoint `/api/request`, new): object, Read it / Change it, suggested
+  roles (smallest existing functional role first, holders, what else it brings, sensitive columns it shows), the
+  role picked on Can they?, how long, approver (owner tag, else a blank field), reason; SQL / Terraform / ticket via
+  `CodeOutput`; a commented skeleton for a new role when none fits (`newRoleOf`). Text only.
+- What if simulates removals only, so a nearest way in (a grant) opens the role's access screen ("What it brings")
+  instead of What if.
 
 ## Not done, and why
 

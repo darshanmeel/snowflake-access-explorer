@@ -26,10 +26,10 @@ TTL = cache.TTL  # shared data and My access stay in memory this long (seconds)
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
 
 PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
-         "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
-         "user": "User paths", "role": "Role paths"}
-GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "rules": "admin", "whatif": "admin",
-         "review": "admin", "sensitive": "admin", "user": "detail", "role": "detail"}  # side nav groups
+         "request": "Request access", "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off",
+         "sensitive": "Sensitive data", "user": "User paths", "role": "Role paths"}
+GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "request": "answers",
+         "rules": "admin", "whatif": "admin", "review": "admin", "sensitive": "admin", "user": "detail", "role": "detail"}  # side nav groups
 SHARED_ONLY = {"review"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
@@ -1324,7 +1324,8 @@ def check_page(p, view):
         (r["object"] for r in a.grants(u, True) if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
     need(o in a.kinds, f"{o} is not in this snapshot")
     opts = a.valid_privs(a.kinds[o])
-    pv = p.get("priv") if p.get("priv") in opts else ALL
+    do = {"read": a.basic_priv(a.kinds[o]), "change": a.need_privs(a.kinds[o], "change")[0], "own": "OWNERSHIP"}
+    pv = p.get("priv") if p.get("priv") in opts else do.get(p.get("do"), ALL)
     if pv == ALL:  # every privilege the user holds on o, each with its own paths
         held = list(dict.fromkeys(x["privilege"] for x in a.grants(u, True) if x["object"] == o))
         rs = {x: a.can(u, x, o) for x in held}
@@ -1374,7 +1375,34 @@ def check_page(p, view):
                         role_only=w["summary"] if w and w["summary"] != v["summary"] else None)
     g = ps and a.down_graph(u, [dict(privilege=x, type=a.kinds[o], object=o, paths=[q["path"] for q in ps if q["privilege"] == x])
                                 for x in held if any(q["privilege"] == x for q in ps)], user=True)
+    k = a.kinds[o]
+    got = {x["privilege"] for x in a.grants(u, True) if x["object"] == o}
+    has = set(opts) if admin or "OWNERSHIP" in got else got
+    ls, cut = a.lanes(ps)
+    ask = pv if pv != ALL else a.basic_priv(k)
+    near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o)
+    layers = None
+    if read:  # Partly: the grant is there, but a row policy returns nothing or columns are masked
+        v = a.data_view(u, o, True)
+        rows, cols = v["rows"], [x for x in v["columns"] if x["state"] != "clear"]
+        h = next((x for x in ps if x["privilege"] in a.READ_PRIVS), None)
+        layers = [dict(step="Grant", ok=True, result="Allowed",
+                       reason=f"{h['privilege']} via {h['holder']}" if h else "through ownership"),
+                  dict(step="Rows", ok=rows["state"] == "all", result=ROWS_WORD[rows["state"]].capitalize(),
+                       reason=rows["reason"]),
+                  dict(step="Columns", ok=not cols and rows["state"] != "none",
+                       result="Not reached" if rows["state"] == "none" else f"{len(cols)} masked" if cols else "All clear",
+                       reason="No column shows when no rows return" if rows["state"] == "none" else
+                       "; ".join(f"{x['column']}: {x['reason']}" for x in cols) or "no masking applies")]
+    partly = bool(layers) and (layers[1]["result"] == "No rows" or not layers[2]["ok"])
+    verdict = "partly" if ans["yes"] and partly else "yes" if ans["yes"] else "no"
     return dict(
+        verdict=verdict, layers=layers, roles_count=len(a.best_paths(u, True)), ask_priv=ask,
+        held=[dict(privilege=x, held=x in has) for x in opts], lanes=ls[:20], lanes_total=len(ls), cut=cut,
+        cuts=[] if mine or not ps else [dict(iac=x["iac"], sql=x["sql"], people=x["people"], lost=x["lost"],
+                                             edges=[dict(grantee=e["grantee"], to=e["to"], priv=e["priv"], user=e["user"])
+                                                    for e in x["edges"]]) for x in a.cut_points(u, held, o)],
+        nearest=near, approver=a.approver(o),
         view=view, user=u, object=o, type=a.kinds[o], priv=pv, privileges=[ALL] + opts, answer=ans, status=r["status"],
         dormant_days=d if sleep else None, admin_paths=admin, paths=r["paths"], owner=r["owner"], choke=r["choke"],
         closest=r["closest"], ask=[] if mine else r["ask"],
@@ -1382,6 +1410,28 @@ def check_page(p, view):
                                  for x in r["options"]],
         use_role=r["use_role"], warehouse=r["warehouse"], read=read,
         graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None, capped=sorted(a.capped))
+
+
+def request_page(p, view):
+    """Screen 15, Request access: the object, read or change, the suggested roles (smallest existing one first) with
+    holders and what else each brings, the approver (owner tag) and the user's level today. Text only: the page writes
+    SQL / Terraform / ticket text, nothing runs."""
+    need(a.users and a.objects, "No users or objects in this data.")
+    u = p.get("name") or (a.users[0] if view == "mine" or DEMO_USER not in a.users else DEMO_USER)
+    need(u in a.users, f"{u} is not in this snapshot")
+    tables = [x for x in a.objects if a.is_data(a.kinds[x])]
+    o = p.get("obj") or (tables[0] if tables else a.objects[0])
+    need(o in a.kinds, f"{o} is not in this snapshot")
+    k, nd = a.kinds[o], p.get("need") if p.get("need") in ("read", "change") else "read"
+    pvs = a.need_privs(k, nd)
+    mine = {x["privilege"] for x in a.grants(u, True) if x["object"] == o}
+    now = max((a.obj_level(x, k) for x in mine), key=a.OBJ_LEVELS.index, default=None)
+    held = all(x in mine for x in pvs) or "OWNERSHIP" in mine
+    r, to = p.get("role"), p.get("to")
+    asked = dict(role=r, kind=nk(r), to=to if to in a.roles else None) if r in a.roles else None  # picked on Can they?
+    return dict(view=view, user=u, object=o, type=k, need=nd, privileges=pvs, level=now, has=held, asked=asked,
+                suggestions=[] if held else a.suggest(pvs, o, u), approver=a.approver(o),
+                owners=a.object_stats(o, k)["owners"])
 
 
 # ---------- sensitive data ----------
@@ -1765,8 +1815,9 @@ def mkrefs(out):
 
 ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
-          "whatif": whatif_page, "who": who_page}
-WITH_REFS = {"who", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "whatif"}
+          "whatif": whatif_page, "who": who_page, "request": request_page}
+WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
+             "whatif"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
@@ -1832,7 +1883,8 @@ def make_app():
             return serve(name, dict(request.query_params), sid_of(request))
         return h
 
-    for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph", "whatif", "who"):
+    for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
+              "whatif", "who", "request"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

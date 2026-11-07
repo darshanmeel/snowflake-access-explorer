@@ -97,10 +97,12 @@ export function Toggle({ label, on, onPick }: { label: ReactNode; on: boolean; o
 const TABS = [["sql", "SQL"], ["tf", "Terraform"], ["ticket", "Ticket text"]] as const;
 
 /** SQL / Terraform / ticket text of a change list, with copy and download. Text only: nothing runs. */
-export function CodeOutput({ changes, note, name = "access_change" }: { changes: Change[]; note?: Note; name?: string }) {
+export function CodeOutput({ changes, note, name = "access_change", texts }: {
+  changes: Change[]; note?: Note; name?: string; texts?: { sql: string; tf: string; ticket: string };
+}) {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("sql");
   const [done, setDone] = useState(false);
-  const text = tab === "sql" ? sqlOf(changes, note) : tab === "tf" ? terraformOf(changes, note) : ticketOf(changes, note);
+  const text = texts ? texts[tab] : tab === "sql" ? sqlOf(changes, note) : tab === "tf" ? terraformOf(changes, note) : ticketOf(changes, note);
   const file = `${name}.${tab === "sql" ? "sql" : tab === "tf" ? "tf" : "txt"}`;
   const copy = () => { navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1200); }, () => {}); };
   const save = () => {

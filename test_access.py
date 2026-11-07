@@ -1298,12 +1298,40 @@ def test_who_has():  # screen 2: one entry per user / role at its highest step, 
     assert next(c for c in seen["ANALYST_01"] if c["column"] == "EMAIL")["state"] == "masked"
 
 
+def test_nearest():  # screens 3, 12, 15: lanes and cuts, nearest ways in, suggested role, approver
+    o = "HR.PEOPLE.TBL_EMPLOYEE"
+    r = a.can("ENGINEER_01", "SELECT", o)
+    ls, cut = a.lanes([q | dict(privilege="SELECT") for q in r["paths"]])
+    assert len(ls) == 1 and cut == [F + "ENGINEER", "HR.SC_W_PEOPLE", "HR.SC_R_PEOPLE"], (ls, cut)
+    cs = a.cut_points("ENGINEER_01", ["SELECT", "INSERT", "UPDATE"], o)
+    assert [c["people"] for c in cs] == [["ENGINEER_01"]] * 2 and cs[0]["lost"] < cs[1]["lost"], cs
+    assert "HR.SC_W_PEOPLE FROM ROLE" in cs[0]["sql"] and "FROM USER ENGINEER_01" in cs[1]["sql"]
+    pub = a.cut_points("ANALYST_01", ["USAGE"], "WH_SALES_XS")
+    assert all("PUBLIC" not in (e["grantee"], e["to"]) for c in pub for e in c["edges"])
+    n = a.nearest("FIN_09", "SELECT", o)
+    assert n[0]["role"] == F + "ENGINEER" and n[0]["to_user"] and n[0]["cost"] == 1 and n[0]["people"] == 0, n[0]
+    assert [x["cost"] for x in n] == sorted(x["cost"] for x in n)
+    g = next(x for x in n if x["to"] == "GRP_EMEA_ALL" and x["role"] == "HR.SC_R_PEOPLE")
+    assert g["missing"] == 1 and g["people"] > 10 and g["broad"] and g["path"][-1] == o
+    assert any(x["path"][1] == "<NEW_ROLE>" and x["cost"] == 2 for x in n)  # a database role can't go to a user
+    assert all(x["role"] not in a.ADMIN and not a.reaches_admin(x["role"]) and x["role"] != "PUBLIC" for x in n)
+    s = a.suggest(["SELECT"], "SALES.CORE.TBL_CUSTOMER", "FIN_09")
+    assert s[0]["role"] == F + "ANALYST" and [x["extra"] for x in s] == sorted(x["extra"] for x in s), s
+    assert s[0]["holders"] >= 1 and "PHONE" in s[0]["unmasked"] and all(a.role_kind(x["role"]) == "functional" for x in s)
+    assert not any(x["role"] == F + "ENGINEER" for x in a.suggest(["SELECT"], o, "ENGINEER_01"))  # already held
+    assert a.suggest(["INSERT", "UPDATE"], o, "FIN_09")[0]["role"] == F + "ENGINEER"
+    assert a.approver(o) == "HR data owner" and a.approver("SALES.CORE.TBL_CUSTOMER") is None
+    assert a.need_privs("TABLE", "change") == ["INSERT", "UPDATE"] and a.need_privs("WAREHOUSE", "read") == ["USAGE"]
+    assert a.basic_priv("VIEW") == "SELECT" and a.need_privs("TABLE", "own") == ["OWNERSHIP"]
+    assert a.brings(F + "ENGINEER", o)["extra"] > 10
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_pages):
+              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

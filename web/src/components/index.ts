@@ -16,4 +16,4 @@ export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind,
 export { tabGraph, tabPaths } from "./tabgraph";
 export { cellText, filterRows, sortRows, toCsv } from "./table";
 export { AccessPill, CodeOutput, EmptyState, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, PathChips, SensitiveCell, Toggle, type FilterItem } from "./kit";
-export { sqlOf, terraformOf, ticketOf, type Change } from "./codegen";
+export { expiryOf, newRoleOf, sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";
