@@ -92,7 +92,8 @@ export function RisksTab({ d }: { d: RulesPage }) {
   const v = visible(d.findings, off, mute);
   const pool = all ? d.findings : v.shown;
   const count = (s: Severity) => pool.filter((f) => f.severity === s).length;
-  const sev = (c.params.sev && SEVERITIES.includes(c.params.sev as Severity) ? c.params.sev : SEVERITIES.find((s) => count(s)) ?? "") as Severity | "";
+  // no sev= opens the worst severity; sev=all (a click on the active tile) shows every severity
+  const sev = (c.params.sev === "all" ? "" : c.params.sev && SEVERITIES.includes(c.params.sev as Severity) ? c.params.sev : SEVERITIES.find((s) => count(s)) ?? "") as Severity | "";
   const list = pool.filter((f) => !sev || f.severity === sev);
   const by = c.params.by === "person" || c.params.by === "object" ? c.params.by : "rule";
   const rules = c.meta.rules;
@@ -118,7 +119,7 @@ export function RisksTab({ d }: { d: RulesPage }) {
       <div className="ae-tiles">
         {SEVERITIES.map((s) => (
           <button type="button" key={s} aria-pressed={sev === s} className={`ae-tile${sev === s ? " on" : ""}${s === "Critical" || s === "High" ? " ae-tile-bad" : s === "Medium" ? " ae-tile-warn" : ""}`}
-            onClick={() => { c.set({ sev: sev === s ? null : s }); setOpen(null); }} disabled={!count(s)}>
+            onClick={() => { c.set({ sev: sev === s ? "all" : s }); setOpen(null); }} disabled={!count(s)}>
             <span className="ae-tile-l">{s}</span><span className="ae-tile-v">{count(s)}</span>
           </button>
         ))}

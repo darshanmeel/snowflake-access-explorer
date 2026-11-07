@@ -237,6 +237,7 @@ export interface FindItem {
   type: string | null;
   sensitive: boolean;
   page: Page;
+  answer: string;
 }
 
 export interface ListItem {
@@ -921,7 +922,7 @@ export interface HomePage {
   risks: Record<Severity, number> | null;
   counts: { users: number; roles: number; objects: number; sensitive: number };
   protection: { unmasked: number; unmasked_names: string[]; dormant: number; dormant_names: string[]; tagged: number;
-    masked: number; row_tables: number } | null;
+    masked: number; row_tables: number; row_list: { object: string; policies: string[] }[] } | null;
 }
 
 // ---------- who has access (screen 2) ----------

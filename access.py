@@ -1101,6 +1101,27 @@ def ladder_counts(objs):
                 account=sum(x["category"] == "account" for x in objs))
 
 
+def reach_counts(name, user=False):
+    """Search answers: ladder_counts() read / change / own from reach only (bfs, no path listing), so a search
+    can answer for many hits at once. An object reached through an admin role (not the start) counts as admin."""
+    hs, tainted = {}, set()
+    for st in starts(name, user):
+        for r, p in bfs(st).items():
+            hs.setdefault(r, p)
+    for r in hs:
+        if r in ADMIN and r != name:
+            tainted.update(bfs([r]))
+    top = {}
+    for h in hs:
+        for pv, k, o in granted.get(h, []):
+            if category(pv, k) == "data" and level_of(pv, k):
+                lv = "admin" if h in tainted else level_of(pv, k)
+                if o not in top or LEVELS.index(lv) > LEVELS.index(top[o]):
+                    top[o] = lv
+    at = lambda s: sum(LEVELS.index(v) >= LEVELS.index(s) for v in top.values())
+    return dict(read=at("read"), change=at("change"), own=at("own"))
+
+
 OBJ_LEVELS = ("names", "use", "read", "change", "own", "admin")  # one object's steps: "use" = run it (a warehouse)
 
 
@@ -1674,6 +1695,11 @@ def status(u):
     return "dormant" if is_dormant(u) else "active"
 
 
+def stale(u):
+    """Disabled, or a person (not a service user) dormant or never logged in: the users rules 8 and 16 flag."""
+    return is_disabled(u) or (not is_service(u) and status(u) != "active")
+
+
 def split_users(names, admin=()):
     """KPI split: people (enabled persons), disabled, service (enabled service users), admin (only via admin roles)."""
     names = set(names)
@@ -2009,9 +2035,18 @@ def governance_rows():
     return out
 
 
+def row_tables():
+    """Objects with a row access policy: {object: [policy names]}, sorted by object."""
+    out = {}
+    for p in policies:
+        if p["POLICY_KIND"] == "ROW_ACCESS_POLICY" and p["OBJECT_NAME"]:
+            out.setdefault(p["OBJECT_NAME"], []).append(p["POLICY_NAME"])
+    return {o: sorted(set(v)) for o, v in sorted(out.items())}
+
+
 def governance_kpis():
     """Account KPIs: dict(row_tables, masked_columns, tagged_objects, text {label: "N tables" | "not used"})."""
-    rows = len({p["OBJECT_NAME"] for p in policies if p["POLICY_KIND"] == "ROW_ACCESS_POLICY" and p["OBJECT_NAME"]})
+    rows = len(row_tables())
     cols = sum(len(policies_of(o)["columns"]) for o in objects if is_data(kinds[o]))
     tagged = len({t["OBJECT_NAME"] for t in tags})
     text = {label: plural(n, word) if n else "not used" for label, n, word in [
@@ -2099,8 +2134,8 @@ FLOW_WORD = dict(active="Active people", risky="Dormant or disabled", admin="Adm
 
 
 def flow_group(u, adm):
-    """Flow column 1: admin | risky (dormant, disabled, never logged in) | service | active."""
-    return "admin" if u in adm else "risky" if status(u) != "active" else "service" if is_service(u) else "active"
+    """Flow column 1: admin | risky (stale: disabled, or a dormant person) | service | active."""
+    return "admin" if u in adm else "risky" if stale(u) else "service" if is_service(u) else "active"
 
 
 def sens_flow(max_roles=None):
@@ -3819,7 +3854,7 @@ def grant_events(keys, links, gain, pairs, fs, by):
             role, u = key
             us, objs = {u}, {x for r in bfs([role]) for _, _, x in granted.get(r, [])}
             text = f"{u} was granted role {role}" if gain else f"Role {role} was revoked from {u}"
-            edge, subj = (u, role, None), [u, role]
+            edge, subj, who = (u, role, None), [role], [u]
         else:
             r, pv, on_, o = key
             link = on_ in ROLE_ON and pv == "USAGE"
@@ -3827,9 +3862,9 @@ def grant_events(keys, links, gain, pairs, fs, by):
             objs = {x for q in bfs([o]) for _, _, x in granted.get(q, [])} if link else {o}
             text = (f"{r} was granted role {o}" if link else f"{r} was granted {pv} on {o}") if gain else \
                 (f"Role {o} was revoked from {r}" if link else f"{pv} on {o} was revoked from {r}")
-            edge, subj = (r, o, None if link else pv), [r, o]
+            edge, subj, who = (r, o, None if link else pv), [r, o], []
         fx = [f for f in fs if f["edge"] == edge or any((e["grantee"], e["to"], e["priv"]) == edge for e in f["edges"])]
-        out.append(dict(edge=edge, pairs=[(u, o) for u, o in pairs if u in us and o in objs], subjects=subj,
+        out.append(dict(edge=edge, pairs=[(u, o) for u, o in pairs if u in us and o in objs], subjects=subj, users=who,
                         by=by.get(key), findings=fx, text=text))
     return out
 
@@ -3851,7 +3886,8 @@ def side_objects(side):
 def diff(prev):
     """Screen 14: what changed from data set prev to the loaded one. events [dict(id, kind gain | lose | user | risk |
     fixed, text, impact, by (GRANTED_BY, when known), sensitive, findings [dict(num, severity, title, fixed)], link
-    (page, params), subjects (every name it is about), people, objects)], counts per filter, new / fixed / high
+    (page, params), subjects (every node it is about: uid() for users, so a user and a same-named role never match),
+    people, objects)], counts per filter, new / fixed / high
     findings, gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times."""
     now = facts()
     rank = LEVELS.index
@@ -3887,7 +3923,8 @@ def diff(prev):
                                findings=list({f["num"]: chip(f, gain) for f in x["findings"]}.values()),
                                link=dict(page="object", params=dict(name=target)) if target in side_objects(side) else
                                dict(page="access", params=dict(role=target)),
-                               subjects=sorted(set(x["subjects"]) | {u for u, _ in x["pairs"]} | set(objs)),
+                               subjects=sorted(set(x["subjects"]) | {uid(u, True) for u in x["users"]}
+                                               | {uid(u, True) for u, _ in x["pairs"]} | set(objs)),
                                people=sorted({u for u, _ in x["pairs"]}), objects=objs))
     for u in sorted(set(now["status"]) | set(old["status"])):
         was, st = old["status"].get(u), now["status"].get(u)
@@ -3899,7 +3936,7 @@ def diff(prev):
                 f"{u} was disabled" if st == "disabled" else f"{u} is {st} now (was {was})")
         events.append(dict(kind="user", text=text, by=None, sensitive=bool(reads), findings=[], people=[u], objects=reads,
                            impact=f"Still reads {plural(len(reads), 'sensitive object')}" if reads and st != "active" else "",
-                           link=dict(page="access", params=dict(user=u)), subjects=[u] + reads))
+                           link=dict(page="access", params=dict(user=u)), subjects=[uid(u, True)] + reads))
     for gain, fs in ((True, new), (False, fixed)):
         side = now if gain else old
         for f in fs:
@@ -3913,7 +3950,8 @@ def diff(prev):
                                     f"#{f['num']} {RULES[f['num']][0]}: {f['grantee']}",
                                findings=[chip(f, gain)], people=[f["grantee"]] if f["user"] else [], objects=objs,
                                link=dict(page="rules", params=dict(rule=f["num"])),
-                               subjects=sorted({f["grantee"]} | {n for p in ps for n in p})))
+                               subjects=sorted({uid(f["grantee"], f["user"])}
+                                               | {n for p in ps for n in (p[1:] if f["user"] and p[0] == f["grantee"] else p)})))
     order = ("risk", "gain", "lose", "user", "fixed")
     events.sort(key=lambda e: (order.index(e["kind"]), not e["findings"], -len(e["people"]), e["text"]))
     for i, e in enumerate(events):

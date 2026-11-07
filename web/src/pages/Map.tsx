@@ -118,6 +118,8 @@ function Detail({ d, n }: { d: MapPage; n: GraphNode }) {
   const x = d.detail[n.id];
   const stack = n.marks.includes("stack");
   const fold = n.kind === "fold" || n.group != null;
+  const fake = n.id === "Every object (admin)" || n.id === "ACCOUNT"; // drawn boxes, not roles or objects
+  const droppable = !fake && n.id !== "PUBLIC" && !c.meta.admin_roles.includes(n.id) && n.kind !== "user" && n.kind !== "object";
   const open = () => (n.kind === "user" ? c.nav("access", { user: n.name }) : n.kind === "object" ? c.nav("object", { name: n.id }) : c.nav("access", { role: n.id }));
   const chips = (xs: string[], kind: string, more: number) => (
     <div className="ae-gchips">
@@ -135,9 +137,9 @@ function Detail({ d, n }: { d: MapPage; n: GraphNode }) {
       <h4>What it leads to · {x.leads_count}</h4>
       {x.leads_count ? chips(x.leads.filter((o) => d.refs.kinds[o] === "object"), "object", x.leads_count) : <p className="ae-muted">Nothing further.</p>}
       <div className="ae-row">
-        {!stack && !fold && n.id !== "Every object (admin)" && <button type="button" className="ae-btn" onClick={open}>Open its page</button>}
-        {!stack && !fold && n.kind !== "user" && n.kind !== "object" && <WhatIfButton ch={[{ op: "drop_role", role: n.id }]} label="What if removed?" />}
-        {!stack && !fold && n.id !== d.id && n.id !== "Every object (admin)" && n.id !== "ACCOUNT" &&
+        {!stack && !fold && !fake && <button type="button" className="ae-btn" onClick={open}>Open its page</button>}
+        {!stack && !fold && droppable && <WhatIfButton ch={[{ op: "drop_role", role: n.id }]} label="What if removed?" />}
+        {!stack && !fold && n.id !== d.id && !fake &&
           <button type="button" className="ae-btn" onClick={() => c.set(startOf(n.kind, n.id))}>Make it the start</button>}
         {n.kind === "fold" && <button type="button" className="ae-btn" onClick={() => c.set({ builtin: "1", sel: null })}>Unfold the built-ins</button>}
       </div>

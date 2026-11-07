@@ -2138,7 +2138,8 @@ def main():
     VIEW_MODE = view
     if view == "shared":
         st.query_params.pop("data", None)
-    page = q("page") if q("page") in VIEW and not (view == "mine" and q("page") in SHARED_ONLY) else "user"
+    asked = q("page")
+    page = asked if asked in VIEW and not (view == "mine" and asked in SHARED_ONLY) else "user"
     st.query_params["page"] = page
     nav = sb.container()
     card = sb.container(key="card_snap")
@@ -2190,6 +2191,10 @@ def main():
             return share(slot)
         a.capped.clear()
         with body.container():
+            if asked and asked not in VIEW:  # a screen of the React app (home, graph, flow, ...): say so, don't hide it
+                html(ui.banner("warn", f"The screen {e(asked)} is in the React version only", [
+                    "This plain Streamlit fallback (ST_REACT=native or html) has the earlier pages. The default mode "
+                    "(no ST_REACT) and the local version have every screen. Showing the User page."]))
             if view == "mine":
                 html(ui.banner("info", "Only your own roles: <span style='font-weight:400'>Object shows what your "
                                        "roles reach, not everyone.</span>"))

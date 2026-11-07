@@ -33,15 +33,24 @@ export function screensFor<T extends { key: string; label: string }>(q: string, 
   return t.length < 2 ? [] : pages.filter((p) => p.key !== "home" && p.label.toLowerCase().includes(t));
 }
 
-const SHORT: [Page, string][] = [["check", "Can they read …?"], ["graph", "Access graph"], ["compare", "Compare two people"],
+type Who = { kind: string; id: string; name: string };
+type Short = { page: Page; label: string; params: Record<string, string> };
+
+const SHORT: [Page, string, ((w: Who) => Short | null)?][] = [
+  ["check", "Can they read …?", (w) => (w.kind === "user" ? { page: "check", label: `Can ${w.name} read …?`, params: { name: w.name } } : null)],
+  ["graph", "Access graph", (w) => ({ page: "graph", label: `Graph of ${w.name}`, params: { [w.kind === "user" ? "user" : w.kind === "object" ? "table" : "role"]: w.kind === "user" ? w.name : w.id } })],
+  ["compare", "Compare two people", (w) => (w.kind === "object" ? null : { page: "compare", label: `Compare ${w.name} with …`, params: { a: w.id } })],
   ["request", "Request access"], ["rules", "Risks & fixes"], ["whatif", "What if a role goes?"], ["sensitive", "Sensitive data"],
   ["flow", "Sensitive data flow"], ["usage", "Granted vs used"], ["changes", "What changed"]];
 
-/** The shortcuts to the pages in the nav (My access has no flow or changes). */
-export const shortcuts = (keys: string[]) => SHORT.filter(([p]) => keys.includes(p)).map(([page, label]) => ({ page, label }));
+/** The shortcuts to the pages in the nav (My access has no flow or changes), filled in with who (the first search hit
+ * or the default user) where the question is about someone. */
+export const shortcuts = (keys: string[], who?: Who | null): Short[] =>
+  SHORT.filter(([p]) => keys.includes(p)).map(([page, label, fill]) => (who && fill?.(who)) || { page, label, params: {} });
 
-const GROUP: [string, string][] = [["user", "People"], ["role", "Roles"], ["object", "Objects"]];
-const groupOf = (i: FindItem) => (i.kind === "user" ? "user" : i.kind === "object" ? "object" : "role");
+const GROUP: [string, string][] = [["user", "People"], ["role", "Roles"], ["warehouse", "Warehouses"], ["object", "Objects"]];
+export const groupOf = (i: Pick<FindItem, "kind" | "type">) =>
+  i.kind === "user" ? "user" : i.kind !== "object" ? "role" : i.type === "WAREHOUSE" ? "warehouse" : "object";
 
 export function HomePageView() {
   const c = useApp();
@@ -72,6 +81,9 @@ export function HomePageView() {
     else if (items[0]) openItem(items[0]);
   };
   const rec = recent();
+  const [rows, setRows] = useState(false);
+  const first = items[0], me = c.meta.default_user;
+  const who: Who | null = first ? { kind: first.kind, id: first.id, name: first.name } : me ? { kind: "user", id: me, name: me } : null;
   return (
     <div className="ae-home">
       <h2 className="ae-h1">Who can access what in Snowflake?</h2>
@@ -106,7 +118,7 @@ export function HomePageView() {
                 <h4>{label}</h4>
                 {xs.slice(0, 8).map((i) => (
                   <button type="button" key={i.id} className="ae-suggest-row" onClick={() => openItem(i)}>
-                    <span className="ae-mono">{i.name}</span><span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}</span>
+                    <span className="ae-mono">{i.name}</span><span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}{i.answer ? ` · ${i.answer}` : ""}</span>
                   </button>
                 ))}
               </div>
@@ -116,7 +128,7 @@ export function HomePageView() {
       )}
       <div className="ae-shortcuts">
         <span className="ae-muted">Try:</span>
-        {shortcuts(c.meta.pages.map((p) => p.key)).map((x) => <button type="button" key={x.page} className="ae-link" onClick={() => c.nav(x.page, {})}>{x.label}</button>)}
+        {shortcuts(c.meta.pages.map((p) => p.key), who).map((x) => <button type="button" key={x.page} className="ae-link" onClick={() => c.nav(x.page, x.params)}>{x.label}</button>)}
       </div>
       <Load s={s}>{(d) => (
         <>
@@ -146,17 +158,27 @@ export function HomePageView() {
                   <span className="ae-tile-l">Dormant or disabled people reading sensitive data</span><span className="ae-tile-v">{d.protection.dormant}</span>
                   <span className="ae-tile-c ae-mono">{d.protection.dormant_names.join(", ")}</span>
                 </button>
-                <button type="button" className="ae-tile" onClick={() => c.nav("sensitive", {})}>
+                <button type="button" className="ae-tile" onClick={() => c.nav("sensitive", { show: "catalog" })}>
                   <span className="ae-tile-l">Tagged objects · masked columns</span><span className="ae-tile-v">{d.protection.tagged} · {d.protection.masked}</span>
                 </button>
                 <button type="button" className="ae-tile" onClick={() => c.nav("flow", {})}>
                   <span className="ae-tile-l">Where sensitive data flows</span><span className="ae-tile-v ae-tile-vs">Data flow →</span>
                   <span className="ae-tile-c">people → roles → sensitive objects</span>
                 </button>
-                <button type="button" className="ae-tile" onClick={() => c.nav("sensitive", {})}>
+                <button type="button" className={`ae-tile${rows ? " on" : ""}`} aria-pressed={rows} onClick={() => setRows(!rows)} disabled={!d.protection.row_tables}>
                   <span className="ae-tile-l">Tables with row policies</span><span className="ae-tile-v">{d.protection.row_tables}</span>
+                  <span className="ae-tile-c">{rows ? "hide the list" : "show the list"}</span>
                 </button>
               </div>
+              {rows && (
+                <Card title="Tables with row policies" sub="Each row policy decides which rows a role sees. Open a table for who reads it.">
+                  {d.protection.row_list.map((r) => (
+                    <button type="button" key={r.object} className="ae-suggest-row" onClick={() => c.nav("object", { name: r.object })}>
+                      <span className="ae-mono">{r.object}</span><span className="ae-muted">{r.policies.map((p) => p.split(".").pop()).join(", ")}</span>
+                    </button>
+                  ))}
+                </Card>
+              )}
             </section>
           )}
           {rec.length > 0 && (

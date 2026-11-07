@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, UsagePage, UsageRow } from "../api/types";
-import { AccessPill, Card, CodeOutput, EmptyState, FilterChips, Tabs } from "../components";
+import { AccessPill, Card, CodeOutput, EmptyState, FilterChips, ListToolbar, Tabs } from "../components";
+import { download } from "../components/table";
 import { useApp, useOpen } from "../ctx";
 import type { Change } from "../components";
 import { addTo, changeText, inPlan, plan, useSaved } from "./changeplan";
 import { Load, Pick } from "./common";
-import { bars, trimText, usageRows, type UsageFilter } from "./history";
+import { bars, trimText, usageCsv, usageRows, type UsageFilter } from "./history";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 /** The trim as CodeOutput revokes, with each object's type for the SQL. */
@@ -69,7 +70,8 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
   const n = d.counts!, w = d.who;
   const [f, setF] = useState<UsageFilter>("all");
   const show = c.params.show === "trim" ? "trim" : "table";
-  const rows = usageRows(d.rows, f);
+  const [q, setQ] = useState("");
+  const rows = usageRows(d.rows, f, q);
   const list = useSaved(plan);
   const added = inPlan(list, d.changes);
   return (
@@ -88,11 +90,13 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
       ]} />
       {show === "table" && (
         <Card>
-          <FilterChips label="Show" value={f} onPick={(k) => setF(k as UsageFilter)} items={[
-            { key: "all", label: "All", count: d.rows.length }, { key: "drop", label: "Not used", count: n.drop },
-            { key: "trim", label: "Partly used", count: n.trim }, { key: "keep", label: "Keep", count: n.keep },
-            { key: "sensitive", label: "Sensitive", count: d.rows.filter((r) => r.sensitive).length }]} />
-          {!rows.length ? <EmptyState title="Nothing here">{d.rows.length ? "Change the filter." : "No tables or views reached."}</EmptyState> : (
+          <ListToolbar search={q} onSearch={setQ} onCsv={() => download(`${w.name}_granted_vs_used.csv`, usageCsv(rows))}>
+            <FilterChips label="Show" value={f} onPick={(k) => setF(k as UsageFilter)} items={[
+              { key: "all", label: "All", count: d.rows.length }, { key: "drop", label: "Not used", count: n.drop },
+              { key: "trim", label: "Partly used", count: n.trim }, { key: "keep", label: "Keep", count: n.keep },
+              { key: "sensitive", label: "Sensitive", count: d.rows.filter((r) => r.sensitive).length }]} />
+          </ListToolbar>
+          {!rows.length ? <EmptyState title="Nothing here">{d.rows.length ? "Change the filter or clear the search." : "No tables or views reached."}</EmptyState> : (
             <div className="ae-olist" role="table">
               <div className="ae-urow ae-orow-h" role="row"><span>Object</span><span>Granted</span><span>Actually used</span><span>Queries per week</span><span>Last used</span><span>Suggestion</span></div>
               {rows.map((r) => <Row key={r.object} r={r} weeks={d.weeks} open={o.open} />)}

@@ -86,7 +86,7 @@ once), so **My access** works without waiting for it. Without ACCOUNT_USAGE it r
 time (`SHOW_THREADS`); `IMPORTED PRIVILEGES` on database `SNOWFLAKE` makes it one fast query. The sidebar's
 **Incomplete** box says what could not be read and which grant fixes it.
 
-Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). The sidebar shows **Data from &lt;time&gt;**; **Read Snowflake again** reads it again. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
+Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The sidebar shows **Data from &lt;time&gt;**; **Read Snowflake again** reads it again. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
 
 ### 1. Install once (PowerShell; needs Python 3.10+ and git, no Node or npm)
 ```

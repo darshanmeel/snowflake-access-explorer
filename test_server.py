@@ -416,6 +416,37 @@ def test_every_page():  # every page key: a label, a nav group, an endpoint that
             get(f"/api/{e}{'&' if '?' in e else '?'}view=mine")
 
 
+def test_review_fixes():  # search answers, row policy list, defaults that exist, compare without users
+    f = {i["id"]: i for i in js("/api/find?q=ENGINEER_01")["items"]}
+    me = js("/api/home")["me"]
+    n = me["counts"]
+    assert f[me["user"]]["answer"] == f"reads {n['read']} · changes {n['change']} · owns {n['own']}"
+    wh = next(i for i in js("/api/find?q=WH_")["items"] if i["type"] == "WAREHOUSE")
+    assert wh["answer"].endswith("access") and wh["answer"][0].isdigit()
+    rl = js("/api/home")["protection"]["row_list"]
+    assert [r["object"] for r in rl] == sorted(a.row_tables()) and len(rl) == js("/api/home")["protection"]["row_tables"]
+    old = server.DEMO_USER
+    try:
+        server.DEMO_USER = "NOBODY_HERE"
+        assert js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["default_user"] == a.users[0]
+    finally:
+        server.DEMO_USER = old
+    users = a.users
+    try:
+        a.users = []
+        d = server.compare_page({}, "shared")
+        assert d["a"]["name"] == a.roles[0] and d["a"]["kind"] != "user"
+    finally:
+        a.users = users
+    r = a.FUNC + "ANALYST"
+    ch = js(f"/api/changes?subject={r}")
+    assert ch["events"] and all(r in e["subjects"] for e in ch["events"])
+    u = js("/api/changes?subject=ANALYST_02")
+    assert u["events"] and all("ANALYST_02" in e["subjects"] for e in u["events"])
+    g = {x["user"]: x for x in js("/api/grid")["rows"]}
+    assert all(bool(x["suggest"]) == a.stale(n) for n, x in g.items())
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

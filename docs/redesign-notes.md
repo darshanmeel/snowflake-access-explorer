@@ -181,10 +181,29 @@ stays, what changes, and the order of the work.
   Screenshots of every page, local and Streamlit, at 1500 and 780 px: no console errors, no page-wide horizontal scroll
   (wide tables, the flow diagram and graphs scroll inside their card).
 
+- **Review fixes**: service users are never dormant or "suggested: revoke" on the new screens (`a.stale`: disabled, or
+  a person dormant or never logged in, the same test as rules 8 and 16) in Sensitive data flow, the review grid and the
+  Who has access counts. Access graph: no What if / Open its page on the drawn boxes (`ACCOUNT`, every object) and no
+  What if on admin roles or PUBLIC. Risks: a click on the active severity tile shows every severity (`sev=all`). The
+  Object screen's default person and Compare's default side exist (no 500 without users). What changed subjects are node
+  ids (`a.uid` for users), so a user and a role with the same name keep their own History. test_perf takes the best of
+  up to 3 runs. The plain Streamlit fallback says when a screen is in the React version only, instead of silently showing
+  the User page. Home: each search hit has a one-line answer (`a.reach_counts`), warehouses are their own group, the
+  shortcuts are filled with the first hit (or the default user), Tagged objects opens the catalog and Tables with row
+  policies opens their list (`a.row_tables`). Access: recently viewed chips by the picker, Group by Schema / Type and a
+  Name sort; the Access and Object screens add to Recently viewed. Object, Users x privileges links the review grid with
+  privilege columns. Catalog, Granted vs used and the review grid use the list toolbar (search + CSV).
+
 ## Not done, and why
 
 - Rules On/Off and Mute are per browser (localStorage), not shared: a shared setting would need a store the app writes to.
-- The plain Streamlit fallback (`ST_REACT=native`) keeps its current pages; the default Streamlit mode runs the React app and gets every new screen.
+- The plain Streamlit fallback (`ST_REACT=native`) keeps its current pages and names a React-only screen in a banner; the default Streamlit mode runs the React app and gets every new screen.
+- The old pages stay the default tab of each new screen (the user's choice), so the brief's "Replaces" column is met one
+  tab away.
+- Nearest ways in has no grant simulation: What if simulates removals only; the row shows who holds the role today and
+  what else it brings, and What it brings opens the role.
+- CLAUDE.md's `.cache/` rule does not mention `<key>.prev.pkl` yet (README does); an agent may not edit CLAUDE.md.
+- The company-term pre-commit hook could not run: `~/.company-terms.txt` is missing on this machine.
 
 ## Phases
 
@@ -199,5 +218,5 @@ stays, what changes, and the order of the work.
 
 - README.html (the full guide) still describes the earlier pages; regenerate its generated parts with
   `python docs/make_readme.py` and rewrite its screen sections at the end of the redesign.
-- The plain Streamlit fallback has only the earlier pages.
+- The plain Streamlit fallback has only the earlier pages (it says so on a React-only screen).
 - Rules On/Off, Mute, review decisions and watched questions are per browser.

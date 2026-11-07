@@ -1,9 +1,10 @@
 // Screen 8, the sensitive objects catalog: one row per tagged object with its protection, most exposed first.
 import { useState } from "react";
 import type { CatalogRow } from "../api/types";
-import { Card, EmptyState, FilterChips } from "../components";
+import { Card, EmptyState, FilterChips, ListToolbar } from "../components";
+import { download } from "../components/table";
 import { useApp } from "../ctx";
-import { catalogOf, catalogSentence, protectionText, type CatFilter } from "./signoff";
+import { catalogCsv, catalogOf, catalogSentence, protectionText, type CatFilter } from "./signoff";
 
 const STATUS: Record<CatalogRow["status"], [string, string]> = {
   not: ["Not protected", "ae-pst-bad"], partly: ["Partly", "ae-pst-warn"], protected: ["Protected", "ae-pst-ok"], whole: ["Whole object", "ae-pst-plain"],
@@ -12,19 +13,20 @@ const STATUS: Record<CatalogRow["status"], [string, string]> = {
 export function Catalog({ rows }: { rows: CatalogRow[] }) {
   const c = useApp();
   const [f, setF] = useState<CatFilter>("all");
-  const shown = catalogOf(rows, f);
+  const [q, setQ] = useState("");
+  const shown = catalogOf(rows, f, q);
   return (
     <>
       <div className="ae-headrow">
         <p className="ae-answer">{catalogSentence(rows)} Most exposed first.</p>
         <button type="button" className="ae-btn" onClick={() => c.nav("flow", {})}>Where it flows</button>
       </div>
-      <div className="ae-toolbar">
+      <ListToolbar search={q} onSearch={setQ} onCsv={() => download("sensitive_catalog.csv", catalogCsv(shown))}>
         <FilterChips label="Filter" value={f} onPick={(k) => setF(k as CatFilter)} items={([["all", "All"], ["open", "Not protected"], ["pii", "PII / identifiers"], ["confidential", "Confidential"]] as const)
-          .map(([key, label]) => ({ key, label, count: catalogOf(rows, key).length }))} />
-      </div>
+          .map(([key, label]) => ({ key, label, count: catalogOf(rows, key, q).length }))} />
+      </ListToolbar>
       <Card scroll>
-        {!shown.length ? <EmptyState title="Nothing matches">Pick another filter.</EmptyState> : (
+        {!shown.length ? <EmptyState title="Nothing matches">Pick another filter or clear the search.</EmptyState> : (
           <div className="ae-cat" role="table">
             <div className="ae-cat-row ae-cat-h" role="row"><span>Object</span><span>Tags</span><span>Protection</span><span>Who can read</span><span /></div>
             {shown.map((r) => (

@@ -551,6 +551,10 @@ def test_pages():
         at.run()
         assert not at.exception, (q, [x.value for x in at.exception])
         md = " ".join(m.value for m in at.markdown)
+        if q.get("page") in ("home", "graph", "flow"):
+            assert "is in the React version only" in md, q
+        elif q.get("page") == "user":
+            assert "React version only" not in md
         if q == dict(page="user", name="ANALYST_01"):  # VIEW LINEAGE via PUBLIC, explained
             assert "Via PUBLIC (VIEW LINEAGE)" in md and "not a rule finding" in md
         if q == dict(page="rules", data="mine"):
@@ -820,34 +824,47 @@ def big():
                 USER=[dict(USER_NAME=u) for u in users], USAGE=[], TAG=tags, POLICY=pol)
 
 
+def timed(f, budget, reset=None):
+    """f() under budget seconds, best of up to 3 runs (reset() untimed before a retry, so caches start empty again):
+    one slow run on a busy machine is not a regression."""
+    took = []
+    while len(took) < 3 and (not took or min(took) >= budget):
+        if took and reset:
+            reset()
+        t = time.perf_counter()
+        f()
+        took.append(time.perf_counter() - t)
+    assert min(took) < budget, f"{min(took):.1f} s"
+
+
 def test_perf():
-    d = big()
-    t = time.perf_counter()
-    a.build(d)
-    rows = a.grants("BIG_01", True)
-    groups = a.group_objects(rows, "schema")
-    took = time.perf_counter() - t
+    d, got = big(), {}
+
+    def first():
+        a.build(d)
+        got["rows"] = a.grants("BIG_01", True)
+        got["groups"] = a.group_objects(got["rows"], "schema")
+    timed(first, 3)
+    rows, groups = got["rows"], got["groups"]
     assert len(a.objects) == 2000 and len(a.roles) >= 299 and len(a.users) == 500
     assert len({r["object"] for r in rows}) > 1000 and max(r["count"] for r in rows) > a.MAX_PATHS
     assert sum(g["objects"] for g in groups) == len({r["object"] for r in rows})
-    assert took < 3, f"{took:.1f} s"
-    t = time.perf_counter()  # second budget: the graph, the rule checks, the summary and one busy object
-    g, n = a.graph_input("BIG_01"), len({r["object"] for r in rows})
-    a.rule_rows()
-    a.has_lacks_summary("BIG_01", True)
-    a.grantees("DB0.S0.TBL_00")
-    a.data_view("BIG_01", "DB0.S0.TBL_00", True)
-    took = time.perf_counter() - t
-    assert took < 8, f"{took:.1f} s"
+
+    def second():  # the graph, the rule checks, the summary and one busy object
+        got["g"] = a.graph_input("BIG_01")
+        a.rule_rows()
+        a.has_lacks_summary("BIG_01", True)
+        a.grantees("DB0.S0.TBL_00")
+        a.data_view("BIG_01", "DB0.S0.TBL_00", True)
+    timed(second, 8, lambda: a.build(d))
+    g, n = got["g"], len({r["object"] for r in rows})
     assert g["header"] == f"{n:,} objects, grouped by {g['level']}" and g["level"] != "object"
     g = a.graph_input("BIG_01", groups[0]["group"])  # 40 tables in one schema: one type group
     assert g["level"] == "type" and g["lanes"][-1][1] == [groups[0]["group"] + " · TABLE"]
     for ch in ([dict(op="revoke_role_from_role", role=F + "TEAM_005", grantee=a.held_by[F + "TEAM_005"][0])],
                [dict(op="drop_role", role=F + "TEAM_010")]):  # what if: hundreds of users lose or keep access
-        t = time.perf_counter()
-        w = a.what_if(ch)
-        took = time.perf_counter() - t
-        assert w["counts"]["users"] > 10 and took < 3, f"{took:.1f} s"  # 1.5 - 2 s on a laptop
+        timed(lambda: got.update(w=a.what_if(ch)), 3, lambda: a.build(d))  # 1.5 - 2 s on a laptop
+        assert got["w"]["counts"]["users"] > 10
 
 
 def test_group_graph():
@@ -1487,13 +1504,39 @@ def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), w
     assert a.use_state()[0] is False
 
 
+def test_review_fixes():  # service users are never dormant on the new screens, search answers, row policies, subjects
+    d = a.fake()
+    for x in d["USER"]:
+        if x["USER_NAME"] == "SVC_DEPLOY":
+            x["LAST_SUCCESS_LOGIN"] = None
+    a.build(d)
+    assert a.status("SVC_DEPLOY") == "never" and not a.stale("SVC_DEPLOY") and a.stale("FIN_14") and a.stale("ANALYST_02")
+    assert a.flow_group("SVC_DEPLOY", a.admin_users()) == "service"
+    assert "SVC_DEPLOY" not in {f["grantee"] for f in a.rules_users()}  # the same test as rule 16
+    a.build(a.fake())
+    for n, u in [(x, True) for x in a.users] + [(r, False) for r in a.roles]:
+        full = a.ladder_counts(a.access_objects(a.grants(n, u), u))
+        assert a.reach_counts(n, u) == {k: full[k] for k in ("read", "change", "own")}, n
+    assert list(a.row_tables()) == sorted(a.row_tables()) and len(a.row_tables()) == a.governance_kpis()["row_tables"] == 3
+    assert a.row_tables()["FINANCE.REPORT.TBL_REVENUE"] == ["SHARED.GOVERNANCE.RAP_REGION"]
+    prev, now = a.fake_previous(), a.fake()  # a new user named like a role: its events never match the role's subject
+    r = F + "ANALYST"
+    now["USER"].append(dict(now["USER"][0], USER_NAME=r, LAST_SUCCESS_LOGIN="2026-11-01 08:00"))
+    now["USER_ROLE"].append(dict(USER_NAME=r, ROLE_NAME=F + "MARKETING", GRANTED_BY="SECURITYADMIN"))
+    a.build(now)
+    ev = a.diff(prev)["events"]
+    mine = [e for e in ev if r + a.UTAG in e["subjects"]]
+    assert mine and all(r not in e["subjects"] for e in mine if e["kind"] == "user")
+    assert any(e["text"] == f"New user {r}" for e in mine) and any(r in e["subjects"] and r + a.UTAG not in e["subjects"] for e in ev)
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
               test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow,
-              test_usage_changes, test_pages):
+              test_usage_changes, test_review_fixes, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

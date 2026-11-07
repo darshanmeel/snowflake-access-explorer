@@ -1,7 +1,9 @@
 // Screens 13 and 14 without React: the usage bars, the What changed filters and the watched questions (saved per
 // viewer in this browser; re-asked through the existing endpoints, never sent anywhere).
 import type { ChangeEvent, ChangeKind, CheckPage, UsageRow, WhoPage } from "../api/types";
+import { toCsv } from "../components/table";
 import { saved } from "./changeplan";
+import { hits } from "./signoff";
 
 export type Filter = "all" | "gain" | "lose" | "risk" | "sensitive";
 export const ICON: Record<ChangeKind, string> = { gain: "+", lose: "−", risk: "!", user: "•", fixed: "✓" };
@@ -21,7 +23,12 @@ export const bars = (weeks: number[], h = 32) => {
 };
 
 export type UsageFilter = "all" | "drop" | "trim" | "keep" | "sensitive";
-export const usageRows = (rows: UsageRow[], f: UsageFilter) => rows.filter((r) => f === "all" || (f === "sensitive" ? r.sensitive : r.suggest === f));
+export const usageRows = (rows: UsageRow[], f: UsageFilter, q = "") =>
+  rows.filter((r) => (f === "all" || (f === "sensitive" ? r.sensitive : r.suggest === f)) && hits(q, r.object));
+
+/** Granted vs used as CSV: one row per object. */
+export const usageCsv = (rows: UsageRow[]) => toCsv(["Object", "Type", "Granted", "Used", "Privileges", "Never used", "Reads", "Writes", "Last used", "Suggestion"],
+  rows.map((r) => [r.object, r.type, r.level, r.used ?? "not used", r.privileges.join(" "), r.unused.join(" "), String(r.reads), String(r.writes), r.last ?? "", r.suggest]));
 
 /** "Write on TBL_LOGGING · read on TBL_EMPLOYEE": what the trim takes away, object by object. */
 export function trimText(rows: UsageRow[]): string {

@@ -1014,7 +1014,9 @@ def home_page(p, view):
     return dict(view=view, me=mine, risks=sev if view == "shared" else None, counts=counts,
                 protection=dict(unmasked=sum(x["num"] == "6" for x in S["rows"]), unmasked_names=unmasked,
                                 dormant=len(dormant), dormant_names=dormant[:8], tagged=g["tagged_objects"],
-                                masked=g["masked_columns"], row_tables=g["row_tables"]) if view == "shared" else None)
+                                masked=g["masked_columns"], row_tables=g["row_tables"],
+                                row_list=[dict(object=o, policies=v) for o, v in a.row_tables().items()])
+                if view == "shared" else None)
 
 
 def mask_text(name, o, user=False):
@@ -1318,8 +1320,10 @@ def who_page(p, view):
     return dict(view=view, object=head, people=w["people"], roles=w["roles"], groups=a.same_paths(w["people"]),
                 counts=dict(levels=levels, people=len(w["people"]), roles=len(w["roles"]),
                             disabled=sum(x["status"] == "disabled" for x in w["people"]),
-                            dormant=sum(x["status"] in ("dormant", "never") for x in w["people"])),
-                columns=cols, default_user=DEMO_USER if view == "shared" else (a.users[0] if a.users else None))
+                            dormant=sum(x["status"] in ("dormant", "never") and not a.is_service(x["name"])
+                                        for x in w["people"])),
+                columns=cols, default_user=(DEMO_USER if DEMO_USER in a.users else a.users[0] if a.users else None)
+                if view == "shared" else (a.users[0] if a.users else None))
 
 
 # ---------- can they ----------
@@ -1554,7 +1558,7 @@ def usage_page(p, view):
 
 def changes_page(p, view):
     """Screen 14: the loaded snapshot against the previous one (demo: a.fake_previous(); else the copy cache.py kept
-    in .cache/ when a refresh replaced it). subject= keeps the events about one user, role or object."""
+    in .cache/ when a refresh replaced it). subject= keeps the events about one user, role or object (a node id: a.uid() for users)."""
     out = dict(view=view, subject=p.get("subject") or None, available=False, events=[], counts=None)
     if view == "mine":
         return out | dict(reason="What changed compares two shared snapshots: open it on the shared snapshot.")
@@ -1573,8 +1577,9 @@ def changes_page(p, view):
     d = a.cached(("diff", cache.run_of(prev)), lambda: a.diff(prev))
     ev = [e for e in d["events"] if not out["subject"] or out["subject"] in e["subjects"]]
     n, before = a.event_counts(ev), d["runs"]["before"]
-    sub = out["subject"]
-    gained = [u for u in d["sens_gained"] if not sub or (u == sub if sub in a.users else any(u in e["people"] for e in ev))]
+    sub, mine = out["subject"], out["subject"] and a.node_kind(out["subject"]) == "user"  # subject= is a node id
+    gained = [u for u in d["sens_gained"]
+              if not sub or (u == a.node_name(sub) if mine else any(u in e["people"] for e in ev))]
     text = (f"Since the snapshot of {before}: {plural(n['all'], 'change')}"
             + (f", {plural(d['high'], 'new high finding')}" if d["high"] and not out["subject"] else "")
             + (f", {len(gained)} {'person' if len(gained) == 1 else 'people'} gained sensitive access" if gained else "") + ".")
@@ -1599,7 +1604,7 @@ def compare_page(p, view):
     counts, rows with the differences first, the changes that make B match A or remove A's extras (text only), and
     the old Compare two roles table over the sensitive objects."""
     need(a.users or a.roles, "No users or roles in this data.")
-    me = a.users[0] if view == "mine" or not a.users or DEMO_USER not in a.users else DEMO_USER
+    me = (a.users[0] if view == "mine" or DEMO_USER not in a.users else DEMO_USER) if a.users else None
     x, xu = side_of(p.get("a") or me or a.roles[0])
     if p.get("b"):
         y, yu = side_of(p["b"])
@@ -1847,7 +1852,7 @@ def grid_page(p, view):
     db = p.get("db") or (dbs[0] if dbs else "")
     need(scope != "db" or db in dbs, f"{db} is not in this snapshot")
     g = a.review_grid(scope, db, obj or None, flag(p, "hideusage", True))
-    rows = [r | dict(last_login=login(r["user"])[0], suggest=r["status"] if r["status"] != "active" else None)
+    rows = [r | dict(last_login=login(r["user"])[0], suggest=r["status"] if a.stale(r["user"]) else None)
             for r in g["rows"]]
     people = [r for r in rows if r["type"] not in ("SERVICE", "LEGACY_SERVICE")]
     return dict(view="shared", scope="object" if obj else scope, db=db, dbs=dbs, object=obj, columns=g["columns"],
@@ -1890,8 +1895,18 @@ def find_page(p, view):
         name = a.node_name(n)
         out.append(dict(id=n, name=name, kind=k, kind_label=kind_label(name, a.node_kind(n)) if k != "object"
                         else (a.kinds.get(n) or "Object").capitalize(), type=a.kinds.get(n) if k == "object" else None,
-                        sensitive=n in S["sens"], page=page_of(k)))
+                        sensitive=n in S["sens"], page=page_of(k), answer=answer(n, k, name)))
     return dict(items=out, total=len(hits_))
+
+
+def answer(n, k, name):
+    """One-line answer of a search hit: "reads 6 · changes 5 · owns 2" for a person or role (reach only, fast), the
+    people with access for an object."""
+    if k == "object":
+        us = set().union(*(a.ups(r)[1] for r, _, _ in a.on.get(n, [])))
+        return f"{len(us)} {'person has' if len(us) == 1 else 'people have'} access"
+    c = a.reach_counts(name, k == "user")
+    return f"reads {c['read']} · changes {c['change']} · owns {c['own']}"
 
 
 def list_page(p, view):

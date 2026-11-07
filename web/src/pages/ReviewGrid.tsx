@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useApi } from "../api/client";
 import type { GridPage } from "../api/types";
-import { Card, EmptyState, FilterChips, LEVEL_WORD, Toggle } from "../components";
+import { Card, EmptyState, FilterChips, LEVEL_WORD, ListToolbar, Toggle } from "../components";
 import { download } from "../components/table";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { addTo, plan, saved, useSaved } from "./changeplan";
@@ -25,6 +25,7 @@ function Grid({ d }: { d: GridPage }) {
   const o = useOpen(d.refs);
   const [all, setAll] = useState(false);
   const [reviewer, setReviewer] = useState("");
+  const [q, setQ] = useState("");
   const people = c.params.people !== "0", stale = c.params.stale === "1", hide = c.params.hideusage !== "0";
   const key = d.scope === "object" ? `object:${d.object}` : d.scope === "db" ? `db:${d.db}` : d.scope;
   const store = useSaved(decisions);
@@ -34,7 +35,7 @@ function Grid({ d }: { d: GridPage }) {
     if (cur[u] === v) delete cur[u]; else cur[u] = v;
     decisions.set({ ...decisions.get(), [key]: cur });
   };
-  const rows = gridRows(d.rows, people, stale);
+  const rows = gridRows(d.rows, people, stale, q);
   const shown = all ? rows : rows.slice(0, SHOWN);
   const done = rows.filter((r) => dec[r.user]).length, revokes = rows.filter((r) => dec[r.user] === "revoke");
   const scopes = [{ key: "sensitive", label: "Sensitive data", count: d.sensitive }, ...d.dbs.map((x) => ({ key: `db:${x}`, label: `Database ${x}` })), { key: "all", label: "Everything" }];
@@ -59,13 +60,14 @@ function Grid({ d }: { d: GridPage }) {
           <button type="button" className="ae-btn" onClick={() => c.nav("flow", {})}>Data flow</button>
         </div>
       </div>
-      <div className="ae-toolbar">
+      <ListToolbar search={q} onSearch={setQ}
+        onCsv={() => download(`access_review_${key.replace(/[^A-Za-z0-9_]+/g, "_")}.csv`, signoffCsv(d, rows, dec, reviewer.trim(), "not signed"))}>
         {isObj ? <span className="ae-chip ae-chip-plain">{d.object} · privileges <button type="button" className="ae-link" onClick={() => pick("all")} aria-label="Back to objects">×</button></span>
           : <FilterChips label="Scope" value={d.scope === "db" ? `db:${d.db}` : d.scope} onPick={pick} items={scopes} />}
         <Toggle label="People only" on={people} onPick={(v) => c.set({ people: v ? null : "0" })} />
         <Toggle label="Only dormant / disabled" on={stale} onPick={(v) => c.set({ stale: v ? "1" : null })} />
         <Toggle label="Hide USAGE" on={hide} onPick={(v) => c.set({ hideusage: v ? null : "0" })} />
-      </div>
+      </ListToolbar>
       <Card title={isObj ? `Who holds each privilege on ${d.object.split(".").pop()}` : d.scope === "sensitive" ? "Who can reach each sensitive object" : "Who can reach each object"}
         sub={d.total > d.columns.length ? `First ${d.columns.length} of ${d.total} objects, most people first` : undefined}
         right={<span className="ae-bar-legend">{(["read", "change", "own", "admin"] as const).map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{WORD[l]}</span>)}<span className="ae-muted">Hover a cell for its path</span></span>}>

@@ -244,13 +244,15 @@ Reads the logged-in user's own access (see sessions; `?fresh=1` reads Snowflake 
 ### GET /api/find?q=&limit=20&view=
 
 Global search over users (as `a.uid` ids), roles and objects. Producer: `a.search(q, names)` with
-`names = [a.uid(u, True) for u in a.users] + a.roles + a.objects`.
+`names = [a.uid(u, True) for u in a.users] + a.roles + a.objects`. `answer`: one line per hit, for a person or role
+"reads N · changes N · owns N" (`a.reach_counts`, reach only, the same numbers as the Access screen), for an object the
+people with access.
 
 ```json
 {"items": [{"id": "ENGINEER_01", "name": "ENGINEER_01", "kind": "user", "kind_label": "User · person",
-            "type": null, "sensitive": false, "page": "user"},
+            "type": null, "sensitive": false, "page": "user", "answer": "reads 6 · changes 5 · owns 2"},
            {"id": "SALES.CORE.TBL_CUSTOMER", "name": "SALES.CORE.TBL_CUSTOMER", "kind": "object", "kind_label": "Table",
-            "type": "TABLE", "sensitive": true, "page": "object"}], "total": 2}
+            "type": "TABLE", "sensitive": true, "page": "object", "answer": "8 people have access"}], "total": 2}
 ```
 
 ### GET /api/list?what=users|roles|objects|types|databases&type=&view=

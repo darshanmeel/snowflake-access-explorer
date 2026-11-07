@@ -6,9 +6,15 @@ export type Decision = "keep" | "revoke";
 const n = (k: number, w: string, many = `${w}s`) => `${k} ${k === 1 ? w : many}`;
 const list = (xs: string[], max = 3) => (xs.length <= max ? xs.join(", ").replace(/, ([^,]*)$/, " and $1") : `${xs.slice(0, max).join(", ")} and ${xs.length - max} more`);
 
-/** Rows left after People only (no service users) and Only dormant / disabled. */
-export const gridRows = (rows: GridRow[], people: boolean, stale: boolean) =>
-  rows.filter((r) => (!people || !r.type.includes("SERVICE")) && (!stale || r.suggest));
+/** The list toolbar's search: q (any case) in one of the texts; an empty q keeps everything. */
+export const hits = (q: string | undefined, ...xs: string[]) => {
+  const t = (q ?? "").trim().toLowerCase();
+  return !t || xs.some((x) => x.toLowerCase().includes(t));
+};
+
+/** Rows left after People only (no service users), Only dormant / disabled and the search (person or role). */
+export const gridRows = (rows: GridRow[], people: boolean, stale: boolean, q = "") =>
+  rows.filter((r) => (!people || !r.type.includes("SERVICE")) && (!stale || r.suggest) && hits(q, r.user, ...r.roles));
 
 /** Revoke rows as What if changes: every granted role on their paths, from that user (PUBLIC is never revoked). */
 export const revokesOf = (rows: GridRow[], dec: Record<string, Decision>): WhatIfChange[] =>
@@ -27,9 +33,16 @@ export function signoffCsv(d: Pick<GridPage, "columns" | "scope" | "db" | "objec
 
 export type CatFilter = "all" | "open" | "pii" | "confidential";
 
-/** Catalog filter: open = a sensitive column without masking (Not protected or Partly). */
-export const catalogOf = (rows: CatalogRow[], f: CatFilter) =>
-  rows.filter((r) => f === "all" || (f === "open" ? r.unmasked > 0 : r.groups.includes(f)));
+/** Catalog filter: open = a sensitive column without masking (Not protected or Partly); q searches object, tags and
+ * columns. */
+export const catalogOf = (rows: CatalogRow[], f: CatFilter, q = "") =>
+  rows.filter((r) => (f === "all" || (f === "open" ? r.unmasked > 0 : r.groups.includes(f)))
+    && hits(q, r.object, ...r.labels, ...r.columns.map((c) => c.column)));
+
+/** The catalog as CSV: one row per object. */
+export const catalogCsv = (rows: CatalogRow[]) => toCsv(["Object", "Type", "Status", "Tags", "Columns not masked", "Columns masked", "Row policies", "Readers"],
+  rows.map((r) => [r.object, r.type, r.status, r.labels.join(" "), r.columns.filter((c) => !c.masked).map((c) => c.column).join(" "),
+    r.columns.filter((c) => c.masked).map((c) => c.column).join(" "), r.row_policies.join(" "), String(r.readers)]));
 
 export function catalogSentence(rows: CatalogRow[]): string {
   const open = rows.filter((r) => r.unmasked > 0);

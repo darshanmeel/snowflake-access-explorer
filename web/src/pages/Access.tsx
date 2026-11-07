@@ -1,5 +1,5 @@
 // Screen 1: My access / a person or role. Answer first, one row per object at its highest level, "How?" on demand.
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { AccessObject, AccessPage, ListItem } from "../api/types";
 import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Toggle, toCsv } from "../components";
@@ -9,6 +9,8 @@ import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick } from "./common";
+import { recent, remember } from "./Home";
+import { byName, groupKey, type GroupBy } from "./screens";
 
 const RANK = { names: 0, read: 1, change: 2, own: 3, admin: 4 } as const;
 const at = (o: AccessObject, min: keyof typeof RANK) => o.level != null && RANK[o.level] >= RANK[min];
@@ -37,7 +39,10 @@ export function AccessPageView() {
       <div className="ae-headrow">
         <div>
           {mine ? <h2 className="ae-h1">My access</h2> : (
-            <div className="ae-h1 ae-h1-pick">Access for <Pick label="Person or role" value={role || user} options={options.length ? options : [role || user]} onPick={pick} width={260} /></div>
+            <div className="ae-h1 ae-h1-pick">Access for <Pick label="Person or role" value={role || user} options={options.length ? options : [role || user]} onPick={pick} width={260} />
+              {recent().filter((r) => (r.page === "user" || r.page === "role") && r.id !== (role || user)).slice(0, 4).map((r) => (
+                <button type="button" key={r.id} className="ae-pchip" title="Recently viewed" onClick={() => c.set(r.page === "role" ? { role: r.id, user: null } : { user: r.label, role: null })}>{r.label}</button>))}
+            </div>
           )}
         </div>
       </div>
@@ -52,17 +57,20 @@ function Body({ d }: { d: AccessPage }) {
   const [lvl, setLvl] = useState(c.params.filter ?? "all");
   const [q, setQ] = useState("");
   const [usage, setUsage] = useState(false);
-  const [group, setGroup] = useState(false);
+  const [group, setGroup] = useState<GroupBy>("none");
+  const [sort, setSort] = useState("risk");
   const [open, setOpen] = useState<string | null>(null);
   const [cell, setCell] = useState<{ schema: string; min: string } | null>(null);
   const w = d.who, n = d.counts, user = w.kind === "user";
+  useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
   const show = c.params.show === "summary" || c.params.show === "history" ? c.params.show : "detail"; // the diagram first
   const data = d.objects.filter((x) => x.category === "data" || (usage && x.category === "names"));
-  const shown = data.filter((x) =>
+  const kept = data.filter((x) =>
     (lvl === "all" || (lvl === "read" ? x.level === "read" : lvl === "change" ? at(x, "change") && x.level !== "own" : lvl === "own" ? at(x, "own") : lvl === "multi" ? x.ways > 1 : true))
     && (!q || x.object.toLowerCase().includes(q.toLowerCase()))
     && (!cell || (`${x.database}.${x.schema}` === cell.schema || x.object === cell.schema) && (cell.min === "sensitive" ? x.sensitive : at(x, cell.min as keyof typeof RANK))));
-  const groups = group ? [...new Set(shown.map((x) => (x.schema ? `${x.database}.${x.schema}` : x.object)))] : [""];
+  const shown = sort === "name" ? byName(kept) : kept;
+  const groups = group !== "none" ? [...new Set(shown.map((x) => groupKey(x, group)))] : [""];
   const runs = d.objects.filter((x) => x.category === "runnable");
   const powers = d.objects.filter((x) => x.category === "account");
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
@@ -100,7 +108,7 @@ function Body({ d }: { d: AccessPage }) {
         { key: "history", label: "History" },
       ]} />
       {show === "detail" && <Detail name={w.name} user={user} />}
-      {show === "history" && <ChangeFeed subject={w.name} />}
+      {show === "history" && <ChangeFeed subject={w.id} />}
       {show === "summary" && <>
       <div className="ae-two">
         <Card title="Where the access is" sub="Objects per schema, by the most they can do. Click a cell to filter the list.">
@@ -137,7 +145,8 @@ function Body({ d }: { d: AccessPage }) {
             { key: "all", label: "All", count: data.length }, { key: "read", label: "Read only" }, { key: "change", label: "Can change" },
             { key: "own", label: "Owns" }, { key: "multi", label: "More than one way" }]} />
           <Toggle label={`Show ${n.usage} database/schema USAGE grants`} on={usage} onPick={setUsage} />
-          <Toggle label="Group by schema" on={group} onPick={setGroup} />
+          <FilterChips label="Group by" value={group} onPick={(k) => setGroup(k as GroupBy)} items={[{ key: "none", label: "No groups" }, { key: "schema", label: "Schema" }, { key: "type", label: "Type" }]} />
+          <FilterChips label="Sort" value={sort} onPick={setSort} items={[{ key: "risk", label: "Riskiest first" }, { key: "name", label: "Name" }]} />
           {cell && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setCell(null)}>{cell.schema} · {cell.min} ×</button>}
         </ListToolbar>
         {!shown.length ? <EmptyState title="Nothing matches">Change the filter, or clear the search.</EmptyState> : (
@@ -145,8 +154,8 @@ function Body({ d }: { d: AccessPage }) {
             <div className="ae-orow ae-orow-h" role="row"><span>Object</span><span>Access</span><span>Sensitive columns</span><span>Granted through</span><span /></div>
             {groups.map((g) => (
               <Fragment key={g}>
-                {g && <div className="ae-ogroup" role="row"><span className="ae-mono">{g}</span> <span className="ae-muted">{shown.filter((x) => (x.schema ? `${x.database}.${x.schema}` : x.object) === g).length}</span></div>}
-                {shown.filter((x) => !g || (x.schema ? `${x.database}.${x.schema}` : x.object) === g).map((x) => {
+                {g && <div className="ae-ogroup" role="row"><span className="ae-mono">{g}</span> <span className="ae-muted">{shown.filter((x) => groupKey(x, group) === g).length}</span></div>}
+                {shown.filter((x) => !g || groupKey(x, group) === g).map((x) => {
                   const id = x.object + x.category;
                   const isOpen = open === id;
                   return (

@@ -1,5 +1,14 @@
 // Pure helpers of the Access graph (4), What they see (7) and Compare (9) screens.
-import type { CompareChange, NodeKind, SeePage, WhatIfChange } from "../api/types";
+import type { AccessObject, CompareChange, NodeKind, SeePage, WhatIfChange } from "../api/types";
+
+export type GroupBy = "none" | "schema" | "type";
+
+/** Access list group of one row: its schema (or the object itself when it has none), its type, or "" (no groups). */
+export const groupKey = (x: Pick<AccessObject, "object" | "database" | "schema" | "type">, by: GroupBy) =>
+  by === "schema" ? (x.schema ? `${x.database}.${x.schema}` : x.object) : by === "type" ? x.type : "";
+
+/** Access list sorted by name (the server sends riskiest first). */
+export const byName = <T extends Pick<AccessObject, "object">>(xs: T[]) => [...xs].sort((a, b) => a.object.localeCompare(b.object));
 
 /** URL params that make a graph box the start: a table, a role or a person. */
 export function startOf(kind: NodeKind | string, id: string): Record<string, string | null> {

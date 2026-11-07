@@ -1,6 +1,6 @@
 // Screen 2: who has access to a table (or any object), or to the admin roles (preset=admin). The old Object page
 // (graph, by path / by user or role, users × privileges) is the default tab; the new list by level is next to it.
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
 import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, PathChips, Tabs, Toggle, toCsv } from "../components";
@@ -8,6 +8,7 @@ import { download } from "../components/table";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
 import { ChangeFeed } from "./Changes";
+import { remember } from "./Home";
 import { AdminTable } from "./Rules";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 import { byLevel, NOTE, ORDER, sameLabel, stepsOf, TITLE } from "./who";
@@ -40,6 +41,7 @@ export function ObjectPageView() {
 function Who({ d }: { d: WhoPage }) {
   const c = useApp();
   const o = d.object, admin = o.preset === "admin";
+  useEffect(() => { if (o.id) remember({ page: "object", id: o.id, label: o.id }); }, [o.id]);
   const show = c.params.show === "who" || (c.params.show === "history" && !admin) ? c.params.show : "detail";
   const save = () => download(`${o.id ?? "admin_roles"}_who.csv`, toCsv(["User", "Status", "Last login", "Access", "Privileges", "Path", "Ways"],
     d.people.map((x) => [x.name, x.status, x.login, TITLE[x.level], x.privileges.join(" "), x.path.join(" > "), String(x.ways)])));
@@ -308,7 +310,8 @@ export function ObjectDetail() {
                 {Object.entries(d.sensitivity.policy_text).map(([n, t]) => <details key={n}><summary>{n}</summary><pre className="ae-code">{t}</pre></details>)}
               </Card>
             )}
-            {part === "users" && <Card title="Users" sub="Every user, with what they can do here" scroll>
+            {part === "users" && <Card title="Users" sub="Every user, with what they can do here" scroll
+              right={c.view === "shared" && <button type="button" className="ae-btn" onClick={() => c.nav("review", { show: "grid", object: o.id, columns: "privileges" })}>Review people × privileges</button>}>
               <DataTable csv={`${o.name}_users.csv`} rows={d.matrix.rows} rowTone={(r: MatrixRow) => (r.admin.length ? "bad" : null)}
                 columns={[
                   col("u", "User", (r: MatrixRow) => r.user, { render: (r: MatrixRow) => <NameLink id={r.user} refs={d.refs} /> }),
