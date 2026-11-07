@@ -15,3 +15,5 @@ export { TAB_ORDER, TAB_LABEL, privTab, tabList, tabRows, tabRoles, byObject } f
 export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind, pathGraph, related, MAX_BOXES } from "./graphs";
 export { tabGraph, tabPaths } from "./tabgraph";
 export { cellText, filterRows, sortRows, toCsv } from "./table";
+export { AccessPill, CodeOutput, EmptyState, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, PathChips, SensitiveCell, Toggle, type FilterItem } from "./kit";
+export { sqlOf, terraformOf, ticketOf, type Change } from "./codegen";

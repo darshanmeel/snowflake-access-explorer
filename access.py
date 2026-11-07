@@ -932,6 +932,81 @@ def priv_cat(pv, kind=""):
     return c if c in ("read", "write") else "manage"
 
 
+LEVELS = ("names", "read", "change", "own", "admin")  # access ladder, low to high power
+RUN_TYPES = {"WAREHOUSE", "FUNCTION", "PROCEDURE", "TASK", "PIPE", "ALERT", "COMPUTE POOL", "INTEGRATION", "NOTEBOOK",
+             "STREAMLIT", "SEQUENCE"}
+
+
+def category(pv, kind=""):
+    """Where a grant shows on the access screen: data (on the ladder), runnable (warehouses, functions, procedures,
+    tasks), account (account privileges and CREATE / MODIFY on a database or schema), names (USAGE on a database or
+    schema: can see names) or hold (a role held)."""
+    k = (kind or "").replace("FUTURE ", "")
+    if k == "ACCOUNT":
+        return "account"
+    if k in ROLE_ON:
+        return "hold"
+    if k in RUN_TYPES or priv_cat(pv, k) == "execute":
+        return "runnable"
+    if k in ("DATABASE", "SCHEMA"):
+        return "names" if pv in ("USAGE", "MONITOR") else "data" if pv == "OWNERSHIP" else "account"
+    return "data"
+
+
+def level_of(pv, kind=""):
+    """Ladder step of one privilege on a data object (None: not on the ladder, e.g. APPLY on a table)."""
+    k = (kind or "").replace("FUTURE ", "")
+    if k in ("DATABASE", "SCHEMA") and pv in ("USAGE", "MONITOR"):
+        return "names"
+    return {"own": "own", "write": "change", "read": "read"}.get(priv_class(pv, k))
+
+
+CAT_RANK = ("data", "runnable", "account", "names")
+
+
+def access_objects(rows, user=False):
+    """One entry per object from grants() rows, at the highest ladder step any of its privileges gives ("admin" when a
+    path runs through an admin role). path summary: first role after the subject (None: granted straight), grant
+    holder of the shortest path, ways = distinct routes (every path, counted)."""
+    by = {}
+    for r in rows:
+        c = category(r["privilege"], r["type"])
+        if c == "hold":
+            continue
+        key = (r["object"], r["privilege"]) if c == "account" else (r["object"], "")  # each account power on its own
+        x = by.setdefault(key, dict(object=r["object"], type=r["type"], database=r["database"], schema=r["schema"],
+                                    category=c, rows=[]))
+        x["rows"].append(r)
+        if CAT_RANK.index(c) < CAT_RANK.index(x["category"]):  # an owned schema is data, its USAGE folds in
+            x["category"] = c
+    out = []
+    for x in by.values():
+        rs = sorted(x.pop("rows"), key=lambda r: (len(r["path"]), r["privilege"]))
+        steps = [level_of(r["privilege"], r["type"]) for r in rs if x["category"] in ("data", "names")]
+        top = max((s for s in steps if s), key=LEVELS.index, default=None)
+        if top and any(n in ADMIN for r in rs for p in r["paths"] for n in p[1:-1]):
+            top = "admin"
+        best = rs[0]["path"]
+        routes = {tuple(p[:-1]) for r in rs for p in r["paths"]}
+        ways = max(len(routes), max(r["count"] for r in rs))
+        order = sorted({r["privilege"] for r in rs}, key=lambda pv: (-LEVELS.index(level_of(pv, x["type"]) or "names"), pv))
+        out.append(x | dict(level=top, privileges=order, path=best, first=best[1] if len(best) > 2 else None,
+                            holder=best[-2], ways=ways, depth=depth(best[:-1], user),
+                            holders=sorted({h for r in rs for h in r["holders"]})))
+    return out
+
+
+def ladder_counts(objs):
+    """Counts of data objects at each step or higher (read counts change and own too): one number per idea. usage:
+    USAGE grants on databases and schemas (hidden by default, "can see names")."""
+    data = [x for x in objs if x["category"] == "data" and x["level"]]
+    at = lambda s: sum(LEVELS.index(x["level"]) >= LEVELS.index(s) for x in data)
+    return dict(read=at("read"), change=at("change"), own=at("own"), admin=at("admin"),
+                usage=sum(pv == "USAGE" and x["type"] in ("DATABASE", "SCHEMA") for x in objs for pv in x["privileges"]),
+                runnable=sum(x["category"] == "runnable" for x in objs),
+                account=sum(x["category"] == "account" for x in objs))
+
+
 def tag_label(t, v):
     """"PRIVACY_CATEGORY=IDENTIFIER": tag (last name part) = value."""
     return f"{t.split('.')[-1]}={v}"

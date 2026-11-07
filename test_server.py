@@ -235,6 +235,29 @@ def test_read_only():  # the only write-like statement is the snapshot CALL
     assert "SP_ACCESS_SNAPSHOT" in src and not any(w in src for w in ("cur.execute(f\"GRANT", "REVOKE ROLE"))
 
 
+def test_access_home():  # screens 0 and 1: one row per object at its highest level, counted once
+    d = js("/api/access?user=ENGINEER_01", ["who", "counts", "objects", "heat", "why", "refs"])
+    n = d["counts"]
+    assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (6, 5, 2, 3, 4, 8), n
+    powers = {(x["privileges"][0], x["object"]) for x in d["objects"] if x["category"] == "account"}
+    assert powers == {("EXECUTE TASK", "ACCOUNT"), ("VIEW LINEAGE", "ACCOUNT"), ("CREATE TABLE", "SALES.CORE")}, powers
+    log = next(x for x in d["objects"] if x["object"] == "SHARED.LOGGING.TBL_LOGGING")
+    assert log["findings"][0] == dict(num="17", severity="High", label="read role can write") and log["level"] == "change"
+    wh = next(x for x in d["objects"] if x["object"] == "WH_SALES_XS")
+    assert "2" in {f["num"] for f in wh["findings"]}
+    data = [x["object"] for x in d["objects"] if x["category"] == "data"]
+    assert len(data) == len(set(data))  # each object once
+    assert d["why"][0]["note"] == "default" and d["who"]["secondary_all"]
+    r = js(f"/api/access?role={a.FUNC}ENGINEER")
+    assert r["who"]["held_by"]["users"] >= 1 and r["counts"]["read"] == 6
+    get("/api/access?user=NOPE", 404)
+    h = js("/api/home", ["me", "risks", "protection", "counts"])
+    assert h["me"]["counts"]["read"] == 6 and h["risks"]["High"] > 0 and h["protection"]["unmasked"] == 3
+    assert js("/api/home?view=mine")["risks"] is None
+    g = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
+    assert g["home"] == g["access"] == "answers" and g["rules"] == "admin"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

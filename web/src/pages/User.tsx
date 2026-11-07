@@ -14,7 +14,7 @@ export function UserPage() {
   const s = useApi<UserPage>("user", { ...apiParams(c), name });
   const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
   const o = useOpen(s.data?.refs);
-  const [part, setPart] = useState("privs");
+  const [part, setPart] = useState(c.params.part ?? "privs");
   return (
     <>
       <Head title={mine ? "My access" : "User"} sub="What this user can reach, and through which roles." />

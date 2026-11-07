@@ -1,11 +1,14 @@
-// Local SPA frame: top bar (Find, data mode, theme), sidebar (pages, run info, incomplete notes), URL state, page switch.
+// App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
+// Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { clearCache, get, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page } from "./api/types";
-import { Banner, Card, Root, type ThemeName } from "./components";
+import { Card, Root, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
-import { ErrorBox } from "./pages/common";
+import { AccessPageView } from "./pages/Access";
 import { CheckPageView } from "./pages/Check";
+import { ErrorBox } from "./pages/common";
+import { HomePageView, remember } from "./pages/Home";
 import { ObjectPageView } from "./pages/Object";
 import { ReviewPageView } from "./pages/Review";
 import { RolePageView } from "./pages/Role";
@@ -14,19 +17,30 @@ import { SensitivePageView } from "./pages/Sensitive";
 import { WhatIfPageView } from "./pages/Whatif";
 import { UserPage } from "./pages/User";
 
-const PAGES: Page[] = ["user", "role", "object", "check", "sensitive", "rules", "review", "whatif"];
+const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "whatif"];
 const LABEL: Record<Page, string> = {
-  user: "User", role: "Role", object: "Object", check: "Can they?", sensitive: "Sensitive data", rules: "Rule checks", review: "Access review", whatif: "What if",
+  home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "Object", check: "Can they?",
+  sensitive: "Sensitive data", rules: "Risks & fixes", review: "Review & sign-off", whatif: "What if",
 };
+const GROUPS: [string, string][] = [["answers", "Answers"], ["admin", "Admin"], ["detail", "Detail"]];
+
+/** Old links to the new screens (docs/redesign-notes.md). No page: Home; an unknown page: Home. */
+export function redirect(page: string | null, params: Params): { page: Page; params: Params } {
+  if (!page || !PAGES.includes(page as Page)) return { page: "home", params };
+  if (page === "access" && params.name) {
+    const { name, ...rest } = params;
+    return { page, params: { ...rest, user: name } };
+  }
+  return { page: page as Page, params };
+}
 
 interface Loc { page: Page; params: Params; mine: boolean }
 
 function read(): Loc {
   const u = new URLSearchParams(location.search);
-  const p = u.get("page") as Page | null;
   const params: Params = {};
   u.forEach((v, k) => { if (k !== "page" && k !== "data") params[k] = v; });
-  return { page: p && PAGES.includes(p) ? p : "user", params, mine: u.get("data") === "mine" };
+  return { ...redirect(u.get("page"), params), mine: u.get("data") === "mine" };
 }
 
 function url(l: Loc) {
@@ -52,7 +66,7 @@ function useTheme(): [ThemeName, () => void] {
     try { const s = localStorage.getItem("ae-theme"); if (s === "light" || s === "dark") return s; } catch { /* no storage */ }
     return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
-  useEffect(() => { document.body.style.background = t === "dark" ? "#16130f" : "#f6f4f1"; }, [t]);
+  useEffect(() => { document.body.style.background = t === "dark" ? "#0F1216" : "#F6F7F9"; }, [t]);
   return [t, () => setT((x) => { const n = x === "dark" ? "light" : "dark"; try { localStorage.setItem("ae-theme", n); } catch { /* no storage */ } return n; })];
 }
 
@@ -66,13 +80,13 @@ function Find({ view, onOpen }: { view: string; onOpen: (i: FindItem) => void })
   }, [q, view]);
   return (
     <div className="find">
-      <input className="ae-input" placeholder="Find a user, role or object" value={q} onChange={(e) => setQ(e.target.value)}
+      <input className="ae-input" type="search" aria-label="Find" placeholder="Find a person, role or object" value={q} onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Escape") setQ(""); if (e.key === "Enter" && items[0]) { onOpen(items[0]); setQ(""); } }} />
       {items.length > 0 && (
         <div className="find-list">
           {items.map((i) => (
             <button key={i.id} onClick={() => { onOpen(i); setQ(""); }}>
-              <span>{i.sensitive && <span className="ae-sens">●</span>}{i.name}</span><span className="ae-muted">{i.kind_label}</span>
+              <span className="ae-mono">{i.name}{i.sensitive && <span className="ae-sens-word"> · sensitive</span>}</span><span className="ae-muted">{i.kind_label}</span>
             </button>
           ))}
         </div>
@@ -81,27 +95,27 @@ function Find({ view, onOpen }: { view: string; onOpen: (i: FindItem) => void })
   );
 }
 
-function Side({ meta, page, nav, reload }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void; reload: () => void }) {
-  const pr = meta.protection;
-  const what = meta.mode === "fake" ? "Demo data" : meta.source === "direct" ? "Snowflake" : "Snapshot";
-  const stale = meta.mode !== "fake" && meta.run?.old;
+function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void }) {
+  const wide = typeof matchMedia !== "function" || !matchMedia("(max-width: 1000px)").matches;
   return (
     <aside className="side">
-      <nav>
-        {meta.pages.map((p) => (
-          <button key={p.key} className={p.key === page ? "on" : ""} onClick={() => nav(p.key)}>
-            <span>{p.label}</span>
-            {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`}>{p.severity ? `${p.severity} ${p.badge}` : p.badge}</span>}
-          </button>
-        ))}
-      </nav>
-      {meta.run && (
-        <p className="side-data" title={meta.fetched_at ? `Read ${meta.fetched_at}` : undefined}>
-          {stale && <span className="ae-dot ae-dot-dormant" title="Older than a day: read Snowflake again for fresh data" />}
-          {what} · {meta.run.when}
-          <button className="side-reload" onClick={reload} title={meta.mode === "fake" ? "Reload" : "Read Snowflake again"}>↻</button>
-        </p>
-      )}
+      <details className="side-menu" open={wide}>
+        <summary>Menu · {LABEL[page]}</summary>
+        {GROUPS.map(([g, title]) => {
+          const ps = meta.pages.filter((p) => (p.group ?? "detail") === g);
+          return ps.length ? (
+            <nav key={g} aria-label={title}>
+              <h4>{title}</h4>
+              {ps.map((p) => (
+                <button type="button" key={p.key} className={p.key === page ? "on" : ""} aria-current={p.key === page ? "page" : undefined} onClick={() => nav(p.key)}>
+                  <span>{p.label}</span>
+                  {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`}>{p.severity ? `${p.badge} ${p.severity.toLowerCase()}` : p.badge}</span>}
+                </button>
+              ))}
+            </nav>
+          ) : null;
+        })}
+      </details>
       {meta.notes.length > 0 && (
         <details className="side-notes">
           <summary><span className="side-notes-dot" />Incomplete · {meta.notes.length} source{meta.notes.length === 1 ? "" : "s"}</summary>
@@ -122,21 +136,23 @@ function Side({ meta, page, nav, reload }: { meta: Meta; page: Page; nav: (p: Pa
           </ul>
         </details>
       )}
-      {pr && (
-        <>
-          <h4>Protection</h4>
-          {pr.unmasked > 0 && <button className="side-link ae-bad" onClick={() => nav("rules", { rule: "6" })}>{pr.unmasked} sensitive column{pr.unmasked === 1 ? "" : "s"} not masked</button>}
-          <button className="side-link" onClick={() => nav("sensitive")}>{pr.row_tables} table{pr.row_tables === 1 ? "" : "s"} with row policies</button>
-          <button className="side-link" onClick={() => nav("sensitive")}>{pr.masked_columns} masked column{pr.masked_columns === 1 ? "" : "s"}</button>
-          <button className="side-link" onClick={() => nav("sensitive")}>{pr.tagged_objects} tagged object{pr.tagged_objects === 1 ? "" : "s"}</button>
-        </>
-      )}
     </aside>
   );
 }
 
+function DataTime({ meta, reload }: { meta: Meta; reload: () => void }) {
+  if (!meta.run) return null;
+  const what = meta.mode === "fake" ? "Data" : meta.source === "direct" ? "Read" : "Snapshot";
+  return (
+    <span className={`top-time${meta.mode !== "fake" && meta.run.old ? " old" : ""}`} title={meta.fetched_at ? `Read ${meta.fetched_at}` : undefined}>
+      <span className="top-time-dot" aria-hidden />{what} {meta.run.when}
+      <button type="button" className="side-reload" onClick={reload} title={meta.mode === "fake" ? "Reload" : "Read Snowflake again"} aria-label="Read again">↻</button>
+    </span>
+  );
+}
+
 const VIEWS: Record<Page, () => JSX.Element> = {
-  user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView,
+  home: HomePageView, access: AccessPageView, user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView,
   sensitive: SensitivePageView, rules: RulesPageView, review: ReviewPageView, whatif: WhatIfPageView,
 };
 
@@ -156,7 +172,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
     for (const [k, v] of Object.entries(patch)) { if (v) params[k] = v; else delete params[k]; }
     go({ ...loc, params }, true);
   }, [go, loc]);
-  const setView = (mine: boolean) => go({ page: mine && loc.page === "review" ? "user" : loc.page, params: {}, mine });
+  const setView = (mine: boolean) => go({ page: mine && (loc.page === "review" || loc.page === "home") ? "access" : loc.page, params: {}, mine });
 
   const run = async (label: string, f: () => Promise<unknown>) => {
     setBusy(label);
@@ -183,18 +199,29 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
     <Root theme={theme}>
       <div className="app">
         <header className="top">
-          <h1>Access explorer</h1>
-          <Find view={view} onOpen={(i) => go({ page: i.page, params: { name: i.id }, mine: loc.mine })} />
+          <button type="button" className="top-logo" onClick={() => nav("home")} aria-label="Access explorer: home">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+            Access explorer
+          </button>
+          <Find view={view} onOpen={(i) => {
+            remember({ page: i.page, id: i.id, label: i.name });
+            go(i.kind === "user" ? { page: "access", params: { user: i.name }, mine: loc.mine }
+              : i.kind === "object" ? { page: "object", params: { name: i.id }, mine: loc.mine } : { page: "access", params: { role: i.id }, mine: loc.mine });
+          }} />
           <div className="seg" role="group" aria-label="Data">
             <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)}>Shared snapshot</button>
             {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
           </div>
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
           {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
-          <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
+          <span className="top-right">
+            {meta && <DataTime meta={meta} reload={reload} />}
+            {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
+            <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
+          </span>
           {busy && <span className="ae-muted">{busy}</span>}
         </header>
-        {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} reload={reload} /> : <aside className="side" />}
+        {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
         <main className="main">
           {m.error && <ErrorBox e={m.error} />}
           {!meta && !m.error && <p className="ae-muted">Loading…</p>}
@@ -216,7 +243,6 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           )}
           {ctx && !needMine && !needShared && (
             <AppCtx.Provider value={ctx}>
-              {meta?.mode === "fake" && <Banner tone="info" title="Demo data" lines={["Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake."]} />}
               <Body key={`${view}:${loc.page}`} />
             </AppCtx.Provider>
           )}

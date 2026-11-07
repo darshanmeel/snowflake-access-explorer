@@ -25,9 +25,11 @@ DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
 TTL = cache.TTL  # shared data and My access stay in memory this long (seconds)
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
 
-PAGES = {"user": "User", "role": "Role", "object": "Object", "sensitive": "Sensitive data", "check": "Can they?",
-         "rules": "Rule checks", "review": "Access review",
-         "whatif": "What if"}
+PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
+         "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
+         "user": "User paths", "role": "Role paths"}
+GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "rules": "admin", "whatif": "admin",
+         "review": "admin", "sensitive": "admin", "user": "detail", "role": "detail"}  # side nav groups
 SHARED_ONLY = {"review"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
@@ -883,6 +885,126 @@ def user_page(p, view):
         usage=usage(u), capped=sorted(a.capped))
 
 
+# ---------- access (screen 1: a person or a role, one row per object on the ladder) ----------
+
+SHORT = {"1": "technical role held directly", "2": "privilege on a functional role", "3": "read held twice",
+         "4": "owner role on a consumer", "5": "admin role on a person", "6": "sensitive column unmasked",
+         "7": "dormant reads sensitive", "8": "disabled holds roles", "9": "granted to everyone",
+         "10": "person writes sensitive", "11": "sensitive via group role", "12": "admin as default role",
+         "13": "orphan role", "14": "deep chain", "15": "future grant on sensitive", "16": "dormant holds roles",
+         "17": "read role can write", "18": "unusual privilege set", "19": "EXECUTE TASK on a person",
+         "20": "task OPERATE outside owner", "21": "warehouse MODIFY / OPERATE", "22": "stream without table read",
+         "23": "CREATE on a read-only role"}
+SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+
+
+def row_findings(subject, user, objs, rows):
+    """Findings that sit on each access row: the finding is about the subject or a role on the row's paths, and one of
+    its grants (edges) is a privilege the row has on the object, or a role link on those paths (data and runnable rows
+    only: a link explains a privilege, not a power). One list per entry of objs."""
+    xs = [x for x in S["rows"] if x["kind"] != "user" or (user and x["grantee"] == subject)]
+    by = {}
+    for r in rows:
+        by.setdefault(r["object"], set()).update(n for q in r["paths"] for n in q[:-1])
+    out = []
+    for o in objs:
+        on = by.get(o["object"], set())
+        hit = {}
+        for x in xs:
+            if x["grantee"] not in on or x["num"] in hit:
+                continue
+            if any(e["grantee"] in on and ((e["to"] == o["object"] and e["priv"] in (None, *o["privileges"]))
+                                           or (e["to"] in on and not e["priv"] and o["category"] in ("data", "runnable")))
+                   for e in x["edges"]):
+                hit[x["num"]] = dict(num=x["num"], severity=x["severity"], label=SHORT.get(x["num"], x["title"]))
+        out.append(sorted(hit.values(), key=lambda f: (SEV_RANK.get(f["severity"], 9), int(f["num"]))))
+    return out
+
+
+def access_page(p, view):
+    """A person (user=) or a role (role=), or My access: one row per object at its highest level, things they can run,
+    powers over the account, where the access is (per schema) and why they have it (roles)."""
+    mine = view == "mine"
+    role = p.get("role", "") if not mine else ""
+    if role:
+        need(role in a.roles, f"{role} is not in this snapshot")
+        name, user = role, False
+    else:
+        need(a.users, "No users in this data.")
+        name = a.users[0] if mine else p.get("user") or (DEMO_USER if DEMO_USER in a.users else a.users[0])
+        need(name in a.users, f"{name} is not in this snapshot")
+        user = True
+    rows = [] if not user and role in a.ADMIN else a.grants(name, user)
+    objs = a.access_objects(rows, user)
+    views = {v["object"]: v for v in a.data_views(name, user)} if not mine or S["sens"] else {}
+    chips = row_findings(name, user, objs, rows)
+    for o, f in zip(objs, chips):
+        v = views.get(o["object"])
+        o["sensitive"] = o["object"] in S["sens"]
+        o["columns"] = [dict(column=c["column"], state=c["state"], reason=c["reason"]) for c in v["columns"] if c["sensitive"]] if v else []
+        o["findings"] = f
+        o["label"] = a.future_label(o["object"], o["type"])
+        o["paths"] = next((r["paths"] for r in rows if r["object"] == o["object"]), [])[:5]
+    rank = lambda o: (min((SEV_RANK.get(f["severity"], 9) for f in o["findings"]), default=9), not o["sensitive"],
+                      -a.LEVELS.index(o["level"]) if o["level"] else 0, o["object"])
+    objs.sort(key=rank)
+    counts = a.ladder_counts(objs)
+    data = [o for o in objs if o["category"] == "data"]
+    counts["sensitive"] = sum(o["sensitive"] and o["level"] != "names" and (not o["columns"] or any(c["state"] != "masked" for c in o["columns"]))
+                              for o in data)  # sensitive and seen in clear (or unknown)
+    counts["schemas"] = len({(o["database"], o["schema"] or o["object"]) for o in data})
+    heat = {}
+    for o in data:
+        k = f'{o["database"]}.{o["schema"]}' if o["schema"] else o["object"]
+        h = heat.setdefault(k, dict(schema=k, read=0, change=0, own=0, sensitive=0))
+        i = a.LEVELS.index(o["level"]) if o["level"] else 0
+        h["read"] += i >= 1
+        h["change"] += i >= 2
+        h["own"] += i >= 3
+        h["sensitive"] += o["sensitive"]
+    pr = (a.profile.get(name) or {}) if user else {}
+    if user:
+        dr, sec = pr.get("DEFAULT_ROLE"), "ALL" in str(pr.get("DEFAULT_SECONDARY_ROLES") or "").upper()
+        text, mark = login(name)
+        top = sorted(a.roles_of.get(name, []), key=lambda r: (r != dr, r))
+        why = [dict(role=r, kind=norm(a.role_kind(r)), note="default" if r == dr else "secondary" if sec else "",
+                    kids=sorted(a.holds.get(r, []))) for r in top]
+        if "PUBLIC" not in top:
+            why.append(dict(role="PUBLIC", kind="group", note="everyone", kids=sorted(a.holds.get("PUBLIC", []))))
+        who = dict(kind="user", name=name, id=a.uid(name, True), type=str(pr.get("TYPE") or "PERSON"), status=a.status(name),
+                   disabled=a.is_disabled(name), last_login=text, login_mark=mark, default_role=dr or None, secondary_all=sec,
+                   held_by=None)
+    else:
+        rs, us = a.ups(name)
+        why = [dict(role=x, kind=nk(x), note="holds it", kids=[]) for x in sorted(set(a.held_by.get(name, [])))]
+        why.append(dict(role=name, kind=nk(name), note="this role", kids=sorted(a.holds.get(name, []))))
+        who = dict(kind=nk(name), name=name, id=name, type=KIND.get(norm(a.role_kind(name)), "Role"), status=None,
+                   disabled=False, last_login=None, login_mark="", default_role=None, secondary_all=False,
+                   held_by=dict(users=len(us), roles=len(rs) - 1))
+    findings, total = findings_of(name, user)
+    return dict(view=view, who=who, counts=counts, objects=objs, heat=sorted(heat.values(), key=lambda h: h["schema"]),
+                why=why, findings=findings, findings_total=total,
+                deepest=max((o["depth"] for o in objs), default=0), roles=len(a.reach(name, user)))
+
+
+def home_page(p, view):
+    """Home: the default (or own) user's ladder counts, account risks by severity, data protection tiles."""
+    me = a.users[0] if view == "mine" else (DEMO_USER if DEMO_USER in a.users else a.users[0] if a.users else None)
+    mine = None
+    if me:
+        objs = a.access_objects(a.grants(me, True), True)
+        mine = dict(user=me, counts=a.ladder_counts(objs))
+    sev = {v: sum(x["severity"] == v for x in S["rows"]) for v in ("Critical", "High", "Medium", "Low")}
+    g = a.governance_kpis()
+    unmasked = sorted({x["grantee"].split(".")[-1] + "." + x["detail"].split(" ")[1].rstrip(":") for x in S["rows"] if x["num"] == "6"})[:8]
+    dormant = sorted({x["grantee"] for x in S["rows"] if x["num"] == "7"})
+    counts = dict(users=len(a.users), roles=len(a.roles), objects=len(a.objects), sensitive=len(S["sens"]))
+    return dict(view=view, me=mine, risks=sev if view == "shared" else None, counts=counts,
+                protection=dict(unmasked=sum(x["num"] == "6" for x in S["rows"]), unmasked_names=unmasked,
+                                dormant=len(dormant), dormant_names=dormant[:8], tagged=g["tagged_objects"],
+                                masked=g["masked_columns"], row_tables=g["row_tables"]) if view == "shared" else None)
+
+
 def mask_text(name, o):
     """What role name sees of sensitive object o as the role in use: "EMAIL masked · PHONE clear · no rows"."""
     v = a.data_view(name, o, False)
@@ -1510,7 +1632,7 @@ def theme_tokens():
 def meta(p, sid):
     view = p.get("view", "shared")
     base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
-                mine=mine_state(sid), mine_available=not a.INSIDE, pages=[dict(key=k, label=lab, badge=None) for k, lab in PAGES.items()
+                mine=mine_state(sid), mine_available=not a.INSIDE, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
@@ -1532,7 +1654,7 @@ def meta(p, sid):
             base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
                                               when=when, old=old),
                         sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view),
-                        pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None)
+                        pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k])
                                for k, lab in PAGES.items() if not (view == "mine" and k in SHARED_ONLY)],
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
                         protection=protection() if view == "shared" else None,
@@ -1603,10 +1725,10 @@ def mkrefs(out):
                 disabled=sorted(n for n, k in kinds.items() if k == "user" and a.is_disabled(a.node_name(n))))
 
 
-ROUTES = {"user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
+ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page}
-WITH_REFS = {"user", "role", "object", "check", "sensitive", "rules", "review", "whatif"}
+WITH_REFS = {"access", "user", "role", "object", "check", "sensitive", "rules", "review", "whatif"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
@@ -1672,7 +1794,7 @@ def make_app():
             return serve(name, dict(request.query_params), sid_of(request))
         return h
 
-    for n in ("user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph", "whatif"):
+    for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph", "whatif"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

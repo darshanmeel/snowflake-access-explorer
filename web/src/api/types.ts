@@ -22,7 +22,7 @@ export type TabKey =
   | "execute" | "read" | "write" | "own" | "manage" | "all";
 
 export type UserStatus = "active" | "dormant" | "never" | "disabled";
-export type Page = "user" | "role" | "object" | "check" | "sensitive" | "rules" | "review" | "whatif";
+export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "sensitive" | "rules" | "review" | "whatif";
 
 /** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
 export type Path = string[];
@@ -196,7 +196,7 @@ export interface Meta {
   mine: MineState;
   mine_available: boolean; // false inside Snowflake (owner's rights)
   error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click
-  pages: { key: Page; label: string; badge: number | null; severity?: Severity | null }[]; // rules: count of the worst severity
+  pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; group: "answers" | "admin" | "detail" }[]; // rules: count of the worst severity
   default_user: string;
   prefixes: { func: string; tech: string };
   admin_roles: string[];
@@ -807,4 +807,72 @@ export interface WhatIfPage {
   iac: string;
   sql: string;
   refs: Refs;
+}
+
+// ---------- redesign: access ladder ----------
+
+export type Level = "names" | "read" | "change" | "own" | "admin";
+export type Category = "data" | "runnable" | "account" | "names";
+
+export interface RowFinding { num: string; severity: Severity; label: string }
+
+/** One object at its highest level (access.access_objects + server.access_page). */
+export interface AccessObject {
+  object: string;
+  type: string;
+  database: string;
+  schema: string;
+  category: Category;
+  level: Level | null;
+  privileges: string[];
+  path: Path; // shortest: subject, ..., holder, object
+  paths: Path[];
+  first: string | null; // first role after the subject (null: granted straight)
+  holder: string;
+  ways: number;
+  depth: number;
+  holders: string[];
+  sensitive: boolean;
+  columns: { column: string; state: ColState; reason: string }[];
+  findings: RowFinding[];
+  label: string | null; // "Future tables · SALES.CORE"
+}
+
+export interface LadderCounts { read: number; change: number; own: number; admin: number; usage: number; runnable: number; account: number; sensitive?: number; schemas?: number }
+
+export interface Who {
+  kind: NodeKind;
+  name: string;
+  id: string;
+  type: string;
+  status: UserStatus | null;
+  disabled: boolean;
+  last_login: string | null;
+  login_mark: string;
+  default_role: string | null;
+  secondary_all: boolean;
+  held_by: { users: number; roles: number } | null;
+}
+
+export interface AccessPage {
+  view: View;
+  who: Who;
+  counts: LadderCounts & { sensitive: number; schemas: number };
+  objects: AccessObject[];
+  heat: { schema: string; read: number; change: number; own: number; sensitive: number }[];
+  why: { role: string; kind: NodeKind; note: string; kids: string[] }[];
+  findings: Finding[];
+  findings_total: number;
+  deepest: number;
+  roles: number;
+  refs: Refs;
+}
+
+export interface HomePage {
+  view: View;
+  me: { user: string; counts: LadderCounts } | null;
+  risks: Record<Severity, number> | null;
+  counts: { users: number; roles: number; objects: number; sensitive: number };
+  protection: { unmasked: number; unmasked_names: string[]; dormant: number; dormant_names: string[]; tagged: number;
+    masked: number; row_tables: number } | null;
 }

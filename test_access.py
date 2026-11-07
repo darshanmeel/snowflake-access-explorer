@@ -1260,12 +1260,29 @@ def test_cache():
     assert cache.config({}) == ("snowflake", "direct", "") and cache.config({"FAKE": "1"})[0] == "fake"
 
 
+def test_ladder():  # access ladder: highest level per object, counts at or above a step, DW_DEV_01 groups by schema
+    assert a.level_of("SELECT", "TABLE") == "read" and a.level_of("TRUNCATE", "TABLE") == "change"
+    assert a.level_of("OWNERSHIP", "VIEW") == "own" and a.level_of("USAGE", "SCHEMA") == "names"
+    assert a.category("USAGE", "WAREHOUSE") == "runnable" and a.category("OPERATE", "TASK") == "runnable"
+    assert a.category("CREATE TABLE", "SCHEMA") == "account" and a.category("OWNERSHIP", "SCHEMA") == "data"
+    assert a.category("USAGE", "DATABASE_ROLE") == "hold" and a.category("EXECUTE TASK", "ACCOUNT") == "account"
+    o = a.access_objects(a.grants("ENGINEER_01", True), True)
+    n = a.ladder_counts(o)
+    assert (n["read"], n["change"], n["own"], n["runnable"], n["account"], n["usage"]) == (6, 5, 2, 4, 3, 8), n
+    mart = next(x for x in o if x["object"] == "SALES.MART")
+    assert mart["level"] == "own" and mart["privileges"][0] == "OWNERSHIP"  # its USAGE folds into the owned row
+    cust = next(x for x in o if x["object"] == "SALES.CORE.TBL_CUSTOMER")
+    assert cust["first"] == F + "ENGINEER" and cust["ways"] > 1 and cust["privileges"][-1] == "SELECT"
+    dw = [x for x in a.access_objects(a.grants("DW_DEV_01", True), True) if x["category"] == "data" and x["level"] == "change"]
+    assert len(dw) == 15 and len({(x["database"], x["schema"]) for x in dw}) == 5
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_whatif_indirect, test_pages):
+              test_whatif, test_whatif_indirect, test_ladder, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

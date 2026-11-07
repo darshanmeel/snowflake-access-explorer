@@ -22,30 +22,10 @@ def _kinds(rows):
 
 
 TOKENS = {
-    "light": {
-        "bg": "#F7F4EE", "side": "#EEE7DB", "panel": "#FFFDF8", "sunk": "#F2ECE2", "line": "#E2D8C8",
-        "ink": "#1F1A14", "muted": "#675E53", "accent": "#975A16", "edge": "#A89B89",
-        "warn_bg": "#F7EFCF", "warn_ink": "#634B0E", "warn_bd": "#E6D58A",
-        "bad_bg": "#F9E2DE", "bad_ink": "#8C271D", "bad_bd": "#EDB9B1",
-        "ok_bg": "#E3EFE4", "ok_ink": "#2B5A33", "ok_bd": "#B9D6BD",
-        "low_bg": "#ECE8E1", "low_ink": "#5B544B", "low_bd": "#D3CBBF",
-        "e_read": "#2F5D9E", "e_write": "#B8650A", "e_own": "#8A3B1E", "e_use": "#2E7A4C", "e_manage": "#6A4C9C",
-        "kind": _kinds([("#FFFFFF", "#2A241D", "#1F1A14"), ("#DFE9F6", "#30476B", "#1D2C44"),
-                        ("#EEDDC8", "#8C5D34", "#4A2E14"), ("#FAEBCB", "#B07A1E", "#553806"),
-                        ("#E6EBF2", "#56677F", "#24303F"), ("#F9DCD6", "#B4362A", "#8C271D"), ("#ECE6DB", "#5E554A", "#2A241D")]),
-    },
-    "dark": {
-        "bg": "#14110D", "side": "#1A1612", "panel": "#1F1A15", "sunk": "#28221B", "line": "#3A3128",
-        "ink": "#F2ECE2", "muted": "#ADA294", "accent": "#E6A95C", "edge": "#75685A",
-        "warn_bg": "#2C2610", "warn_ink": "#EBD27E", "warn_bd": "#4E4418",
-        "bad_bg": "#371A17", "bad_ink": "#F4BDB4", "bad_bd": "#5E2A24",
-        "ok_bg": "#18301D", "ok_ink": "#A6D9AE", "ok_bd": "#2D5235",
-        "low_bg": "#2A251F", "low_ink": "#BDB3A6", "low_bd": "#463D33",
-        "e_read": "#82AAE3", "e_write": "#EBA84E", "e_own": "#E58F6E", "e_use": "#7DC896", "e_manage": "#B9A0E6",
-        "kind": _kinds([("#1F1A15", "#E9E1D4", "#F2ECE2"), ("#1C2A3F", "#7EA3D6", "#D5E3F6"),
-                        ("#35271A", "#C5926A", "#F1DCC5"), ("#352913", "#D7A443", "#F3DDAE"),
-                        ("#1D232C", "#93A6C0", "#DCE4EE"), ("#3A1B18", "#E27A6B", "#F6C3BA"), ("#2A251F", "#A39684", "#EDE5D8")]),
-    },
+    "light": {"bg": "#F6F7F9", "side": "#FFFFFF", "panel": "#FFFFFF", "sunk": "#F3F5F8", "line": "#E3E6EB", "line_strong": "#C9D2DE", "ink": "#14171C", "ink2": "#333A45", "muted": "#5B6472", "accent": "#1D5FD1", "accent_ink": "#123F91", "accent_soft": "#E4ECFB", "edge": "#A3ADBB", "warn_bg": "#FFF7EE", "warn_ink": "#8A4305", "warn_bd": "#F3D3AE", "bad_bg": "#FDECEA", "bad_ink": "#B42318", "bad_bd": "#F4C2BC", "ok_bg": "#E7F4EA", "ok_ink": "#1E6B32", "ok_bd": "#B8DEC2", "low_bg": "#F3F5F8", "low_ink": "#5B6472", "low_bd": "#D5DBE3", "e_read": "#7FA6E8", "e_write": "#3E78D9", "e_own": "#1D5FD1", "e_use": "#8792A2", "e_manage": "#0E2F6B", "lvl_names_bg": "#F3F5F8", "lvl_names_ink": "#5B6472", "lvl_read_bg": "#DCE8FB", "lvl_read_ink": "#1A4FA8", "lvl_change_bg": "#8FB3EE", "lvl_change_ink": "#0B2A5E", "lvl_own_bg": "#1D5FD1", "lvl_own_ink": "#FFFFFF", "lvl_admin_bg": "#0E2F6B", "lvl_admin_ink": "#FFFFFF", "sens_bg": "#FDEBD3", "sens_ink": "#8A4305",
+        "kind": _kinds([("#FFFFFF", "#333A45", "#14171C"), ("#DFE9F6", "#30476B", "#1D2C44"), ("#EEDDC8", "#8C5D34", "#4A2E14"), ("#FAEBCB", "#B07A1E", "#553806"), ("#E6EBF2", "#56677F", "#24303F"), ("#FDECEA", "#B42318", "#8C271D"), ("#EEF1F5", "#5B6472", "#14171C")])},
+    "dark": {"bg": "#0F1216", "side": "#171B21", "panel": "#171B21", "sunk": "#1C2129", "line": "#2A303A", "line_strong": "#3A4250", "ink": "#E8EBF0", "ink2": "#C9CED6", "muted": "#A3ABB8", "accent": "#6E9CF0", "accent_ink": "#A9C4F0", "accent_soft": "#1C2C47", "edge": "#5A6577", "warn_bg": "#2A2015", "warn_ink": "#F7B267", "warn_bd": "#5A3D1C", "bad_bg": "#3A1A18", "bad_ink": "#FF9B8F", "bad_bd": "#6A2A24", "ok_bg": "#16301E", "ok_ink": "#8FD3A1", "ok_bd": "#2D5235", "low_bg": "#222833", "low_ink": "#A3ABB8", "low_bd": "#3A4250", "e_read": "#6F8FC4", "e_write": "#6E9CF0", "e_own": "#A9C4F0", "e_use": "#7D8796", "e_manage": "#C9D9F5", "lvl_names_bg": "#222833", "lvl_names_ink": "#A3ABB8", "lvl_read_bg": "#1C2C47", "lvl_read_ink": "#A9C4F0", "lvl_change_bg": "#2E4F8C", "lvl_change_ink": "#E4ECFB", "lvl_own_bg": "#4C82E6", "lvl_own_ink": "#0B1220", "lvl_admin_bg": "#A9C4F0", "lvl_admin_ink": "#0B1B3A", "sens_bg": "#3A2612", "sens_ink": "#F7B267",
+        "kind": _kinds([("#171B21", "#C9CED6", "#E8EBF0"), ("#1C2A3F", "#7EA3D6", "#D5E3F6"), ("#35271A", "#C5926A", "#F1DCC5"), ("#352913", "#D7A443", "#F3DDAE"), ("#1D232C", "#93A6C0", "#DCE4EE"), ("#3A1B18", "#E27A6B", "#F6C3BA"), ("#222833", "#8792A2", "#E8EBF0")])},
 }
 SEV_TONE = {"High": "bad", "Medium": "warn", "Low": "low"}
 PCLASS = {"read": "Read", "write": "Write", "own": "Own", "use": "Use", "manage": "Manage", "admin": "Account",
