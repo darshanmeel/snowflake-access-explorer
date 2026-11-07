@@ -7,11 +7,11 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   infrastructure as code; manual grants get removed by reconciliation.
 - The app writes nothing to Snowflake. Shared view: reads the `TBL_ACCESS_` tables and may CALL `SP_ACCESS_SNAPSHOT`
   (owner's rights). My-access view: read-only queries as the logged-in user. Locally the only thing written is
-  `.cache/` (git-ignored, `cache.py`: one file per account + source, one per user for My access, `CACHE_HOURS`=24, 0 = memory
+  `.cache/` (git-ignored, `cache.py`: one file per account + source plus the previous one as `<key>.prev.pkl` for What changed, one per user for My access, `CACHE_HOURS`=24, 0 = memory
   only); in memory 24 h per process. Inside Snowflake (SiS) memory only, no disk. Data needs no real time: the UI shows
   "Data from <time>" and a refresh (Read Snowflake again) that reads again.
 - The app reads only the `TBL_ACCESS_` snapshot tables in the shared view. `SP_ACCESS_SNAPSHOT` (sql/1_setup.sql) fills them from
-  ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable, and writes nothing else.
+  ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable (ACCESS_HISTORY into `TBL_ACCESS_OBJECT_USE` is an optional may-fail step), and writes nothing else.
 - `SOURCE=direct|objects` (default direct; `objects` if only `ACCESS_SNAPSHOT` is set; objects location = `ACCESS_SNAPSHOT` or
   `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA`, else an error; `cache.config()`). Fake data only with `FAKE=1` (`run.py --fake`);
   tests set it themselves.
