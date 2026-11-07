@@ -1,6 +1,8 @@
 // Can they? (screens 3, 12) and Request access (15) helpers without React: cut labels and changes, verdict lines,
 // nearest-way titles and notes.
-import type { CheckPage, Nearest, WhatIfChange } from "../api/types";
+import type { CheckPage, Nearest, Subject, WhatIfChange } from "../api/types";
+
+type Patch = Record<string, string | null>;
 import type { Change } from "../components/codegen";
 
 type Edge = CheckPage["cuts"][number]["edges"][number];
@@ -34,10 +36,12 @@ export function sideEffects(people: number, lost: number): { text: string; tone:
 }
 
 /** The line under Yes / Partly / No. */
-export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "roles_count" | "lanes_total" | "cut" | "layers" | "nearest" | "answer">): string {
+export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "roles_count" | "lanes_total" | "cut" | "layers" | "nearest" | "answer">
+  & { subject?: Pick<Subject, "user"> }): string {
   if (d.verdict === "no") {
     const n = d.nearest[0];
-    return `None of ${d.user}'s ${plural(d.roles_count, "role")} leads to ${d.object}.`
+    return (d.subject && !d.subject.user ? `Neither ${d.user} nor any of its ${plural(d.roles_count, "role")} leads to ${d.object}.`
+      : `None of ${d.user}'s ${plural(d.roles_count, "role")} leads to ${d.object}.`)
       + (n ? ` The nearest route is ${n.cost === 1 ? "one grant" : `${n.cost} grants`} away.` : "");
   }
   if (d.verdict === "partly") {
@@ -61,6 +65,27 @@ export function nearestNote(n: Nearest, approver: string | null): string {
   if (n.rule1) bits.push("a technical role on a user or group role breaks rule 1");
   if (approver) bits.push(`approver: ${approver}`);
   return bits.join(" · ");
+}
+
+/** URL params of a Can they? / Request access subject: name= for a user (old links keep it), role= for a role on
+ * Can they?, for_role= on Request access (whose role= is the role to ask for). The other keys are cleared. */
+export function subjectParams(s: Pick<Subject, "name" | "user">, page: "check" | "request" = "check"): Patch {
+  const k = page === "check" ? "role" : "for_role";
+  return s.user ? { name: s.name, user: null, [k]: null } : { [k]: s.name, name: null, user: null };
+}
+
+/** The same for a link to another page (only the key that is set). */
+export const subjectLink = (s: Pick<Subject, "name" | "user">, page: "check" | "request" = "check"): Record<string, string> =>
+  s.user ? { name: s.name } : { [page === "check" ? "role" : "for_role"]: s.name };
+
+/** A picked name: a role when only a role has it (as on the Access screen), else the user. */
+export const pickSubject = (v: string, users: string[], roles: string[], page: "check" | "request" = "check"): Patch =>
+  subjectParams({ name: v, user: !(roles.includes(v) && !users.includes(v)) }, page);
+
+/** The subject named in the URL: a role from role= / for_role=, else a user from name= or user=. */
+export function subjectIn(p: Record<string, string | undefined>, page: "check" | "request" = "check"): { name: string | null; role: boolean } {
+  const r = p[page === "check" ? "role" : "for_role"];
+  return r ? { name: r, role: true } : { name: p.name ?? p.user ?? null, role: false };
 }
 
 /** Request page need from a Can they? privilege. */

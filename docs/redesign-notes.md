@@ -67,7 +67,10 @@ stays, what changes, and the order of the work.
   ranked by grants needed, then people who would also get it, then what else the role brings; too broad and rule 1
   warnings; Request (to screen 15) and What it brings (the role's access screen). "Rows & columns" (`show=layers`):
   1 Grant, 2 Rows, 3 Columns with result and reason (`data_view`); Partly when rows are none or columns masked.
-  `do=read|change|own` picks the privilege; redirect `check&who=&what=` -> `name` / `obj`.
+  `do=read|change|own` picks the privilege; redirect `check&who=&what=` -> `name` / `obj`. The subject is a person
+  (`name=`, `user=` redirects to it) or a role (`role=`; Request access: `for_role=`), picked from one list as on the
+  Access screen; for a role the walks start at the role, cuts count the people holding it, nearest ways in grant a
+  role to it (GRANT ROLE x TO ROLE y on Request access) with the too broad and rule 1 warnings.
   `access.py`: `lanes`, `cut_points`, `reverse`, `brings`, `nearest`, `basic_priv`, `need_privs`, `approver`
   (`OWNER_TAGS`, the fake data has an OWNER tag on HR.PEOPLE), `suggest`.
 - **Screen 15, Request access** (`request`, endpoint `/api/request`, new): object, Read it / Change it, suggested

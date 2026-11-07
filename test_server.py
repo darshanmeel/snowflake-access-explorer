@@ -140,6 +140,22 @@ def test_check():
     p = js("/api/check?name=MARKETING_01&obj=FINANCE.REPORT.TBL_REVENUE")
     assert p["verdict"] == "partly" and [x["step"] for x in p["layers"]] == ["Grant", "Rows", "Columns"]
     assert p["layers"][1]["result"] == "No rows" and "RAP_REGION" in p["layers"][1]["reason"]
+    m, e = a.FUNC + "MARKETING", "HR.PEOPLE.TBL_EMPLOYEE"  # a role as the subject
+    pr = js(f"/api/check?role={m}&obj=FINANCE.REPORT.TBL_REVENUE")  # the spec's mockup: Partly for F_MARKETING
+    assert pr["verdict"] == "partly" and pr["subject"]["user"] is False and pr["layers"][1]["result"] == "No rows"
+    assert pr["lanes"][0]["path"][0] == m and pr["use_role"] == m and pr["status"] is None and pr["cuts"]
+    assert pr["cuts"][0]["people"] == ["MARKETING_01"] and "FROM ROLE " + m in pr["cuts"][0]["sql"]
+    ry = js(f"/api/check?role={a.FUNC}ENGINEER&obj={e}")
+    assert ry["verdict"] == "yes" and ry["paths"][0]["path"][0] == a.FUNC + "ENGINEER" and ry["graph"]
+    rn = js(f"/api/check?role={a.FUNC}ANALYST&obj={e}&do=read")
+    assert rn["verdict"] == "no" and rn["nearest"] and all(x["to"] == a.FUNC + "ANALYST" and not x["to_user"] for x in rn["nearest"])
+    assert js(f"/api/check?name={m}&obj={e}")["subject"]["user"] is False  # Home's "can F_MARKETING read ..."
+    assert js("/api/check?user=ENGINEER_01")["subject"]["user"] is True
+    adm = js(f"/api/check?role=SYSADMIN&obj={e}")
+    assert adm["answer"]["how"] in ("admin", "paths", "owner") and adm["verdict"] != "no"
+    get("/api/check?role=NOPE", 404)
+    for r in a.roles:
+        js(f"/api/check?role={r}", ["verdict", "held", "lanes", "cuts", "nearest", "subject"])
 
 
 def test_request():  # screen 15: suggested role, approver, read / change, already held, the role picked on Can they?
@@ -149,13 +165,22 @@ def test_request():  # screen 15: suggested role, approver, read / change, alrea
     assert d["suggestions"][0]["role"] == a.FUNC + "ANALYST" and d["suggestions"][0]["holders"] >= 1
     w = js("/api/request?name=FIN_09&obj=HR.PEOPLE.TBL_EMPLOYEE&need=change&role=HR.SC_R_PEOPLE&to=GRP_EMEA_ALL")
     assert w["privileges"] == ["INSERT", "UPDATE"] and w["approver"] == "HR data owner"
-    assert w["asked"] == dict(role="HR.SC_R_PEOPLE", kind="database_role", to="GRP_EMEA_ALL")
+    assert {k: w["asked"][k] for k in ("role", "kind", "to")} == dict(role="HR.SC_R_PEOPLE", kind="database_role", to="GRP_EMEA_ALL")
+    assert w["asked"]["people"] > 10 and w["asked"]["broad"] and w["subject"]["kind"] == "user"
     h = js("/api/request?name=ENGINEER_01&obj=HR.PEOPLE.TBL_EMPLOYEE")
     assert h["has"] and h["suggestions"] == [] and h["level"] == "change"
     assert js("/api/request?name=FIN_09&role=NOPE")["asked"] is None
     js("/api/request", keys)
     get("/api/request?name=NOPE", 404)
     get("/api/request?obj=NOPE", 404)
+    m = a.FUNC + "MARKETING"  # a role as the subject: GRANT ROLE x TO ROLE y, everyone holding it gets it too
+    r = js(f"/api/request?for_role={m}&obj=HR.PEOPLE.TBL_EMPLOYEE", keys)
+    assert r["user"] == m and r["subject"] == dict(kind="functional", name=m, id=m, user=False, people=1) and not r["has"]
+    assert r["suggestions"] and all(x["role"] != m and m not in a.best_paths(x["role"]) for x in r["suggestions"])
+    t = js(f"/api/request?for_role={m}&obj=HR.PEOPLE.TBL_EMPLOYEE&role={a.TECH}HR_PEOPLE_READ")
+    assert t["asked"] is None or t["asked"]["to"] == m
+    assert js(f"/api/request?name={m}&obj=HR.PEOPLE.TBL_EMPLOYEE")["subject"]["user"] is False  # Home's typed question
+    get("/api/request?for_role=NOPE", 404)
 
 
 def test_sensitive_rules_review():

@@ -1331,34 +1331,55 @@ def who_page(p, view):
 ALL = "*"  # Can they?: every privilege on the object
 
 
-def check_page(p, view):
-    need(a.users and a.objects, "No users or objects in this data.")
+def asker(p, view, key="role"):
+    """Can they? / Request access subject: (name, user). A role from key= (role= on Can they?, for_role= on Request,
+    where role= is the role to ask for), else a user from user= or name= (old links); a name that is no user but a
+    role is that role (Home's typed question). My access: always the signed-in user."""
     mine = view == "mine"
-    u = p.get("name") or (a.users[0] if mine or DEMO_USER not in a.users else DEMO_USER)
+    if not mine and p.get(key):
+        need(p[key] in a.roles, f"{p[key]} is not in this snapshot")
+        return p[key], False
+    need(a.users, "No users in this data.")
+    u = p.get("user") or p.get("name") or (a.users[0] if mine or DEMO_USER not in a.users else DEMO_USER)
+    if not mine and u not in a.users and u in a.roles:
+        return u, False
     need(u in a.users, f"{u} is not in this snapshot")
+    return u, True
+
+
+def subject_of(u, user):
+    """Who the question is about: kind (user or role kind), name, id (a.uid), user, people (users holding a role)."""
+    return dict(kind="user" if user else nk(u), name=u, id=a.uid(u, user), user=user,
+                people=None if user else len(a.ups(u)[1]))
+
+
+def check_page(p, view):
+    need(a.objects, "No objects in this data.")
+    mine = view == "mine"
+    u, user = asker(p, view)
     tables = [x for x in a.objects if a.is_data(a.kinds[x])]
     o = p.get("obj") or (p.get("on") if p.get("on") in a.kinds else next(
-        (r["object"] for r in a.grants(u, True) if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
+        (r["object"] for r in a.grants(u, user) if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
     need(o in a.kinds, f"{o} is not in this snapshot")
     opts = a.valid_privs(a.kinds[o])
     do = {"read": a.basic_priv(a.kinds[o]), "change": a.need_privs(a.kinds[o], "change")[0], "own": "OWNERSHIP"}
     pv = p.get("priv") if p.get("priv") in opts else do.get(p.get("do"), ALL)
     if pv == ALL:  # every privilege the user holds on o, each with its own paths
-        held = list(dict.fromkeys(x["privilege"] for x in a.grants(u, True) if x["object"] == o))
-        rs = {x: a.can(u, x, o) for x in held}
-        r = (dict(next(iter(rs.values())), choke=[]) if rs else a.can(u, opts[0], o)) | dict(ask=[], options=[], closest=None)
+        held = list(dict.fromkeys(x["privilege"] for x in a.grants(u, user) if x["object"] == o))
+        rs = {x: a.can(u, x, o, is_user=user) for x in held}
+        r = (dict(next(iter(rs.values())), choke=[]) if rs else a.can(u, opts[0], o, is_user=user)) | dict(ask=[], options=[], closest=None)
         r["paths"] = [q | dict(privilege=x) for x, v in rs.items() for q in v["paths"]]
         r["owner"] = list({tuple(q): q for v in rs.values() for q in v["owner"]}.values())
         r["choke"] = [c for c in (next(iter(rs.values()))["choke"] if rs else []) if all(c in v["choke"] for v in rs.values())]
         r["shortest"] = min((q["depth"] for q in r["paths"]), default=None)
     else:
-        held, r = [pv], a.can(u, pv, o)
+        held, r = [pv], a.can(u, pv, o, is_user=user)
         r["paths"] = [q | dict(privilege=pv) for q in r["paths"]]
-    ps, admin = r["paths"], a.admin_paths(u, True)
+    ps, admin = r["paths"], a.admin_paths(u, user) or ([[u]] if not user and u in a.ADMIN else [])
     what = (", ".join(held) if held else "anything") if pv == ALL else pv
     off = r["status"] == "disabled"
-    sleep = not off and a.is_dormant(u) and not a.is_service(u)
-    d = a.login_days(u)
+    sleep = user and not off and a.is_dormant(u) and not a.is_service(u)
+    d = a.login_days(u) if user else None
     note = (" The user is disabled: cannot log in." if off else
             (" The user never logged in (dormant)." if d is None else f" The user has not logged in for {d} days "
                                                                        "(dormant).") if sleep else "")
@@ -1370,11 +1391,13 @@ def check_page(p, view):
                    stats=[["Paths", len(r["owner"])], ["Shortest depth", len(r["owner"][0]) - 2]])
     elif not ps and admin:
         ans = dict(yes=True, how="admin", title=yes_text or f"Yes, through admin role {', '.join(dict.fromkeys(x[-1] for x in admin))}",
-                   text=f"{u} can {pv} {o}: the admin role inherits every role, not through a granted role path.{note}",
+                   text=f"{u} can {pv} {o}: the admin role inherits every role, not through a granted role path.{note}"
+                   if user or admin[0] != [u] else f"{u} is an admin role: it inherits every role, no granted path needed.",
                    tone=tone, stats=[["Paths", 0], ["Via admin", len(admin)]])
     elif not ps:
         ans = dict(yes=False, how="none", title="No, not through any role",
-                   text=f"No role granted to {u}, at any depth, holds {'any privilege' if pv == ALL else pv} on {o}.{note}", tone="low",
+                   text=f"No role {'granted to' if user else 'held by'} {u}, at any depth, "
+                   f"{'' if user else f'and not {u} itself, '}holds {'any privilege' if pv == ALL else pv} on {o}.{note}", tone="low",
                    stats=[["Paths", 0], ["Shortest depth", "—"]])
     else:
         ends = {x["holder"] for x in ps}
@@ -1385,22 +1408,22 @@ def check_page(p, view):
                    stats=([["Privileges", len(held)]] if pv == ALL else []) + [["Paths", len(ps)], ["Shortest depth", r["shortest"]]])
     read = None
     if not mine and any(x in a.READ_PRIVS for x in held) and a.is_data(a.kinds[o]) and (ps or r["owner"]):
-        v = a.data_view(u, o, True)
+        v = a.data_view(u, o, user)
         if v["can_read"]:
-            w = a.data_view(r["use_role"], o, False) if r["use_role"] else None
+            w = a.data_view(r["use_role"], o, False) if r["use_role"] and user else None
             read = dict(summary=v["summary"], rows=v["rows"] if v["rows"]["policy"] else None, columns=v["columns"],
                         role_only=w["summary"] if w and w["summary"] != v["summary"] else None)
     g = ps and a.down_graph(u, [dict(privilege=x, type=a.kinds[o], object=o, paths=[q["path"] for q in ps if q["privilege"] == x])
-                                for x in held if any(q["privilege"] == x for q in ps)], user=True)
+                                for x in held if any(q["privilege"] == x for q in ps)], user=user)
     k = a.kinds[o]
-    got = {x["privilege"] for x in a.grants(u, True) if x["object"] == o}
+    got = {x["privilege"] for x in a.grants(u, user) if x["object"] == o}
     has = set(opts) if admin or "OWNERSHIP" in got else got
     ls, cut = a.lanes(ps)
     ask = pv if pv != ALL else a.basic_priv(k)
-    near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o)
+    near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o, is_user=user)
     layers = None
     if read:  # Partly: the grant is there, but a row policy returns nothing or columns are masked
-        v = a.data_view(u, o, True)
+        v = a.data_view(u, o, user)
         rows, cols = v["rows"], [x for x in v["columns"] if x["state"] != "clear"]
         h = next((x for x in ps if x["privilege"] in a.READ_PRIVS), None)
         layers = [dict(step="Grant", ok=True, result="Allowed",
@@ -1414,12 +1437,12 @@ def check_page(p, view):
     partly = bool(layers) and (layers[1]["result"] == "No rows" or not layers[2]["ok"])
     verdict = "partly" if ans["yes"] and partly else "yes" if ans["yes"] else "no"
     return dict(
-        verdict=verdict, layers=layers, roles_count=len(a.best_paths(u, True)), ask_priv=ask,
+        verdict=verdict, layers=layers, roles_count=len(set(a.best_paths(u, user)) - {u}), ask_priv=ask,
         held=[dict(privilege=x, held=x in has) for x in opts], lanes=ls[:20], lanes_total=len(ls), cut=cut,
         cuts=[] if mine or not ps else [dict(iac=x["iac"], sql=x["sql"], people=x["people"], lost=x["lost"],
                                              edges=[dict(grantee=e["grantee"], to=e["to"], priv=e["priv"], user=e["user"])
-                                                    for e in x["edges"]]) for x in a.cut_points(u, held, o)],
-        nearest=near, approver=a.approver(o),
+                                                    for e in x["edges"]]) for x in a.cut_points(u, held, o, user)],
+        nearest=near, approver=a.approver(o), subject=subject_of(u, user),
         view=view, user=u, object=o, type=a.kinds[o], priv=pv, privileges=[ALL] + opts, answer=ans, status=r["status"],
         dormant_days=d if sleep else None, admin_paths=admin, paths=r["paths"], owner=r["owner"], choke=r["choke"],
         closest=r["closest"], ask=[] if mine else r["ask"],
@@ -1433,22 +1456,28 @@ def request_page(p, view):
     """Screen 15, Request access: the object, read or change, the suggested roles (smallest existing one first) with
     holders and what else each brings, the approver (owner tag) and the user's level today. Text only: the page writes
     SQL / Terraform / ticket text, nothing runs."""
-    need(a.users and a.objects, "No users or objects in this data.")
-    u = p.get("name") or (a.users[0] if view == "mine" or DEMO_USER not in a.users else DEMO_USER)
-    need(u in a.users, f"{u} is not in this snapshot")
+    need(a.objects, "No objects in this data.")
+    u, user = asker(p, view, "for_role")
     tables = [x for x in a.objects if a.is_data(a.kinds[x])]
     o = p.get("obj") or (tables[0] if tables else a.objects[0])
     need(o in a.kinds, f"{o} is not in this snapshot")
     k, nd = a.kinds[o], p.get("need") if p.get("need") in ("read", "change") else "read"
     pvs = a.need_privs(k, nd)
-    mine = {x["privilege"] for x in a.grants(u, True) if x["object"] == o}
+    mine = {x["privilege"] for x in a.grants(u, user) if x["object"] == o}
     now = max((a.obj_level(x, k) for x in mine), key=a.OBJ_LEVELS.index, default=None)
     held = all(x in mine for x in pvs) or "OWNERSHIP" in mine
-    r, to = p.get("role"), p.get("to")
+    r, to = p.get("role"), p.get("to") if user else u
     asked = dict(role=r, kind=nk(r), to=to if to in a.roles else None) if r in a.roles else None  # picked on Can they?
-    return dict(view=view, user=u, object=o, type=k, need=nd, privileges=pvs, level=now, has=held, asked=asked,
-                suggestions=[] if held else a.suggest(pvs, o, u), approver=a.approver(o),
-                owners=a.object_stats(o, k)["owners"])
+    who = subject_of(u, user)
+    if asked:  # the same warnings as on Can they?: rule 1, and everyone holding the grantee role gets it too
+        n = len(a.ups(asked["to"])[1] - ({u} if user else set())) if asked["to"] else 0
+        asked |= dict(rule1=a.role_kind(r) == "technical" and (user and not asked["to"] or a.role_kind(asked["to"] or "") == "group"),
+                      people=n, broad=bool(asked["to"]) and n >= a.BROAD + (not user))
+    sug = [] if held else a.suggest(pvs, o, u, is_user=user)
+    for x in sug:
+        x |= dict(people=0 if user else who["people"], broad=not user and who["people"] > a.BROAD)
+    return dict(view=view, user=u, subject=who, object=o, type=k, need=nd, privileges=pvs, level=now, has=held,
+                asked=asked, suggestions=sug, approver=a.approver(o), owners=a.object_stats(o, k)["owners"])
 
 
 # ---------- access graph (screen 4) ----------

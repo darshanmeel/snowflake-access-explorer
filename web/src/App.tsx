@@ -78,6 +78,10 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     const { who, what, ...rest } = params;
     return { page, params: { ...rest, ...(who ? { name: who } : {}), ...(what ? { obj: what } : {}) } };
   }
+  if ((page === "check" || page === "request") && params.user && !params.name) { // user= as on the Access screen: name= here
+    const { user, ...rest } = params;
+    return { page, params: { ...rest, name: user } };
+  }
   if (!page || !PAGES.includes(page as Page)) return { page: "home", params };
   if ((page === "access" || page === "see" || page === "usage") && params.name) {
     const { name, ...rest } = params;

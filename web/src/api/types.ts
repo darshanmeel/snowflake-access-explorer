@@ -607,8 +607,12 @@ export interface Nearest {
   broad: string | null;
 }
 
+/** Who Can they? / Request access asks about: a user or a role (separate namespaces; id as in a.uid). */
+export interface Subject { kind: NodeKind; name: string; id: string; user: boolean; people: number | null }
+
 export interface CheckPage {
   verdict: "yes" | "partly" | "no";
+  subject: Subject;
   layers: { step: string; ok: boolean; result: string; reason: string }[] | null;
   roles_count: number;
   ask_priv: string;
@@ -633,7 +637,7 @@ export interface CheckPage {
     tone: "warn" | "low" | null;
     stats: [string, number | string][];
   };
-  status: UserStatus;
+  status: UserStatus | null; // null for a role
   dormant_days: number | null;
   admin_paths: Path[];
   paths: { path: Path; depth: number; holder: string; how: string; privilege: string }[];
@@ -652,15 +656,16 @@ export interface CheckPage {
 
 export interface RequestPage {
   view: View;
-  user: string;
+  user: string; // the subject's name: a user, or a role (subject.user false)
+  subject: Subject;
   object: string;
   type: string;
   need: "read" | "change";
   privileges: string[];
   level: string | null; // the user's step on the object today
   has: boolean;
-  asked: { role: string; kind: NodeKind; to: string | null } | null; // the role picked on Can they?
-  suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[] }[];
+  asked: { role: string; kind: NodeKind; to: string | null; rule1: boolean; people: number; broad: boolean } | null; // picked on Can they?
+  suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[]; people: number; broad: boolean }[];
   approver: string | null;
   owners: string[];
   refs: Refs;

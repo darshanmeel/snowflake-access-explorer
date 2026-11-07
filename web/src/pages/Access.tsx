@@ -81,7 +81,7 @@ function Body({ d }: { d: AccessPage }) {
         line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${status}` : `${w.type} · held by ${plural(w.held_by?.users ?? 0, "person")} and ${plural(w.held_by?.roles ?? 0, "role")}`}
         roles={user ? d.why.map((r) => ({ id: r.role, note: r.note === "everyone" ? "" : r.note, kind: r.kind })) : undefined} />
       <div className="ae-actions">
-        <button type="button" className="ae-btn" onClick={() => c.nav("check", user ? { name: w.name } : {})}>Can they?</button>
+        <button type="button" className="ae-btn" onClick={() => c.nav("check", user ? { name: w.name } : { role: w.name })}>Can they?</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", user ? { user: w.name } : { role: w.name })}>Show as graph</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
@@ -228,7 +228,7 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
         {x.columns.length > 0 && ` ${x.columns.map((col) => `${col.column} is ${col.state} (${col.reason})`).join("; ")}.`}</p>
       <div className="ae-how-links">
         <button type="button" className="ae-link" onClick={() => c.nav("object", { name: x.object })}>Who else has access</button>
-        {user && <button type="button" className="ae-link" onClick={() => c.nav("check", { name: who, obj: x.object })}>See all {x.ways} path{x.ways === 1 ? "" : "s"}</button>}
+        <button type="button" className="ae-link" onClick={() => c.nav("check", { ...(user ? { name: who } : { role: who }), obj: x.object })}>See all {x.ways} path{x.ways === 1 ? "" : "s"}</button>
         <button type="button" className="ae-link" onClick={() => { navigator.clipboard?.writeText(`USE ROLE ${use};`).then(() => setCopied(true), () => {}); }}>{copied ? "Copied" : "Copy USE ROLE statement"}</button>
       </div>
     </div>

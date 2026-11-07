@@ -18,7 +18,8 @@ export function remember(r: Recent) {
   try { localStorage.setItem(RECENT, JSON.stringify([r, ...recent().filter((x) => x.id !== r.id)].slice(0, 8))); } catch { /* no storage */ }
 }
 
-/** "can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER" -> who, what, verb. */
+/** "can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER" -> who (a user, or a role such as F_MARKETING: Can they? takes a
+ * name that is no user as the role), what, verb. */
 export function parseQuestion(q: string): { who: string; what: string; priv: string } | null {
   const m = q.trim().match(/^can\s+(\S+)\s+(read|select|change|write|insert|update|delete|own)\s+(\S+?)\??$/i);
   if (!m) return null;
@@ -37,7 +38,7 @@ type Who = { kind: string; id: string; name: string };
 type Short = { page: Page; label: string; params: Record<string, string> };
 
 const SHORT: [Page, string, ((w: Who) => Short | null)?][] = [
-  ["check", "Can they read …?", (w) => (w.kind === "user" ? { page: "check", label: `Can ${w.name} read …?`, params: { name: w.name } } : null)],
+  ["check", "Can they read …?", (w) => (w.kind === "object" ? null : { page: "check", label: `Can ${w.name} read …?`, params: { [w.kind === "user" ? "name" : "role"]: w.kind === "user" ? w.name : w.id } })],
   ["graph", "Access graph", (w) => ({ page: "graph", label: `Graph of ${w.name}`, params: { [w.kind === "user" ? "user" : w.kind === "object" ? "table" : "role"]: w.kind === "user" ? w.name : w.id } })],
   ["compare", "Compare two people", (w) => (w.kind === "object" ? null : { page: "compare", label: `Compare ${w.name} with …`, params: { a: w.id } })],
   ["request", "Request access"], ["rules", "Risks & fixes"], ["whatif", "What if a role goes?"], ["sensitive", "Sensitive data"],

@@ -1159,6 +1159,27 @@ def test_nearest():  # screens 3, 12, 15: lanes and cuts, nearest ways in, sugge
     assert a.need_privs("TABLE", "change") == ["INSERT", "UPDATE"] and a.need_privs("WAREHOUSE", "read") == ["USAGE"]
     assert a.basic_priv("VIEW") == "SELECT" and a.need_privs("TABLE", "own") == ["OWNERSHIP"]
     assert a.brings(F + "ENGINEER", o)["extra"] > 10
+    # a role as the subject: its own grants and the roles it inherits; routes start at the role (depth 1 itself)
+    y = a.can(F + "ENGINEER", "SELECT", o, is_user=False)
+    assert y["paths"][0]["path"] == [F + "ENGINEER", "HR.SC_W_PEOPLE", "HR.SC_R_PEOPLE", o] and y["paths"][0]["depth"] == 3
+    assert y["use_role"] == F + "ENGINEER" and y["status"] is None and "secondary" not in y["paths"][0]["how"]
+    rc = a.cut_points(F + "ENGINEER", ["SELECT"], o, False)
+    assert rc and all(c["people"] == ["ENGINEER_01"] for c in rc) and not any(e["user"] for c in rc for e in c["edges"])
+    assert any(f"FROM ROLE {F}ENGINEER" in c["sql"] for c in rc)
+    assert a.removal(F + "ENGINEER", "SELECT", o, False)[0]["users"] == ["ENGINEER_01"]
+    no = a.can(F + "ANALYST", "SELECT", o, is_user=False)
+    assert not no["paths"] and not no["owner"] and no["use_role"] is None
+    rn = a.nearest(F + "ANALYST", "SELECT", o, is_user=False)
+    assert rn and all(x["to"] == F + "ANALYST" and not x["to_user"] and x["cost"] == 1 and x["path"][0] == F + "ANALYST"
+                      and 0 < x["people"] < len(a.ups(F + "ANALYST")[1]) for x in rn), rn  # ENGINEER_01 has it already
+    assert all(F + "ANALYST" not in a.best_paths(x["role"]) for x in rn)  # never a role that holds it (a loop)
+    assert a.nearest(F + "ENGINEER", "SELECT", o, is_user=False) == []  # holds it already: nothing missing
+    m, rev = F + "MARKETING", "FINANCE.REPORT.TBL_REVENUE"  # Partly: the grant is there, the row policy returns none
+    pm = a.can(m, "SELECT", rev, is_user=False)
+    assert pm["paths"] and pm["paths"][0]["path"][0] == m and a.data_view(m, rev, False)["rows"]["state"] == "none"
+    rs = a.suggest(["SELECT"], o, F + "ANALYST", is_user=False)
+    assert rs and all(x["role"] != F + "ANALYST" and F + "ANALYST" not in a.best_paths(x["role"]) for x in rs)
+    assert a.suggest(["SELECT"], o, "HR.SC_R_PEOPLE", is_user=False) == []  # an account role can't go to a database role
 
 
 def test_graph_see_compare():  # screens 4, 7, 9: access graph, what they see, compare

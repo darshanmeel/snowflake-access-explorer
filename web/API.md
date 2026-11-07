@@ -436,7 +436,13 @@ Screen 2 (page key `object`): who has access to one object, or with `preset=admi
 ```
 A user holding an admin role is `admin` and shown by its shortest path to the admin role. 404 for an unknown name.
 
-### GET /api/check?view=&name=&obj=&priv=SELECT|&do=read|change|own|any
+### GET /api/check?view=&name=|user=|role=&obj=&priv=SELECT|&do=read|change|own|any
+
+The subject is a user (`name=`, or `user=` as on the Access screen) or a role (`role=`): users and roles are separate
+namespaces, so `role=` always means the role. A `name=` that is no user but a role is that role (Home's typed
+question). My access: always the signed-in user. For a role, every producer below runs with `is_user=False` /
+`user=False`: its own grants plus the roles it inherits, routes start at the role (depth 1 itself), where to cut counts
+the people holding it, nearest ways in grant a role to it (never one that holds it: a loop), `use_role` is the role.
 
 Can they? Producers: `a.can(u, priv, obj)`, `a.admin_paths(u, True)`, `a.login_days`, `a.is_dormant`,
 `a.data_view(u, obj, True)` and `a.data_view(use_role, obj, False)` (read line), `a.priv_class`, the usage card
@@ -450,7 +456,8 @@ Can they? Producers: `a.can(u, priv, obj)`, `a.admin_paths(u, True)`, `a.login_d
   "answer": {"yes": true, "how": "paths" | "owner" | "admin" | "none", "title": "Yes, through 2 paths",
              "text": "ANALYST_01 can SELECT SALES.CORE.TBL_CUSTOMER.", "tone": null | "warn" | "low",
              "stats": [["Paths", 2], ["Shortest depth", 3]]},
-  "status": "active", "dormant_days": null,
+  "subject": {"kind": "user" | "functional" | ..., "name": "ANALYST_01", "id": "ANALYST_01", "user": true, "people": null},  // people: users holding a role
+  "status": "active", "dormant_days": null,         // status null for a role
   "admin_paths": [],
   "paths": [{"path": ["..."], "depth": 3, "holder": "T_SALES_CORE_READ", "how": "direct grant on T_SALES_CORE_READ"}],
   "owner": [], "choke": ["GRP_ANALYSTS"], "closest": null,
@@ -474,7 +481,11 @@ Can they? Producers: `a.can(u, priv, obj)`, `a.admin_paths(u, True)`, `a.login_d
 `do` picks the privilege when `priv` is not given: read = `a.basic_priv`, change = the first of `a.need_privs(type, "change")`,
 own = OWNERSHIP, else every privilege (`*`).
 
-### GET /api/request?view=&name=&obj=&need=read|change&role=&to=
+### GET /api/request?view=&name=|user=|for_role=&obj=&need=read|change&role=&to=
+
+For a person (`name=` / `user=`) or a role (`for_role=`; `role=` here is the role picked on Can they?): for a role the
+grant is GRANT ROLE x TO ROLE <for_role>, `asked.to` is that role, and every suggestion says how many people holding it
+get it too (`people`, `broad` when more than `BROAD_PEOPLE`).
 
 Screen 15, Request access (page key `request`). Read-only: the page writes SQL / Terraform / ticket text (`codegen.ts`).
 `a.need_privs`, `a.suggest` (functional roles reaching every needed privilege, fewest other privileges first; build and
@@ -482,8 +493,9 @@ admin-reaching roles never), `a.approver`, `a.object_stats` owners.
 
 ```
 { view, user, object, type, need, privileges[], level (the user's step today, or null), has (already holds them),
-  asked: { role, kind, to } | null,          // the role picked on Can they? (role=, to=), checked against the roles
-  suggestions: [{ role, path, holders, extra, also: [{ level, count, where }], unmasked[] }],
+  subject: { kind, name, id, user, people },
+  asked: { role, kind, to, rule1, people, broad } | null,  // the role picked on Can they? (role=, to=), checked against the roles
+  suggestions: [{ role, path, holders, extra, also: [{ level, count, where }], unmasked[], people, broad }],
   approver, owners[], refs }
 ```
 404 for an unknown user or object.

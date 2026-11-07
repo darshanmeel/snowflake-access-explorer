@@ -164,6 +164,7 @@ div.ae-tile { cursor: default; }
 .ae-bar-lvl-admin { background: var(--ae-lvl_admin_bg); } .ae-bar-lvl-use { background: var(--ae-low_bd); } .ae-bar-lvl-names { background: var(--ae-line); }
 .ae-dot2.ae-lvl-admin { background: var(--ae-lvl_admin_bg); } .ae-dot2.ae-lvl-use { background: var(--ae-low_bd); } .ae-dot2.ae-lvl-names { background: var(--ae-line_strong); }
 .ae-warn-word { color: var(--ae-warn_ink); font-weight: 600; }
+.ae-block { display: block; }
 .ae-whogrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .ae-whogrid { grid-template-columns: minmax(0, 1fr); } }
 .ae-whoside { display: grid; gap: 14px; }

@@ -30,7 +30,7 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 | Home (`home`) | Search a person, role, table or screen, or type "can X read Y". Your access, account risks, data protection. |
 | A person or role (`access`) | What can they reach, through every role? Role hierarchy diagram and privilege tabs first, then one row per object at the most it allows. |
 | Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. |
-| Can they? (`check`) | Can X do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. |
+| Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. |
 | Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
 | Compare (`compare`) | Two people or roles side by side, the differences, and the text to make them match. |

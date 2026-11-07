@@ -216,6 +216,7 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
       {e.ways > 1 && <p className="ae-muted">{plural(e.ways - 1, "other way")} lead{e.ways === 2 ? "s" : ""} here too, so removing one role may not remove the access.</p>}
       <div className="ae-how-links">
         {!role && d.object.id && <button type="button" className="ae-link" onClick={() => c.nav("check", { name: e.name, obj: d.object.id! })}>All paths (Can they?)</button>}
+        {role && d.object.id && <button type="button" className="ae-link" onClick={() => c.nav("check", { role: e.name, obj: d.object.id! })}>All paths (Can they?)</button>}
         {role && <button type="button" className="ae-link" onClick={() => c.nav("access", { role: e.name })}>Open the role</button>}
         {ch && <WhatIfButton ch={[ch]} />}
       </div>

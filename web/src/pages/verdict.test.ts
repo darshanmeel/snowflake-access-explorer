@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { redirect } from "../App";
 import type { CheckPage, Nearest } from "../api/types";
 import { expiryOf, newRoleOf, sqlOf } from "../components/codegen";
-import { cutChanges, cutLabel, cutWhatIf, needOf, nearestNote, nearestTitle, sideEffects, verdictLine } from "./verdict";
+import { parseQuestion } from "./Home";
+import { cutChanges, cutLabel, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 
 const roleEdge = { grantee: "F_ENGINEER", to: "HR.SC_W_PEOPLE", priv: null, user: false };
 const userEdge = { grantee: "ENGINEER_01", to: "F_ENGINEER", priv: null, user: true };
@@ -67,5 +68,27 @@ describe("Request access text", () => {
     expect(redirect("check", { who: "FIN_09", what: "HR.PEOPLE.T", do: "read" })).toEqual({ page: "check", params: { name: "FIN_09", obj: "HR.PEOPLE.T", do: "read" } });
     expect(redirect("request", { who: "FIN_09", what: "HR.PEOPLE.T" })).toEqual({ page: "request", params: { name: "FIN_09", obj: "HR.PEOPLE.T" } });
     expect(redirect("request", { name: "FIN_09" })).toEqual({ page: "request", params: { name: "FIN_09" } });
+  });
+  it("asks about a person or a role without mixing the two namespaces", () => {
+    expect(redirect("check", { name: "FIN_09", obj: "D.S.T" })).toEqual({ page: "check", params: { name: "FIN_09", obj: "D.S.T" } }); // old links
+    expect(redirect("check", { user: "FIN_09" })).toEqual({ page: "check", params: { name: "FIN_09" } });
+    expect(redirect("request", { user: "FIN_09", role: "F_X" })).toEqual({ page: "request", params: { name: "FIN_09", role: "F_X" } });
+    expect(redirect("check", { role: "F_MARKETING", obj: "D.S.T" })).toEqual({ page: "check", params: { role: "F_MARKETING", obj: "D.S.T" } });
+    expect(subjectIn({ role: "F_X", name: "U" })).toEqual({ name: "F_X", role: true });
+    expect(subjectIn({ user: "U" })).toEqual({ name: "U", role: false });
+    expect(subjectIn({ role: "F_X" }, "request")).toEqual({ name: null, role: false }); // role= on Request is the role asked for
+    expect(subjectIn({ for_role: "F_X", role: "T_Y" }, "request")).toEqual({ name: "F_X", role: true });
+    // a name both a user and a role have stays the user, as on the Access screen; a role-only name is the role
+    expect(pickSubject("SAME", ["SAME"], ["SAME"])).toEqual({ name: "SAME", user: null, role: null });
+    expect(pickSubject("F_X", ["U"], ["F_X"])).toEqual({ role: "F_X", name: null, user: null });
+    expect(pickSubject("F_X", ["U"], ["F_X"], "request")).toEqual({ for_role: "F_X", name: null, user: null });
+    expect(subjectLink({ name: "F_X", user: false }, "request")).toEqual({ for_role: "F_X" });
+    expect(subjectLink({ name: "U", user: true })).toEqual({ name: "U" });
+    expect(parseQuestion("can f_marketing read finance.report.tbl_revenue?")).toEqual({ who: "F_MARKETING", what: "FINANCE.REPORT.TBL_REVENUE", priv: "SELECT" });
+    expect(verdictLine({ ...base, user: "F_X", verdict: "no", subject: { user: false } } as unknown as CheckPage)).toBe("Neither F_X nor any of its 11 roles leads to DB.S.T.");
+    const t = newRoleOf("F_X", ["SELECT"], "TABLE", "D.S.T", {}, undefined, true);
+    expect(t.sql).toContain("-- GRANT ROLE <NEW_ROLE> TO ROLE F_X;");
+    expect(t.tf).toContain('parent_role_name = "F_X"');
+    expect(sqlOf([{ op: "grant", role: "F_ENGINEER", to: "F_ANALYST", toUser: false }])).toContain("GRANT ROLE F_ENGINEER TO ROLE F_ANALYST;");
   });
 });

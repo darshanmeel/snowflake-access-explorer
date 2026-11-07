@@ -91,20 +91,21 @@ export function expiryOf(days: number, now = new Date()): string {
 }
 
 /** No existing role fits: a commented skeleton for a new role (every line a comment, so nothing runs by accident).
- * dbRole: the new account role holds this database role (a database role can't be granted to a user). */
-export function newRoleOf(user: string, privs: string[], objectType: string, object: string, n: Note = {}, dbRole?: string):
-  { sql: string; tf: string; ticket: string } {
+ * dbRole: the new account role holds this database role (a database role can't be granted to a user).
+ * toRole: user is a role, so the new role is granted to that role. */
+export function newRoleOf(user: string, privs: string[], objectType: string, object: string, n: Note = {}, dbRole?: string,
+  toRole = false): { sql: string; tf: string; ticket: string } {
   const r = "<NEW_ROLE>";
   const head = (m: string) => [`${m} No existing role gives ${user} ${privs.join(", ")} on ${object}. The owner decides; a skeleton:`, ...comments(n, m)];
   const give = dbRole ? `-- GRANT DATABASE ROLE ${q(dbRole)} TO ROLE ${r};` : `-- GRANT ${privs.join(", ")} ON ${objectType} ${q(object)} TO ROLE ${r};`;
-  const sql = [...head("--"), `-- CREATE ROLE ${r};`, give, `-- GRANT ROLE ${r} TO USER ${q(user)};`].join("\n") + "\n";
+  const sql = [...head("--"), `-- CREATE ROLE ${r};`, give, `-- GRANT ROLE ${r} TO ${toRole ? "ROLE" : "USER"} ${q(user)};`].join("\n") + "\n";
   const tfGive = dbRole
     ? [`# resource "snowflake_grant_database_role" "${slug(dbRole)}_to_new_role" {`, `#   database_role_name = "${dbRole}"`, `#   parent_role_name   = "${r}"`, "# }"]
     : [`# resource "snowflake_grant_privileges_to_account_role" "new_role_${slug(object)}" {`, `#   account_role_name = "${r}"`,
       `#   privileges        = [${privs.map((p) => `"${p}"`).join(", ")}]`, "#   on_schema_object {", `#     object_type = "${objectType}"`,
       `#     object_name = "${object}"`, "#   }", "# }"];
   const tf = [...head("#"), `# resource "snowflake_account_role" "new_role" {`, `#   name = "${r}"`, "# }", ...tfGive,
-    `# resource "snowflake_grant_account_role" "new_role_to_${slug(user)}" {`, `#   role_name = "${r}"`, `#   user_name = "${user}"`, "# }"].join("\n") + "\n";
+    `# resource "snowflake_grant_account_role" "new_role_to_${slug(user)}" {`, `#   role_name = "${r}"`, toRole ? `#   parent_role_name = "${user}"` : `#   user_name = "${user}"`, "# }"].join("\n") + "\n";
   const ticket = [`Access request · ${user}`, `Object: ${object}`, `Need: ${privs.join(", ")}`,
     dbRole ? `Role: a new account role holding ${dbRole}` : "Role: none fits, owner to decide (new role)",
     ...(n.expiry ? [`Expires: ${n.expiry}`] : []), `Approver: ${n.approver || "(owner of the object)"}`, `Reason: ${n.reason || "(fill in)"}`].join("\n") + "\n";

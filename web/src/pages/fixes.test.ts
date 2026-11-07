@@ -59,5 +59,7 @@ describe("Home search", () => {
     expect(t.map((s) => s.label)).toEqual(["Can they read …?", "Graph of DB.S.T", "Compare two people"]);
     expect(t[1].params).toEqual({ table: "DB.S.T" });
     expect(shortcuts(["check"])[0]).toEqual({ page: "check", label: "Can they read …?", params: {} });
+    expect(shortcuts(["check"], { kind: "functional", id: "F_MARKETING", name: "F_MARKETING" })[0])
+      .toEqual({ page: "check", label: "Can F_MARKETING read …?", params: { role: "F_MARKETING" } }); // a role asks too
   });
 });

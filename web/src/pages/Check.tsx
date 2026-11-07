@@ -1,30 +1,34 @@
 // Can they? (screens 3 and 12): a sentence question, the verdict Yes / Partly / No with the privileges held, then tabs.
 // "Answer & diagram" (the old page: banner, combined diagram, paths, ownership, where to cut, ways to remove, what they
 // see) is the default; Routes & where to cut (one lane per route, cut points with side effects), Nearest ways in (No)
-// and Rows & columns (grant, rows, columns; Partly) follow.
-import { useState } from "react";
+// and Rows & columns (grant, rows, columns; Partly) follow. The subject is a person (name=) or a role (role=).
+import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { CheckPage, ListItem, Path, Refs } from "../api/types";
 import { Banner, Card, CodeOutput, DataTable, EmptyState, KpiRow, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { cutChanges, cutLabel, cutWhatIf, needOf, nearestNote, nearestTitle, sideEffects, verdictLine } from "./verdict";
+import { cutChanges, cutLabel, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 import { col, GraphCard, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
 export function CheckPageView() {
   const c = useApp();
   const mine = c.view === "mine";
-  const name = c.params.name ?? c.meta.default_user;
+  const asked = subjectIn(c.params);
+  const name = asked.name ?? c.meta.default_user;
   const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
+  const roles = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "roles", view: c.view });
   const objs = useApi<{ items: ListItem[] }>("list", { what: "objects", view: c.view });
-  const s = useApi<CheckPage>("check", { ...apiParams(c), name });
+  const s = useApi<CheckPage>("check", { ...apiParams(c), ...(asked.role ? { role: name } : { name }) });
+  const us = useMemo(() => users.data?.items.map((i) => i.id) ?? [], [users.data]);
+  const rs = useMemo(() => roles.data?.items.map((i) => i.id) ?? [], [roles.data]);
   return (
     <>
       <h2 className="ae-h1">Can they?</h2>
       <div className="ae-ask" role="group" aria-label="Question">
         <span className="ae-ask-w">Can</span>
         {mine ? <span className="ae-mono ae-ask-w">{s.data?.user ?? "you"}</span>
-          : <Pick label="User" value={name} options={users.data?.items.map((i) => i.id) ?? [name]} onPick={(v) => c.set({ name: v, obj: null })} />}
+          : <Pick label="Person or role" value={name} options={us.length || rs.length ? [...us, ...rs] : [name]} onPick={(v) => c.set({ ...pickSubject(v, us, rs), obj: null })} />}
         {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v, do: null })}
           options={s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p])} />}
         <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} options={objs.data?.items.map((i) => i.id) ?? []} onPick={(v) => c.set({ obj: v, priv: null })} />
@@ -54,7 +58,8 @@ function Body({ d }: { d: CheckPage }) {
         <div className="ae-verdict-head">
           <span className="ae-verdict-mark" aria-hidden>{MARK[d.verdict]}</span>
           <div>
-            <div className="ae-verdict-word">{WORD[d.verdict]}{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}</span>}</div>
+            <div className="ae-verdict-word">{WORD[d.verdict]}{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}</span>}
+              {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
             <div className="ae-verdict-line">{verdictLine(d)}</div>
           </div>
         </div>
@@ -80,15 +85,16 @@ const KIND_WORD: Record<string, string> = {
   admin: "Admin role", object: "Object", new: "New account role",
 };
 
-/** One route, left to right: user, roles, the grant, the object. cut: nodes on every route; missing: the dashed red link. */
-function Lane({ path, grant, refs, cut = [], missing }: { path: Path; grant: string; refs: Refs; cut?: string[]; missing?: number }) {
+/** One route, left to right: user (or the role asked about), roles, the grant, the object. cut: nodes on every route;
+ * missing: the dashed red link. */
+function Lane({ path, grant, refs, cut = [], missing, user = true }: { path: Path; grant: string; refs: Refs; cut?: string[]; missing?: number; user?: boolean }) {
   const o = useOpen(refs);
   const obj = path[path.length - 1];
   const parts = obj.split(".");
   return (
     <div className="ae-route">
       {path.slice(0, -1).map((n, i) => {
-        const k = i === 0 ? "user" : n === "<NEW_ROLE>" ? "new" : refs.kinds[n] ?? "group";
+        const k = i === 0 && user ? "user" : n === "<NEW_ROLE>" ? "new" : refs.kinds[n] ?? "group";
         const gap = missing === i - 1;
         return (
           <span key={i} className="ae-route-step">
@@ -118,7 +124,7 @@ function Routes({ d }: { d: CheckPage }) {
     <>
       <Card title="How the access gets there" sub={`One lane per route, read left to right${d.lanes_total > d.lanes.length ? ` · first ${d.lanes.length} of ${d.lanes_total}` : ""}`}>
         <div className="ae-routes">
-          {d.lanes.map((l, i) => <Lane key={i} path={l.path} grant={l.privileges.join(", ")} refs={d.refs} cut={d.cut} />)}
+          {d.lanes.map((l, i) => <Lane key={i} path={l.path} grant={l.privileges.join(", ")} refs={d.refs} cut={d.cut} user={d.subject.user} />)}
         </div>
         <div className="ae-route-legend">
           <span><span className="ae-route-key cut" />In every route: a place to cut</span>
@@ -135,7 +141,7 @@ function Routes({ d }: { d: CheckPage }) {
                   <b>{cutLabel(x.edges)}</b>
                   <span className="ae-muted">{x.people.length > 1
                     ? `Ends this access for ${x.people.length} people: ${x.people.slice(0, 4).join(", ")}${x.people.length > 4 ? " …" : ""}.`
-                    : `Ends this access only for ${x.people[0] ?? d.user}.`}{x.lost > 0 ? ` ${d.user} also loses ${x.lost} other privilege${x.lost === 1 ? "" : "s"}.` : ""}</span>
+                    : x.people.length ? `Ends this access only for ${x.people[0]}.` : `Ends it for ${d.user} only: no one holds it.`}{x.lost > 0 ? ` ${d.user} also loses ${x.lost} other privilege${x.lost === 1 ? "" : "s"}.` : ""}</span>
                 </button>
                 <span className="ae-cut-side">
                   {sideEffects(x.people.length, x.lost).map((b) => <span key={b.text} className={`ae-sfx ae-sfx-${b.tone}`}>{b.text}</span>)}
@@ -174,7 +180,7 @@ function NearestWays({ d }: { d: CheckPage }) {
       <div className="ae-near">
         {d.nearest.map((n, i) => (
           <div key={i} className={`ae-near-row${n.broad || n.rule1 ? " warn" : ""}`}>
-            <Lane path={n.path} grant={d.ask_priv} refs={d.refs} missing={n.missing} />
+            <Lane path={n.path} grant={d.ask_priv} refs={d.refs} missing={n.missing} user={d.subject.user} />
             <div className="ae-near-foot">
               <div>
                 <b>{nearestTitle(n)}</b> · <span className="ae-muted">{nearestNote(n, d.approver)}</span>
@@ -182,7 +188,8 @@ function NearestWays({ d }: { d: CheckPage }) {
               </div>
               <div className="ae-row">
                 <button type="button" className={`ae-btn${i === 0 && !n.broad ? " ae-btn-primary" : ""}`}
-                  onClick={() => c.nav("request", { name: d.user, obj: d.object, need: needOf(d.ask_priv), role: n.role, ...(n.to_user ? {} : { to: n.to }) })}>
+                  onClick={() => c.nav("request", { ...subjectLink(d.subject, "request"), obj: d.object, need: needOf(d.ask_priv), role: n.role,
+                    ...(n.to_user || !d.subject.user ? {} : { to: n.to }) })}>
                   {n.broad ? "Request anyway" : `Request ${n.cost > 1 ? "a new role" : n.role}`}
                 </button>
                 <button type="button" className="ae-btn" title="Everything this role gives: the effect of granting it" onClick={() => c.nav("access", { role: n.role })}>What it brings</button>
@@ -219,9 +226,9 @@ function Answer({ d }: { d: CheckPage }) {
     <>
       <Banner tone={a.yes ? (a.tone === "warn" ? "warn" : a.tone === "low" ? "info" : "bad") : "info"} title={a.title} lines={[a.text]} />
       <KpiRow items={a.stats.map(([label, value]) => ({ label, value }))} />
-      {d.status !== "active" && <Banner tone="warn" title={`User is ${d.status}`} lines={d.dormant_days ? [`No login for ${d.dormant_days} days.`] : []} />}
+      {d.status && d.status !== "active" && <Banner tone="warn" title={`User is ${d.status}`} lines={d.dormant_days ? [`No login for ${d.dormant_days} days.`] : []} />}
       {d.admin_paths.length > 0 && (
-        <Banner tone="bad" title="Admin roles give this user everything" lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
+        <Banner tone="bad" title={`Admin roles give this ${d.subject.user ? "user" : "role"} everything`} lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
       )}
       <GraphCard g={d.graph} refs={d.refs} />
       {d.paths.length > 0 && (
@@ -245,7 +252,7 @@ function Answer({ d }: { d: CheckPage }) {
         </Card>
       )}
       {!a.yes && d.closest && (
-        <Card title="Closest the user gets" sub="The nearest chain that stops short">
+        <Card title={`Closest the ${d.subject.user ? "user" : "role"} gets`} sub="The nearest chain that stops short">
           <PathCell path={d.closest} refs={d.refs} />
         </Card>
       )}
