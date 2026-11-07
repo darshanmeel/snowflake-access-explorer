@@ -2,6 +2,7 @@
 
 config(): FAKE / SOURCE / ACCESS_SNAPSHOT settings -> (mode, source, where).
 get(): the data once a day is enough: memory for 24 h, and locally a file in .cache/ for CACHE_HOURS (0 = memory only).
+When a new read replaces a local file of another run, that file is kept as <name>.prev.pkl (What changed compares them).
 A Streamlit-in-Snowflake app has no SNOWFLAKE_ACCOUNT variable and no local disk: memory only there.
 """
 import os
@@ -45,6 +46,39 @@ def file(key):
     return DIR / (re.sub(r"[^\w.-]", "_", key) + ".pkl")
 
 
+def load(f):
+    try:
+        return pickle.loads(f.read_bytes())
+    except Exception:  # unreadable or from older code
+        return None
+
+
+def run_of(d):
+    r = (d.get("run") or {}) if isinstance(d, dict) else {}
+    return r.get("RUN_ID"), str(r.get("FINISHED_AT"))
+
+
+def keep_prev(f, new):
+    """The local file this read replaces (or the one drop() set aside) becomes the previous snapshot, unless it holds
+    the same run (a refresh of an unchanged snapshot keeps the older previous one)."""
+    for old in (f, f.with_suffix(".old.pkl")):
+        if old.is_file():
+            d = load(old)
+            if d is not None and run_of(d) != run_of(new):
+                old.replace(f.with_suffix(".prev.pkl"))
+                break
+    f.with_suffix(".old.pkl").unlink(missing_ok=True)
+
+
+def prev(key):
+    """(data, fetched_at) of the previous snapshot kept locally, else None (memory only, inside Snowflake, or none yet)."""
+    f = file(key).with_suffix(".prev.pkl")
+    if HOURS <= 0 or "SNOWFLAKE_ACCOUNT" not in os.environ or not f.is_file():
+        return None
+    d = load(f)
+    return (d, f.stat().st_mtime) if d is not None else None
+
+
 def get(key, fn, disk=True):
     """(data, fetched_at): from memory, else the local file, else fn() (stored in both)."""
     with LOCK:
@@ -55,14 +89,13 @@ def get(key, fn, disk=True):
         disk = disk and HOURS > 0 and "SNOWFLAKE_ACCOUNT" in os.environ
         m = None
         if disk and f.is_file() and time.time() - f.stat().st_mtime < HOURS * 3600:
-            try:
-                m = pickle.loads(f.read_bytes()), f.stat().st_mtime
-            except Exception:  # unreadable or from older code: read again
-                m = None
+            d = load(f)
+            m = (d, f.stat().st_mtime) if d is not None else None
         if not m:
             m = fn(), time.time()
             if disk:
                 DIR.mkdir(exist_ok=True)
+                keep_prev(f, m[0])
                 tmp = f.with_suffix(".tmp")
                 tmp.write_bytes(pickle.dumps(m[0]))
                 tmp.replace(f)
@@ -81,5 +114,9 @@ def ready(key, disk=True):
 
 
 def drop(key):
+    """Read again next time: out of memory, and the local file set aside (the previous snapshot once a new one is read)."""
     MEM.pop(key, None)
-    file(key).unlink(missing_ok=True)
+    f = file(key)
+    if f.is_file() and HOURS > 0:
+        f.replace(f.with_suffix(".old.pkl"))
+    f.unlink(missing_ok=True)

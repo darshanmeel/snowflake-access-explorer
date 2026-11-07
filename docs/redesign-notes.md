@@ -142,10 +142,33 @@ stays, what changes, and the order of the work.
 - Redirects: `catalog` -> `sensitive&show=catalog`, `dataflow` and `sensitive&show=flow` -> `flow`, `signoff` ->
   `review&show=grid`.
 
+- **Screen 13, Granted vs used** (`usage`, endpoint `/api/usage`, Admin group): optional read of
+  `ACCOUNT_USAGE.ACCESS_HISTORY`, aggregated per user, object, week and READ / WRITE over 180 days (`access.use_sql`,
+  the same text in `SP_ACCESS_SNAPSHOT`), into the new table `TBL_ACCESS_OBJECT_USE` (`TBL_ACCESS_USAGE` already holds
+  role / warehouse usage). A may-fail step: without Enterprise or `IMPORTED PRIVILEGES` the table stays empty and the
+  note says UNAVAILABLE; `live()` reads it the same way; `fake()` has deterministic demo rows (`fake_use`) with unused
+  grants. Screen: period 30 / 90 / 180 days (`days=`), one row per table or view reached: granted level, used level or
+  Not used (capped at the granted level), weekly bars, last used, suggestion Keep / Remove INSERT never used / Remove
+  all; "Trim to what is used: N grants" adds `revoke_priv` changes at the holding roles to the change plan store
+  (ownership is never revoked); tab "Trim to what is used" (`show=trim`) with the revokes as SQL / Terraform / ticket
+  text. EmptyState with the reason and the grant that enables it when there is no data. Linked from the Access screen
+  (Granted vs used). `access.py`: `use_state`, `used_on`, `granted_used`, `weeks_of`.
+- **Screen 14, What changed + watched questions** (`changes`, endpoint `/api/changes`, Admin group, hidden in My
+  access): the current snapshot against the previous one, which `cache.py` keeps as `<name>.prev.pkl` in `.cache/`
+  when a new run arrives (only locally, `CACHE_HOURS` > 0). Inside Snowflake, with no previous copy or with memory-only
+  caching, an EmptyState says why. Fake mode compares with `fake_previous()`. `access.diff(prev)`: grants gained / lost
+  with who gains or loses what (`loaded(prev)` rebuilds the previous lookups and restores them), people turned dormant
+  or disabled, new and fixed findings (matched on rule, grantee, kind), `GRANTED_BY`. Filters All / Gained / Lost /
+  New findings / Sensitive only; feed with + / − / ! / ✓ icons, sentence, impact, by, finding chips and a link.
+  "Watched questions" (`show=watch`): Can [person] read [object]? / Who can read [object]? / Who holds admin roles?,
+  saved in localStorage `ae-watch`, asked again through `/api/check` and `/api/who`, tagged New / Changed / No change
+  against the answer on the previous run; Notify is text only, nothing is sent. A "History" tab (`show=history`) on
+  the Access and Object screens shows the feed for that subject.
+- Redirects: `history`, `diff` -> `changes`; `unused`, `used`, `access|user|role&show=usage` -> `usage`;
+  `usage&name=` -> `user=`.
+
 ## Not done, and why
 
-- Granted vs used (13) needs `ACCESS_HISTORY`, What changed (14) needs dated snapshots kept. Both add new reads and stored
-  data next to the `TBL_ACCESS_` tables, which CLAUDE.md limits; they need a decision first.
 - Rules On/Off and Mute are per browser (localStorage), not shared: a shared setting would need a store the app writes to.
 - The plain Streamlit fallback (`ST_REACT=native`) keeps its current pages; the default Streamlit mode runs the React app and gets every new screen.
 
@@ -154,5 +177,5 @@ stays, what changes, and the order of the work.
 1. Foundations: tokens, shell, shared components, redirect table. Old pages stay reachable under "Detail".
 2. Answer screens: Home, A person or role, then object, Can they?, graph, what they see, compare.
 3. Admin screens: Risks & fixes with change plan, What if, Review, Sensitive catalog, Rules, data flow (done).
-4. New data: needs the decision above.
+4. New data: Granted vs used (ACCESS_HISTORY) and What changed (previous snapshot in `.cache/`) (done).
 5. Cleanup: remove the old pages once every tab has a destination and a redirect.

@@ -716,6 +716,48 @@ admin role dropped; the message names it).
 unreached | ownerless | orphan | fixed | new), Path, Detail, with the header lines What if (summary), Run, Generated,
 Infrastructure as code, SQL (never run by this app).
 
+### GET /api/usage?view=&user=|role=&days=30|90|180
+
+Granted vs used: `a.granted_used(name, user, days)` over `TBL_ACCESS_OBJECT_USE` (ACCESS_HISTORY per user, object,
+week, READ / WRITE). 400 `bad_param` for another `days`. `available` false (with `reason` and `enable`, the grant
+that makes ACCESS_HISTORY readable) when the snapshot has no usage.
+
+```json
+{"who": {"name": "ENGINEER_01", "kind": "user"}, "days": 90, "periods": [30, 90, 180], "available": true,
+ "reason": null, "enable": "GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE <that role>; ...", "source": "demo values",
+ "weeks": ["2026-08-10", "..."],
+ "rows": [{"object": "HR.PEOPLE.TBL_EMPLOYEE", "type": "TABLE", "database": "HR", "schema": "PEOPLE", "sensitive": false,
+           "level": "change", "used": null, "privileges": ["INSERT", "SELECT", "UPDATE"], "unused": ["INSERT", "SELECT", "UPDATE"],
+           "weeks": [0, 0], "reads": 0, "writes": 0, "last": null, "people": ["ENGINEER_01"], "holder": "HR.SC_R_PEOPLE",
+           "suggest": "drop", "text": "Remove all · not used in 90 days",
+           "changes": [{"op": "revoke_priv", "role": "HR.SC_R_PEOPLE", "privilege": "SELECT", "object": "HR.PEOPLE.TBL_EMPLOYEE"}]}],
+ "counts": {"objects": 4, "used": 3, "drop": 1, "trim": 2, "keep": 1, "write_unused": 1, "changes": 4},
+ "changes": [], "people": ["ENGINEER_01"], "refs": {}}
+```
+
+`changes` are What if changes (`revoke_priv`, ownership never), for the change plan; nothing runs.
+
+### GET /api/changes?view=&subject=
+
+What changed: `a.diff(prev)` between the loaded snapshot and the previous one (`cache.prev(key)`: the copy kept in
+`.cache/` when a newer run arrived; fake mode: `a.fake_previous()`). `available` false with `reason` inside Snowflake,
+in My access, with `CACHE_HOURS=0` or before a second run. `subject` (user, role or object) keeps the events about it.
+
+```json
+{"available": true, "subject": null, "before": "2026-10-26 07:00", "now": "2026-11-02 07:00",
+ "text": "Since the snapshot of 2026-10-26 07:00: 11 changes, 4 new high findings, 3 people gained sensitive access.",
+ "counts": {"all": 11, "gain": 2, "lose": 2, "risk": 6, "sensitive": 7},
+ "events": [{"id": "g1", "kind": "gain", "text": "T_SHARED_LOGGING_READ was granted INSERT on SHARED.LOGGING.TBL_LOGGING",
+             "impact": "ANALYST_01, ANALYST_02 and 1 other can now change SHARED.LOGGING.TBL_LOGGING", "by": "F_DEPLOY",
+             "sensitive": true, "findings": [{"num": "17", "severity": "High", "title": "Read-only role can write", "fixed": false}],
+             "link": {"page": "object", "params": {"name": "SHARED.LOGGING.TBL_LOGGING", "show": "who"}},
+             "subjects": ["T_SHARED_LOGGING_READ", "SHARED.LOGGING.TBL_LOGGING"], "people": ["ANALYST_01"], "objects": []}],
+ "new": 6, "fixed": 2, "high": 4}
+```
+
+`kind`: `gain` | `lose` (grants), `user` (became dormant or disabled), `risk` (new finding), `fixed`. Watched
+questions are kept in the browser (localStorage `ae-watch`) and asked again through `/api/check` and `/api/who`.
+
 ### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0
 
 Graph alone (the page answers already hold their main graph; this one serves tab diagrams and `full=1` / filter

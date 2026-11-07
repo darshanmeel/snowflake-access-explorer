@@ -28,12 +28,13 @@ DIST = pathlib.Path(__file__).with_name("web") / "dist"
 PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
          "graph": "Access graph", "see": "What they see", "compare": "Compare", "request": "Request access",
          "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
-         "flow": "Sensitive data flow",
+         "flow": "Sensitive data flow", "usage": "Granted vs used", "changes": "What changed",
          "user": "User paths", "role": "Role paths"}
 GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "graph": "answers", "see": "answers",
          "compare": "answers", "request": "answers", "rules": "admin", "whatif": "admin", "review": "admin",
-         "sensitive": "admin", "flow": "admin", "user": "detail", "role": "detail"}  # side nav groups
-SHARED_ONLY = {"review", "flow"}
+         "sensitive": "admin", "flow": "admin", "usage": "admin", "changes": "admin",
+         "user": "detail", "role": "detail"}  # side nav groups
+SHARED_ONLY = {"review", "flow", "changes"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
 KNOWN = {"user", "functional", "technical", "group", "admin", "object"}
@@ -351,6 +352,8 @@ def note_info(k, source, view):
         "future_grants": ("Future grants partly read", "Future grants of the databases in the error are missing.",
                           "MANAGE GRANTS, or ownership of those schemas."),
         "streams": ("Streams unread", "The stream rule (22) can't run.", f"{IP}."),
+        "object_use": ("No object usage", "Granted vs used has nothing to compare: ACCESS_HISTORY is not readable "
+                       "(Enterprise edition or higher).", f"{IP}, on Enterprise edition."),
         "database_roles": ("Database roles partly read", "What the database roles in the error give is missing.",
                            "USAGE on those databases."),
         "error": ("Snapshot run failed", "The last SP_ACCESS_SNAPSHOT run failed.", "Run sql/2_snapshot.sql and read its error."),
@@ -1525,6 +1528,60 @@ def see_page(p, view):
                 usage=usage(name) if user else None, role_usage=None if user else role_usage(name))
 
 
+# ---------- granted vs used (screen 13), what changed (screen 14) ----------
+
+ENABLE_USE = ("ACCESS_HISTORY needs Enterprise edition or higher, read by the role that owns SP_ACCESS_SNAPSHOT (or, "
+              "with SOURCE=direct, your role): GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE <that role>; "
+              "then rebuild the snapshot.")
+
+
+def usage_page(p, view):
+    """Screen 13: what a person or role was granted next to what they used (ACCESS_HISTORY), days=30|90|180."""
+    name, user = subject(p, view)
+    days = int(p["days"]) if str(p.get("days", "")).isdigit() else 0 if p.get("days") else 90
+    if days not in a.PERIODS:
+        raise ApiError(400, "bad_param", "days must be 30, 90 or 180")
+    ok, why = a.use_state()
+    if view == "mine" and not ok:
+        why = "My access reads no ACCESS_HISTORY: open Granted vs used on the shared snapshot."
+    who = dict(kind="user" if user else nk(name), name=name, id=a.uid(name, user), status=a.status(name) if user else None)
+    out = dict(view=view, who=who, days=days, periods=list(a.PERIODS), available=ok, reason=why, enable=ENABLE_USE,
+               source=(a.run.get("SOURCES") or {}).get("object_use") or ("demo values" if MODE == "fake" else None))
+    if not ok:
+        return out | dict(rows=[], weeks=[], counts=None, changes=[], people=0)
+    return out | a.granted_used(name, user, days)
+
+
+def changes_page(p, view):
+    """Screen 14: the loaded snapshot against the previous one (demo: a.fake_previous(); else the copy cache.py kept
+    in .cache/ when a refresh replaced it). subject= keeps the events about one user, role or object."""
+    out = dict(view=view, subject=p.get("subject") or None, available=False, events=[], counts=None)
+    if view == "mine":
+        return out | dict(reason="What changed compares two shared snapshots: open it on the shared snapshot.")
+    if MODE == "fake":
+        prev = a.fake_previous()
+    else:
+        got = None if a.INSIDE else cache.prev(KEY)
+        if not got:
+            return out | dict(reason=(
+                "Inside Snowflake the app keeps its data in memory only, so there is no earlier snapshot to compare with. "
+                "Use the local version, which keeps the previous snapshot in .cache/." if a.INSIDE else
+                "No earlier snapshot yet: the app keeps the previous one in .cache/ when a refresh (Read Snowflake again "
+                "or Rebuild snapshot) brings a new one. Refresh after the next snapshot run, then come back."
+                if cache.HOURS > 0 else "CACHE_HOURS=0 keeps nothing on disk, so there is no earlier snapshot."))
+        prev = got[0]
+    d = a.cached(("diff", cache.run_of(prev)), lambda: a.diff(prev))
+    ev = [e for e in d["events"] if not out["subject"] or out["subject"] in e["subjects"]]
+    n, before = a.event_counts(ev), d["runs"]["before"]
+    sub = out["subject"]
+    gained = [u for u in d["sens_gained"] if not sub or (u == sub if sub in a.users else any(u in e["people"] for e in ev))]
+    text = (f"Since the snapshot of {before}: {plural(n['all'], 'change')}"
+            + (f", {plural(d['high'], 'new high finding')}" if d["high"] and not out["subject"] else "")
+            + (f", {len(gained)} {'person' if len(gained) == 1 else 'people'} gained sensitive access" if gained else "") + ".")
+    return out | dict(available=True, events=ev, counts=n, text=text, before=before,
+                      now=d["runs"]["now"], new=d["new"], fixed=d["fixed"], high=d["high"])
+
+
 # ---------- compare (screen 9) ----------
 
 def side_of(x):
@@ -1992,9 +2049,9 @@ def mkrefs(out):
 ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
-          "compare": compare_page, "grid": grid_page, "flow": flow_page}
+          "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
-             "whatif", "map", "see", "compare", "grid", "flow"}
+             "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
@@ -2061,7 +2118,7 @@ def make_app():
         return h
 
     for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
-              "whatif", "who", "request", "map", "see", "compare", "grid", "flow"):
+              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

@@ -343,8 +343,10 @@ def test_demo_db():
 
     s = a.snapshot(query, "main")
     assert s["run"]["RUN_ID"] == "run-2" and s["run"]["SOURCES"]["tags"] == "ACCOUNT_USAGE"
-    for t in a.TABLES:
+    for t in a.TABLES + a.OPTIONAL:
         assert [{k: v for k, v in x.items() if k != "RUN_ID"} for x in s[t]] == d[t], t
+    con.execute("DROP TABLE TBL_ACCESS_OBJECT_USE")  # a setup from before the table: still loads, no usage
+    assert a.snapshot(query, "main")["OBJECT_USE"] is None
 
 
 def au_grants(sql, plain):
@@ -390,7 +392,8 @@ def fake_snowflake(d, au):
             if "ACCOUNT_USAGE.GRANTS_TO_ROLES " in s + " ":
                 return au_grants(s, plain)
             for view, rows in (("GRANTS_TO_USERS", d["USER_ROLE"]), ("USERS", d["USER"]),
-                               ("QUERY_HISTORY", d["USAGE"]), ("TAG_REFERENCES", d["TAG"]), ("POLICY_REFERENCES", d["POLICY"])):
+                               ("QUERY_HISTORY", d["USAGE"]), ("TAG_REFERENCES", d["TAG"]), ("POLICY_REFERENCES", d["POLICY"]),
+                               ("ACCESS_HISTORY", d["OBJECT_USE"])):
                 if f"ACCOUNT_USAGE.{view} " in s + " ":
                     return [dict(x) for x in rows]
             raise AssertionError(s)
@@ -472,6 +475,8 @@ def test_live():
             assert src["usage"] == "UNAVAILABLE" and s["STREAM"] == d["STREAM"]
         else:
             assert s["TAG"] == d["TAG"] and s["POLICY"] == d["POLICY"] and s["USAGE"] == d["USAGE"]
+            assert s["OBJECT_USE"] == d["OBJECT_USE"] and src["object_use"] == "ACCOUNT_USAGE"
+        assert au or (src["object_use"] == "UNAVAILABLE" and s["OBJECT_USE"] == [])  # no fallback: Granted vs used says why
     # SP_ACCESS_SNAPSHOT's copy of that SELECT (sql/1_setup.sql grants()) qualifies the same way
     setup = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql", "1_setup.sql"), encoding="utf-8").read()
     sel = re.search(r"SELECT '\{run_id\}', (IFF\(GRANTED_TO = 'DATABASE_ROLE'.*?GRANTED_TO IN \('ROLE', 'DATABASE_ROLE'\))",
@@ -1242,6 +1247,14 @@ def test_cache():
     cache.drop("k")  # "read again": memory and file gone
     cache.get("k", read)
     assert len(reads) == 2
+    assert cache.prev("k") is None  # the same run read again: not a previous snapshot
+    newer = lambda: a.fake_previous() | dict(run=dict(a.fake()["run"], RUN_ID="newer"))  # noqa: E731
+    cache.drop("k")
+    cache.get("k", newer)
+    assert cache.prev("k")[0]["run"]["RUN_ID"] == "fake" and cache.get("k", read)[0]["run"]["RUN_ID"] == "newer"
+    cache.MEM.clear()
+    cache.get("k", read)  # expired file: the next read keeps it as the previous one too
+    assert cache.prev("k")[0]["run"]["RUN_ID"] == "fake"
     cache.HOURS = 0  # memory only: nothing written
     cache.drop("k")
     cache.get("k", read)
@@ -1433,13 +1446,53 @@ def test_review_catalog_flow():  # screens 6, 8, 16: review grid, sensitive cata
     assert len(small["roles"]) == 4 and small["roles"][-1]["kind"] == "fold" and small["roles"][-1]["id"].startswith("Other roles")
 
 
+def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), what changed between two snapshots
+    assert a.use_state() == (True, None) and a.monday("2026-11-04 10:00").isoformat() == "2026-11-02"
+    g = a.granted_used("ENGINEER_01", True, 90)
+    rows = {r["object"]: r for r in g["rows"]}
+    assert len(g["weeks"]) == 13 == len(rows["SALES.CORE.TBL_CUSTOMER"]["weeks"]) and g["weeks"][-1] == "2026-11-02"
+    emp, log = rows["HR.PEOPLE.TBL_EMPLOYEE"], rows["SHARED.LOGGING.TBL_LOGGING"]
+    assert emp["used"] is None and emp["suggest"] == "drop" and {c["privilege"] for c in emp["changes"]} == {"SELECT", "INSERT", "UPDATE"}
+    assert log["used"] == "read" and log["unused"] == ["INSERT"] and log["changes"] == [
+        dict(op="revoke_priv", role=T + "SHARED_LOGGING_READ", privilege="INSERT", object="SHARED.LOGGING.TBL_LOGGING")]
+    vw = rows["SALES.MART.VW_CUSTOMER"]
+    assert vw["level"] == "own" and vw["suggest"] == "trim" and not vw["changes"]  # ownership is transferred, not revoked
+    assert rows["SALES.CORE.TBL_CUSTOMER"]["suggest"] == "keep" and g["rows"][0]["suggest"] == "drop"
+    assert g["counts"]["changes"] == len(g["changes"]) == 4 and g["counts"]["write_unused"] == 1
+    assert {r["object"]: r["used"] for r in a.granted_used("ENGINEER_01", True, 180)["rows"]}["HR.PEOPLE.TBL_EMPLOYEE"] == "read"
+    a.what_if(g["changes"])  # the trim simulates
+    r = a.granted_used(F + "ANALYST", False, 30)
+    assert r["people"] == 3 and {x["used"] for x in r["rows"]} == {"read"}
+    d = a.diff(a.fake_previous())
+    assert a.run["RUN_ID"] == "fake" and len(a.findings()) == len(a.cached("findings", a.findings))  # put back after
+    ev = {e["text"]: e for e in d["events"]}
+    ins = ev[f"{T}SHARED_LOGGING_READ was granted INSERT on SHARED.LOGGING.TBL_LOGGING"]
+    assert ins["kind"] == "gain" and ins["by"] == F + "DEPLOY" and "17" in {f["num"] for f in ins["findings"]} and ins["sensitive"]
+    grp = ev[f"GRP_ANALYSTS was granted role {F}ANALYST"]
+    assert grp["people"] == ["ANALYST_01", "ANALYST_02"] and "can now read" in grp["impact"]
+    lost = ev[f"Role {T}SALES_CORE_WRITE was revoked from {F}MARKETING"]
+    assert lost["kind"] == "lose" and lost["impact"] == "MARKETING_01 can no longer change SALES.CORE.TBL_CUSTOMER"
+    own = ev[f"Role {T}SALES_MART_OWNER was revoked from {F}ANALYST"]
+    assert own["impact"].startswith("Nobody loses") and own["findings"][0] | dict() == dict(num="4", severity="High",
+                                                                                         title=a.RULES["4"][0], fixed=True)
+    assert ev["ANALYST_02 became dormant (no login for 90 days)"]["kind"] == "user"
+    assert any(e["kind"] == "risk" and "#7" in e["text"] and "ANALYST_02" in e["subjects"] for e in d["events"])
+    assert d["counts"]["all"] == len(d["events"]) and d["counts"]["gain"] == 2 and d["counts"]["lose"] == 2 and d["high"] >= 1
+    assert ("ANALYST_01", "SALES.MART.VW_CUSTOMER") in d["gained"] and ("MARKETING_01", "SALES.CORE.TBL_CUSTOMER") in d["lost"]
+    assert not a.diff(a.fake())["events"]  # the same data: nothing changed
+    a.build(a.only(a.fake(), "ENGINEER_01"))
+    assert a.use_state()[0] and a.granted_used("ENGINEER_01")["rows"]
+    a.build(dict(a.fake(), OBJECT_USE=None))
+    assert a.use_state()[0] is False
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
               test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow,
-              test_pages):
+              test_usage_changes, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

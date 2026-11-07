@@ -22,7 +22,7 @@ export type TabKey =
   | "execute" | "read" | "write" | "own" | "manage" | "all";
 
 export type UserStatus = "active" | "dormant" | "never" | "disabled";
-export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "flow" | "rules" | "review" | "whatif";
+export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "flow" | "rules" | "review" | "whatif" | "usage" | "changes";
 
 /** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
 export type Path = string[];
@@ -1119,5 +1119,75 @@ export interface FlowPage {
   objects: FlowNode[];
   links: FlowLink[];
   select: string | null;
+  refs: Refs;
+}
+
+/** Screen 13 (/api/usage): granted next to used, from ACCESS_HISTORY. */
+export interface UsageRow {
+  object: string;
+  type: string;
+  database: string | null;
+  schema: string | null;
+  sensitive: boolean;
+  level: string; // granted step
+  used: "read" | "change" | null; // null: not used in the period
+  privileges: string[];
+  unused: string[];
+  weeks: number[]; // queries per week, oldest first
+  reads: number;
+  writes: number;
+  last: string | null;
+  people: string[]; // who used it (a role: its people)
+  holder: string;
+  suggest: "keep" | "trim" | "drop";
+  text: string;
+  changes: WhatIfChange[]; // revokes of the unused privileges where they are granted
+}
+export interface UsagePage {
+  view: View;
+  who: { kind: NodeKind; name: string; id: string; status: UserStatus | null };
+  days: number;
+  periods: number[];
+  available: boolean;
+  reason: string | null;
+  enable: string;
+  source: string | null;
+  rows: UsageRow[];
+  weeks: string[]; // Monday of each week
+  counts: { objects: number; used: number; drop: number; trim: number; keep: number; write_unused: number; changes: number } | null;
+  changes: WhatIfChange[];
+  people: number;
+  refs: Refs;
+}
+
+/** Screen 14 (/api/changes): this snapshot against the previous one. */
+export type ChangeKind = "gain" | "lose" | "user" | "risk" | "fixed";
+export interface ChangeEvent {
+  id: string;
+  kind: ChangeKind;
+  text: string;
+  impact: string;
+  by: string | null; // GRANTED_BY, when known
+  sensitive: boolean;
+  findings: { num: string; severity: Severity; title: string; fixed: boolean }[];
+  link: { page: Page; params: Record<string, string> };
+  subjects: string[];
+  people: string[];
+  objects: string[];
+}
+export interface ChangeCounts { all: number; gain: number; lose: number; risk: number; sensitive: number }
+export interface ChangesPage {
+  view: View;
+  subject: string | null;
+  available: boolean;
+  reason?: string;
+  events: ChangeEvent[];
+  counts: ChangeCounts | null;
+  text?: string;
+  before?: string;
+  now?: string;
+  new?: number;
+  fixed?: number;
+  high?: number;
   refs: Refs;
 }

@@ -11,7 +11,8 @@ import os
 import pathlib
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import date, datetime, timedelta
 
 # .env (template .env.example) fills in what the environment lacks: no file, a missing name or an empty value
 # leaves the environment variable (or the default) in place, and a variable set in the shell wins.
@@ -40,6 +41,8 @@ FUNC, TECH = os.environ.get("ROLE_PREFIXES", "F_,T_").split(",")
 # may hold OWNER roles (rule 4): the build identity; fnmatch patterns, e.g. BUILD_ROLES=F_DEPLOY,F_*_STEWARD
 BUILD = os.environ.get("BUILD_ROLES", FUNC + "DEPLOY").split(",")
 TABLES = ["GRANT", "USER_ROLE", "USER", "USAGE", "TAG", "POLICY", "STREAM"]
+OPTIONAL = ["OBJECT_USE"]  # snapshot tables an older setup may lack: read when there, else empty
+USE_DAYS = int(os.environ.get("USE_DAYS", "180"))  # object usage read from ACCESS_HISTORY (Granted vs used)
 # tag (last part of its name) = values that make a column/object sensitive; no "=" means any value
 SENSITIVE_TAGS = os.environ.get("SENSITIVE_TAGS",
                                 "PRIVACY_CATEGORY=IDENTIFIER|QUASI_IDENTIFIER|SENSITIVE,SENSITIVITY=PII|CONFIDENTIAL")
@@ -256,6 +259,8 @@ def fake():
                for c, p in dbr]
     grants += [dict(GRANTEE_ROLE=r, PRIVILEGE=p, GRANTED_ON=k.replace("FUTURE ", ""), OBJECT_NAME=o,
                     IS_FUTURE=k.startswith("FUTURE")) for r, p, k, o in pv]
+    for g in grants:  # fake: the deploy role granted the READ role its INSERT (What changed: "by")
+        g["GRANTED_BY"] = F + "DEPLOY" if g["PRIVILEGE"] == "INSERT" and g["GRANTEE_ROLE"] == f"{T}SHARED_LOGGING_READ"             else "SECURITYADMIN"
     logins = {"ANALYST_01": "2026-11-01 08:40", "ANALYST_02": "2026-07-15 10:05", "ENGINEER_01": "2026-11-02 06:55",
               "ADMIN_01": "2026-10-28 14:20", "SVC_DEPLOY": "2026-11-02 06:00", "FIN_12": None,
               "FIN_13": "2026-05-04 09:30", "FIN_14": "2026-03-02 11:00", "REPORT_01": "2026-10-31 09:15",
@@ -320,8 +325,61 @@ def fake():
     run = dict(RUN_ID="fake", FINISHED_AT="2026-11-02 07:00", SOURCES={}, NOTES={})
     streams = [dict(STREAM_NAME="SALES.PIPELINE.STR_CUSTOMER", SOURCE_NAME="SALES.CORE.TBL_CUSTOMER",
                     SOURCE_TYPE="Table")]
-    return dict(run=run, GRANT=grants, USER_ROLE=[dict(USER_NAME=u, ROLE_NAME=r) for r, u in ur], USER=users, USAGE=usage,
-                TAG=tags, POLICY=policies, STREAM=streams)
+    return dict(run=run, GRANT=grants, USER_ROLE=[dict(USER_NAME=u, ROLE_NAME=r, GRANTED_BY="SECURITYADMIN") for r, u in ur],
+                USER=users, USAGE=usage, TAG=tags, POLICY=policies, STREAM=streams, OBJECT_USE=fake_use(run["FINISHED_AT"]))
+
+
+def fake_use(end):
+    """Demo ACCESS_HISTORY, per user, object, week and READ / WRITE: some grants never used (Granted vs used: Trim),
+    ENGINEER_01 read HR.PEOPLE.TBL_EMPLOYEE only 20+ weeks ago, ANALYST_02 (dormant) nothing since July."""
+    w0 = monday(end)
+    rd, wr = "READ", "WRITE"
+    plan = [("ENGINEER_01", "SALES.CORE.TBL_CUSTOMER", rd, range(26)), ("ENGINEER_01", "SALES.CORE.TBL_CUSTOMER", wr, range(26)),
+            ("ENGINEER_01", "SALES.MART.VW_CUSTOMER", rd, range(26)), ("ENGINEER_01", "SHARED.LOGGING.TBL_LOGGING", rd, range(0, 26, 2)),
+            ("ENGINEER_01", "HR.PEOPLE.TBL_EMPLOYEE", rd, range(20, 25)),
+            ("ANALYST_01", "SALES.CORE.TBL_CUSTOMER", rd, range(26)), ("ANALYST_01", "SALES.MART.VW_CUSTOMER", rd, range(26)),
+            ("ANALYST_02", "SALES.MART.VW_CUSTOMER", rd, range(17, 26)),
+            ("FIN_01", "FINANCE.REPORT.TBL_REVENUE", rd, range(26)), ("FIN_01", "FINANCE.REPORT.VW_REVENUE_MONTHLY", rd, range(0, 26, 3)),
+            ("REPORT_01", "SALES.MART.VW_CUSTOMER", rd, range(26)), ("REPORT_01", "FINANCE.REPORT.TBL_REVENUE", rd, range(0, 12)),
+            ("SVC_DEPLOY", "SALES.CORE.TBL_CUSTOMER", wr, range(26)), ("SVC_DEPLOY", "SALES.CLEAN.TBL_ORDER", wr, range(26)),
+            ("SVC_DEPLOY", "SALES.RAW.TBL_ORDER_RAW", rd, range(26)), ("HR_01", "HR.PAYROLL.TBL_PAY_00", rd, range(26)),
+            ("HR_01", "HR.PAYROLL.VW_PAY_MONTH", rd, range(0, 26, 4))]
+    out = []
+    for u, o, act, weeks in plan:
+        for i in weeks:
+            wk = w0 - timedelta(weeks=i)
+            n = 1 + (i * 5 + len(o) + len(u)) % (9 if act == rd else 4)
+            last = datetime.combine(wk, datetime.min.time()) + timedelta(days=min(4, (day(end) - wk).days), hours=6)
+            out.append(dict(USER_NAME=u, OBJECT_NAME=o, WEEK=wk.isoformat(), ACTION=act, QUERIES=n,
+                            LAST_USED=last.strftime("%Y-%m-%d %H:%M")))
+    return out
+
+
+def day(v):
+    """A date from Snowflake (date / datetime) or text."""
+    if isinstance(v, datetime):
+        return v.date()
+    return v if isinstance(v, date) else date.fromisoformat(str(v).strip()[:10])
+
+
+def monday(v):
+    """Start (Monday) of the week of v: weeks are counted the same whatever WEEK_START the account uses."""
+    d = day(v)
+    return d - timedelta(days=d.weekday())
+
+
+def fake_previous():
+    """The demo's earlier snapshot (What changed): a week before fake(), GRP_ANALYSTS without F_ANALYST, the READ role
+    without its INSERT, F_MARKETING still holding SALES.CORE write, F_ANALYST holding an OWNER role (rule 4, fixed
+    since) and ANALYST_02 not dormant yet."""
+    d, F, T = fake(), FUNC, TECH
+    gone = {("GRP_ANALYSTS", "USAGE", F + "ANALYST"), (T + "SHARED_LOGGING_READ", "INSERT", "SHARED.LOGGING.TBL_LOGGING")}
+    g = [x for x in d["GRANT"] if (x["GRANTEE_ROLE"], x["PRIVILEGE"], x["OBJECT_NAME"]) not in gone]
+    g += [dict(GRANTEE_ROLE=r, PRIVILEGE="USAGE", GRANTED_ON="ROLE", OBJECT_NAME=c, IS_FUTURE=False, GRANTED_BY="SECURITYADMIN")
+          for c, r in [(T + "SALES_CORE_WRITE", F + "MARKETING"), (T + "SALES_MART_OWNER", F + "ANALYST")]]
+    us = [x | dict(LAST_SUCCESS_LOGIN="2026-10-20 10:05") if x["USER_NAME"] == "ANALYST_02" else x for x in d["USER"]]
+    return d | dict(GRANT=g, USER=us, run=dict(d["run"], RUN_ID="fake-previous", FINISHED_AT="2026-10-26 07:00"),
+                    OBJECT_USE=fake_use("2026-10-26 07:00"))
 
 
 def snapshot(query, where):
@@ -334,6 +392,11 @@ def snapshot(query, where):
     for k in ("SOURCES", "NOTES"):  # VARIANT comes back as JSON text
         run[k] = json.loads(run[k]) if isinstance(run[k], str) else run[k] or {}
     d = {t: query(f"SELECT * FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'") for t in TABLES}
+    for t in OPTIONAL:  # a setup from before the table: the screen that needs it says so
+        try:
+            d[t] = query(f"SELECT * FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'")
+        except Exception:
+            d[t] = None
     return d | {"run": run}
 
 
@@ -501,7 +564,7 @@ def live(query):
     def blank(v):
         return None if v in ("", "null", None) else v
 
-    src, notes, d = {}, {}, {t: [] for t in TABLES}
+    src, notes, d = {}, {}, {t: [] for t in TABLES + OPTIONAL}
     try:  # privileges of every granted role count (e.g. IMPORTED PRIVILEGES through another role)
         query("USE SECONDARY ROLES ALL")
     except Exception:
@@ -726,6 +789,16 @@ def live(query):
         d["POLICY"] = []
         note("policies", "UNAVAILABLE", "; ".join(filter(None, [why, line(e)])))
 
+    why = readable("ACCESS_HISTORY")  # Enterprise edition; no fallback: Granted vs used then explains it
+    try:
+        if why:
+            raise RuntimeError(why)
+        d["OBJECT_USE"] = query(use_sql())
+        note("object_use", "ACCOUNT_USAGE", None)
+    except Exception as e:
+        d["OBJECT_USE"] = []
+        note("object_use", "UNAVAILABLE", line(e))
+
     try:  # streams: no ACCOUNT_USAGE view; only the streams this role can see
         d["STREAM"] = [dict(STREAM_NAME=f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}",
                             SOURCE_NAME=clean(x.get("table_name")), SOURCE_TYPE=blank(x.get("source_type")))
@@ -734,6 +807,23 @@ def live(query):
     except Exception as e:
         note("streams", "UNAVAILABLE", line(e))
     return d | {"run": dict(RUN_ID="direct", FINISHED_AT=now, SOURCES=src, NOTES=notes)}
+
+
+def use_sql(days=USE_DAYS):
+    """Object usage from ACCESS_HISTORY (query metadata, never table data), aggregated in Snowflake per user, object,
+    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). The same text
+    is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    return f"""WITH H AS (
+            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME AS T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.DIRECT_OBJECTS_ACCESSED) O
+            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP())
+            UNION ALL
+            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME, O.VALUE:"objectName"::STRING, 'WRITE'
+            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.OBJECTS_MODIFIED) O
+            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP()))
+        SELECT USER_NAME, OBJECT_NAME, DATEADD(DAY, 1 - DAYOFWEEKISO(T), T::DATE) AS WEEK, ACTION,
+               COUNT(DISTINCT QUERY_ID) AS QUERIES, MAX(T) AS LAST_USED
+        FROM H WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
 
 
 def only(d, user):
@@ -745,7 +835,7 @@ def only(d, user):
                NOTES={"usage": "demo: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY not readable",
                       "applicable_roles": "demo: INFORMATION_SCHEMA.APPLICABLE_ROLES not readable"})
     return dict(run=run, GRANT=[g for g in d["GRANT"] if g["GRANTEE_ROLE"] in seen], TAG=[], POLICY=[], STREAM=[],
-                **{t: [x for x in d[t] if x["USER_NAME"] == user] for t in ("USER_ROLE", "USER", "USAGE")})
+                **{t: [x for x in d.get(t) or [] if x["USER_NAME"] == user] for t in ("USER_ROLE", "USER", "USAGE", "OBJECT_USE")})
 
 
 # ---------- lookups (filled by build) ----------
@@ -756,6 +846,7 @@ granted, on = {}, {}  # role -> [(privilege, type, object)], object -> [(role, p
 roles, users, objects, kinds, run = [], [], [], {}, {}
 tags, policies, sens = [], [], {}  # TAG rows, POLICY rows, sensitive(): object -> [(column, tag, value, origin)]
 streams = {}  # stream -> source table (STREAM rows)
+obj_use = {}  # user -> OBJECT_USE rows (ACCESS_HISTORY per object, week and READ / WRITE)
 capped = set()  # start of every walk cut at MAX_HOPS; the UI clears it before a page and warns when it is not empty
 db_roles = set()  # database roles, by their qualified name DB.ROLE
 ROLE_ON = ("ROLE", "DATABASE_ROLE")  # GRANTED_ON of a role link (with USAGE): an account or a database role is held
@@ -784,7 +875,7 @@ def build(d, key=None, builtin=False):
     memo["key"] = (key, builtin)
     source.update(data=d, builtin=builtin)
     for x in (role_grants, user_grants, privs, holds, held_by, users_of, roles_of, profile, used, kinds, granted, on,
-              capped, tags, policies, sens, streams, db_roles, hidden):
+              capped, tags, policies, sens, streams, db_roles, hidden, obj_use):
         x.clear()
     for g in d["GRANT"]:
         if not builtin and builtin_grant(g):
@@ -824,6 +915,8 @@ def build(d, key=None, builtin=False):
     tags.extend(d.get("TAG", []))  # older data sets have no TAG / POLICY
     policies.extend(d.get("POLICY", []))
     streams.update({x["STREAM_NAME"]: x["SOURCE_NAME"] for x in d.get("STREAM", [])})
+    for x in d.get("OBJECT_USE") or []:
+        obj_use.setdefault(x["USER_NAME"], []).append(x)
     rules = tag_rules()
     for o in objects:
         hit = [t for t in tags_of(o) if tag_hit(rules, t[1], t[2])]
@@ -3299,7 +3392,7 @@ WHAT_IF_OPS = ("revoke_role_from_user", "revoke_role_from_role", "revoke_priv", 
 REBOUND = ("roles", "users", "objects", "run")  # build() binds these anew; it refills the other lookups in place
 STATE = REBOUND + ("role_grants", "user_grants", "privs", "holds", "held_by", "users_of", "roles_of", "profile", "used",
                    "granted", "on", "kinds", "tags", "policies", "sens", "streams", "capped", "db_roles", "memo",
-                   "hidden", "source")
+                   "hidden", "source", "obj_use")
 
 
 def changes_of(changes):
@@ -3442,8 +3535,7 @@ def what_if(changes, cap=MAX_PATHS):
     cands = {r for _, r in cut["user"]} | {r for r, _ in cut["link"]} | set(pub)  # may lose their last holder
     cands |= {x for r in cut["drop"] for x in holds.get(r, [])}
     b_role = {r: bool(users_of.get(r) or held_by.get(r)) for r in cands}
-    g = globals()
-    saved = {n: g[n] if n in REBOUND else g[n].copy() for n in STATE}
+    saved = state()
     old = saved["granted"]
     try:
         build(without_cuts(source["data"], cut), builtin=source["builtin"])
@@ -3488,15 +3580,7 @@ def what_if(changes, cap=MAX_PATHS):
         gone = (b_live & under) - a_live - cut["drop"]
         fa = [f for f in findings(only) if f["num"] not in SCOPED or f["grantee"] in only[f["num"]]]
     finally:
-        for n, v in saved.items():
-            if n in REBOUND:
-                g[n] = v
-            else:
-                g[n].clear()
-                if isinstance(v, list):
-                    g[n].extend(v)
-                else:
-                    g[n].update(v)
+        restore(saved)
 
     def rows(got, b_reach):  # one row per object, at most cap
         keep = set(sorted({o for _, o in got})[:cap])
@@ -3573,6 +3657,271 @@ def what_if(changes, cap=MAX_PATHS):
                  path=" > ".join(f["path"]), detail=f"Rule {f['num']} {f['title']}: {f['detail']}") for f in fnd]
     return dict(changes=steps, summary="; ".join(parts), counts=n, users=us, objects=ob, roles=rs, findings=fnd,
                 iac="\n".join(s["iac"] for s in steps), sql="\n".join(s["sql"] for s in steps if s["sql"]), csv=csv)
+
+
+# ---------- granted vs used (ACCESS_HISTORY) ----------
+
+WRITE_PRIVS = {"INSERT", "UPDATE", "DELETE", "TRUNCATE"}
+PERIODS = (30, 90, 180)  # Granted vs used: days to look back
+
+
+def use_state():
+    """(ok, reason): whether the loaded data has object usage (ACCESS_HISTORY) to set grants against."""
+    if obj_use or (run.get("SOURCES") or {}).get("object_use") == "ACCOUNT_USAGE":
+        return True, None
+    if (source.get("data") or {}).get("OBJECT_USE") is None:
+        return False, ("This data has no object usage: it was read before the app read ACCESS_HISTORY, or the snapshot "
+                       "tables predate TBL_ACCESS_OBJECT_USE (run sql/1_setup.sql again, then rebuild the snapshot).")
+    return False, (run.get("NOTES") or {}).get("object_use") or "ACCESS_HISTORY has no queries on these objects."
+
+
+def weeks_of(days):
+    return -(-days // 7)
+
+
+def used_on(names, days):
+    """Object usage of these users in the last days: {object: dict(read, write (queries), weeks (queries per week,
+    oldest first), last, users)}. Whole ISO weeks, counted back from the snapshot's week."""
+    n, w0, out = weeks_of(days), monday(ref_time()), {}
+    for u in names:
+        for x in obj_use.get(u, []):
+            i = (w0 - monday(x["WEEK"])).days // 7
+            if not 0 <= i < n:
+                continue
+            o = out.setdefault(x["OBJECT_NAME"], dict(read=0, write=0, weeks=[0] * n, last=None, users=set()))
+            q = int(x["QUERIES"] or 0)
+            o["write" if x["ACTION"] == "WRITE" else "read"] += q
+            o["weeks"][n - 1 - i] += q
+            o["last"] = max(filter(None, (o["last"], when(x["LAST_USED"]))), default=None)
+            o["users"].add(u)
+    return out
+
+
+def granted_used(name, user=True, days=90):
+    """Screen 13: every table and view name reaches, at its granted step next to the step used in the last days (by
+    name; for a role, by anyone who reaches it), weekly queries, last use and a suggestion: keep, trim (write or
+    ownership never used) or drop (not used at all). changes: what_if() revokes of the unused privileges where they are
+    granted (OWNERSHIP is transferred, not revoked: left out), so the change plan shows who else loses them."""
+    rows, hold = grants(name, user), {}
+    for r in rows:
+        hold.setdefault((r["object"], r["privilege"]), set()).update(r["holders"])
+    who = {name} if user else ups(name)[1]
+    use, n, out = used_on(who, days), weeks_of(days), []
+    for x in access_objects(rows, user):
+        if x["category"] != "data" or not x["level"] or not is_data(x["type"]):
+            continue
+        u = use.get(x["object"])
+        # a role's people may write through another role: used "change" only where this grant lets them
+        used = ("change" if u["write"] and LEVELS.index(x["level"]) >= LEVELS.index("change") else "read") if u else None
+        unused = [p for p in x["privileges"] if level_of(p, x["type"]) and (
+            used is None or p == "OWNERSHIP" or (p in WRITE_PRIVS and used == "read"))]
+        cut = [p for p in unused if p != "OWNERSHIP"]
+        if used is None:
+            kind, text = "drop", f"Remove all · not used in {days} days"
+        elif cut:
+            kind, text = "trim", f"Remove {', '.join(cut)} · never used" + " · ownership unused" * ("OWNERSHIP" in unused)
+        elif unused:
+            kind, text = "trim", f"Keep {'read' if used == 'read' else 'read + change'} · ownership unused"
+        else:
+            kind, text = "keep", "Keep"
+        out.append(dict(object=x["object"], type=x["type"], database=x["database"], schema=x["schema"],
+                        sensitive=x["object"] in sens, level=x["level"], used=used, privileges=x["privileges"],
+                        unused=unused, weeks=u["weeks"] if u else [0] * n, reads=u["read"] if u else 0,
+                        writes=u["write"] if u else 0, last=str(u["last"])[:16] if u and u["last"] else None,
+                        people=sorted(u["users"]) if u else [], holder=x["holder"], suggest=kind, text=text,
+                        changes=[dict(op="revoke_priv", role=h, privilege=p, object=x["object"])
+                                 for p in cut for h in sorted(hold.get((x["object"], p), ()))]))
+    out.sort(key=lambda r: (("drop", "trim", "keep").index(r["suggest"]), not r["sensitive"], r["object"]))
+    w0 = monday(ref_time())
+    changes = [c for r in out for c in r["changes"]]
+    counts = dict(objects=len(out), used=sum(bool(r["used"]) for r in out), drop=sum(r["suggest"] == "drop" for r in out),
+                  trim=sum(r["suggest"] == "trim" for r in out), keep=sum(r["suggest"] == "keep" for r in out),
+                  write_unused=sum(r["used"] == "read" and any(p in WRITE_PRIVS for p in r["unused"]) for r in out),
+                  changes=len(changes))
+    return dict(days=days, weeks=[(w0 - timedelta(weeks=n - 1 - i)).isoformat() for i in range(n)], rows=out,
+                counts=counts, changes=changes, people=len(who))
+
+
+# ---------- what changed (two snapshots) ----------
+
+def state():
+    """A copy of every lookup build() fills, for restore()."""
+    g = globals()
+    return {n: g[n] if n in REBOUND else g[n].copy() for n in STATE}
+
+
+def restore(saved):
+    g = globals()
+    for n, v in saved.items():
+        if n in REBOUND:
+            g[n] = v
+        else:
+            g[n].clear()
+            if isinstance(v, list):
+                g[n].extend(v)
+            else:
+                g[n].update(v)
+
+
+@contextmanager
+def loaded(d):
+    """The lookups of data set d inside the block; the loaded ones, with their cached results, are put back after."""
+    saved = state()
+    try:
+        build(d, builtin=source.get("builtin", False))
+        yield
+    finally:
+        restore(saved)
+
+
+def facts():
+    """What a diff compares, once per data set: access {(user, object): (step, privileges)} on tables and views, grants
+    {(grantee, privilege, granted on, object): granted_by} (role links to admin roles left out, as build() does),
+    user_roles {(role, user): granted_by}, findings {key: finding}, status {user: status}, sensitive objects, run."""
+    def make():
+        acc = {(u, x["object"]): (x["level"], x["privileges"]) for u in users for x in access_objects(grants(u, True), True)
+               if x["category"] == "data" and x["level"] and is_data(x["type"])}
+        d = source["data"]
+        gs = {(g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"]): g.get("GRANTED_BY") for g in d["GRANT"]
+              if (source["builtin"] or not builtin_grant(g)) and not (g["GRANTED_ON"] in ROLE_ON and g["GRANTEE_ROLE"] in ADMIN)}
+        return dict(access=acc, grants=gs,
+                    user_roles={(x["ROLE_NAME"], x["USER_NAME"]): x.get("GRANTED_BY") for x in d["USER_ROLE"]},
+                    findings={(f["num"], f["grantee"], f["user"], f["detail"]): f for f in cached("findings", findings)},
+                    status={u: status(u) for u in users}, sens=set(sens), run=dict(run))
+    return cached("facts", make)
+
+
+VERB = {"names": "see", "read": "read", "change": "change", "own": "own", "admin": "reach as admin"}
+
+
+def names_text(xs):
+    xs = sorted(xs)
+    return ", ".join(xs) if len(xs) <= 2 else f"{xs[0]}, {xs[1]} and {plural(len(xs) - 2, 'other')}"
+
+
+def impact_text(pairs, top, gain, sensitive):
+    """'ANALYST_01, ANALYST_02 can now read SALES.MART.VW_CUSTOMER', from the (user, object) pairs that changed."""
+    if not pairs:
+        return ("Nobody gains new access: everyone it reaches had it another way" if gain else
+                "Nobody loses access: they keep it another way")
+    us, objs = {u for u, _ in pairs}, {o for _, o in pairs}
+    k = sum(o in sensitive for o in objs)
+    what = next(iter(objs)) if len(objs) == 1 else f"{len(objs)} objects" + f" ({k} sensitive)" * bool(k)
+    return f"{names_text(us)} {'can now' if gain else 'can no longer'} {VERB[top]} {what}"
+
+
+def grant_events(keys, links, gain, pairs, fs, by):
+    """One event per grant added (gain) or removed, on the lookups of the data set that has it: the (user, object)
+    pairs that changed through it and the findings it started (gain) or ended (fs). links: keys are (role, user)."""
+    out = []
+    for key in keys:
+        if links:
+            role, u = key
+            us, objs = {u}, {x for r in bfs([role]) for _, _, x in granted.get(r, [])}
+            text = f"{u} was granted role {role}" if gain else f"Role {role} was revoked from {u}"
+            edge, subj = (u, role, None), [u, role]
+        else:
+            r, pv, on_, o = key
+            link = on_ in ROLE_ON and pv == "USAGE"
+            us = ups(r)[1]
+            objs = {x for q in bfs([o]) for _, _, x in granted.get(q, [])} if link else {o}
+            text = (f"{r} was granted role {o}" if link else f"{r} was granted {pv} on {o}") if gain else \
+                (f"Role {o} was revoked from {r}" if link else f"{pv} on {o} was revoked from {r}")
+            edge, subj = (r, o, None if link else pv), [r, o]
+        fx = [f for f in fs if f["edge"] == edge or any((e["grantee"], e["to"], e["priv"]) == edge for e in f["edges"])]
+        out.append(dict(edge=edge, pairs=[(u, o) for u, o in pairs if u in us and o in objs], subjects=subj,
+                        by=by.get(key), findings=fx, text=text))
+    return out
+
+
+def event_counts(events):
+    """Events per filter of What changed: all, gain, lose, risk (a new finding on it), sensitive."""
+    return dict(all=len(events), gain=sum(e["kind"] == "gain" for e in events), lose=sum(e["kind"] == "lose" for e in events),
+                risk=sum(any(not f["fixed"] for f in e["findings"]) for e in events),
+                sensitive=sum(e["sensitive"] for e in events))
+
+
+SENS_RULES = {"6", "7", "10", "11", "15", "22"}  # rules about sensitive data
+
+
+def side_objects(side):
+    return {o for _, o in side["access"]} | {k[3] for k in side["grants"] if k[2] not in ROLE_ON}
+
+
+def diff(prev):
+    """Screen 14: what changed from data set prev to the loaded one. events [dict(id, kind gain | lose | user | risk |
+    fixed, text, impact, by (GRANTED_BY, when known), sensitive, findings [dict(num, severity, title, fixed)], link
+    (page, params), subjects (every name it is about), people, objects)], counts per filter, new / fixed / high
+    findings, gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times."""
+    now = facts()
+    rank = LEVELS.index
+    with loaded(prev):
+        old = facts()
+        gained = [(u, o) for (u, o), (lv, _) in now["access"].items()
+                  if (u, o) not in old["access"] or rank(lv) > rank(old["access"][(u, o)][0])]
+        lost = [(u, o) for (u, o), (lv, _) in old["access"].items()
+                if (u, o) not in now["access"] or rank(lv) > rank(now["access"][(u, o)][0])]
+        n3, o3 = {k[:3] for k in now["findings"]}, {k[:3] for k in old["findings"]}  # same rule, grantee: same finding
+        fixed = [f for k, f in old["findings"].items() if k not in now["findings"] and k[:3] not in n3]
+        new = [f for k, f in now["findings"].items() if k not in old["findings"] and k[:3] not in o3]
+        removed = grant_events([k for k in old["grants"] if k not in now["grants"]], False, False, lost, fixed, old["grants"])
+        removed += grant_events([k for k in old["user_roles"] if k not in now["user_roles"]], True, False, lost, fixed,
+                                old["user_roles"])
+    added = grant_events([k for k in now["grants"] if k not in old["grants"]], False, True, gained, new, now["grants"])
+    added += grant_events([k for k in now["user_roles"] if k not in old["user_roles"]], True, True, gained, new,
+                          now["user_roles"])
+
+    def chip(f, gain):
+        return dict(num=f["num"], severity=SEVERITY.get(f["num"], "Low"), title=RULES[f["num"]][0], fixed=not gain)
+
+    events, told = [], set()
+    for gain, xs in ((True, added), (False, removed)):
+        side = now if gain else old
+        for x in xs:
+            told.update(id(f) for f in x["findings"])
+            objs, target = sorted({o for _, o in x["pairs"]}), x["edge"][1]
+            top = max((side["access"][p][0] for p in x["pairs"]), key=rank, default="read")
+            events.append(dict(kind="gain" if gain else "lose", text=x["text"], by=x["by"],
+                               impact=impact_text(x["pairs"], top, gain, side["sens"]),
+                               sensitive=target in side["sens"] or any(o in side["sens"] for o in objs),
+                               findings=list({f["num"]: chip(f, gain) for f in x["findings"]}.values()),
+                               link=dict(page="object", params=dict(name=target)) if target in side_objects(side) else
+                               dict(page="access", params=dict(role=target)),
+                               subjects=sorted(set(x["subjects"]) | {u for u, _ in x["pairs"]} | set(objs)),
+                               people=sorted({u for u, _ in x["pairs"]}), objects=objs))
+    for u in sorted(set(now["status"]) | set(old["status"])):
+        was, st = old["status"].get(u), now["status"].get(u)
+        if was == st:
+            continue
+        reads = sorted({o for (v, o) in now["access"] if v == u and o in now["sens"]})
+        text = (f"New user {u}" if was is None else f"User {u} is gone" if st is None else
+                f"{u} became dormant (no login for {DORMANT_DAYS} days)" if st == "dormant" else
+                f"{u} was disabled" if st == "disabled" else f"{u} is {st} now (was {was})")
+        events.append(dict(kind="user", text=text, by=None, sensitive=bool(reads), findings=[], people=[u], objects=reads,
+                           impact=f"Still reads {plural(len(reads), 'sensitive object')}" if reads and st != "active" else "",
+                           link=dict(page="access", params=dict(user=u)), subjects=[u] + reads))
+    for gain, fs in ((True, new), (False, fixed)):
+        side = now if gain else old
+        for f in fs:
+            if id(f) in told:
+                continue
+            ps = [p for p in f.get("paths") or [f["path"]] if p]
+            objs = sorted({n for p in ps for n in p if n in side["sens"]})
+            events.append(dict(kind="risk" if gain else "fixed", by=None, sensitive=bool(objs) or f["num"] in SENS_RULES,
+                               impact=f["detail"],
+                               text=f"{'New' if gain else 'Fixed'} {SEVERITY.get(f['num'], 'Low').lower()} finding · "
+                                    f"#{f['num']} {RULES[f['num']][0]}: {f['grantee']}",
+                               findings=[chip(f, gain)], people=[f["grantee"]] if f["user"] else [], objects=objs,
+                               link=dict(page="rules", params=dict(rule=f["num"])),
+                               subjects=sorted({f["grantee"]} | {n for p in ps for n in p})))
+    order = ("risk", "gain", "lose", "user", "fixed")
+    events.sort(key=lambda e: (order.index(e["kind"]), not e["findings"], -len(e["people"]), e["text"]))
+    for i, e in enumerate(events):
+        e["id"] = str(i)
+    return dict(events=events, counts=event_counts(events), new=len(new), fixed=len(fixed),
+                high=sum(SEVERITY.get(f["num"]) in ("Critical", "High") for f in new), gained=gained, lost=lost,
+                sens_gained=sorted({u for u, o in gained if o in now["sens"]}),
+                runs=dict(before=str(old["run"].get("FINISHED_AT"))[:16], now=str(now["run"].get("FINISHED_AT"))[:16]))
 
 
 # ---------- rules ----------

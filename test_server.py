@@ -375,6 +375,31 @@ def test_review_grid_catalog_flow():  # screens 6, 8, 16
     assert "flow" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
 
 
+def test_usage_changes():  # screens 13, 14
+    u = js("/api/usage?user=ENGINEER_01", ["who", "days", "periods", "available", "rows", "weeks", "counts", "changes", "refs"])
+    assert u["available"] and u["days"] == 90 and u["periods"] == [30, 90, 180] and u["source"] == "demo values"
+    assert u["rows"][0]["suggest"] == "drop" and u["counts"]["changes"] == len(u["changes"]) > 0
+    assert len(js("/api/usage?user=ENGINEER_01&days=180")["weeks"]) == 26
+    assert js(f"/api/usage?role={a.FUNC}ANALYST")["who"]["kind"] == "functional"
+    get("/api/usage?days=7", 400)
+    get("/api/usage?user=NOPE", 404)
+    ch = js("/api/changes", ["available", "events", "counts", "text", "before", "now", "refs"])
+    assert ch["available"] and ch["before"] == "2026-10-26 07:00" and ch["text"].startswith("Since the snapshot of 2026-10-26")
+    assert {"gain", "lose", "user", "risk"} <= {e["kind"] for e in ch["events"]} and ch["counts"]["all"] == len(ch["events"])
+    one = js("/api/changes?subject=SALES.CORE.TBL_CUSTOMER")
+    assert 0 < len(one["events"]) < len(ch["events"]) and all("SALES.CORE.TBL_CUSTOMER" in e["subjects"] for e in one["events"])
+    assert server.changes_page({}, "mine")["available"] is False
+    mode, prev = server.MODE, server.cache.prev
+    try:  # Snowflake with no earlier copy in .cache/: explained, nothing compared
+        server.MODE, server.cache.prev = "snowflake", lambda key: None
+        x = server.changes_page({}, "shared")
+        assert x["available"] is False and ".cache/" in x["reason"]
+    finally:
+        server.MODE, server.cache.prev = mode, prev
+    m = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
+    assert m["usage"] == m["changes"] == "admin" and "changes" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

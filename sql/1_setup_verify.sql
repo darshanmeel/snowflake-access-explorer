@@ -1,7 +1,7 @@
 -- Verification of 1_setup.sql: each "-- name:" check prints OK, MISSING, WRONG (row count, "(expect N)") or SKIPPED ("(may fail)"),
 -- then VERIFIED or NOT VERIFIED. SnowSQL: !source sql/1_setup_verify.sql (shows the rows; no verdict).
 
--- name: TABLES (expect 9)
+-- name: TABLES (expect 10)
 SHOW TABLES LIKE 'TBL_ACCESS_%' IN SCHEMA &DB.&SCHEMA;
 
 -- name: PROCEDURE
@@ -51,6 +51,10 @@ SELECT COUNT(*) AS N FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES WHERE OBJECT_DE
 
 -- name: ACCOUNT_USAGE_POLICY_REFERENCES (may fail)
 SELECT COUNT(*) AS N FROM SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES;
+
+-- object usage (Granted vs used): ACCESS_HISTORY, Enterprise edition; an error here = that screen stays empty
+-- name: ACCOUNT_USAGE_ACCESS_HISTORY (may fail)
+SELECT COUNT(*) AS N FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY WHERE QUERY_START_TIME >= DATEADD(DAY, -1, CURRENT_TIMESTAMP());
 
 -- streams (rule 22): SHOW only, the streams the developer role can see
 -- name: SHOW_STREAMS (may fail)

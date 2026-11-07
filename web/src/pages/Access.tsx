@@ -5,6 +5,7 @@ import type { AccessObject, AccessPage, ListItem } from "../api/types";
 import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Toggle, toCsv } from "../components";
 import { download } from "../components/table";
 import { AppCtx, useApp, useOpen } from "../ctx";
+import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick } from "./common";
@@ -55,7 +56,7 @@ function Body({ d }: { d: AccessPage }) {
   const [open, setOpen] = useState<string | null>(null);
   const [cell, setCell] = useState<{ schema: string; min: string } | null>(null);
   const w = d.who, n = d.counts, user = w.kind === "user";
-  const show = c.params.show === "summary" ? "summary" : "detail"; // the diagram first
+  const show = c.params.show === "summary" || c.params.show === "history" ? c.params.show : "detail"; // the diagram first
   const data = d.objects.filter((x) => x.category === "data" || (usage && x.category === "names"));
   const shown = data.filter((x) =>
     (lvl === "all" || (lvl === "read" ? x.level === "read" : lvl === "change" ? at(x, "change") && x.level !== "own" : lvl === "own" ? at(x, "own") : lvl === "multi" ? x.ways > 1 : true))
@@ -76,6 +77,7 @@ function Body({ d }: { d: AccessPage }) {
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", user ? { user: w.name } : { role: w.name })}>Show as graph</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
+        <button type="button" className="ae-btn" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
       </div>
       <p className="ae-answer">
         <span className="ae-mono">{w.name}</span> can <b>read data in {plural(n.read, "object")}</b> across {plural(n.schemas, "schema")}.
@@ -95,8 +97,10 @@ function Body({ d }: { d: AccessPage }) {
       <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: user ? "Diagram & privileges" : "Diagram, held by & holds" },
         { key: "summary", label: "One row per object", count: data.length },
+        { key: "history", label: "History" },
       ]} />
       {show === "detail" && <Detail name={w.name} user={user} />}
+      {show === "history" && <ChangeFeed subject={w.name} />}
       {show === "summary" && <>
       <div className="ae-two">
         <Card title="Where the access is" sub="Objects per schema, by the most they can do. Click a cell to filter the list.">

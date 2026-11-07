@@ -1,4 +1,4 @@
--- 1 · setup (developer role): the 8 snapshot tables, the snapshot procedure, the findings table, stage and procedure,
+-- 1 · setup (developer role): the 9 snapshot tables, the snapshot procedure, the findings table, stage and procedure,
 -- the worksheet table functions TF_ACCESS_OF / TF_WHO_CAN / TF_CAN, read access for the app role. Safe to run again.
 -- run_sql.py runs each "-- name:" statement in order; "(may fail)" = skipped on error.
 -- Names marked with & come from settings.local.sql. Real set-up: schema, roles and grants via infrastructure as code.
@@ -94,6 +94,17 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_STREAM (   -- streams and thei
     SOURCE_TYPE VARCHAR(50)          -- Table, View, ...
 );
 
+-- name: TABLE_OBJECT_USE
+CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE (   -- objects used per user and week, from ACCESS_HISTORY
+    RUN_ID VARCHAR(36),              -- (Enterprise edition; empty when not readable: Granted vs used then says why)
+    USER_NAME VARCHAR(255),
+    OBJECT_NAME VARCHAR(2000),       -- DB.SCHEMA.OBJECT as ACCESS_HISTORY names it
+    WEEK DATE,                       -- Monday of the ISO week
+    ACTION VARCHAR(10),              -- READ (objects read) or WRITE (objects modified)
+    QUERIES NUMBER,
+    LAST_USED TIMESTAMP_LTZ
+);
+
 -- name: TABLE_FINDING
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings per run, filled by SP_ACCESS_FINDINGS
     RUN_ID VARCHAR(36),
@@ -115,7 +126,7 @@ RUNTIME_VERSION = '3.11'
 PACKAGES = ('snowflake-snowpark-python')
 HANDLER = 'run'
 EXECUTE AS OWNER
-COMMENT = 'Access explorer: copies grants, users, role usage, tags, policies and streams into the TBL_ACCESS_ tables'
+COMMENT = 'Access explorer: copies grants, users, role and object usage, tags, policies and streams into the TBL_ACCESS_ tables'
 AS
 $$
 # P_SOURCE: AUTO = ACCOUNT_USAGE where the owner can read it, else the SHOW fallback; ACCOUNT_USAGE or SHOW = force one.
@@ -132,12 +143,14 @@ USAGE = "&DB.&SCHEMA.TBL_ACCESS_USAGE"
 TAG = "&DB.&SCHEMA.TBL_ACCESS_TAG"
 POLICY = "&DB.&SCHEMA.TBL_ACCESS_POLICY"
 STREAM = "&DB.&SCHEMA.TBL_ACCESS_STREAM"
-DATA = [GRANT, USER_ROLE, USER, USAGE, TAG, POLICY, STREAM]
+OBJECT_USE = "&DB.&SCHEMA.TBL_ACCESS_OBJECT_USE"
+DATA = [GRANT, USER_ROLE, USER, USAGE, TAG, POLICY, STREAM, OBJECT_USE]
 GRANT_COLS = ["RUN_ID", "GRANTEE_ROLE", "PRIVILEGE", "GRANTED_ON", "OBJECT_NAME", "IS_FUTURE", "GRANT_OPTION", "GRANTED_BY"]
 TAG_COLS = ["RUN_ID", "OBJECT_NAME", "DOMAIN", "COLUMN_NAME", "TAG_NAME", "TAG_VALUE", "APPLY_METHOD"]
 POLICY_COLS = ["RUN_ID", "POLICY_NAME", "POLICY_KIND", "OBJECT_NAME", "COLUMN_NAME", "ARG_COLUMNS", "TAG_NAME", "POLICY_BODY"]
 DAYS = 30
 TAG_FALLBACK_MAX = 300  # tables/views read one by one when the ACCOUNT_USAGE views are not readable
+USE_DAYS = 180  # object usage kept from ACCESS_HISTORY
 
 
 def rows(session, sql):
@@ -438,6 +451,39 @@ def streams(session, run_id):
         return "UNAVAILABLE", first_line(e)
 
 
+def use_sql(days=USE_DAYS):
+    """Object usage from ACCESS_HISTORY (query metadata, never table data), aggregated in Snowflake per user, object,
+    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). The same text
+    is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    return f"""WITH H AS (
+            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME AS T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.DIRECT_OBJECTS_ACCESSED) O
+            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP())
+            UNION ALL
+            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME, O.VALUE:"objectName"::STRING, 'WRITE'
+            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.OBJECTS_MODIFIED) O
+            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP()))
+        SELECT USER_NAME, OBJECT_NAME, DATEADD(DAY, 1 - DAYOFWEEKISO(T), T::DATE) AS WEEK, ACTION,
+               COUNT(DISTINCT QUERY_ID) AS QUERIES, MAX(T) AS LAST_USED
+        FROM H WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
+
+
+def object_use(session, run_id, mode):
+    """Objects used per user, ISO week and READ / WRITE: ACCOUNT_USAGE.ACCESS_HISTORY (Enterprise edition; query
+    metadata, never table data), aggregated in SQL (access.use_sql has the same text). No fallback: UNAVAILABLE, the
+    run stays OK and the app's Granted vs used screen explains it."""
+    try:
+        why = fallback(session, "ACCESS_HISTORY", mode)
+        if why:
+            return "UNAVAILABLE", why
+        session.sql(f"""INSERT INTO {OBJECT_USE} (RUN_ID, USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED)
+            SELECT '{run_id}', U.* FROM ({use_sql()}) U""").collect()
+        return "ACCOUNT_USAGE", None
+    except Exception as e:
+        session.sql(f"DELETE FROM {OBJECT_USE} WHERE RUN_ID = '{run_id}'").collect()
+        return "UNAVAILABLE", first_line(e)
+
+
 def run(session, p_source):
     mode = (p_source or "AUTO").upper()
     if mode not in ("AUTO", "ACCOUNT_USAGE", "SHOW"):
@@ -464,11 +510,12 @@ def run(session, p_source):
         keep("tags", *tags(session, run_id, mode))
         keep("policies", *policies(session, run_id, mode))
         keep("streams", *streams(session, run_id))
+        keep("object_use", *object_use(session, run_id, mode))
         result["status"] = "OK"
     except Exception as e:
         result["status"], result["notes"]["error"] = "FAILED", first_line(e)
     for name, t in [("grants", GRANT), ("user_roles", USER_ROLE), ("users", USER), ("usage", USAGE), ("tags", TAG),
-                    ("policies", POLICY), ("streams", STREAM)]:
+                    ("policies", POLICY), ("streams", STREAM), ("object_use", OBJECT_USE)]:
         result["row_counts"][name] = count(session, t, run_id)
     if result["status"] == "FAILED":  # drop this run's partial rows
         for t in DATA:
@@ -720,6 +767,9 @@ GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_POLICY TO ROLE &APP_ROLE;
 
 -- name: GRANT_TABLE_STREAM_APP (may fail)
 GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_STREAM TO ROLE &APP_ROLE;
+
+-- name: GRANT_TABLE_OBJECT_USE_APP (may fail)
+GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE TO ROLE &APP_ROLE;
 
 -- name: GRANT_TABLE_FINDING_APP (may fail)
 GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_FINDING TO ROLE &APP_ROLE;

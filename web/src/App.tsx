@@ -6,6 +6,7 @@ import type { FindItem, Meta, MineState, Page } from "./api/types";
 import { Card, Root, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
+import { ChangesPageView } from "./pages/Changes";
 import { CheckPageView } from "./pages/Check";
 import { ComparePageView } from "./pages/Compare";
 import { ErrorBox } from "./pages/common";
@@ -19,14 +20,16 @@ import { RolePageView } from "./pages/Role";
 import { RulesPageView } from "./pages/Rules";
 import { SeePageView } from "./pages/See";
 import { SensitivePageView } from "./pages/Sensitive";
+import { UsagePageView } from "./pages/Usage";
 import { WhatIfPageView } from "./pages/Whatif";
 import { UserPage } from "./pages/User";
 
-const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif"];
+const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif", "usage", "changes"];
 const LABEL: Record<Page, string> = {
   home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "Object", check: "Can they?", graph: "Access graph",
   see: "What they see", compare: "Compare", request: "Request access",
   sensitive: "Sensitive data", flow: "Sensitive data flow", rules: "Risks & fixes", review: "Review & sign-off", whatif: "What if",
+  usage: "Granted vs used", changes: "What changed",
 };
 const GROUPS: [string, string][] = [["answers", "Answers"], ["admin", "Admin"], ["detail", "Detail"]];
 
@@ -44,6 +47,11 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     return { page: "flow", params: rest };
   }
   if (page === "signoff") return { page: "review", params: { ...params, show: "grid" } }; // screen 6
+  if (page === "history" || page === "diff") return { page: "changes", params }; // screen 14
+  if (page === "unused" || page === "used" || ((page === "access" || page === "user" || page === "role") && params.show === "usage")) { // screen 13
+    const { show: _s, name, ...rest } = params;
+    return { page: "usage", params: { ...rest, ...(name ? { [page === "role" ? "role" : "user"]: name } : {}) } };
+  }
   if (page === "plan") return { page: "whatif", params: { ...params, show: "plan" } }; // screen 11 on the change plan
   if ((page === "user" || page === "role") && params.part && ["sees", "sens", "usage"].includes(params.part)) { // old tabs, now on screen 7
     const { name, ...rest } = params;
@@ -58,7 +66,7 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     return { page, params: { ...rest, ...(who ? { name: who } : {}), ...(what ? { obj: what } : {}) } };
   }
   if (!page || !PAGES.includes(page as Page)) return { page: "home", params };
-  if ((page === "access" || page === "see") && params.name) {
+  if ((page === "access" || page === "see" || page === "usage") && params.name) {
     const { name, ...rest } = params;
     return { page, params: { ...rest, user: name } };
   }
@@ -186,6 +194,7 @@ const VIEWS: Record<Page, () => JSX.Element> = {
   home: HomePageView, access: AccessPageView, user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView,
   graph: GraphPageView, see: SeePageView, compare: ComparePageView, request: RequestPageView,
   sensitive: SensitivePageView, flow: FlowPageView, rules: RulesPageView, review: ReviewPageView, whatif: WhatIfPageView,
+  usage: UsagePageView, changes: ChangesPageView,
 };
 
 /** onUrl: the Streamlit wrapper mirrors the page's URL params into the browser address bar. */

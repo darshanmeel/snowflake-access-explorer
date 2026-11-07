@@ -16,13 +16,14 @@ import duckdb
 import access as a
 
 COLS = {
-    "GRANT": "GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE",
-    "USER_ROLE": "USER_NAME, ROLE_NAME",
+    "GRANT": "GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE, GRANTED_BY",
+    "USER_ROLE": "USER_NAME, ROLE_NAME, GRANTED_BY",
     "USER": "USER_NAME, TYPE, DISABLED, DEFAULT_ROLE, DEFAULT_SECONDARY_ROLES, DEFAULT_WAREHOUSE, DEFAULT_NAMESPACE, LAST_SUCCESS_LOGIN",
     "USAGE": "USER_NAME, KIND, NAME, QUERIES, LAST_USED",
     "TAG": "OBJECT_NAME, DOMAIN, COLUMN_NAME, TAG_NAME, TAG_VALUE, APPLY_METHOD",
     "POLICY": "POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY",
     "STREAM": "STREAM_NAME, SOURCE_NAME, SOURCE_TYPE",
+    "OBJECT_USE": "USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED",
 }
 
 
@@ -35,7 +36,7 @@ def write(db, d):
                       "policies": "ACCOUNT_USAGE", "streams": "SHOW"})
     counts = json.dumps({k: len(d.get(t, [])) for k, t in [("grants", "GRANT"), ("user_roles", "USER_ROLE"), ("users", "USER"),
                                                    ("usage", "USAGE"), ("tags", "TAG"), ("policies", "POLICY"),
-                                                   ("streams", "STREAM")]})
+                                                   ("streams", "STREAM"), ("object_use", "OBJECT_USE")]})
     db.executemany("INSERT INTO TBL_ACCESS_RUN VALUES (?, ?, ?, ?, ?, ?, ?)", [
         ("run-1", "2026-11-01 07:00", "2026-11-01 07:02", "OK", src, "{}", "{}"),
         ("run-2", "2026-11-02 07:00", "2026-11-02 07:03", "OK", src, counts,
@@ -259,7 +260,23 @@ def test_streams():
     assert ns["streams"](session, "run-8")[0] == "UNAVAILABLE"
 
 
+def test_object_use():
+    """SP_ACCESS_SNAPSHOT's object usage step: the same ACCESS_HISTORY SELECT as access.use_sql(); not readable (DuckDB
+    has no ACCESS_HISTORY) -> UNAVAILABLE with the reason, no rows, the run goes on."""
+    import inspect
+    assert inspect.getsource(a.use_sql) in SETUP
+    con = load(a.fake(), build=False)
+    body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
+    ns = {}
+    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    src, why = ns["object_use"](fake_session(con), "run-9", "AUTO")
+    assert src == "UNAVAILABLE" and "ACCESS_HISTORY" in why
+    assert ns["object_use"](fake_session(con), "run-9", "SHOW")[0] == "UNAVAILABLE"
+    assert not con.execute("SELECT * FROM TBL_ACCESS_OBJECT_USE WHERE RUN_ID = 'run-9'").fetchall()
+    assert "OBJECT_USE" in ns["DATA"][-1] and 'keep("object_use"' in body
+
+
 if __name__ == "__main__":
-    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams):
+    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use):
         t()
         print("ok", t.__name__)
