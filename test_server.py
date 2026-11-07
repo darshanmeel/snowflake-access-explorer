@@ -304,6 +304,36 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     assert g["home"] == g["access"] == "answers" and g["rules"] == "admin"
 
 
+def test_graph_see_compare():  # screens 4, 7, 9
+    d = js("/api/map?table=SALES.CORE.TBL_CUSTOMER", ["start", "name", "graph", "detail", "risky", "why", "refs"])
+    graph_ok(d["graph"])
+    st = next(n for n in d["graph"]["nodes"] if "stack" in n["marks"])
+    assert st["kind"] == "user" and st["label"] == "2 people" and d["detail"][st["id"]]["members"] == ["ANALYST_01", "ANALYST_02"]
+    assert d["detail"]["GRP_ANALYSTS"]["leads"] == ["SALES.CORE.TBL_CUSTOMER"] and "admin" in d["risky"].values()
+    assert all(e in {x["id"] for x in d["graph"]["edges"]} for e in d["risky"])
+    u = js("/api/map")
+    graph_ok(u["graph"])
+    assert u["start"] == "user" and u["id"] == server.DEMO_USER and any(n["kind"] == "fold" for n in u["graph"]["nodes"])
+    assert not any(n["kind"] == "fold" for n in js("/api/map?builtin=1")["graph"]["nodes"])
+    graph_ok(js(f"/api/map?role={a.FUNC}ENGINEER&same=0&admin=0")["graph"])
+    assert js("/api/map?view=mine")["name"]
+    get("/api/map?role=NOPE", 404)
+    s = js("/api/see", ["who", "known", "cards", "counts", "can_read", "sensitive", "usage", "role_usage", "refs"])
+    assert s["counts"]["unprotected"] == 3 and s["usage"]["roles"] and s["sensitive"]["rows"] and s["can_read"]
+    r = js(f"/api/see?role={a.FUNC}ANALYST")
+    assert r["who"]["kind"] == "functional" and r["role_usage"]["holders"] >= 1 and r["usage"] is None
+    get("/api/see?user=NOPE", 404)
+    c = js("/api/compare", ["a", "b", "scope", "rows", "counts", "match", "extras", "old", "dbs"])
+    assert c["a"]["name"] == server.DEMO_USER and c["b"]["name"] != c["a"]["name"] and c["scope"] == "sensitive"
+    assert sum(c["counts"].values()) == len(c["rows"]) and c["old"]["rows"]
+    x = js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all")
+    assert x["counts"]["only_a"] > 0 and x["match"] and x["extras"] and x["a"]["kind"] == "functional"
+    assert js("/api/compare?a=ENGINEER_01&b=ANALYST_01&scope=db&db=HR")["rows"][0]["diff"] == "only_a"
+    get("/api/compare?a=NOPE", 404)
+    g = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
+    assert g["graph"] == g["see"] == g["compare"] == "answers"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

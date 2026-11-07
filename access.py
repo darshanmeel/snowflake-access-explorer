@@ -2808,6 +2808,309 @@ def suggest(privs, obj, user=None, limit=5):
     return sorted(out, key=lambda e: (e["extra"], len(e["path"]), e["role"]))[:limit]
 
 
+# ---------- screen 4: access graph ----------
+
+LV_CLS = {"names": "use", "use": "use", "read": "read", "change": "write", "own": "own", "admin": "admin"}
+EVERY = "Every object (admin)"  # an admin role reaches every object without a grant: one box
+
+
+def top(levels):
+    """Highest step of OBJ_LEVELS among levels (None when there is none)."""
+    return max((x for x in levels if x), key=OBJ_LEVELS.index, default=None)
+
+
+def step_of(pv, kind):
+    """obj_level, and "admin" for an account privilege (Snowflake's defaults on PUBLIC excepted: "use")."""
+    return ("use" if pv in DEFAULT_PUBLIC else "admin") if kind == "ACCOUNT" else obj_level(pv, kind)
+
+
+def flow(own, links):
+    """Highest step each node leads to over links [(a, b)]: its own (own) or that of any node below it. A step only
+    rises, so a loop ends."""
+    lv, par = dict(own), {}
+    for x, y in links:
+        par.setdefault(y, []).append(x)
+    todo = list(lv)
+    while todo:
+        n = todo.pop()
+        for p in par.get(n, []):
+            if lv.get(p) is None or OBJ_LEVELS.index(lv[n]) > OBJ_LEVELS.index(lv[p]):
+                lv[p] = lv[n]
+                todo.append(p)
+    return lv
+
+
+def steps(srcs, links, first=1):
+    """Shortest step of every node from srcs (at first) over links [(a, b)]: {node: step}."""
+    kids = {}
+    for x, y in links:
+        kids.setdefault(x, []).append(y)
+    lane, todo = {s: first for s in srcs}, list(srcs)
+    while todo:
+        nxt = []
+        for n in todo:
+            for c in kids.get(n, []):
+                if c not in lane:
+                    lane[c] = lane[n] + 1
+                    nxt.append(c)
+        todo = nxt
+    return lane
+
+
+def grants_out(rs):
+    """Object lines of the roles rs: [(role, object, privilege, kind)]; names (USAGE on a database or schema) and
+    roles held left out."""
+    return [(r, o, pv, k) for r in rs for pv, k, o in granted.get(r, []) if category(pv, k) not in ("names", "hold")]
+
+
+def access_graph(start, name, same=True, admin=True):
+    """Screen 4, the access graph from an object (start "object"), a role or a user. Columns by shortest step; every
+    line carries the step it ends up granting (cls read / write / own / use; admin = an admin role's bypass, no grant
+    needed); people with the same lines stacked in one box (same); people holding an admin role and those roles
+    (admin, from an object or a role); PUBLIC's hidden built-ins as one fold box. Returns dict(start (node id), lanes
+    [(label, [ids])], edges [(a, b, cls, privilege, people)], kinds {id: stack | every | fold}, stacks {id: [users]},
+    levels {id: step}, people {id: [users through it]}, leads {id: [objects it leads to]}, risky {(a, b): why},
+    risky_nodes {id: why}; why: admin | public | writes). ValueError for an unknown name."""
+    adm = admin_users() if admin and start != "user" else {}
+    if start == "object":
+        if name not in kinds:
+            raise ValueError(f"{name} is not in this snapshot")
+        hold = [(r, pv) for r, pv, k in on.get(name, [])]
+        rs = set().union(*(ups(h)[0] for h, _ in hold)) if hold else set()
+        links = [(p, r) for r in sorted(rs) for p in held_by.get(r, []) if p in rs]
+        ues = [(u, r) for r in sorted(rs) for u in (users if r == "PUBLIC" else users_of.get(r, []))]
+        oes = [(r, name, pv, kinds[name]) for r, pv in hold]
+        lane = steps([r for r in rs if r == "PUBLIC" or users_of.get(r) or not any(p in rs for p in held_by.get(r, []))],
+                     links)
+        sid, at = name, name
+    elif start == "role":
+        if name not in roles:
+            raise ValueError(f"{name} is not in this snapshot")
+        up_, dn = ups(name)[0], bfs([name])
+        rs = set(up_) | set(dn)
+        above = [(p, r) for r in sorted(up_) for p in held_by.get(r, []) if p in up_]
+        links = above + [(r, c) for r in sorted(dn) for c in holds.get(r, [])]
+        ues = [(u, r) for r in sorted(up_) for u in (users if r == "PUBLIC" else users_of.get(r, []))]
+        oes = grants_out(sorted(dn))
+        far = steps([name], [(y, x) for x, y in above], 0)
+        u0 = max(list(far.values()) + [1 if adm else 0])
+        lane = {r: u0 + 1 - d for r, d in far.items()} | {r: u0 + len(p) for r, p in dn.items()}
+        sid, at = name, name
+    else:
+        if name not in users:
+            raise ValueError(f"{name} is not in this snapshot")
+        best = best_paths(name, True)
+        rs = set(best)
+        links = [(r, c) for r in sorted(rs) for c in holds.get(r, [])]
+        ues = [(name, p[1]) for p in starts(name, True)]
+        oes = grants_out(sorted(rs))
+        lane = {r: len(p) - 1 for r, p in best.items()}
+        sid, at = uid(name, True), None
+    objs = [name] if start == "object" else list(dict.fromkeys(o for _, o, _, _ in oes))
+    own = {}
+    for r, o, pv, k in oes:
+        if k != "ACCOUNT":  # an account privilege is its own red line, not a step on the objects
+            own[r] = top([own.get(r), step_of(pv, k)])
+    for r in rs & ADMIN:
+        own[r] = "admin"
+    lv = flow(own, links)
+    kinds_, adm_roles = {}, {}
+    for u, ars in adm.items():
+        for ar in ars:
+            if ar != at:
+                adm_roles.setdefault(ar, []).append(u)
+    for ar in adm_roles:
+        lane.setdefault(ar, lane[at] - 1 if start == "role" else 1)
+    every = sorted(rs & ADMIN) if start != "object" else []
+    if every:
+        objs.append(EVERY)
+        kinds_[EVERY] = "every"
+    fold = "PUBLIC" in rs and bool(hidden) and start != "object"
+    if fold:
+        objs.append(BUILTIN_NODE)
+        kinds_[BUILTIN_NODE] = "fold"
+    # who comes through each node: users drawn that reach it
+    drawn = {u for u, _ in ues} | set(adm)
+    people = {uid(u, True): [u] for u in drawn}
+    for r in rs | set(adm_roles):
+        people[r] = sorted((set(ups(r)[1]) & drawn) | set(adm_roles.get(r, []))) if start != "user" else [name]
+    for o in objs:
+        src = {r for r, x, _, _ in oes if x == o} | set(every if o == EVERY else ["PUBLIC"] if o == BUILTIN_NODE else [])
+        src |= set(adm_roles) if o == at else set()
+        people[o] = sorted(set().union(*(people.get(r, []) for r in src)))
+    cls = lambda n: LV_CLS[lv[n]] if lv.get(n) else "inherit"
+    # user lines, people with the same lines stacked into one box
+    outs = {}
+    for u, r in ues:
+        outs.setdefault(u, set()).add((r, cls(r)))
+    for u, ars in adm.items():
+        outs.setdefault(u, set()).update((ar, "admin") for ar in ars)
+    by, stacks, edges, ucol = {}, {}, [], []
+    for u, xs in sorted(outs.items()):
+        by.setdefault(tuple(sorted(xs)), []).append(u)
+    for key, us in by.items():
+        if same and len(us) > 1:
+            s = "people:" + "|".join(f"{r}/{c}" for r, c in key)
+            stacks[s], kinds_[s], people[s] = us, "stack", us
+            edges += [(s, r, c, None, len(us)) for r, c in key]
+            ucol.append(s)
+        else:
+            edges += [(uid(u, True), r, c, None, 1) for u in us for r, c in key]
+            ucol += [uid(u, True) for u in us]
+    edges += [(p, c, cls(c), None, len(people.get(p, []))) for p, c in links]
+    best_on = {}
+    for r, o, pv, k in oes:
+        best_on[(r, o)] = top([best_on.get((r, o)), step_of(pv, k)])
+    edges += [(r, o, LV_CLS[best_on[(r, o)]], pv, len(people.get(r, []))) for r, o, pv, k in oes]
+    edges += [(ar, at, "admin", None, len(us)) for ar, us in adm_roles.items()]
+    edges += [(ar, EVERY, "admin", None, len(people.get(ar, []))) for ar in every]
+    if fold:
+        edges.append(("PUBLIC", BUILTIN_NODE, "use", "USAGE", len(people.get("PUBLIC", []))))
+    # columns: people, roles by step, then the objects
+    last = max(list(lane.values()) + [0]) + 1
+    col = {n: lane[n] for n in rs | set(adm_roles)} | {n: 0 for n in ucol} | {o: last for o in objs}
+    if start == "role":
+        word = lambda i: ("Held by" if i == 0 else "Role" if i == lane[name] else "Reaches" if i == last
+                          else f"{lane[name] - i} up" if i < lane[name] else f"Step {i - lane[name]}")
+    elif start == "user":
+        word = lambda i: "Person" if i == 0 else "Roles held" if i == 1 else "Reaches" if i == last else f"Step {i}"
+    else:
+        word = lambda i: "People" if i == 0 else kinds[name].title() if i == last else f"Step {i}"
+    lanes = [(word(i), sorted(n for n, c in col.items() if c == i)) for i in range(last + 1)]
+    # what each node leads to, and the risky lines
+    kids = {}
+    for e in edges:
+        kids.setdefault(e[0], set()).add(e[1])
+    oset, leads = set(objs), {}
+    for n in col:
+        seen_, todo = set(), [n]
+        while todo:
+            for c in kids.get(todo.pop(), ()):
+                if c not in seen_:
+                    seen_.add(c)
+                    todo.append(c)
+        leads[n] = sorted(seen_ & oset)
+    radm = lambda r: r in ADMIN or (r in roles and cached(("radm", r), lambda: reaches_admin(r)))
+    pub = set(bfs(["PUBLIC"])) if "PUBLIC" in rs else set()
+    risky, rnodes = {}, {}
+    for x, y, c, *_ in edges:
+        if c == "admin" or (y in rs and radm(y)):
+            risky[(x, y)] = "admin"
+        elif x in pub or y == "PUBLIC":
+            risky[(x, y)] = "public"
+    for r in rs | set(adm_roles):
+        if radm(r):
+            rnodes[r] = "admin"
+        elif r in pub:
+            rnodes[r] = "public"
+    pairs = {(e[0], e[1]) for e in edges}
+    for x in cached("rw", readonly_writes):
+        if x["role"] in rs and x["object"] in oset:
+            rnodes[x["role"]] = "writes"
+            for ab in zip(x["path"], x["path"][1:]):
+                if ab in pairs:
+                    risky[ab] = "writes"
+    return dict(start=sid, lanes=[x for x in lanes if x[1]], edges=edges, kinds=kinds_, stacks=stacks,
+                levels={n: v for n, v in lv.items() if v}, people=people, leads=leads, risky=risky, risky_nodes=rnodes)
+
+
+# ---------- screen 7: what they see ----------
+
+def seen(name, user=None):
+    """Screen 7, what name sees when it queries: one card per table / view it can read with a tag or a policy
+    (data_views), sensitive ones first. Card: object, type, sensitive, rows dict(state, reason, policy), columns
+    [dict(column, sensitive, state, reason, policy, fix)] (fix: sensitive, in clear and no masking policy at all).
+    counts: objects, sensitive (objects), columns (sensitive ones), clear, masked, unknown, unprotected (fix), rows
+    (objects whose row policy does not show every row)."""
+    cards = []
+    for v in data_views(name, user):
+        cols = [dict(column=c["column"], sensitive=c["sensitive"], state=c["state"], reason=c["reason"], policy=c["policy"],
+                     fix=c["sensitive"] and c["state"] == "clear" and not c["policy"]) for c in v["columns"]]
+        cards.append(dict(object=v["object"], type=kinds.get(v["object"], ""),
+                          sensitive=v["object"] in sens or any(c["sensitive"] for c in cols),
+                          rows=dict(state=v["rows"]["state"], reason=v["rows"]["reason"], policy=v["rows"]["policy"]),
+                          columns=sorted(cols, key=lambda c: (not c["sensitive"], c["column"]))))
+    cards.sort(key=lambda x: (not x["sensitive"], -sum(c["fix"] for c in x["columns"]), x["object"]))
+    sc = [c for x in cards if x["sensitive"] for c in x["columns"] if c["sensitive"]]
+    n = lambda s: sum(c["state"] == s for c in sc)
+    return dict(cards=cards, counts=dict(objects=len(cards), sensitive=sum(x["sensitive"] for x in cards), columns=len(sc),
+                                         clear=n("clear"), masked=n("masked"), unknown=n("unknown"),
+                                         unprotected=sum(c["fix"] for c in sc),
+                                         rows=sum(x["rows"]["state"] != "all" for x in cards)))
+
+
+# ---------- screen 9: compare two people or roles ----------
+
+DIFF = ("only_a", "only_b", "different", "same")
+ROWS_TEXT = {"all": "all rows", "filtered": "filtered rows", "none": "no rows", "unknown": "rows unknown"}
+
+
+def sees_text(name, obj, user=False):
+    """What name sees of a table or view in one line: "EMAIL masked · PHONE clear · no rows (RAP_REGION)"; "whole
+    object, clear" for a sensitive object without policies, else ""."""
+    v = data_view(name, obj, user)
+    m = [f'{c["column"]} {c["state"]}' for c in v["columns"] if c["sensitive"] or c["policy"]]
+    p = v["rows"]["policy"]
+    m += [f'{ROWS_TEXT[v["rows"]["state"]]} ({p.split(".")[-1]})'] if p else []
+    return " · ".join(m) or ("whole object, clear" if obj in sens else "")
+
+
+def compare(x, xu, y, yu, scope="sensitive", db=None):
+    """Screen 9, A (x, a user when xu) against B (y, yu): one row per object either reaches in scope (sensitive
+    objects; "all" data and runnable objects; "db" those in database db), differences first. Row: object, type,
+    database, schema, name, diff (only_a | only_b | different | same), a / b dict(level, privileges, sees) or None,
+    extra_a / extra_b (privileges only that side has). counts per diff. match: the changes that give B what only A
+    has (B a user: the role A starts the path with, or A itself; B a role: the grant holder role, or the privilege
+    when A holds it itself); extras: the changes that take A's extras away (the first link of A's path, or A's own
+    grant). A side holding an admin role reaches every object without a grant (level admin, no extras against it).
+    A change: op, role | privilege + objectType + object, to, toUser. Text only: nothing runs."""
+    def side(n, u):
+        rows = grants(n, u)
+        objs = {o["object"]: o for o in access_objects(rows, u) if o["category"] in ("data", "runnable")}
+        best = {}
+        for r in rows:
+            k = (r["privilege"], r["object"])
+            if k not in best or len(r["path"]) < len(best[k]):
+                best[k] = r["path"]
+        return objs, best
+    (ax, ap), (bx, _) = side(x, xu), side(y, yu)
+    boss = {n: (n in admin_users()) if u else (n in ADMIN or reaches_admin(n)) for n, u in ((x, xu), (y, yu))}
+    god = dict(level="admin", privileges=[], sees="every object, through an admin role")
+    keep = {"sensitive": lambda o: o in sens, "db": lambda o: split_name(o, kinds.get(o))[0] == db}.get(scope, lambda o: True)
+    out = []
+    for o in sorted(set(ax) | set(bx)):
+        if not keep(o):
+            continue
+        ea, eb = ax.get(o), bx.get(o)
+        data = is_data(kinds.get(o, ""))
+        va = dict(level=ea["level"], privileges=ea["privileges"], sees=sees_text(x, o, xu) if data else "") if ea             else god if boss[x] else None
+        vb = dict(level=eb["level"], privileges=eb["privileges"], sees=sees_text(y, o, yu) if data else "") if eb             else god if boss[y] else None
+        pa, pb = set(ea["privileges"]) if ea else set(), set(eb["privileges"]) if eb else set()
+        ea, eb = va, vb
+        d = "only_a" if not eb else "only_b" if not ea else "same" if va == vb else "different"
+        db_, sc, nm = split_name(o, kinds.get(o))
+        out.append(dict(object=o, type=kinds.get(o, ""), database=db_, schema=sc, name=nm, diff=d, a=va, b=vb,
+                        extra_a=[] if boss[y] else sorted(pa - pb), extra_b=[] if boss[x] else sorted(pb - pa)))
+    out.sort(key=lambda r: (DIFF.index(r["diff"]), r["object"]))
+    match, extras = [], []
+    for r in out:
+        for pv in r["extra_a"]:
+            p = ap[(pv, r["object"])]
+            if yu:
+                c = dict(op="grant", role=p[1] if xu else x, to=y, toUser=True)
+            elif p[-2] == x:
+                c = dict(op="grant", privilege=pv, objectType=r["type"], object=r["object"], to=y, toUser=False)
+            else:
+                c = dict(op="grant", role=p[-2], to=y, toUser=False)
+            if c not in match and c.get("role") != "PUBLIC":  # every user holds PUBLIC
+                match.append(c)
+            c = dict(op="revoke", privilege=pv, objectType=r["type"], object=r["object"], to=x, toUser=False) \
+                if len(p) == 2 and not xu else dict(op="revoke", role=p[1], to=x, toUser=xu)
+            if c not in extras and c.get("role") != "PUBLIC":
+                extras.append(c)
+    return dict(rows=out, counts={d: sum(r["diff"] == d for r in out) for d in DIFF}, match=match, extras=extras)
+
+
 def review(db=None):
     """Access review export for one database (None: every database): one row per (user, object) with any privilege,
     then one row per admin user. Row: database, schema, object, type, user, user_type, status, last_login, privileges, classes, sensitive

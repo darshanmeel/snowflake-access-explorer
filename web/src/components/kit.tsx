@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";
 
-export const LEVEL_WORD: Record<string, string> = { names: "Can see names", read: "Read", change: "Read + change", own: "Owns", admin: "Admin" };
+export const LEVEL_WORD: Record<string, string> = { names: "Can see names", use: "Can use", read: "Read", change: "Read + change", own: "Owns", admin: "Admin" };
 
 export function AccessPill({ level, privileges }: { level: string | null; privileges?: string[] }) {
   return (

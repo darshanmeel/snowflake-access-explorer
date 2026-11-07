@@ -73,6 +73,9 @@ function Body({ d }: { d: AccessPage }) {
         roles={user ? d.why.map((r) => ({ id: r.role, note: r.note === "everyone" ? "" : r.note, kind: r.kind })) : undefined} />
       <div className="ae-actions">
         <button type="button" className="ae-btn" onClick={() => c.nav("check", user ? { name: w.name } : {})}>Can they?</button>
+        <button type="button" className="ae-btn" onClick={() => c.nav("graph", user ? { user: w.name } : { role: w.name })}>Show as graph</button>
+        <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
+        <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
       </div>
       <p className="ae-answer">
         <span className="ae-mono">{w.name}</span> can <b>read data in {plural(n.read, "object")}</b> across {plural(n.schemas, "schema")}.

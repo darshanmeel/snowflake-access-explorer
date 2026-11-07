@@ -26,10 +26,12 @@ TTL = cache.TTL  # shared data and My access stay in memory this long (seconds)
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
 
 PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
-         "request": "Request access", "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off",
-         "sensitive": "Sensitive data", "user": "User paths", "role": "Role paths"}
-GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "request": "answers",
-         "rules": "admin", "whatif": "admin", "review": "admin", "sensitive": "admin", "user": "detail", "role": "detail"}  # side nav groups
+         "graph": "Access graph", "see": "What they see", "compare": "Compare", "request": "Request access",
+         "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
+         "user": "User paths", "role": "Role paths"}
+GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "graph": "answers", "see": "answers",
+         "compare": "answers", "request": "answers", "rules": "admin", "whatif": "admin", "review": "admin",
+         "sensitive": "admin", "user": "detail", "role": "detail"}  # side nav groups
 SHARED_ONLY = {"review"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
@@ -494,7 +496,7 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
                 back=x in lanes_of and y in lanes_of and lanes_of[x] >= lanes_of[y],
                 rules=rule_dicts(inf.get(ik, {}).get("rules", [])), has=inf.get(ik, {}).get("has"),
                 lacks=inf.get(ik, {}).get("lacks")))
-            if len(e) > 3 and e[3] not in g["privs"]:
+            if len(e) > 3 and e[3] and e[3] not in g["privs"]:
                 g["privs"].append(e[3])
             if len(e) > 4:
                 g["count"] = max(g["count"] or 0, e[4])
@@ -851,8 +853,6 @@ def user_page(p, view):
     src = a.run["SOURCES"].get("usage")
     shared = c["mine"] is False
     objs = {r["object"] for r in rows}
-    rs = [x for x in a.sensitive_reach(u) if not scope or x["object"] in objs] if S["sens"] else []
-    got = [x for x in rs if x["path"]]
     return dict(
         view=view,
         user=dict(id=a.uid(u, True), name=u, type=str(pr.get("TYPE") or "PERSON"), status=a.status(u),
@@ -874,15 +874,22 @@ def user_page(p, view):
         multi=dict(rows=[dict(privilege=r["privilege"], cls=r["cls"], object=r["object"], depth=a.depth(x[:-1], True),
                               path=x) for r, x in multi[:300]], total=len(multi), shown=min(300, len(multi))),
         can_read=[v for v in a.data_views(u, True) if not (scope or c["on"] or c["pv"]) or v["object"] in objs] if shared else None,
-        sensitive=dict(known=bool(S["sens"]), roles=[r for r in dict.fromkeys(x["role"] for x in rs)
-                                                      if any(y["role"] == r and y["path"] for y in rs)],
-                       rows=[dict(object=x["object"], cols=x["cols"], role=x["role"], path=x["path"],
-                                  text=mask_text(x["role"], x["object"])) for x in got]) if S["sens"] else None,
+        sensitive=sens_reach(u, objs if scope else None),
         granted=[dict(role=r, kind=norm(a.role_kind(r)), default=r == dr, used=use.get(r) and dict(
             queries=use[r]["queries"], last_used=str(use[r]["last_used"])[:16]),
             used_text="not readable" if src == "UNAVAILABLE" else f"{use[r]['queries']} queries · {str(use[r]['last_used'])[:10]}"
             if r in use else "not used") for r in sorted(a.roles_of.get(u, []))],
         usage=usage(u), capped=sorted(a.capped))
+
+
+def sens_reach(u, objs=None):
+    """Sensitive data a user can see, per granted role (the User page tab and What they see); None without tags."""
+    if not S["sens"]:
+        return None
+    rs = [x for x in a.sensitive_reach(u) if objs is None or x["object"] in objs]
+    return dict(known=True, roles=[r for r in dict.fromkeys(x["role"] for x in rs) if any(y["role"] == r and y["path"] for y in rs)],
+                rows=[dict(object=x["object"], cols=x["cols"], role=x["role"], path=x["path"],
+                           text=mask_text(x["role"], x["object"])) for x in rs if x["path"]])
 
 
 # ---------- access (screen 1: a person or a role, one row per object on the ladder) ----------
@@ -1005,9 +1012,10 @@ def home_page(p, view):
                                 masked=g["masked_columns"], row_tables=g["row_tables"]) if view == "shared" else None)
 
 
-def mask_text(name, o):
-    """What role name sees of sensitive object o as the role in use: "EMAIL masked · PHONE clear · no rows"."""
-    v = a.data_view(name, o, False)
+def mask_text(name, o, user=False):
+    """What role name (or a user, with any role they hold) sees of sensitive object o: "EMAIL masked · PHONE clear ·
+    no rows"."""
+    v = a.data_view(name, o, user)
     m = [f'{c["column"]} {c["state"]}' for c in v["columns"] if c["sensitive"]]
     m += [ROWS_WORD[v["rows"]["state"]]] * bool(v["rows"]["policy"])
     return " · ".join(m) or "whole object, clear"
@@ -1434,6 +1442,122 @@ def request_page(p, view):
                 owners=a.object_stats(o, k)["owners"])
 
 
+# ---------- access graph (screen 4) ----------
+
+FROM = {"table": "object", "role": "role", "user": "user"}
+RISK = {"admin": "leads to an admin role or an account privilege", "public": "through PUBLIC: everyone has it",
+        "writes": "a read role that writes"}
+
+
+def map_page(p, view):
+    """Screen 4, the access graph from a table (table=), a role (role=) or a person (user=): the graph, and per box
+    who comes through it, what it leads to, its step and why it is risky."""
+    need(a.users or a.roles, "No users or roles in this data.")
+    start, name = next(((FROM[k], p[k]) for k in FROM if p.get(k)), ("user", None))
+    if start == "user" and (view == "mine" or not name):
+        name = a.users[0] if view == "mine" or DEMO_USER not in a.users else DEMO_USER
+    try:
+        g = a.access_graph(start, name, flag(p, "same", True), flag(p, "admin", True))
+    except ValueError as x:
+        raise ApiError(404, "not_found", str(x))
+    who = len({u for x in g["people"].values() for u in x})
+    objs = len(g["lanes"][-1][1]) if g["lanes"] else 0
+    mid = sum(len(ns) for _, ns in g["lanes"][1:-1])
+    folk = f"{who} {'person' if who == 1 else 'people'}"
+    header = {"object": f"Everyone who reaches {name}: {folk}, {plural(mid, 'role')} in between.",
+              "role": f"Who holds {name} (left) and everything it opens up (right): {folk}, {plural(objs, 'object')}.",
+              "user": f"Every role {name} holds, and every object those roles reach: {plural(mid, 'role')}, {plural(objs, 'object')}."}[start]
+    graph = build_graph("Access graph", g["lanes"], g["edges"], kinds={k: "fold" for k, v in g["kinds"].items() if v == "fold"},
+                        selected=g["start"], header=header)
+    bi = a.builtin_info()
+    for n in graph["nodes"]:
+        k = g["kinds"].get(n["id"])
+        if k == "stack":
+            us = g["stacks"][n["id"]]
+            n.update(kind="user", name=n["id"], label=f"{len(us)} people", marks=n["marks"] + ["stack"], action=None,
+                     sub=", ".join(us[:3]) + (f" +{len(us) - 3}" if len(us) > 3 else ""),
+                     tip="People with the same lines, stacked into one box")
+        elif k == "every":
+            n.update(kind="admin", label="Every object", sub="admin roles inherit every role", action=None, tip="No grant needed")
+        elif k == "fold":
+            n.update(sub=f"{bi['objects']} objects · folded" if bi else None, action=None)
+        elif n["id"] == "ACCOUNT":
+            n.update(kind="admin", label="Account", sub="account privileges")
+    detail = {n["id"]: dict(level=g["levels"].get(n["id"]), people=g["people"].get(n["id"], [])[:30],
+                            people_count=len(g["people"].get(n["id"], [])), leads=g["leads"].get(n["id"], [])[:30],
+                            leads_count=len(g["leads"].get(n["id"], [])), risk=g["risky_nodes"].get(n["id"]),
+                            members=g["stacks"].get(n["id"]))
+              for n in graph["nodes"]}
+    risky = {e["id"]: g["risky"][(e["source"], e["target"])] for e in graph["edges"] if (e["source"], e["target"]) in g["risky"]}
+    return dict(view=view, start=start, name=name, id=g["start"], graph=graph, detail=detail, risky=risky,
+                risky_nodes=g["risky_nodes"], why=RISK, builtin=bi)
+
+
+# ---------- what they see (screen 7) ----------
+
+def subject(p, view):
+    """(name, user) from role= or user= (My access: the signed-in user); 404 when unknown."""
+    if view != "mine" and p.get("role"):
+        need(p["role"] in a.roles, f"{p['role']} is not in this snapshot")
+        return p["role"], False
+    need(a.users, "No users in this data.")
+    u = a.users[0] if view == "mine" else p.get("user") or (DEMO_USER if DEMO_USER in a.users else a.users[0])
+    need(u in a.users, f"{u} is not in this snapshot")
+    return u, True
+
+
+def see_page(p, view):
+    """Screen 7, what a person or a role sees when they query: a card per protected object (rows, each column clear
+    or masked and why), the old What they see / Sensitive data they can see tables, and role usage."""
+    name, user = subject(p, view)
+    ok = view != "mine" or bool(S["sens"])
+    s = a.seen(name, user) if ok else dict(cards=[], counts=None)
+    pr = (a.profile.get(name) or {}) if user else {}
+    who = dict(kind="user" if user else nk(name), name=name, id=a.uid(name, user),
+               type=str(pr.get("TYPE") or "PERSON") if user else KIND.get(norm(a.role_kind(name)), "Role"),
+               status=a.status(name) if user else None, default_role=pr.get("DEFAULT_ROLE") or None,
+               secondary_all="ALL" in str(pr.get("DEFAULT_SECONDARY_ROLES") or "").upper(),
+               roles=sorted(a.roles_of.get(name, [])) if user else [])
+    return dict(view=view, who=who, known=ok, cards=s["cards"], counts=s["counts"],
+                can_read=a.data_views(name, user) if ok else None, sensitive=sens_reach(name) if user else None,
+                usage=usage(name) if user else None, role_usage=None if user else role_usage(name))
+
+
+# ---------- compare (screen 9) ----------
+
+def side_of(x):
+    """(name, user) of one side of Compare: a user (also "X (user)"), else a role; 404 when unknown."""
+    n = a.node_name(x)
+    if x.endswith(a.UTAG) or (n in a.users and x not in a.roles):
+        need(n in a.users, f"{n} is not in this snapshot")
+        return n, True
+    need(x in a.roles or x in a.users, f"{x} is not in this snapshot")
+    return x, x not in a.roles
+
+
+def compare_page(p, view):
+    """Screen 9, two people or roles (a=, b=) compared on sensitive data, everything or one database (scope=, db=):
+    counts, rows with the differences first, the changes that make B match A or remove A's extras (text only), and
+    the old Compare two roles table over the sensitive objects."""
+    need(a.users or a.roles, "No users or roles in this data.")
+    me = a.users[0] if view == "mine" or not a.users or DEMO_USER not in a.users else DEMO_USER
+    x, xu = side_of(p.get("a") or me or a.roles[0])
+    if p.get("b"):
+        y, yu = side_of(p["b"])
+    elif xu and len(a.users) > 1:
+        mine, adm = set(a.roles_of.get(x, [])), a.admin_users()  # the closest other person, not an admin
+        y, yu = max((u for u in a.users if u != x), key=lambda u: (u not in adm, len(mine & set(a.roles_of.get(u, []))))), True
+    else:
+        y, yu = next((r for r in a.roles if r != x and a.kind_of(r) == "functional"), a.roles[0]), False
+    dbs = sorted({a.split_name(o, a.kinds[o])[0] for o in a.objects} - {""})
+    scope = p.get("scope") if p.get("scope") in ("sensitive", "all", "db") else "sensitive" if S["sens"] else "all"
+    db = p.get("db") if p.get("db") in dbs else dbs[0] if dbs else ""
+    c = a.compare(x, xu, y, yu, scope, db)
+    side = lambda n, u: dict(name=n, id=a.uid(n, u), kind="user" if u else nk(n))
+    old = pair_rows(x, xu, y, yu, [r["object"] for r in a.sensitive_rank()]) if S["sens"] else None
+    return dict(view=view, a=side(x, xu), b=side(y, yu), scope=scope, db=db, dbs=dbs, sensitive=bool(S["sens"]), old=old, **c)
+
+
 # ---------- sensitive data ----------
 
 def sensitive_page(p, view):
@@ -1484,11 +1608,6 @@ def sensitive_page(p, view):
     top = sorted(funcs, key=lambda r: (-sum(o in S["sens"] for o in a.reads([r])), r))
     x = p.get("a") if p.get("a") in a.roles else top[0]
     y = p.get("b") if p.get("b") in a.roles else top[1] if len(top) > 1 else top[0]
-    got = {r: a.reads([r]) for r in (x, y)}
-    diff = [f"{r['object']}: through {n} yes; through {m} no" for r in rank for n, m in ((x, y), (y, x))
-            if r["object"] in got[n] and r["object"] not in got[m]]
-    diff += [f"{r['object']}: {x} sees {mask_text(x, r['object'])}; {y} sees {mask_text(y, r['object'])}" for r in rank
-             if r["object"] in got[x] and r["object"] in got[y] and mask_text(x, r["object"]) != mask_text(y, r["object"])]
     cols = sum(len(r["cols"]) for r in rank)
     return dict(
         view=view, state="ok", governance=gov, filters=dict(tag=tg, db=db, people=people, tags=labels, dbs=dbs),
@@ -1502,9 +1621,27 @@ def sensitive_page(p, view):
                       cols=r["cols"], masked=list(r["masked"]), row_policies=r["row_policies"], people=r["people"],
                       disabled=r["disabled"], service=r["service"], admin=r["admin"], roles=r["roles"]) for r in rank],
         readers=[reader(u, who[u], False) for u in us] + [reader(u, None, True) for u in ad],
-        compare=dict(a=x, b=y, roles=a.roles, diff=diff[:10] if x != y else [],
-                     rows=[dict(object=r["object"], a=mask_text(x, r["object"]) if r["object"] in got[x] else None,
-                                b=mask_text(y, r["object"]) if r["object"] in got[y] else None) for r in rank]))
+        compare=dict(a=x, b=y, roles=a.roles, **pair_rows(x, False, y, False, [r["object"] for r in rank])))
+
+
+def reads_of(n, user):
+    """Objects a role (or a user, through any role they hold) reads: {object: path}."""
+    return {o: q for s in (a.starts(n, True) if user else [[n]]) for o, q in a.reads(s).items()}
+
+
+def pair_rows(x, xu, y, yu, objs):
+    """Compare two roles (Sensitive data, and the first tab of Compare): what each sees of every object in objs (None:
+    cannot read it), and the differences in words."""
+    got, txt = {x: reads_of(x, xu), y: reads_of(y, yu)}, {}
+    for n, u in ((x, xu), (y, yu)):
+        for o in objs:
+            if o in got[n]:
+                txt[(n, o)] = mask_text(n, o, u)
+    diff = [f"{o}: through {n} yes; through {m} no" for o in objs for n, m in ((x, y), (y, x))
+            if o in got[n] and o not in got[m]]
+    diff += [f"{o}: {x} sees {txt[(x, o)]}; {y} sees {txt[(y, o)]}" for o in objs
+             if (x, o) in txt and (y, o) in txt and txt[(x, o)] != txt[(y, o)]]
+    return dict(diff=diff[:10] if x != y else [], rows=[dict(object=o, a=txt.get((x, o)), b=txt.get((y, o))) for o in objs])
 
 
 # ---------- rules ----------
@@ -1815,9 +1952,10 @@ def mkrefs(out):
 
 ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
-          "whatif": whatif_page, "who": who_page, "request": request_page}
+          "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
+          "compare": compare_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
-             "whatif"}
+             "whatif", "map", "see", "compare"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
@@ -1884,7 +2022,7 @@ def make_app():
         return h
 
     for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
-              "whatif", "who", "request"):
+              "whatif", "who", "request", "map", "see", "compare"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

@@ -3,7 +3,7 @@ import type { Graph } from "../api/types";
 import { EDGE, KIND_LABEL, PCLASS, TOKENS, edgeColor, kindStyle, type ThemeName } from "./theme";
 import { GROUP_KINDS } from "./graphs";
 
-const MARK_LABEL: Record<string, string> = { sensitive: "Sensitive", disabled: "Disabled user", bad: "Admin / finding" };
+const MARK_LABEL: Record<string, string> = { sensitive: "Sensitive", disabled: "Disabled user", bad: "Admin / finding", stack: "Stacked: same path" };
 
 export function Legend({ legend, theme = "light" }: { legend: Graph["legend"]; theme?: ThemeName }) {
   const t = TOKENS[theme];

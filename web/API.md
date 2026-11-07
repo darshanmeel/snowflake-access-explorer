@@ -486,6 +486,50 @@ admin-reaching roles never), `a.approver`, `a.object_stats` owners.
 ```
 404 for an unknown user or object.
 
+### GET /api/map?view=&table=|role=|user=&same=1&admin=1&builtin=
+
+Screen 4, Access graph (page key `graph`; `show=trace` is its new tab, `sel=` the picked box, `risky=1` the highlight:
+none of these reach the server). `a.access_graph(start, name, same, admin)`: columns by shortest step, every line's
+`cls` the step it ends up granting (read / write / own / use; admin = bypass or account privilege), `count` the people
+flowing through it; same-path people stacked (node mark `stack`), admin people and roles (`admin=0` hides them), PUBLIC's
+built-ins as one fold box (`builtin=1` unfolds).
+
+```
+{ view, start: "object" | "role" | "user", name, id (start node), graph (Graph),
+  detail: { <node id>: { level, people[30], people_count, leads[30], leads_count, risk, members (a stack) } },
+  risky: { <edge id>: "admin" | "public" | "writes" }, risky_nodes: { <node id>: why }, why: { <why>: text },
+  builtin, refs }
+```
+404 for an unknown table, role or user.
+
+### GET /api/see?view=&user=|role=
+
+Screen 7, What they see (page key `see`; `show=cards` the new tab, `part=sees|sens|usage` the old sub-tabs, `all=1` all
+protected objects). `a.seen` (cards, sentence counts), `a.data_views` (old table), `sens_reach` (Sensitive data they can
+see), `usage(u)` / `role_usage(r)`.
+
+```
+{ view, who: { kind, name, id, type, status, default_role, secondary_all, roles[] }, known,
+  cards: [{ object, type, sensitive, rows: { state, reason, policy }, columns: [{ column, sensitive, state, reason, policy, fix }] }],
+  counts: { objects, sensitive, columns, clear, masked, unknown, unprotected, rows } | null,
+  can_read: DataView[] | null, sensitive: { known, roles[], rows[] } | null, usage: UsageCard | null, role_usage | null, refs }
+```
+
+### GET /api/compare?view=&a=&b=&scope=sensitive|all|db&db=
+
+Screen 9, Compare two people or roles (page key `compare`; `show=diff` the new tab, `plan=match|extras` the change
+text). `a.compare` (rows differences first, counts, `match` / `extras` as codegen changes; an admin side reaches every
+object), `pair_rows` (the old Compare two roles table over the sensitive objects). A side is a user (also `X (user)`),
+else a role. Default B: the person sharing most roles with A, not an admin.
+
+```
+{ view, a: { name, id, kind }, b, scope, db, dbs[], sensitive,
+  rows: [{ object, type, database, schema, name, diff: "only_a"|"only_b"|"different"|"same",
+           a: { level, privileges[], sees } | null, b, extra_a[], extra_b[] }],
+  counts: { only_a, only_b, different, same }, match: Change[], extras: Change[],
+  old: { rows: [{ object, a, b }], diff[] } | null, refs }
+```
+
 ### GET /api/sensitive?view=&tag=&db=&people=0&a=&b=
 
 Sensitive data. Producers: `a.governance_kpis()`, `a.cached("sens", a.sensitive)`, `a.sensitive_rank()`,

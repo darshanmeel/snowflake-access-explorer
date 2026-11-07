@@ -14,7 +14,7 @@ export type NodeKind =
 /** Privilege class (a.priv_class), used for arrows and badges. */
 export type PrivClass = "read" | "write" | "own" | "use" | "manage" | "admin";
 export type EdgeCls = "inherit" | "inherit_db" | PrivClass;
-export type Mark = "disabled" | "sensitive" | "bad";
+export type Mark = "disabled" | "sensitive" | "bad" | "stack"; // stack: people with the same lines in one box
 
 /** Privileges tabs, in this order. */
 export type TabKey =
@@ -22,7 +22,7 @@ export type TabKey =
   | "execute" | "read" | "write" | "own" | "manage" | "all";
 
 export type UserStatus = "active" | "dormant" | "never" | "disabled";
-export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "request" | "sensitive" | "rules" | "review" | "whatif";
+export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "rules" | "review" | "whatif";
 
 /** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
 export type Path = string[];
@@ -972,5 +972,90 @@ export interface WhoPage {
   counts: { levels: Record<ObjLevel, number>; people: number; roles: number; disabled: number; dormant: number };
   columns: WhoColumn[];
   default_user: string | null;
+  refs: Refs;
+}
+
+// ---------- screen 4: access graph (GET /api/map?table=|role=|user=&same=1&admin=1) ----------
+
+export type Risk = "admin" | "public" | "writes";
+
+export interface MapNode {
+  level: ObjLevel | null; // the step it leads to
+  people: string[]; // first 30 users through it
+  people_count: number;
+  leads: string[]; // first 30 objects it leads to
+  leads_count: number;
+  risk: Risk | null;
+  members: string[] | null; // a stack: the people in it
+}
+
+export interface MapPage {
+  view: View;
+  start: "object" | "role" | "user";
+  name: string;
+  id: string; // node id of the start
+  graph: Graph;
+  detail: Record<string, MapNode>;
+  risky: Record<string, Risk>; // edge id -> why
+  risky_nodes: Record<string, Risk>;
+  why: Record<Risk, string>;
+  builtin: { label: string; grants: number; roles: string[]; objects: number } | null;
+  refs: Refs;
+}
+
+// ---------- screen 7: what they see (GET /api/see?user=|role=) ----------
+
+export interface SeeCard {
+  object: string;
+  type: string;
+  sensitive: boolean;
+  rows: { state: RowsState; reason: string; policy: string | null };
+  columns: { column: string; sensitive: boolean; state: ColState; reason: string; policy: string | null; fix: boolean }[];
+}
+
+export interface SeePage {
+  view: View;
+  who: { kind: NodeKind; name: string; id: string; type: string; status: UserStatus | null; default_role: string | null;
+    secondary_all: boolean; roles: string[] };
+  known: boolean; // policies readable here (not in My access without tags)
+  cards: SeeCard[];
+  counts: { objects: number; sensitive: number; columns: number; clear: number; masked: number; unknown: number;
+    unprotected: number; rows: number } | null;
+  can_read: DataView[] | null;
+  sensitive: { known: boolean; roles: string[]; rows: SensitiveReach[] } | null;
+  usage: UsageCard | null; // a person
+  role_usage: RoleUsage | null; // a role
+  refs: Refs;
+}
+
+// ---------- screen 9: compare (GET /api/compare?a=&b=&scope=sensitive|all|db&db=) ----------
+
+export type Diff = "only_a" | "only_b" | "different" | "same";
+export interface CompareSide { level: string | null; privileges: string[]; sees: string }
+
+export interface CompareRow {
+  object: string; type: string; database: string; schema: string; name: string;
+  diff: Diff;
+  a: CompareSide | null;
+  b: CompareSide | null;
+  extra_a: string[];
+  extra_b: string[];
+}
+
+export interface CompareChange { op: "grant" | "revoke"; role?: string; privilege?: string; objectType?: string; object?: string; to: string; toUser: boolean }
+
+export interface ComparePage {
+  view: View;
+  a: { name: string; id: string; kind: NodeKind };
+  b: { name: string; id: string; kind: NodeKind };
+  scope: "sensitive" | "all" | "db";
+  db: string;
+  dbs: string[];
+  sensitive: boolean;
+  rows: CompareRow[];
+  counts: Record<Diff, number>;
+  match: CompareChange[]; // make B match A
+  extras: CompareChange[]; // remove A's extras
+  old: { rows: { object: string; a: string | null; b: string | null }[]; diff: string[] } | null; // Compare two roles
   refs: Refs;
 }

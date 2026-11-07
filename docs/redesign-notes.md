@@ -38,7 +38,7 @@ stays, what changes, and the order of the work.
 - Derived fields in `access.py`: `level_of` (ladder), `category` (data / runnable / account / names / hold),
   `access_objects` (one row per object at its highest level, path summary), with tests.
 - New screens as page keys: `home` (0), `access` (1, a person or a role), `object` (2), `check` (3 and 12), `request`
-  (15). Next: graph (4), what they see (7), compare (9), then the admin screens.
+  (15), graph (4), see (7), compare (9). Next: the admin screens.
 
 ## Done
 
@@ -74,6 +74,26 @@ stays, what changes, and the order of the work.
   roles (smallest existing functional role first, holders, what else it brings, sensitive columns it shows), the
   role picked on Can they?, how long, approver (owner tag, else a blank field), reason; SQL / Terraform / ticket via
   `CodeOutput`; a commented skeleton for a new role when none fits (`newRoleOf`). Text only.
+- **Screen 4, Access graph** (`graph`, endpoint `/api/map`): start from a Table / Role / Person (`table=` / `role=` /
+  `user=`). "Role hierarchy, by depth" (the diagram of the person, role or object page) is the default tab; "Trace
+  graph" (`show=trace`) is the new one: the existing React Flow + ELK graph, columns by shortest step, line colour by
+  what the line ends up granting (read / write / own / use, admin bypass and account privileges red dotted), width by
+  people flowing, same-path people stacked (`same=0` ungroups), admin people and roles (`admin=0`), PUBLIC built-ins
+  folded (`builtin=1` unfolds), risky paths in red (`risky=1`: to an admin role or account privilege, via PUBLIC, read
+  role that writes). A click (`sel=`) fades everything not through the box; the side panel lists people through it and
+  what it leads to, with Open its page, What if removed?, Make it the start. `Graph.tsx` got `focus`, `hi` and `flow`.
+  `access.py`: `access_graph`, `flow`, `steps`, `grants_out`, `step_of`, `top`.
+- **Screen 7, What they see** (`see`, endpoint `/api/see`): "What they see · tables" (the old User / Role tabs What they
+  see, Sensitive data they can see, Role usage, `part=`) is the default tab; "Column by column" (`show=cards`): the
+  sentence, Only sensitive / All protected objects (`all=1`), one card per object with the rows chip and each column
+  visible / masked with the reason from `data_view`, "Add masking →" (rule 6) when a sensitive column has no policy;
+  role usage bars on the side. `access.py`: `seen`.
+- **Screen 9, Compare** (`compare`, endpoint `/api/compare`, `a=`, `b=`, `scope=sensitive|all|db`, `db=`): counts only
+  A / only B / both but different / same; "What each sees" (the old Sensitive data Compare two roles table, now for
+  people too) is the default tab; "Differences" (`show=diff`): differences first, the same ones folded, Make B match A /
+  Remove A's extras (`plan=`) as SQL / Terraform / ticket text, Simulate on What if. `access.py`: `compare`, `sees_text`.
+- The Access screen has Show as graph, What they see and Compare with… next to Can they?. Redirects: `user|role&part=
+  sees|sens|usage` -> `see`, `sensitive&a=&b=` (or `tab=compare`) -> `compare`, `see&name=` -> `user=`.
 - What if simulates removals only, so a nearest way in (a grant) opens the role's access screen ("What it brings")
   instead of What if.
 

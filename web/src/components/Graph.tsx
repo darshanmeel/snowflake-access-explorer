@@ -21,18 +21,21 @@ export interface GraphProps {
   legend?: boolean;
   maxHeight?: number;
   minZoom?: number; // never drawn smaller than this (labels stay readable): wider graphs pan sideways instead
+  focus?: string | null; // a picked box: everything not on a path through it fades (as on hover)
+  hi?: Set<string>; // node and edge ids drawn red (risky paths)
+  flow?: boolean; // line width grows with edge.count (people flowing through it)
 }
 
 const SEV = ["Critical", "High", "Medium", "Low"] as const;
 
-type NData = { n: GraphNode; t: Tokens; lines: string[]; selected: boolean; dim: boolean };
-type EData = { e: GraphEdge; t: Tokens; pts?: Pt[]; at?: Pt; dim: boolean; hot: boolean };
+type NData = { n: GraphNode; t: Tokens; lines: string[]; selected: boolean; dim: boolean; red: boolean };
+type EData = { e: GraphEdge; t: Tokens; pts?: Pt[]; at?: Pt; dim: boolean; hot: boolean; red: boolean; flow: boolean };
 type Tip = { text: string; x: number; y: number };
 
 const PAD = 16;
 const isBox = (n: GraphNode) => !!n.group || GROUP_KINDS.has(n.kind);
 
-export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8 }: GraphProps) {
+export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8, focus = null, hi, flow = false }: GraphProps) {
   const t = TOKENS[theme];
   const [open, setOpen] = useState<Map<string, string>>(new Map()); // opened box -> its label (for the chips)
   useEffect(() => setOpen(new Map()), [graph]);
@@ -56,9 +59,10 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
 
   const [hover, setHover] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
-  const hot = useMemo(() => (hover ? related(shown, hover) : null), [shown, hover]);
+  const lit = hover ?? (focus && shown.nodes.some((n) => n.id === focus) ? focus : null);
+  const hot = useMemo(() => (lit ? related(shown, lit) : null), [shown, lit]);
   const byId = useMemo(() => new Map(shown.nodes.map((n) => [n.id, n])), [shown]);
-  const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot), [shown, lay, t, hot]);
+  const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot, focus, hi, flow), [shown, lay, t, hot, focus, hi, flow]);
 
   // drawn at the zoom that fits the width, never below minZoom; the panel is as tall as the drawing
   const zoom = lay ? Math.max(minZoom, Math.min(1, (width - 2 * PAD) / Math.max(1, lay.width))) : 1;
@@ -148,7 +152,8 @@ function mergeLegend(g: G): G["legend"] {
   return { ...g.legend, kinds, edges, marks, rules: g.legend.rules || g.nodes.some((n) => n.rules.length > 0) };
 }
 
-function toFlow(g: G, lay: Layout | null, t: Tokens, hot: Set<string> | null): { nodes: Node[]; edges: Edge[] } {
+function toFlow(g: G, lay: Layout | null, t: Tokens, hot: Set<string> | null, focus: string | null, hi: Set<string> | undefined,
+  flow: boolean): { nodes: Node[]; edges: Edge[] } {
   if (!lay) return { nodes: [], edges: [] };
   const nodes: Node[] = lay.lanes.map((l) => ({
     id: `lane:${l.index}:label`, type: "lane", position: { x: l.x, y: 0 }, data: { label: l.label, w: l.w, t },
@@ -159,12 +164,12 @@ function toFlow(g: G, lay: Layout | null, t: Tokens, hot: Set<string> | null): {
     if (!p) continue;
     nodes.push({
       id: n.id, type: "ae", position: { x: p.x, y: p.y }, width: p.w, height: p.h,
-      data: { n, t, lines: nodeSize(n).lines, selected: g.selected === n.id, dim: !!hot && !hot.has(n.id) } satisfies NData,
+      data: { n, t, lines: nodeSize(n).lines, selected: (focus ?? g.selected) === n.id, dim: !!hot && !hot.has(n.id), red: !!hi?.has(n.id) } satisfies NData,
     });
   }
   const edges: Edge[] = g.edges.filter((e) => lay.nodes.has(e.source) && lay.nodes.has(e.target)).map((e) => ({
     id: e.id, source: e.source, target: e.target, type: "ae",
-    data: { e, t, pts: lay.routes.get(e.id), at: lay.labels.get(e.id), dim: !!hot && !hot.has(e.id), hot: !!hot?.has(e.id) } satisfies EData,
+    data: { e, t, pts: lay.routes.get(e.id), at: lay.labels.get(e.id), dim: !!hot && !hot.has(e.id), hot: !!hot?.has(e.id), red: !!hi?.has(e.id), flow } satisfies EData,
   }));
   return { nodes, edges };
 }
@@ -175,16 +180,16 @@ function LaneLabel({ data }: NodeProps) {
 }
 
 function AeNode({ data }: NodeProps) {
-  const { n, t, lines, selected, dim } = data as NData;
+  const { n, t, lines, selected, dim, red } = data as NData;
   const bad = n.kind === "admin" || n.marks.includes("bad");
   const s = kindStyle(t, bad ? "admin" : n.kind);
-  const group = isBox(n);
+  const group = isBox(n) || n.marks.includes("stack");
   const dbRole = n.kind === "database_role";
   const style: React.CSSProperties = {
     background: dbRole ? "transparent" : s.bg, color: s.text, borderColor: s.border,
     borderStyle: dbRole ? "none" : s.dash, borderWidth: dbRole ? 0 : 1.5,
     borderRadius: s.radius, opacity: dim ? 0.2 : n.marks.includes("disabled") ? 0.6 : 1,
-    outline: selected ? `2px solid ${t.accent}` : undefined, outlineOffset: 3,
+    outline: selected ? `2px solid ${t.accent}` : red ? `2px solid ${t.bad_ink}` : undefined, outlineOffset: 3,
     // a combined box is a small stack of cards
     boxShadow: group ? `4px 4px 0 -1.5px ${s.bg}, 4px 4px 0 0 ${s.border}, 8px 8px 0 -1.5px ${s.bg}, 8px 8px 0 0 ${s.border}` : undefined,
   };
@@ -226,11 +231,11 @@ function Lock({ color }: { color: string }) {
 }
 
 function AeEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps) {
-  const { e, t, pts, at, dim, hot } = data as EData;
+  const { e, t, pts, at, dim, hot, red, flow } = data as EData;
   const cls = e.back ? "back" : e.cls;
   const [, w0, dash, double] = EDGE[cls] ?? EDGE.inherit;
-  const w = hot ? w0 + 1 : w0;
-  const color = edgeColor(t, cls);
+  const w = (hot ? w0 + 1 : w0) + (flow && (e.count ?? 0) > 1 ? Math.min(4, Math.log2(e.count ?? 1)) : 0);
+  const color = red ? t.bad_ink : edgeColor(t, cls);
   // back edges (to an earlier lane) are not routed by ELK: a rounded step line
   const [path, lx, ly] = pts ? [roundPath(pts), at?.x ?? 0, at?.y ?? 0]
     : getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 8, offset: 18 });

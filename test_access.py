@@ -1326,12 +1326,62 @@ def test_nearest():  # screens 3, 12, 15: lanes and cuts, nearest ways in, sugge
     assert a.brings(F + "ENGINEER", o)["extra"] > 10
 
 
+def test_graph_see_compare():  # screens 4, 7, 9: access graph, what they see, compare
+    o = "SALES.CORE.TBL_CUSTOMER"
+    g = a.access_graph("object", o)
+    cls = {(e[0], e[1]): e[2] for e in g["edges"]}
+    assert cls[(T + "SALES_CORE_READ", o)] == "read" and cls[(T + "SALES_CORE_WRITE", o)] == "write"
+    assert cls[(F + "ENGINEER", T + "SALES_CORE_WRITE")] == "write" and cls[("SYSADMIN", o)] == "admin"
+    assert [lab for lab, _ in g["lanes"]][0] == "People" and g["lanes"][-1] == ("Table", [o])
+    st = next(s for s, us in g["stacks"].items() if "ANALYST_01" in us)
+    assert set(g["stacks"][st]) == {"ANALYST_01", "ANALYST_02"} and (st, "GRP_ANALYSTS") in cls
+    assert g["risky"][("OPS_01", "SYSADMIN")] == "admin" and g["people"][o] and g["leads"]["GRP_ANALYSTS"] == [o]
+    lane = {n: i for i, (_, ns) in enumerate(g["lanes"]) for n in ns}
+    assert lane["GRP_ANALYSTS"] == 1 and lane[F + "ANALYST"] == 1  # shortest step: ENGINEER_01 holds it directly
+    assert not a.access_graph("object", o, same=False)["stacks"]
+    assert not any(e[2] == "admin" for e in a.access_graph("object", o, admin=False)["edges"])
+    u = a.access_graph("user", "ENGINEER_01")
+    assert u["start"] == "ENGINEER_01" and a.BUILTIN_NODE in u["leads"]["PUBLIC"]
+    assert u["risky"][(T + "SHARED_LOGGING_READ", "SHARED.LOGGING.TBL_LOGGING")] == "writes"
+    assert u["risky_nodes"]["PUBLIC"] == "public" and u["levels"][F + "ENGINEER"] == "own"
+    r = a.access_graph("role", F + "ENGINEER")
+    lane = {n: i for i, (_, ns) in enumerate(r["lanes"]) for n in ns}
+    assert lane["SYSADMIN"] < lane[F + "ENGINEER"] < lane[T + "SALES_CORE_READ"] and r["lanes"][-1][0] == "Reaches"
+    assert ("SYSADMIN", F + "ENGINEER") in {(e[0], e[1]) for e in r["edges"]}
+    for st, n in [("user", x) for x in a.users] + [("role", x) for x in a.roles] + [("object", x) for x in a.objects]:
+        g = a.access_graph(st, n)
+        ids = {x for _, ns in g["lanes"] for x in ns}
+        assert all(e[0] in ids and e[1] in ids for e in g["edges"]), (st, n)
+    try:
+        a.access_graph("role", "NOPE")
+        assert False
+    except ValueError:
+        pass
+    s = a.seen("ENGINEER_01", True)
+    assert s["counts"]["columns"] == 5 and s["counts"]["clear"] == 5 and s["counts"]["unprotected"] == 3, s["counts"]
+    c = next(x for x in s["cards"] if x["object"] == o)
+    assert {x["column"]: x["fix"] for x in c["columns"]} == {"BIRTH_DATE": True, "EMAIL": False, "PHONE": True}
+    assert s["cards"][0]["sensitive"] and not s["cards"][-1]["sensitive"]
+    m = a.seen(F + "ANALYST", False)["counts"]
+    assert m["masked"] == 2 and m["clear"] == 2
+    d = a.compare("ENGINEER_01", True, "ANALYST_01", True)
+    assert d["counts"] == dict(only_a=0, only_b=0, different=2, same=1), d["counts"]
+    assert [r["diff"] for r in d["rows"]] == ["different", "different", "same"]
+    assert d["match"] == [dict(op="grant", role=F + "ENGINEER", to="ANALYST_01", toUser=True)]
+    assert dict(op="revoke", role=F + "ENGINEER", to="ENGINEER_01", toUser=True) in d["extras"]
+    x = a.compare(F + "DEPLOY", False, F + "MARKETING", False)
+    assert x["counts"]["only_a"] == 2 and all(c["op"] == "grant" and not c["toUser"] for c in x["match"])
+    assert a.compare("ENGINEER_01", True, "ADMIN_01", True)["counts"]["only_a"] == 0  # an admin reaches everything
+    assert a.compare("ENGINEER_01", True, "ANALYST_01", True, "db", "HR")["rows"][0]["diff"] == "only_a"
+    assert a.sees_text(F + "ANALYST", o) == "BIRTH_DATE clear · EMAIL masked · PHONE clear"
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_pages):
+              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals
