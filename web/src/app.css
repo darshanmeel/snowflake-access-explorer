@@ -148,3 +148,5 @@ div.ae-tile { cursor: default; }
 .ae-bar-lvl-read { background: var(--ae-lvl_read_bg); } .ae-bar-lvl-change { background: var(--ae-lvl_change_bg); } .ae-bar-lvl-own { background: var(--ae-lvl_own_bg); }
 .ae-bar-high { background: var(--ae-bad_ink); } .ae-bar-medium { background: var(--ae-warn_ink); } .ae-bar-low { background: var(--ae-line_strong); }
 .ae-dot2.ae-lvl-read { background: var(--ae-lvl_read_bg); } .ae-dot2.ae-lvl-change { background: var(--ae-lvl_change_bg); } .ae-dot2.ae-lvl-own { background: var(--ae-lvl_own_bg); }
+.ae-embed > .ae-pagehead { display: none; }
+.ae-embed > .ae-controls .ae-field:first-child:has(datalist) { display: none; }

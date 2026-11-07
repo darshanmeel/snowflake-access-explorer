@@ -2,9 +2,11 @@
 import { Fragment, useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { AccessObject, AccessPage, ListItem } from "../api/types";
-import { AccessPill, Card, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Toggle, toCsv } from "../components";
+import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Toggle, toCsv } from "../components";
 import { download } from "../components/table";
-import { useApp, useOpen } from "../ctx";
+import { AppCtx, useApp, useOpen } from "../ctx";
+import { RolePageView } from "./Role";
+import { UserPage } from "./User";
 import { Load, Pick } from "./common";
 
 const RANK = { names: 0, read: 1, change: 2, own: 3, admin: 4 } as const;
@@ -53,6 +55,7 @@ function Body({ d }: { d: AccessPage }) {
   const [open, setOpen] = useState<string | null>(null);
   const [cell, setCell] = useState<{ schema: string; min: string } | null>(null);
   const w = d.who, n = d.counts, user = w.kind === "user";
+  const show = c.params.show === "summary" ? "summary" : "detail"; // the diagram first
   const data = d.objects.filter((x) => x.category === "data" || (usage && x.category === "names"));
   const shown = data.filter((x) =>
     (lvl === "all" || (lvl === "read" ? x.level === "read" : lvl === "change" ? at(x, "change") && x.level !== "own" : lvl === "own" ? at(x, "own") : lvl === "multi" ? x.ways > 1 : true))
@@ -69,8 +72,6 @@ function Body({ d }: { d: AccessPage }) {
         line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${status}` : `${w.type} · held by ${plural(w.held_by?.users ?? 0, "person")} and ${plural(w.held_by?.roles ?? 0, "role")}`}
         roles={user ? d.why.map((r) => ({ id: r.role, note: r.note === "everyone" ? "" : r.note, kind: r.kind })) : undefined} />
       <div className="ae-actions">
-        <button type="button" className="ae-btn" onClick={() => c.nav(user ? "user" : "role", { name: w.name })}>Show as graph</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav(user ? "user" : "role", { name: w.name, part: "sees" })}>What they see</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("check", user ? { name: w.name } : {})}>Can they?</button>
       </div>
       <p className="ae-answer">
@@ -81,13 +82,19 @@ function Body({ d }: { d: AccessPage }) {
       </p>
       <div className="ae-tiles">
         {([["read", "Can read", n.read], ["change", "Can change", n.change], ["own", "Owns", n.own]] as const).map(([k, l, v]) => (
-          <button type="button" key={k} className={`ae-tile${lvl === k ? " on" : ""}`} onClick={() => setLvl(lvl === k ? "all" : k)}>
+          <button type="button" key={k} className={`ae-tile${lvl === k ? " on" : ""}`} onClick={() => { setLvl(lvl === k ? "all" : k); c.set({ show: "summary" }); }}>
             <span className="ae-tile-l"><span className={`ae-dot2 ae-lvl-${k}`} />{l}</span><span className="ae-tile-v">{v}</span>
           </button>
         ))}
         <div className="ae-tile ae-tile-sens"><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{n.sensitive}</span></div>
-        <a className="ae-tile" href="#runs"><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></a>
+        <button type="button" className="ae-tile" onClick={() => { c.set({ show: "summary" }); setTimeout(() => document.getElementById("runs")?.scrollIntoView(), 50); }}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
       </div>
+      <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
+        { key: "detail", label: user ? "Diagram & privileges" : "Diagram, held by & holds" },
+        { key: "summary", label: "One row per object", count: data.length },
+      ]} />
+      {show === "detail" && <Detail name={w.name} user={user} />}
+      {show === "summary" && <>
       <div className="ae-two">
         <Card title="Where the access is" sub="Objects per schema, by the most they can do. Click a cell to filter the list.">
           {d.heat.length ? (
@@ -139,7 +146,7 @@ function Body({ d }: { d: AccessPage }) {
                     <Fragment key={id}>
                       <div className="ae-orow" role="row">
                         <span className="ae-ocell">
-                          <button type="button" className="ae-link ae-mono ae-oname" onClick={() => o.open(x.object)}>{nameOf(x).split(".").pop()}</button>
+                          <button type="button" className="ae-link ae-mono ae-oname" onClick={() => o.open(x.object)}>{x.label ?? x.object.split(".").pop()}</button>
                           <span className="ae-muted ae-osub">{x.type.toLowerCase()}{x.schema ? ` · ${x.database}.${x.schema}` : ""}</span>
                           {x.findings.length > 0 && <span className="ae-ochips">{x.findings.map((f) => <FindingChip key={f.num} {...f} onOpen={() => ruleLink(f.num)} />)}</span>}
                         </span>
@@ -165,6 +172,7 @@ function Body({ d }: { d: AccessPage }) {
           {powers.length ? <Items xs={powers} open={o.open} rule={ruleLink} power /> : <EmptyState title="No account powers" />}
         </Card>
       </div>
+      </>}
     </>
   );
 }
@@ -207,6 +215,19 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
         {user && <button type="button" className="ae-link" onClick={() => c.nav("check", { name: who, obj: x.object })}>See all {x.ways} path{x.ways === 1 ? "" : "s"}</button>}
         <button type="button" className="ae-link" onClick={() => { navigator.clipboard?.writeText(`USE ROLE ${use};`).then(() => setCopied(true), () => {}); }}>{copied ? "Copied" : "Copy USE ROLE statement"}</button>
       </div>
+    </div>
+  );
+}
+
+/** The full User paths / Role paths page (role hierarchy diagram, privilege tabs with their diagrams, detail tables)
+ * inside this screen, for the same subject. */
+function Detail({ name, user }: { name: string; user: boolean }) {
+  const c = useApp();
+  const { user: _u, role: _r, show: _s, ...rest } = c.params;
+  const inner = { ...c, page: (user ? "user" : "role") as typeof c.page, params: { ...rest, name } };
+  return (
+    <div className="ae-embed">
+      <AppCtx.Provider value={inner}>{user ? <UserPage /> : <RolePageView />}</AppCtx.Provider>
     </div>
   );
 }
