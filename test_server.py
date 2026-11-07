@@ -347,6 +347,34 @@ def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if
     assert {p["key"]: p["group"] for p in m["pages"]}["whatif"] == "admin"
 
 
+def test_review_grid_catalog_flow():  # screens 6, 8, 16
+    g = js("/api/grid", ["scope", "columns", "rows", "total", "counts", "dbs", "refs"])
+    assert g["scope"] == "sensitive" and len(g["columns"]) == 5 and g["counts"]["stale"] >= 3 and g["counts"]["admin"] == 2
+    fin = next(r for r in g["rows"] if r["user"] == "FIN_14")
+    assert fin["suggest"] == "disabled" and fin["last_login"] and fin["cells"]
+    assert js("/api/grid?scope=db&db=HR")["scope"] == "db"
+    al = js("/api/grid?scope=all&hideusage=0")
+    assert al["total"] > len(js("/api/grid?scope=all")["columns"]) - 1 and len(al["columns"]) <= al["cap"]
+    o = js("/api/grid?object=SALES.CORE.TBL_CUSTOMER&columns=privileges")
+    assert o["scope"] == "object" and "SELECT" in {x["id"] for x in o["columns"]}
+    get("/api/grid?object=NOPE&columns=privileges", 404)
+    get("/api/grid?scope=db&db=NOPE", 404)
+    try:
+        server.grid_page({}, "mine")
+        assert False, "grid on My access"
+    except server.ApiError as x:
+        assert x.status == 400
+    s = js("/api/sensitive", ["catalog"])
+    assert [r["status"] for r in s["catalog"]][:2] == ["not", "partly"] and s["catalog"][0]["columns"]
+    assert len(js("/api/sensitive?db=FINANCE")["catalog"]) == 2
+    f = js("/api/flow", ["state", "groups", "roles", "objects", "links", "select", "refs"])
+    assert f["state"] == "ok" and f["select"] == "risky" and f["roles"][0]["kind"] == "admin"
+    assert server.flow_page({}, "mine")["state"] == "mine"
+    m = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
+    assert m["flow"] == m["review"] == m["sensitive"] == "admin"
+    assert "flow" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

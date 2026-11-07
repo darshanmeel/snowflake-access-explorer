@@ -555,6 +555,27 @@ Sensitive data. Producers: `a.governance_kpis()`, `a.cached("sens", a.sensitive)
 }
 ```
 
+`catalog` (screen 8, `a.catalog()`, same tag / db filters), most exposed first:
+`[{"object", "name", "ns", "type", "labels": ["PRIVACY_CATEGORY=IDENTIFIER"], "groups": ["pii"|"confidential"],
+"status": "not"|"partly"|"protected"|"whole", "masked": [1, 3], "columns": [{"column", "masked", "policies"}],
+"unmasked": 2, "row_policies": [], "readers": 6, "admin": 2}]`.
+
+### GET /api/flow?view=
+
+Screen 16, where sensitive data flows (shared only; `state` "mine" / "none" otherwise). Producer: `a.sens_flow()`.
+
+```jsonc
+{
+  "state": "ok", "select": "risky",                       // default selection: the dormant or disabled
+  "groups": [{"id": "risky", "label": "Dormant or disabled", "users": ["FIN_14"]}],   // active | risky | admin | service
+  "roles": [{"id": "GRP_EMEA_ALL", "label": "GRP_EMEA_ALL", "users": ["..."], "kind": "group"}],  // "Admin roles" kind admin, "Other roles (N)" kind fold
+  "objects": [{"id": "SALES.CORE.TBL_CUSTOMER", "label": "TBL_CUSTOMER", "ns": "SALES.CORE", "status": "partly",
+               "unmasked": ["BIRTH_DATE", "PHONE"], "masked": ["EMAIL"], "row_policies": [], "users": ["..."]}],
+  "links": [{"source": "risky", "target": "GRP_EMEA_ALL", "users": ["FIN_14"]}],     // group -> role, role -> object
+  "refs": {}
+}
+```
+
 ### GET /api/rules?view=&grantee=&sev=&rule=
 
 Rule checks; works in mine (the rules run on the slice that was loaded, as app.py). Producers:
@@ -600,6 +621,27 @@ Access review, shared only. Producer: `a.review(None if db == "*" else db)`, sor
   "refs": {}
 }
 ```
+
+### GET /api/grid?scope=sensitive|db|all&db=&hideusage=1 | object=&columns=privileges
+
+Screen 6 grid, shared only. Producer: `a.review_grid(scope, db, obj, hide_usage)`: people x objects (sensitive first,
+most people first, up to `GRID_MAX` columns) or people x the privileges of one object. A user holding an admin role
+has `admin` in every column.
+
+```jsonc
+{
+  "scope": "sensitive" | "db" | "all" | "object", "db": "DW", "dbs": ["..."], "object": "",
+  "columns": [{"id": "SALES.CORE.TBL_CUSTOMER", "name": "TBL_CUSTOMER", "ns": "SALES.CORE", "note": "EMAIL, PHONE", "sensitive": true}],
+  "rows": [{"user": "FIN_14", "type": "PERSON", "status": "disabled", "days": 244, "last_login": "...", "admin": [],
+            "roles": ["GRP_EMEA_ALL"], "suggest": "disabled",                 // roles: what a revoke takes away
+            "cells": {"FINANCE.REPORT.TBL_REVENUE": {"level": "change", "privileges": ["INSERT", "SELECT"], "path": ["..."]}}}],
+  "total": 5, "cap": 60, "sensitive": 5, "counts": {"people": 21, "admin": 2, "stale": 4, "service": 1},
+  "refs": {}
+}
+```
+
+Decisions (Keep / Revoke) stay in the browser (localStorage `ae-review`); Sign off downloads a CSV built in the
+browser (reviewer, time, scope, one row per person with the decision and the access per column).
 
 ### GET /api/review.csv?db=&schema=&object=&active=0
 

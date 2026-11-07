@@ -22,7 +22,7 @@ export type TabKey =
   | "execute" | "read" | "write" | "own" | "manage" | "all";
 
 export type UserStatus = "active" | "dormant" | "never" | "disabled";
-export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "rules" | "review" | "whatif";
+export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "flow" | "rules" | "review" | "whatif";
 
 /** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
 export type Path = string[];
@@ -710,6 +710,7 @@ export interface SensitivePage {
     admin_paths: Path[];
   }[];
   compare: { a: string; b: string; roles: string[]; rows: { object: string; a: string | null; b: string | null }[]; diff: string[] };
+  catalog: CatalogRow[]; // screen 8, most exposed first
   refs: Refs;
 }
 
@@ -1059,5 +1060,64 @@ export interface ComparePage {
   match: CompareChange[]; // make B match A
   extras: CompareChange[]; // remove A's extras
   old: { rows: { object: string; a: string | null; b: string | null }[]; diff: string[] } | null; // Compare two roles
+  refs: Refs;
+}
+
+/** Screen 8: one sensitive object with its protection. */
+export interface CatalogRow {
+  object: string;
+  name: string;
+  ns: string;
+  type: string;
+  labels: string[]; // tag=value
+  groups: ("pii" | "confidential")[];
+  status: "not" | "partly" | "protected" | "whole";
+  masked: [number, number];
+  columns: { column: string; masked: boolean; policies: string[] }[];
+  unmasked: number;
+  row_policies: string[];
+  readers: number;
+  admin: number;
+}
+
+/** Screen 6 grid (/api/grid). */
+export interface GridCell { level: string; privileges: string[]; path: Path }
+export interface GridRow {
+  user: string;
+  type: string;
+  status: UserStatus;
+  days: number | null;
+  last_login: string;
+  admin: string[];
+  roles: string[]; // granted roles on the paths: what a revoke takes away
+  suggest: string | null; // dormant / disabled / never: suggested revoke
+  cells: Record<string, GridCell>;
+}
+export interface GridPage {
+  view: View;
+  scope: "sensitive" | "db" | "all" | "object";
+  db: string;
+  dbs: string[];
+  object: string;
+  columns: { id: string; name: string; ns: string; note: string; sensitive: boolean }[];
+  rows: GridRow[];
+  total: number;
+  cap: number;
+  sensitive: number;
+  counts: { people: number; admin: number; stale: number; service: number };
+  refs: Refs;
+}
+
+/** Screen 16 (/api/flow). */
+export interface FlowNode { id: string; label: string; users: string[]; kind?: string; ns?: string; status?: string; unmasked?: string[]; masked?: string[]; row_policies?: string[] }
+export interface FlowLink { source: string; target: string; users: string[] }
+export interface FlowPage {
+  view: View;
+  state: "ok" | "mine" | "none";
+  groups: FlowNode[];
+  roles: FlowNode[];
+  objects: FlowNode[];
+  links: FlowLink[];
+  select: string | null;
   refs: Refs;
 }

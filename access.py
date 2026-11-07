@@ -1975,6 +1975,144 @@ def sensitive_rank():
     return sorted(out, key=lambda r: (-len(r["people"]) - len(r["disabled"]) - len(r["service"]), r["object"]))
 
 
+PII_TAGS = re.compile(os.environ.get("PII_TAGS", "IDENTIFIER|PII|PERSONAL"), re.I)  # catalog filter "PII / identifiers"
+CONF_TAGS = re.compile(os.environ.get("CONFIDENTIAL_TAGS", "CONFIDENTIAL|SECRET|RESTRICTED"), re.I)
+PROTECTION = ("not", "partly", "protected", "whole")  # most exposed first
+
+
+def protection(cols, k):
+    """not (no sensitive column masked) | partly | protected | whole (tagged as a whole object, no columns)."""
+    return "whole" if not cols else "not" if not k else "partly" if k < len(cols) else "protected"
+
+
+def catalog():
+    """Screen 8: sensitive_rank() rows with protection (status, columns [dict(column, masked, policies)], unmasked),
+    labels (tag=value), groups (pii / confidential from the tag values) and readers (users who can read it, any
+    path). Most exposed first: status, then unmasked columns, then readers."""
+    out = []
+    for r in sensitive_rank():
+        ps = policies_of(r["object"])["columns"]
+        cols = [dict(column=c, masked=c in ps, policies=[p["name"] for p in ps.get(c, [])]) for c in r["cols"]]
+        labs = list(dict.fromkeys(tag_label(t, v) for _, t, v, _ in r["tags"]))
+        out.append(r | dict(status=protection(r["cols"], r["masked"][0]), columns=cols,
+                            unmasked=sum(not c["masked"] for c in cols), labels=labs, readers=len(r["users"]),
+                            groups=[g for g, rx in (("pii", PII_TAGS), ("confidential", CONF_TAGS))
+                                    if any(rx.search(x) for x in labs)]))
+    return sorted(out, key=lambda r: (PROTECTION.index(r["status"]), -r["unmasked"], -r["readers"], r["object"]))
+
+
+ADMIN_BOX = "Admin roles"  # flow: a user holding an admin role reaches every object through it
+FLOW_WORD = dict(active="Active people", risky="Dormant or disabled", admin="Admins", service="Service users")
+
+
+def flow_group(u, adm):
+    """Flow column 1: admin | risky (dormant, disabled, never logged in) | service | active."""
+    return "admin" if u in adm else "risky" if status(u) != "active" else "service" if is_service(u) else "active"
+
+
+def sens_flow(max_roles=None):
+    """Screen 16, where sensitive data flows: people (by flow_group) -> the role they were granted (first role on the
+    path) -> sensitive object they read (READ_PRIVS). Admin users go through one ADMIN_BOX to every sensitive object.
+    Over max_roles roles, those with the fewest users fold into "Other roles (N)". Returns dict(groups, roles,
+    objects, links): nodes dict(id, label, users), roles also kind, objects also ns, status, unmasked, masked,
+    row_policies; links dict(source, target, users): the users that flow over the link."""
+    s, adm = sensitive(), admin_users()
+    via = {}  # (granted role, object) -> users
+    for o in s:
+        for x, pv, p in who_can(o):
+            if pv in READ_PRIVS and from_user(p) and x not in adm:
+                via.setdefault((p[1], o), set()).add(x)
+        if adm:
+            via.setdefault((ADMIN_BOX, o), set()).update(adm)
+    per = {}
+    for (r, o), us in via.items():
+        per.setdefault(r, set()).update(us)
+    keep = sorted(per, key=lambda r: (r != ADMIN_BOX, -len(per[r]), r))
+    other = set(keep[max_roles or MAX_OBJECTS:])
+    box = lambda r: f"Other roles ({len(other)})" if r in other else r
+    links, roles = {}, {}
+    for (r, o), us in via.items():
+        links.setdefault((box(r), o), set()).update(us)
+    for r in keep:
+        roles.setdefault(box(r), set()).update(per[r])
+        for u in per[r]:
+            links.setdefault((flow_group(u, adm), box(r)), set()).add(u)
+    every = set().union(*per.values()) if per else set()
+    cat = {r["object"]: r for r in catalog()}
+    objs = [dict(id=o, label=split_name(o)[2] or o, ns=".".join(split_name(o)[:2]), status=cat[o]["status"],
+                 unmasked=[c["column"] for c in cat[o]["columns"] if not c["masked"]],
+                 masked=[c["column"] for c in cat[o]["columns"] if c["masked"]], row_policies=cat[o]["row_policies"],
+                 users=sorted(set().union(*(us for (r, o2), us in via.items() if o2 == o))))
+            for o in s]
+    return dict(groups=[dict(id=g, label=w, users=sorted(u for u in every if flow_group(u, adm) == g))
+                        for g, w in FLOW_WORD.items() if any(flow_group(u, adm) == g for u in every)],
+                roles=[dict(id=r, label=r, users=sorted(us),
+                            kind="admin" if r == ADMIN_BOX else "fold" if r not in per else role_kind(r))
+                       for r, us in roles.items()],
+                objects=sorted((o for o in objs if o["users"]), key=lambda o: (-len(o["users"]), o["id"])),
+                links=[dict(source=x, target=y, users=sorted(us)) for (x, y), us in sorted(links.items())])
+
+
+GRID_MAX = int(os.environ.get("GRID_MAX", "60"))  # review grid: object columns drawn, most-reached first
+
+
+def grid_cell(rs, kind):
+    """One review grid cell from [(privilege, path)]: level (highest obj_level), privileges, path (shortest)."""
+    lv = lambda pv: OBJ_LEVELS.index(obj_level(pv, kind))
+    pvs = sorted({pv for pv, _ in rs}, key=lambda pv: (-lv(pv), pv))
+    return dict(level=obj_level(pvs[0], kind), privileges=pvs, path=min((p for _, p in rs), key=len))
+
+
+def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_MAX):
+    """Screen 6: people x objects. scope sensitive (the sensitive objects), db (objects of database db) or all;
+    obj: people x the privileges on that one object instead (columns = privileges). A cell: grid_cell(), path
+    user->...->holder->object; a user holding an admin role has "admin" in every column. hide_usage drops USAGE
+    (objects left without a cell drop out). Rows: user, type, status, days, admin (admin roles held), roles (granted
+    roles on the paths: what a revoke takes away), cells {column id: cell}. Returns dict(columns, rows, total)."""
+    adm, cells, roles = admin_users(), {}, {}
+    if obj:
+        k, got = kinds.get(obj, ""), {}
+        for x, pv, p in who_can(obj):
+            if from_user(p):
+                got.setdefault(x, {}).setdefault(pv, []).append(p + [obj])
+        pvs = sorted({pv for v in got.values() for pv in v}, key=lambda pv: (-OBJ_LEVELS.index(obj_level(pv, k)), pv))
+        cols = [dict(id=pv, name=pv, ns=obj, note=obj_level(pv, k), sensitive=False) for pv in pvs]
+        for x, v in got.items():
+            cells[x] = {pv: dict(level=obj_level(pv, k), privileges=[pv], path=min(ps, key=len)) for pv, ps in v.items()}
+            roles[x] = {p[1] for ps in v.values() for p in ps}
+        total = len(cols)
+    else:
+        s, reach = sensitive(), {}
+        objs = sorted(s) if scope == "sensitive" else \
+            [o for o in objects if split_name(o)[0] and (scope != "db" or split_name(o)[0] == db)]
+        for o in objs:
+            got = {}
+            for x, pv, p in who_can(o):
+                if from_user(p) and not (hide_usage and pv == "USAGE"):
+                    got.setdefault(x, []).append((pv, p + [o]))
+            for x, rs in got.items():
+                cells.setdefault(x, {})[o] = grid_cell(rs, kinds.get(o, ""))
+                roles.setdefault(x, set()).update(p[1] for _, p in rs)
+            if got:
+                reach[o] = len(got)
+        objs = sorted(reach, key=lambda o: (o not in s, -reach[o], o))
+        total, objs = len(objs), set(objs[:cap])
+        cols = [dict(id=o, name=split_name(o)[2] or o, ns=".".join(x for x in split_name(o)[:2] if x),
+                     note=", ".join(sensitive_cols(o)) or ("whole object" if o in s else ""), sensitive=o in s)
+                for o in sorted(objs, key=lambda o: (o not in s, -reach[o], o))]
+        cells = {x: {o: v for o, v in cs.items() if o in objs} for x, cs in cells.items()}
+    for u in adm:  # admin roles inherit every role: every column
+        ps = admin_paths(u, True)
+        cells[u] = {c["id"]: dict(level="admin", privileges=["ALL"], path=min(ps, key=len)) for c in cols}
+        roles.setdefault(u, set()).update(q[1] for q in ps)
+    rows = [dict(user=u, type=str((profile.get(u) or {}).get("TYPE") or "PERSON"), status=status(u), days=login_days(u),
+                 admin=adm.get(u, []), roles=sorted(roles.get(u, set()) - {"PUBLIC"}), cells=cs)
+            for u, cs in cells.items() if cs]
+    rows.sort(key=lambda r: (not r["admin"], -max(OBJ_LEVELS.index(c["level"]) for c in r["cells"].values()),
+                             -len(r["cells"]), r["user"]))
+    return dict(columns=cols, rows=rows, total=total)
+
+
 # ---------- page aggregations: plain lists of dicts ----------
 
 def grants(name, user=False, default_only=False, limit=None):

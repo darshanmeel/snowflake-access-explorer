@@ -116,6 +116,31 @@ stays, what changes, and the order of the work.
 - **Screen 10, Rules** (`rules&show=list`): rules by area with severity counts; each rule #, name, severity, findings
   link (to Risks & fixes on that rule) and On/Off; expand What it checks / How to fix (`RULE_INFO`, all 23 filled).
 - Redirects: `rulelist` -> `rules&show=list`, `risks` -> `rules&show=fixes`, `plan` -> `whatif&show=plan`.
+- **Screen 6, Review & sign-off** (`review`, endpoint `/api/grid`): "Access review" (the old page: Sensitive objects /
+  All tables, CSV) stays the default tab. "Review grid & sign-off" (`show=grid`): the sentence (people, admins,
+  dormant or disabled), links to the catalog, Compare and Data flow; scope chips Sensitive data / Database X /
+  Everything (`scope=`, `db=`), People only (`people=0` off), Only dormant / disabled (`stale=1`), Hide USAGE
+  (`hideusage=0` off); people x objects grid, cell = ladder colour + word, hover = path and privileges; dormant /
+  disabled / never logged in rows tinted with "Suggested: revoke"; Keep / Revoke per row (localStorage `ae-review`,
+  per scope); footer decided count, revokes -> "Test revokes in the change plan" (the shared `ae-plan`, revoke each
+  granted role on the paths from that user, then What if on the plan), Sign off downloads a CSV with the reviewer
+  typed, the decisions and a UTC timestamp, in the browser. `object=&columns=privileges` is the Object Users x
+  privileges grid (people x privileges of one object). `access.py`: `review_grid`, `grid_cell`, `GRID_MAX`.
+- **Screen 8, Sensitive objects catalog** (`sensitive&show=catalog`): the old Sensitive objects / Who can read them /
+  Compare two roles tabs stay, Sensitive objects the default; tab "Catalog": sentence, filters All / Not protected
+  (a sensitive column without masking) / PII / identifiers / Confidential (`PII_TAGS`, `CONFIDENTIAL_TAGS`), rows
+  object, tags, status Not protected / Partly / Protected / Whole object with "1 of 3 columns masked" or the row
+  policy, column chips red (no masking) / green (masked), people who can read (+ admins), Who -> (screen 2). Most
+  exposed first. `access.py`: `catalog`, `protection`.
+- **Screen 16, Sensitive data flow** (`flow`, endpoint `/api/flow`, new, Admin group, hidden in My access): People
+  (Active / Dormant or disabled / Admins / Service) -> the role they were granted -> sensitive object, own SVG and
+  buttons (no new dependency); box height and line width = people; object subtitle red when columns are unmasked;
+  a click follows a box (`sel=`, `sel=none` everyone): the people through it and only their own links, with the
+  headline sentence and a panel (people, Who has access / Open the role, Review these people). Default selection:
+  Dormant or disabled. Over 12 roles the smallest fold into "Other roles (N)". Linked from Home's data protection,
+  the catalog, the Sensitive data page and the review grid. `access.py`: `sens_flow`, `flow_group`, `ADMIN_BOX`.
+- Redirects: `catalog` -> `sensitive&show=catalog`, `dataflow` and `sensitive&show=flow` -> `flow`, `signoff` ->
+  `review&show=grid`.
 
 ## Not done, and why
 
@@ -128,6 +153,6 @@ stays, what changes, and the order of the work.
 
 1. Foundations: tokens, shell, shared components, redirect table. Old pages stay reachable under "Detail".
 2. Answer screens: Home, A person or role, then object, Can they?, graph, what they see, compare.
-3. Admin screens: Risks & fixes with change plan, What if, Review, Sensitive catalog, Rules, data flow.
+3. Admin screens: Risks & fixes with change plan, What if, Review, Sensitive catalog, Rules, data flow (done).
 4. New data: needs the decision above.
 5. Cleanup: remove the old pages once every tab has a destination and a redirect.

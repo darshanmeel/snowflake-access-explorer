@@ -1397,12 +1397,49 @@ def test_plan():  # screens 5 and 11: every finding's fix as What if changes sim
     assert len(a.granted) == before and any(pv == "USAGE" for pv, _, o in a.granted["PUBLIC"] if o == "WH_SALES_XS")
 
 
+def test_review_catalog_flow():  # screens 6, 8, 16: review grid, sensitive catalog, sensitive data flow
+    cat = {r["object"]: r for r in a.catalog()}
+    assert [r["status"] for r in a.catalog()] == ["not", "partly", "protected", "whole", "whole"]
+    c = cat["SALES.CORE.TBL_CUSTOMER"]
+    assert c["unmasked"] == 2 and c["groups"] == ["pii"] and [x["column"] for x in c["columns"] if x["masked"]] == ["EMAIL"]
+    assert cat["FINANCE.REPORT.TBL_REVENUE"]["groups"] == ["confidential"] and a.protection([], 0) == "whole"
+    g = a.review_grid()
+    assert {x["id"] for x in g["columns"]} == set(a.sensitive()) and g["total"] == 5
+    rows = {r["user"]: r for r in g["rows"]}
+    assert rows["ADMIN_01"]["admin"] and all(x["level"] == "admin" for x in rows["ADMIN_01"]["cells"].values())
+    assert {q[1] for q in a.admin_paths("ADMIN_01", True)} <= set(rows["ADMIN_01"]["roles"])
+    assert g["rows"][0]["admin"] and rows["FIN_14"]["status"] == "disabled" and "GRP_EMEA_ALL" in rows["FIN_14"]["roles"]
+    cell = rows["ANALYST_01"]["cells"]["SALES.CORE.TBL_CUSTOMER"]
+    assert cell["level"] == "read" and cell["path"][0] == "ANALYST_01" and cell["path"][-1] == "SALES.CORE.TBL_CUSTOMER"
+    assert "PUBLIC" not in {r for x in g["rows"] for r in x["roles"]}
+    al = a.review_grid("all", cap=10)
+    assert len(al["columns"]) == 10 < al["total"] and al["columns"][0]["sensitive"]
+    assert all(x["level"] != "names" for r in al["rows"] for x in r["cells"].values())
+    assert any(x["level"] == "names" for r in a.review_grid("db", "HR", hide_usage=False)["rows"] for x in r["cells"].values())
+    o = a.review_grid(obj="SALES.CORE.TBL_CUSTOMER")
+    assert o["columns"][0]["id"] == "OWNERSHIP" and {x["id"] for x in o["columns"]} >= {"SELECT", "INSERT"}
+    assert all(list(x["cells"]) for x in o["rows"])
+    f = a.sens_flow()
+    grp = {x["id"]: x["users"] for x in f["groups"]}
+    assert set(grp["risky"]) == {"ANALYST_02", "FIN_12", "FIN_13", "FIN_14"} and grp["admin"] == ["ADMIN_01", "OPS_01"]
+    assert grp["service"] == ["SVC_DEPLOY"] and f["roles"][0]["id"] == a.ADMIN_BOX
+    ids = {x["id"] for x in f["groups"] + f["roles"] + f["objects"]}
+    assert all(l["source"] in ids and l["target"] in ids and l["users"] for l in f["links"])
+    risky = {l["target"] for l in f["links"] if l["source"] == "risky"}
+    assert risky == {"GRP_EMEA_ALL", "GRP_ANALYSTS", a.TECH + "SALES_MART_READ"}  # ANALYST_02 holds it straight (rule 1)
+    cu = next(x for x in f["objects"] if x["id"] == "SALES.CORE.TBL_CUSTOMER")
+    assert cu["unmasked"] == ["BIRTH_DATE", "PHONE"] and cu["masked"] == ["EMAIL"]
+    small = a.sens_flow(max_roles=3)
+    assert len(small["roles"]) == 4 and small["roles"][-1]["kind"] == "fold" and small["roles"][-1]["id"].startswith("Other roles")
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_pages):
+              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow,
+              test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

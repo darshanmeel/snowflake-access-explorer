@@ -4,19 +4,34 @@ import type { PrivClass, ReviewPage, ReviewRow } from "../api/types";
 import { AccessTag, Banner, Card, DataTable, KpiRow, StatusDot, Tabs } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
+import { ReviewGrid } from "./ReviewGrid";
 
 const RANK = ["use", "read", "manage", "write", "own", "admin"];
 const strongest = (cs: PrivClass[]): PrivClass => cs.reduce<PrivClass>((a, c) => (RANK.indexOf(c) > RANK.indexOf(a) ? c : a), cs[0] ?? "use");
 
 export function ReviewPageView() {
-  const [tab, setTab] = useState("sens");
   const c = useApp();
-  const s = useApi<ReviewPage>(c.view === "mine" ? null : "review", apiParams(c));
+  const show = c.params.show === "grid" || c.params.columns === "privileges" ? "grid" : "old"; // the old review first
   if (c.view === "mine") return <><Head title="Access review" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
   return (
     <>
-      <Head title="Access review" sub="Who can reach what, one row per user and object, ready for sign-off."
-        right={<button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button>} />
+      <Head title="Review & sign-off" sub="Who can reach what, ready for sign-off. Decisions stay in this browser; nothing is written to Snowflake." />
+      <Tabs active={show} onChange={(k) => c.set(k === "grid" ? { show: "grid" } : { show: null, columns: null, object: null, scope: null })} tabs={[
+        { key: "old", label: "Access review" },
+        { key: "grid", label: "Review grid & sign-off" },
+      ]} />
+      {show === "old" ? <OldReview /> : <ReviewGrid />}
+    </>
+  );
+}
+
+function OldReview() {
+  const [tab, setTab] = useState("sens");
+  const c = useApp();
+  const s = useApi<ReviewPage>("review", apiParams(c));
+  return (
+    <>
+      <div className="ae-row ae-right"><button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button></div>
       <Load s={s}>{(d) => {
         const f = d.filters, k = d.kpis;
         const t = tab === "sens" && !d.rows.some((r) => r.sensitive.length) ? "all" : tab;

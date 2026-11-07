@@ -28,11 +28,12 @@ DIST = pathlib.Path(__file__).with_name("web") / "dist"
 PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
          "graph": "Access graph", "see": "What they see", "compare": "Compare", "request": "Request access",
          "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
+         "flow": "Sensitive data flow",
          "user": "User paths", "role": "Role paths"}
 GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "graph": "answers", "see": "answers",
          "compare": "answers", "request": "answers", "rules": "admin", "whatif": "admin", "review": "admin",
-         "sensitive": "admin", "user": "detail", "role": "detail"}  # side nav groups
-SHARED_ONLY = {"review"}
+         "sensitive": "admin", "flow": "admin", "user": "detail", "role": "detail"}  # side nav groups
+SHARED_ONLY = {"review", "flow"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
 KNOWN = {"user", "functional", "technical", "group", "admin", "object"}
@@ -1566,7 +1567,7 @@ def sensitive_page(p, view):
     gov = a.governance_kpis()["text"] if not mine else None
     empty = dict(view=view, governance=gov, filters=dict(tag="", db="", people=False, tags=[], dbs=[]),
                  kpis=dict(objects=0, columns=0, whole=0, people=0, admin=0, disabled=0, service=0, unmasked=0, stale=[]),
-                 objects=[], readers=[], compare=dict(a="", b="", roles=[], rows=[], diff=[]))
+                 objects=[], readers=[], catalog=[], compare=dict(a="", b="", roles=[], rows=[], diff=[]))
     if not S["sens"]:
         state = ("mine" if mine else "unavailable" if a.run["SOURCES"].get("tags") == "UNAVAILABLE"
                  else "no_tags" if not a.tags else "none_sensitive")
@@ -1622,6 +1623,12 @@ def sensitive_page(p, view):
                       cols=r["cols"], masked=list(r["masked"]), row_policies=r["row_policies"], people=r["people"],
                       disabled=r["disabled"], service=r["service"], admin=r["admin"], roles=r["roles"]) for r in rank],
         readers=[reader(u, who[u], False) for u in us] + [reader(u, None, True) for u in ad],
+        catalog=[dict(object=r["object"], name=r["name"], ns=f'{r["database"]}.{r["schema"]}', type=r["kind"],
+                      labels=r["labels"], groups=r["groups"], status=r["status"], masked=list(r["masked"]),
+                      columns=r["columns"], unmasked=r["unmasked"], row_policies=r["row_policies"], readers=r["readers"],
+                      admin=len(r["admin"]))
+                 for r in a.catalog() if (not db or r["database"] == db)
+                 and (not tg or tg in r["labels"])],
         compare=dict(a=x, b=y, roles=a.roles, **pair_rows(x, False, y, False, [r["object"] for r in rank])))
 
 
@@ -1769,6 +1776,37 @@ def review_page(p, view):
                    privileges=[s for s in x["privileges"].split(", ") if s], classes=[s for s in x["classes"].split(", ") if s],
                    sensitive=[s for s in x["sensitive"].split(", ") if s], granted=[s for s in x["granted"].split(", ") if s],
                    path=x["path"].split(" > ") if x["path"] else [], admin=not x["type"], hidden=hide(x)) for x in rs])
+
+
+def grid_page(p, view):
+    """Screen 6 grid: people x objects (scope sensitive | db | all), or people x privileges of one object
+    (object=&columns=privileges). Rows carry suggest (dormant / disabled / never logged in: suggested revoke)."""
+    if view == "mine":
+        raise ApiError(400, "shared_only", "The access review is about everyone: use the shared snapshot.")
+    dbs = sorted({a.split_name(o)[0] for o in a.objects} - {""})
+    obj = p.get("object", "") if p.get("columns") == "privileges" else ""
+    need(not obj or obj in a.kinds, f"{obj} is not in this snapshot")
+    scope = p.get("scope") if p.get("scope") in ("sensitive", "db", "all") else "sensitive" if S["sens"] else "all"
+    db = p.get("db") or (dbs[0] if dbs else "")
+    need(scope != "db" or db in dbs, f"{db} is not in this snapshot")
+    g = a.review_grid(scope, db, obj or None, flag(p, "hideusage", True))
+    rows = [r | dict(last_login=login(r["user"])[0], suggest=r["status"] if r["status"] != "active" else None)
+            for r in g["rows"]]
+    people = [r for r in rows if r["type"] not in ("SERVICE", "LEGACY_SERVICE")]
+    return dict(view="shared", scope="object" if obj else scope, db=db, dbs=dbs, object=obj, columns=g["columns"],
+                rows=rows, total=g["total"], cap=a.GRID_MAX, sensitive=len(S["sens"]),
+                counts=dict(people=len(people), admin=sum(bool(r["admin"]) for r in people),
+                            stale=sum(bool(r["suggest"]) for r in people), service=len(rows) - len(people)))
+
+
+def flow_page(p, view):
+    """Screen 16: where sensitive data flows (access.sens_flow), with the default selection: the dormant or disabled."""
+    if view == "mine" or not S["sens"]:
+        return dict(view=view, state="mine" if view == "mine" else "none", groups=[], roles=[], objects=[], links=[],
+                    select=None)
+    f = a.sens_flow()
+    return dict(view=view, state="ok", **f,
+                select="risky" if any(g["id"] == "risky" for g in f["groups"]) else None)
 
 
 def review_csv(p, view):
@@ -1954,9 +1992,9 @@ def mkrefs(out):
 ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
-          "compare": compare_page}
+          "compare": compare_page, "grid": grid_page, "flow": flow_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
-             "whatif", "map", "see", "compare"}
+             "whatif", "map", "see", "compare", "grid", "flow"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
@@ -2023,7 +2061,7 @@ def make_app():
         return h
 
     for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
-              "whatif", "who", "request", "map", "see", "compare"):
+              "whatif", "who", "request", "map", "see", "compare", "grid", "flow"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

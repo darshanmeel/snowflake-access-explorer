@@ -128,6 +128,10 @@ export function HomePageView() {
                 <button type="button" className="ae-tile" onClick={() => c.nav("sensitive", {})}>
                   <span className="ae-tile-l">Tagged objects · masked columns</span><span className="ae-tile-v">{d.protection.tagged} · {d.protection.masked}</span>
                 </button>
+                <button type="button" className="ae-tile" onClick={() => c.nav("flow", {})}>
+                  <span className="ae-tile-l">Where sensitive data flows</span><span className="ae-tile-v ae-tile-vs">Data flow →</span>
+                  <span className="ae-tile-c">people → roles → sensitive objects</span>
+                </button>
                 <button type="button" className="ae-tile" onClick={() => c.nav("sensitive", {})}>
                   <span className="ae-tile-l">Tables with row policies</span><span className="ae-tile-v">{d.protection.row_tables}</span>
                 </button>

@@ -3,6 +3,7 @@ import { useApi } from "../api/client";
 import type { SensitivePage } from "../api/types";
 import { Banner, Card, Chips, DataTable, KpiRow, Tabs } from "../components";
 import { apiParams, useApp } from "../ctx";
+import { Catalog } from "./Catalog";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
 
 type O = SensitivePage["objects"][number];
@@ -18,10 +19,12 @@ const WHY: Record<string, string> = {
 export function SensitivePageView() {
   const c = useApp();
   const s = useApi<SensitivePage>("sensitive", apiParams(c));
-  const [part, setPart] = useState("objects");
+  const [part, setPart] = useState(c.params.show === "catalog" ? "catalog" : "objects"); // the old tables first
   return (
     <>
-      <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them." />
+      <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them."
+        right={<div className="ae-row0"><button type="button" className="ae-btn" onClick={() => c.nav("flow", {})}>Data flow</button>
+          <button type="button" className="ae-btn" onClick={() => c.nav("review", { show: "grid" })}>Review & sign-off</button></div>} />
       <Load s={s}>{(d) => {
         if (d.state !== "ok") return <Banner tone="info" title="Nothing to show" lines={[WHY[d.state] ?? d.state]} />;
         const k = d.kpis;
@@ -40,11 +43,13 @@ export function SensitivePageView() {
               { label: "Unmasked columns", value: k.unmasked, tone: k.unmasked ? "bad" : null },
             ]} />
             {k.stale.length > 0 && <Banner tone="warn" title="Disabled or dormant users still hold access" lines={[k.stale.join(", ")]} />}
-            <Tabs active={part} onChange={setPart} tabs={[
+            <Tabs active={part} onChange={(k) => { setPart(k); c.set({ show: k === "catalog" ? "catalog" : null }); }} tabs={[
               { key: "objects", label: "Sensitive objects", count: d.objects.length },
               { key: "readers", label: "Who can read them", count: d.readers.length },
               { key: "compare", label: "Compare two roles" },
+              { key: "catalog", label: "Catalog", count: d.catalog.length },
             ]} />
+            {part === "catalog" && <Catalog rows={d.catalog} />}
             {part === "objects" && <Card title="Sensitive objects" scroll>
               <DataTable csv="sensitive_objects.csv" rows={d.objects} limit={300}
                 columns={[
