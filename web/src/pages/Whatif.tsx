@@ -6,6 +6,8 @@ import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, 
 import { Banner, Card, DataTable, KpiRow, Tabs } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
 import { col, Controls, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
+import { PlanTab } from "./Plan";
+import { addTo, changeText, plan } from "./changeplan";
 
 const OPS: [WhatIfOp, string][] = [
   ["revoke_role_from_user", "Revoke a role from a user"],
@@ -40,15 +42,7 @@ export function changeOfPath(path: string[], kinds: Record<string, string>): Wha
     : { op: "revoke_role_from_role", role: path[1], grantee: start };
 }
 
-const text = (ch: WhatIfChange) => {
-  switch (ch.op) {
-    case "revoke_role_from_user": return `Revoke ${ch.role} from user ${ch.user}`;
-    case "revoke_role_from_role": return `Revoke ${ch.role} from role ${ch.grantee}`;
-    case "revoke_priv": return `Revoke ${ch.privilege} on ${ch.object} from ${ch.role}`;
-    case "drop_role": return `Drop role ${ch.role}`;
-    default: return "Empty PUBLIC";
-  }
-};
+const text = changeText;
 
 function Builder({ onAdd }: { onAdd: (ch: WhatIfChange) => void }) {
   const c = useApp();
@@ -196,11 +190,19 @@ export function WhatIfPageView() {
   const c = useApp();
   const list = changesOf(c);
   const put = (l: WhatIfChange[]) => c.set({ changes: l.length ? JSON.stringify(l) : null });
-  const s = useApi<WhatIfPage>(list.length ? "whatif" : null, apiParams(c));
+  const show = c.params.show === "plan" ? "plan" : "changes"; // the old page first
+  const s = useApi<WhatIfPage>(list.length && show === "changes" ? "whatif" : null, apiParams(c));
   return (
     <>
-      <Head title="What if" sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake." />
-      <Card title="Changes">
+      <Head title="What if" sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake."
+        right={<button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks & fixes</button>} />
+      <Tabs active={show} onChange={(k) => c.set({ show: k === "changes" ? null : k, by: null })} tabs={[
+        { key: "changes", label: "Changes & impact tables", count: list.length || null },
+        { key: "plan", label: "Change plan" },
+      ]} />
+      {show === "plan" && <PlanTab fromUrl={list} />}
+      {show === "changes" && <>
+      <Card title="Changes" right={list.length > 0 && <button className="ae-btn" onClick={() => { plan.set(addTo(plan.get(), list)); c.set({ show: "plan" }); }}>Add to the change plan</button>}>
         <Builder onAdd={(ch) => put([...list.filter((x) => text(x) !== text(ch)), ch])} />
         {list.length > 0
           ? <div className="ae-chips">{list.map((x) => (
@@ -209,6 +211,7 @@ export function WhatIfPageView() {
           : <p className="ae-muted">Add one or more changes. You can also start from a role page, a path or a finding ("What if revoked?").</p>}
       </Card>
       {list.length > 0 && <Load s={s}>{(d) => <Result d={d} />}</Load>}
+      </>}
     </>
   );
 }

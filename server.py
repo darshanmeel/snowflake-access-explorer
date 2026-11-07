@@ -730,7 +730,8 @@ def finding(x):
     return dict(num=x["num"], title=x["title"], severity=x["severity"], area=RULE_INFO.get(x["num"], ("", "Other"))[1],
                 grantee=a.uid(x["grantee"], user), kind=norm(x["kind"]), what=x["detail"], impact=impact(x),
                 people=sorted({x["grantee"]} if user else set()) or x["losers"][:50], paths=x["paths"][:5],
-                iac=x["iac"], sql=x["sql"], same_fix=x["same_fix"])
+                iac=x["iac"], sql=x["sql"], same_fix=x["same_fix"], changes=a.fix_changes(x["edges"]),
+                objects=a.finding_objects(x))
 
 
 def findings_of(name, user, skip=()):

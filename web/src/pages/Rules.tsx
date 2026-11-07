@@ -4,6 +4,7 @@ import type { AdminPerson, Refs, RulesPage } from "../api/types";
 import { Banner, Card, DataTable, FindingList, PathText, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, Head, Load, NameLink } from "./common";
+import { RisksTab, RuleList } from "./Risks";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 
@@ -13,15 +14,31 @@ export function RulesPageView() {
   const [tab, setTab] = useState("findings");
   const o = useOpen(s.data?.refs);
   type Rule = (typeof c.meta.rules)[number];
+  const show = c.params.show === "fixes" || c.params.show === "list" ? c.params.show : "checks"; // the old page first
   return (
     <>
-      <Head title="Rule checks" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
+      <Head title="Risks & fixes" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
         right={<button className="ae-btn" onClick={() => download("rules.csv", apiParams(c), "findings.csv")}>Download CSV</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
         return (
           <>
             {d.rows_unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read" lines={[`Rows are unknown for ${d.rows_unknown.slice(0, 6).join(", ")}${d.rows_unknown.length > 6 ? " and more" : ""}.`]} />}
+            <Tabs active={show} onChange={(k) => c.set({ show: k === "checks" ? null : k })} tabs={[
+              { key: "checks", label: "Rule checks", count: d.total },
+              { key: "fixes", label: "Risks & change plan" },
+              { key: "list", label: "Rules", count: c.meta.rules.length },
+            ]} />
+            {scope.length > 0 && show !== "checks" && (
+              <div className="ae-graph-open">
+                Showing
+                {d.filters.rule && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ rule: null })}>rule {d.filters.rule} ×</button>}
+                {d.filters.grantee && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ grantee: null })}>{d.filters.grantee} ×</button>}
+              </div>
+            )}
+            {show === "fixes" && <RisksTab key={scope.join()} d={d} />}
+            {show === "list" && <RuleList d={d} />}
+            {show === "checks" && <>
             <Tabs active={tab} onChange={setTab} tabs={[
               { key: "findings", label: "Findings", count: d.total },
               { key: "admins", label: "Admin holders", count: d.admins.length, tone: d.admins.length ? "bad" : null },
@@ -58,6 +75,7 @@ export function RulesPageView() {
                     col("m", "Meaning", (r: Rule) => r.meaning, { wrap: "wrap" }), col("x", "Fix", (r: Rule) => r.fix, { wrap: "wrap" })]} />
               </Card>
             )}
+            </>}
           </>
         );
       }}</Load>

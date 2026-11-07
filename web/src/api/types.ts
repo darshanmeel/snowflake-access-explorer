@@ -307,6 +307,8 @@ export interface Finding {
   iac: string;
   sql: string;
   same_fix: string;
+  changes: WhatIfChange[]; // the fix as What if changes (the change plan); empty when the fix revokes no grant
+  objects: string[]; // objects the finding is about (group by object)
 }
 
 export type RowsState = "all" | "filtered" | "none" | "unknown";

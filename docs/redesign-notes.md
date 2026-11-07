@@ -96,12 +96,32 @@ stays, what changes, and the order of the work.
   sees|sens|usage` -> `see`, `sensitive&a=&b=` (or `tab=compare`) -> `compare`, `see&name=` -> `user=`.
 - What if simulates removals only, so a nearest way in (a grant) opens the role's access screen ("What it brings")
   instead of What if.
+- **Screen 5, Risks & fixes** (`rules`): "Rule checks" (the old page: findings with severity tabs, Admin holders, Rules
+  table) stays the default tab. "Risks & change plan" (`show=fixes`): severity tiles as filters (`sev=`), Admin holders
+  tile to `object&preset=admin`, group by rule / person / object (`by=`); rule rows sorted by people affected with a bar;
+  expanded: why it matters, findings with chain chips and **Add fix to plan** (a finding's `changes`, from
+  `access.fix_changes(edges)`; findings without a grant to revoke show their fix text), See on the graph, Rule settings,
+  Mute with a reason. Right panel **Change plan**: items, impact tiles (people lose, keep another way, findings fixed,
+  new findings) and who loses what from `/api/whatif` (`access.what_if`, simulation only), SQL / Terraform / ticket via
+  `CodeOutput`, Open full what-if. `access.py`: `fix_changes`, `finding_objects` (findings carry `changes`, `objects`).
+- **Change plan store** (`web/src/pages/changeplan.ts`): module state + localStorage `ae-plan`, per viewer, every access
+  in try/catch; the same plan on Risks & fixes and What if. Rules On/Off (`ae-rules-off`) and muted findings
+  (`ae-muted`, with the reason) live there too, labelled "saved in this browser": they only hide findings on Risks &
+  fixes and never change `access.py` results.
+- **Screen 11, What if** (`whatif`): "Changes & impact tables" (the old page with its Users / Objects / Roles / Findings /
+  Text to apply tabs, `changes=` in the URL) stays the default tab, with "Add to the change plan". "Change plan"
+  (`show=plan`): one-line form [Revoke role | Drop role | Revoke privilege | Empty PUBLIC] [role] from [user or role]
+  [Add to plan], plan chips, the sentence and seven impact tiles, Group by People / Objects / Roles / Findings (`by=`),
+  people rows expand to Loses / Keeps through another path, CodeOutput and the CSV.
+- **Screen 10, Rules** (`rules&show=list`): rules by area with severity counts; each rule #, name, severity, findings
+  link (to Risks & fixes on that rule) and On/Off; expand What it checks / How to fix (`RULE_INFO`, all 23 filled).
+- Redirects: `rulelist` -> `rules&show=list`, `risks` -> `rules&show=fixes`, `plan` -> `whatif&show=plan`.
 
 ## Not done, and why
 
 - Granted vs used (13) needs `ACCESS_HISTORY`, What changed (14) needs dated snapshots kept. Both add new reads and stored
   data next to the `TBL_ACCESS_` tables, which CLAUDE.md limits; they need a decision first.
-- Rules On/Off (10) would need a settings store; the app writes nothing today.
+- Rules On/Off and Mute are per browser (localStorage), not shared: a shared setting would need a store the app writes to.
 - The plain Streamlit fallback (`ST_REACT=native`) keeps its current pages; the default Streamlit mode runs the React app and gets every new screen.
 
 ## Phases

@@ -3443,6 +3443,24 @@ def plural(n, word):
     return f"{n} {word}{'s' * (n != 1)}"
 
 
+def fix_changes(edges):
+    """what_if() changes that remove these grant edges (a finding's fix, for the change plan), each once."""
+    out = []
+    for e in edges:
+        c = (dict(op="revoke_priv", role=e["grantee"], privilege=e["priv"], object=e["to"]) if e["priv"] else
+             dict(op="revoke_role_from_user", role=e["to"], user=e["grantee"]) if e["user"] else
+             dict(op="revoke_role_from_role", role=e["to"], grantee=e["grantee"]))
+        if c not in out:
+            out.append(c)
+    return out
+
+
+def finding_objects(f):
+    """Objects a rule_rows() finding is about: what its fix revokes on, the object itself, or where its paths end."""
+    xs = [e["to"] for e in f["edges"] if e["priv"]] + [f["grantee"]] * (f["kind"] == "object")
+    return list(dict.fromkeys(xs + [p[-1] for p in f["paths"] if p and p[-1] in kinds]))
+
+
 def rule_rows():
     """Rule checks page. Row: rule ("1 ..."), num, title, why, severity (SEVERITY), grantee, kind, detail, path,
     paths, iac, sql (fix texts, "" when no SQL fits), affects (users who lose something when the fix is applied, net of

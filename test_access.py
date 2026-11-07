@@ -1376,12 +1376,33 @@ def test_graph_see_compare():  # screens 4, 7, 9: access graph, what they see, c
     assert a.sees_text(F + "ANALYST", o) == "BIRTH_DATE clear · EMAIL masked · PHONE clear"
 
 
+def test_plan():  # screens 5 and 11: every finding's fix as What if changes simulates and fixes that finding
+    rows = a.rule_rows()
+    for x in rows:
+        ch = a.fix_changes(x["edges"])
+        assert len(ch) == len({str(c) for c in ch}) and (bool(ch) == bool(x["edges"])), x["num"]
+        if ch:
+            r = a.what_if(ch)
+            assert any(f["num"] == x["num"] and f["grantee"] == x["grantee"] and f["status"] == "fixed" for f in r["findings"]), x
+    assert a.fix_changes([a.role_edge("U1", "R", True), a.role_edge("U1", "R", True), a.role_edge("R2", "R"),
+                          a.priv_edge("R", "SELECT", "TABLE", "DB.S.T")]) == [
+        dict(op="revoke_role_from_user", role="R", user="U1"), dict(op="revoke_role_from_role", role="R", grantee="R2"),
+        dict(op="revoke_priv", role="R", privilege="SELECT", object="DB.S.T")]
+    nine = next(x for x in rows if x["num"] == "9")
+    assert a.finding_objects(nine) == ["WH_SALES_XS"]
+    six = next(x for x in rows if x["num"] == "6")
+    assert a.finding_objects(six) == [six["grantee"]] and not a.fix_changes(six["edges"])
+    before = len(a.granted)
+    a.what_if(a.fix_changes(nine["edges"]))
+    assert len(a.granted) == before and any(pv == "USAGE" for pv, _, o in a.granted["PUBLIC"] if o == "WH_SALES_XS")
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_pages):
+              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

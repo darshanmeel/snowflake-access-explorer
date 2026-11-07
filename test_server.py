@@ -334,6 +334,19 @@ def test_graph_see_compare():  # screens 4, 7, 9
     assert g["graph"] == g["see"] == g["compare"] == "answers"
 
 
+def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if changes; the plan runs as /api/whatif
+    from urllib.parse import quote
+    r = js("/api/rules")
+    assert all({"changes", "objects"} <= f.keys() for f in r["findings"])
+    fx = [f for f in r["findings"] if f["changes"]]
+    assert fx and any(not f["changes"] for f in r["findings"])
+    w = js("/api/whatif?changes=" + quote(json.dumps([ch for f in fx[:3] for ch in f["changes"]])))
+    assert w["counts"]["fixed"] >= 1 and w["sql"] and "REVOKE" in w["sql"]
+    m = js("/api/meta")
+    assert len(m["rules"]) == 23 and all(x["meaning"] and x["fix"] and x["area"] for x in m["rules"])
+    assert {p["key"]: p["group"] for p in m["pages"]}["whatif"] == "admin"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

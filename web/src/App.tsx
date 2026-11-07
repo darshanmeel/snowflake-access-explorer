@@ -36,6 +36,8 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     return { page: "object", params: { ...rest, preset: "admin" } };
   }
   if (page === "who") return { page: "object", params };
+  if (page === "rulelist" || page === "risks") return { page: "rules", params: { ...params, show: page === "risks" ? "fixes" : "list" } }; // screens 10 and 5
+  if (page === "plan") return { page: "whatif", params: { ...params, show: "plan" } }; // screen 11 on the change plan
   if ((page === "user" || page === "role") && params.part && ["sees", "sens", "usage"].includes(params.part)) { // old tabs, now on screen 7
     const { name, ...rest } = params;
     return { page: "see", params: { ...rest, ...(name ? { [page]: name } : {}) } };

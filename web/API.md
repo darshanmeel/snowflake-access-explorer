@@ -571,6 +571,7 @@ unknown note); rule texts per number are in `meta.rules`.
                 "grantees": [{"id": "FIN_01", "kind": "user"}],   // same fix merged into one row
                 "detail": "...", "more": 13, "paths": [["..."]], "edge_cls": "write",
                 "iac": "...", "sql": "...", "affects": 14, "impact": "14 users lose access", "same_fix": ""}],
+  // each finding also has "changes" (its fix as What if changes, [] when nothing to revoke) and "objects"
   "total": 41,
   "rows_unknown": ["HR.PEOPLE.TBL_EMPLOYEE"],
   "admins": [{"user": "ADMIN_01", "service": false, "roles": ["ACCOUNTADMIN"], "account": ["MANAGE GRANTS"],
