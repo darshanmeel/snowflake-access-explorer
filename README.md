@@ -23,22 +23,40 @@ Key: solid = calls · dashed = data moves · numbers = order.
 - **Works with what you have.** It shows the whole account if your role can read it, and only your own access if not (My access).
 
 ## Questions it answers
-| Page | Question |
+Every screen keeps the detailed diagram or table of the earlier version as its first tab, with the newer views as further tabs.
+
+| Screen (`?page=`) | Question |
 |---|---|
-| User | What can this user reach, through every role? Graph, privileges with their paths, sensitive data, roles used. |
-| Role | Who holds this role, what does it give, and who loses access if it is revoked? |
-| Object | Who can touch this table or view, and how? Which columns are masked for whom? |
-| Can they? | Can user X do SELECT, INSERT, CREATE TABLE, etc. on Y, or leave Privilege on **Any** to see every access X has on Y? Yes, with every path and how to remove it, or no, with the role to ask for. |
-| Sensitive data | Which objects are sensitive, who reads them, and which columns are unmasked? Two roles compared. |
-| Rule checks | Where does the role model break its own rules? Severity, findings and fixes. |
-| Access review | One row per user and object in a database, with the path, exported as CSV with Reviewer and Keep/Revoke columns. |
-| What if | If we revoke this, who loses what, and what is left behind? Start here or from "What if revoked?" on role pages, paths, findings and Can they?. |
+| Home (`home`) | Search a person, role, table or screen, or type "can X read Y". Your access, account risks, data protection. |
+| A person or role (`access`) | What can they reach, through every role? Role hierarchy diagram and privilege tabs first, then one row per object at the most it allows. |
+| Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. |
+| Can they? (`check`) | Can X do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. |
+| Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
+| What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
+| Compare (`compare`) | Two people or roles side by side, the differences, and the text to make them match. |
+| Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text. |
+| Risks & fixes (`rules`) | Rule checks with findings, admin holders and the 23 rules; a change plan built from the fixes. |
+| What if (`whatif`) | If we revoke this, who loses what, who keeps it another way, and which findings go or appear. Simulation only. |
+| Review & sign-off (`review`) | The access review (CSV) and a people x objects grid with Keep / Revoke and a signed CSV. |
+| Sensitive data (`sensitive`) | Sensitive objects, who reads them, a catalog of how well each one is protected. |
+| Sensitive data flow (`flow`) | People -> roles -> sensitive objects, with the dormant and disabled people first. |
+| Granted vs used (`usage`) | Which granted tables and views were actually used (ACCESS_HISTORY), and what could be trimmed. |
+| What changed (`changes`) | This snapshot against the previous one: gained and lost access, new and fixed findings, watched questions. |
+| User paths, Role paths (`user`, `role`) | The detailed pages of the earlier version, also shown inside A person or role. |
 
-Find (top bar) opens any user, role or object. Every view is a link (`?page=role&name=F_ANALYST`), so you can share it.
+Find (top bar) opens any user, role or object. Every view is a link (`?page=role&name=F_ANALYST`), so you can share it;
+older links (`?page=user&part=sees`, `?page=catalog`, ...) are sent to the screen that now shows that part.
+Streamlit (default mode) runs the same React app, so it has every screen. The plain Streamlit fallback (`ST_REACT=native`)
+keeps only the earlier pages (User, Role, Object, Sensitive data, Can they?, Rule checks, Access review).
 
-![User page: findings, profile, KPIs and the role graph](docs/img/user-graph.png)
-![Can they?: yes, every path, and how to remove the access](docs/img/can-they.png)
-![Rule checks: severity counts, rule map and rules by area](docs/img/rule-checks.png)
+![Home: search, shortcuts, risks and data protection](docs/img/redesign/home.png)
+![A person or role: the role hierarchy diagram as the first tab](docs/img/redesign/access.png)
+![Who has access to an object, grouped by level](docs/img/redesign/object_who.png)
+![Can they?: the answer and diagram](docs/img/redesign/check_answer.png)
+![Risks & fixes with the change plan](docs/img/redesign/risks.png)
+![Sensitive data flow](docs/img/redesign/flow.png)
+![Granted vs used](docs/img/redesign/usage.png)
+![What changed](docs/img/redesign/changes.png)
 
 More screens, and how to read them: [README.html](README.html).
 
@@ -222,6 +240,12 @@ Only to give everyone the local web app without each person installing it: run `
 service (any container image with Python and `requirements-web.txt`, `HOST=0.0.0.0`). Not needed to use the app.
 Snowflake sets `SNOWFLAKE_ACCOUNT` in the container, so the app logs in like on a shared server: give the service
 `SNOWFLAKE_USER` and a key pair (`SNOWFLAKE_PRIVATE_KEY_FILE`, mounted as a secret). Browser SSO can't work there.
+
+## Data sources
+Only metadata, never table data: `ACCOUNT_USAGE` grants, users, query history, tags and policies (or `SHOW` when
+`ACCOUNT_USAGE` is not readable). Granted vs used also reads `ACCOUNT_USAGE.ACCESS_HISTORY` (Enterprise edition),
+aggregated per user, object and week; without it that screen explains why it is empty. The full table, with the fallbacks,
+is in [README.html](README.html) > Data sources.
 
 ## Also in this repo
 - **`sf.py` runs plain SQL from your machine.** It uses the same `.env` and logins. Run `python sf.py "select current_user(), current_role()"` or `python sf.py -f query.sql`, or from Python: `from sf import run; cols, rows = run("select 1")`.

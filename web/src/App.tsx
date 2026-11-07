@@ -40,6 +40,19 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     return { page: "object", params: { ...rest, preset: "admin" } };
   }
   if (page === "who") return { page: "object", params };
+  if (page === "me") return redirect("access", params); // the brief's /me: My access, see mine()
+  if (page === "object" && params.by === "path") { // Who has access by path: the access graph from this table (screen 4)
+    const { by: _b, name, ...rest } = params;
+    return { page: "graph", params: { ...rest, ...(name ? { table: name } : {}) } };
+  }
+  if (page === "rules" && params.tab === "rules") { const { tab: _t, ...rest } = params; return { page: "rules", params: { ...rest, show: "list" } }; } // screen 10
+  if (page === "review" && params.scope && !params.show) return { page: "review", params: { ...params, show: "grid" } }; // screen 6 scope chips
+  if (page === "whatif" && params.by && !params.show) return { page: "whatif", params: { ...params, show: "plan" } }; // screen 11 group by
+  if (page === "see" && params.only) { // ?only=sensitive is the default, only=all shows every protected object
+    const { only, ...rest } = params;
+    return redirect("see", { ...rest, ...(only === "all" ? { all: "1" } : {}) });
+  }
+  if (page === "access" && params.filter && !params.show) return redirect("access", { ...params, show: "summary" }); // filter chips live there
   if (page === "rulelist" || page === "risks") return { page: "rules", params: { ...params, show: page === "risks" ? "fixes" : "list" } }; // screens 10 and 5
   if (page === "catalog") return { page: "sensitive", params: { ...params, show: "catalog" } }; // screen 8
   if (page === "dataflow" || (page === "sensitive" && params.show === "flow")) { // screen 16
@@ -75,11 +88,14 @@ export function redirect(page: string | null, params: Params): { page: Page; par
 
 interface Loc { page: Page; params: Params; mine: boolean }
 
+/** My access: ?data=mine, or the brief's ?page=me. */
+export const mine = (page: string | null, data: string | null) => data === "mine" || page === "me";
+
 function read(): Loc {
   const u = new URLSearchParams(location.search);
   const params: Params = {};
   u.forEach((v, k) => { if (k !== "page" && k !== "data") params[k] = v; });
-  return { ...redirect(u.get("page"), params), mine: u.get("data") === "mine" };
+  return { ...redirect(u.get("page"), params), mine: mine(u.get("page"), u.get("data")) };
 }
 
 function url(l: Loc) {
@@ -213,7 +229,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
     for (const [k, v] of Object.entries(patch)) { if (v) params[k] = v; else delete params[k]; }
     go({ ...loc, params }, true);
   }, [go, loc]);
-  const setView = (mine: boolean) => go({ page: mine && (loc.page === "review" || loc.page === "home") ? "access" : loc.page, params: {}, mine });
+  const setView = (mine: boolean) => go({ page: mine && ["review", "flow", "changes", "home"].includes(loc.page) ? "access" : loc.page, params: {}, mine }); // shared-only pages are not in My access
 
   const run = async (label: string, f: () => Promise<unknown>) => {
     setBusy(label);

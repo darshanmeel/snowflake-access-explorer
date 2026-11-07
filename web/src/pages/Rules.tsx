@@ -11,7 +11,7 @@ import { changeOfPath, WhatIfButton } from "./Whatif";
 export function RulesPageView() {
   const c = useApp();
   const s = useApi<RulesPage>("rules", apiParams(c));
-  const [tab, setTab] = useState("findings");
+  const [tab, setTab] = useState(c.params.part ?? "findings"); // part=: an old sub-tab, linkable
   const o = useOpen(s.data?.refs);
   type Rule = (typeof c.meta.rules)[number];
   const show = c.params.show === "fixes" || c.params.show === "list" ? c.params.show : "checks"; // the old page first

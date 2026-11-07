@@ -27,6 +27,19 @@ export function parseQuestion(q: string): { who: string; what: string; priv: str
   return { who: m[1].toUpperCase(), what: m[3].toUpperCase(), priv };
 }
 
+/** Screens whose name matches the search (2+ letters), so "graph" or "used" open them from Home. */
+export function screensFor<T extends { key: string; label: string }>(q: string, pages: T[]): T[] {
+  const t = q.trim().toLowerCase();
+  return t.length < 2 ? [] : pages.filter((p) => p.key !== "home" && p.label.toLowerCase().includes(t));
+}
+
+const SHORT: [Page, string][] = [["check", "Can they read …?"], ["graph", "Access graph"], ["compare", "Compare two people"],
+  ["request", "Request access"], ["rules", "Risks & fixes"], ["whatif", "What if a role goes?"], ["sensitive", "Sensitive data"],
+  ["flow", "Sensitive data flow"], ["usage", "Granted vs used"], ["changes", "What changed"]];
+
+/** The shortcuts to the pages in the nav (My access has no flow or changes). */
+export const shortcuts = (keys: string[]) => SHORT.filter(([p]) => keys.includes(p)).map(([page, label]) => ({ page, label }));
+
 const GROUP: [string, string][] = [["user", "People"], ["role", "Roles"], ["object", "Objects"]];
 const groupOf = (i: FindItem) => (i.kind === "user" ? "user" : i.kind === "object" ? "object" : "role");
 
@@ -53,6 +66,7 @@ export function HomePageView() {
     else c.nav("access", { role: i.id });
   };
   const ask = parseQuestion(q);
+  const screens = ask ? [] : screensFor(q, c.meta.pages);
   const go = () => {
     if (ask) c.nav("check", { name: ask.who, obj: ask.what, priv: ask.priv });
     else if (items[0]) openItem(items[0]);
@@ -66,15 +80,25 @@ export function HomePageView() {
         <input id="ae-home-q" ref={box} type="search" className="ae-input" value={q} autoComplete="off"
           placeholder="Find a person, role or table, or ask: can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER"
           onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); if (e.key === "Escape") setQ(""); }} />
-        <span className="ae-muted ae-kbd">Press / to search</span>
+        {!q && <span className="ae-muted ae-kbd">Press / to search</span>}
       </div>
       {ask && (
         <button type="button" className="ae-askrow" onClick={go}>
           Can <b className="ae-mono">{ask.who}</b> {ask.priv === "SELECT" ? "read" : ask.priv.toLowerCase()} <b className="ae-mono">{ask.what}</b>? <span className="ae-muted">Enter to check</span>
         </button>
       )}
-      {items.length > 0 && (
+      {(items.length > 0 || screens.length > 0) && (
         <div className="ae-suggest">
+          {screens.length > 0 && (
+            <div>
+              <h4>Screens</h4>
+              {screens.map((p) => (
+                <button type="button" key={p.key} className="ae-suggest-row" onClick={() => c.nav(p.key, {})}>
+                  <span>{p.label}</span><span className="ae-muted">{p.group === "admin" ? "Admin" : p.group === "detail" ? "Detail" : "Answers"}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {GROUP.map(([g, label]) => {
             const xs = items.filter((i) => groupOf(i) === g);
             return xs.length ? (
@@ -92,10 +116,7 @@ export function HomePageView() {
       )}
       <div className="ae-shortcuts">
         <span className="ae-muted">Try:</span>
-        <button type="button" className="ae-link" onClick={() => c.nav("check", {})}>Can they read …?</button>
-        <button type="button" className="ae-link" onClick={() => c.nav("rules", {})}>Risks & fixes</button>
-        <button type="button" className="ae-link" onClick={() => c.nav("whatif", {})}>What if a role goes?</button>
-        <button type="button" className="ae-link" onClick={() => c.nav("sensitive", {})}>Sensitive data</button>
+        {shortcuts(c.meta.pages.map((p) => p.key)).map((x) => <button type="button" key={x.page} className="ae-link" onClick={() => c.nav(x.page, {})}>{x.label}</button>)}
       </div>
       <Load s={s}>{(d) => (
         <>

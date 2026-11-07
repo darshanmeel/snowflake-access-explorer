@@ -118,7 +118,7 @@ function UserRow({ u, refs }: { u: WhatIfUser; refs: WhatIfPage["refs"] }) {
 function Result({ d }: { d: WhatIfPage }) {
   const c = useApp();
   const o = useOpen(d.refs);
-  const [tab, setTab] = useState("users");
+  const [tab, setTab] = useState(c.params.part ?? "users");
   const k = d.counts;
   const fcols = [
     col("s", "Status", (r: WhatIfFinding) => (r.changed ? "changed" : r.status), { wrap: "nowrap",

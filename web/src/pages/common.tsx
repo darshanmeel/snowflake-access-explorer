@@ -82,7 +82,6 @@ export function Tog({ label, on, onPick, help }: { label: string; on: boolean; o
   );
 }
 
-export const DEPTHS: [string, string][] = [["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]];
 
 export const Controls = ({ children }: { children: ReactNode }) => <div className="ae-controls">{children}</div>;
 

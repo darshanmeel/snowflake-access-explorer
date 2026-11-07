@@ -26,8 +26,8 @@ export function ReviewPageView() {
 }
 
 function OldReview() {
-  const [tab, setTab] = useState("sens");
   const c = useApp();
+  const [tab, setTab] = useState(c.params.part ?? "sens");
   const s = useApi<ReviewPage>("review", apiParams(c));
   return (
     <>

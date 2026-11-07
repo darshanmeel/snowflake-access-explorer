@@ -78,7 +78,7 @@ export function RolePageView() {
   const s = useApi<RolePage>(name ? "role" : null, { ...apiParams(c), name });
   const o = useOpen(s.data?.refs);
   const names = roles.data?.items.map((i) => i.id) ?? [];
-  const [part, setPart] = useState("privs");
+  const [part, setPart] = useState(c.params.part ?? "privs");
   return (
     <>
       <Head title="Role" sub="Who holds this role, what it holds, and what it can reach." right={name && <WhatIfButton ch={[{ op: "drop_role", role: name }]} label="What if dropped?" />} />

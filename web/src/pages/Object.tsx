@@ -245,7 +245,7 @@ export function ObjectDetail() {
   const c = useApp();
   const name = c.params.name ?? "";
   const [tab, setTab] = useState("all");
-  const [part, setPart] = useState("who");
+  const [part, setPart] = useState(c.params.part ?? "who");
   const list = useApi<{ items: ListItem[] }>("list", { what: "objects", view: c.view, type: c.params.type });
   const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
   // no name: the server picks the first object of the type (as app.py)

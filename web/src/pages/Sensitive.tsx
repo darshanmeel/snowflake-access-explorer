@@ -19,7 +19,7 @@ const WHY: Record<string, string> = {
 export function SensitivePageView() {
   const c = useApp();
   const s = useApi<SensitivePage>("sensitive", apiParams(c));
-  const [part, setPart] = useState(c.params.show === "catalog" ? "catalog" : "objects"); // the old tables first
+  const [part, setPart] = useState(c.params.show === "catalog" ? "catalog" : c.params.part ?? "objects"); // the old tables first
   return (
     <>
       <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them."

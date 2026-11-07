@@ -72,7 +72,7 @@ body { background: #F6F7F9; }
 
 /* below 1000px (Streamlit width): side nav becomes a menu above the page */
 @media (max-width: 1000px) {
-  .app { grid-template-columns: 1fr; }
+  .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; } /* the menu row only as tall as the menu */
   .side { border-right: 0; border-bottom: 1px solid var(--ae-line); padding: 6px 12px; }
   .side-menu > summary { display: block; min-height: 36px; line-height: 36px; }
   .side-menu nav { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }

@@ -400,6 +400,22 @@ def test_usage_changes():  # screens 13, 14
     assert m["usage"] == m["changes"] == "admin" and "changes" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
 
 
+API = {"graph": "map", "whatif": 'whatif?changes=[{"op":"empty_public"}]'}  # page key -> its endpoint, when they differ
+
+
+def test_every_page():  # every page key: a label, a nav group, an endpoint that answers shared and (if not shared-only) mine
+    assert set(server.PAGES) == set(server.GROUP) and set(server.GROUP.values()) == {"answers", "admin", "detail"}
+    assert server.SHARED_ONLY <= set(server.PAGES) and all(server.GROUP[k] == "admin" for k in server.SHARED_ONLY)
+    assert c.post("/api/mine/load").status_code == 200
+    mine = {p["key"] for p in js("/api/meta?view=mine")["pages"]}
+    assert mine == set(server.PAGES) - server.SHARED_ONLY
+    for k in server.PAGES:
+        e = API.get(k, k)
+        assert e.split("?")[0] in server.ROUTES and ("refs" in js(f"/api/{e}") or k == "home"), k
+        if k in mine:
+            get(f"/api/{e}{'&' if '?' in e else '?'}view=mine")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

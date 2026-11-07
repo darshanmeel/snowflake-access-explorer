@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useApi } from "../api/client";
 import type { Finding, RulesPage, Severity, WhatIfPage } from "../api/types";
 import { CodeOutput, EmptyState, FilterChips, groupByRule, SEVERITIES } from "../components";
-import { apiParams, useApp, useOpen } from "../ctx";
+import { useApp, useOpen } from "../ctx";
 import { Load } from "./common";
 import { changeText, findingKey, groupFindings, inPlan, muted, plan, planTexts, rulesOff, toggleFix, useSaved, visible } from "./changeplan";
 import { startOf } from "./screens";

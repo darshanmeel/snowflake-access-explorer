@@ -544,7 +544,8 @@ def test_pages():
               dict(page="user", data="mine"), dict(page="rules", data="mine"),
               dict(page="user", name="SVC_DEPLOY", schema="SALES.PIPELINE", otype="TASK"),
               dict(page="role", name=F + "DEPLOY", schema="SALES.PIPELINE", otype="TASK"),
-              dict(page="user", name="HR_01", schema="HR.PAYROLL"), dict(page="role", name="HR.SC_R_PAYROLL")):
+              dict(page="user", name="HR_01", schema="HR.PAYROLL"), dict(page="role", name="HR.SC_R_PAYROLL"),
+              dict(page="home"), dict(page="graph", table=c), dict(page="flow")):  # React-only screens: the User page
         at = AppTest.from_file(app, default_timeout=120)
         at.query_params.update(q)
         at.run()

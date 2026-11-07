@@ -167,6 +167,20 @@ stays, what changes, and the order of the work.
 - Redirects: `history`, `diff` -> `changes`; `unused`, `used`, `access|user|role&show=usage` -> `usage`;
   `usage&name=` -> `user=`.
 
+- **Phase 5, cleanup and consistency**: every row of `specs/old-to-new-map.md` has a destination, checked one by one in
+  `web/src/pages/oldmap.test.ts`. Old pages stay as the default tabs; old sub-tabs are linkable with `part=` (User,
+  Role, Object, Sensitive data, Rule checks, Access review, What if tables). New redirects: `me` -> My access on the
+  Access screen (`mine()`), `object&by=path` -> `graph&table=`, `rules&tab=rules` -> `rules&show=list`, `review&scope=`
+  -> the grid, `whatif&by=` -> the change plan, `see&only=sensitive|all`, `access&filter=` -> the One row per object tab
+  with that chip. Switching to My access leaves the shared-only pages (Review, Data flow, What changed). Home: the
+  shortcuts cover graph, compare, request, flow, usage and changes (only pages in the nav), and the search lists matching
+  screens. `test_every_page` (test_server.py): every page key has a label, a group and an endpoint that answers, shared
+  and (unless shared-only) mine; `test_pages` also opens React-only keys in the plain fallback, which show the User page.
+  Below 1000px the menu row is only as tall as the menu. Removed: the unused `DEPTHS` export and an unused import.
+  README: screens list, screenshots from `docs/img/redesign`, Data sources with ACCESS_HISTORY, the fallback note.
+  Screenshots of every page, local and Streamlit, at 1500 and 780 px: no console errors, no page-wide horizontal scroll
+  (wide tables, the flow diagram and graphs scroll inside their card).
+
 ## Not done, and why
 
 - Rules On/Off and Mute are per browser (localStorage), not shared: a shared setting would need a store the app writes to.
@@ -178,4 +192,12 @@ stays, what changes, and the order of the work.
 2. Answer screens: Home, A person or role, then object, Can they?, graph, what they see, compare.
 3. Admin screens: Risks & fixes with change plan, What if, Review, Sensitive catalog, Rules, data flow (done).
 4. New data: Granted vs used (ACCESS_HISTORY) and What changed (previous snapshot in `.cache/`) (done).
-5. Cleanup: remove the old pages once every tab has a destination and a redirect.
+5. Cleanup and consistency (done). The old pages were kept, not removed: the user wants their diagrams and tables, so
+   they are the default tabs of the new screens and stay under Detail (User paths, Role paths).
+
+## What is left
+
+- README.html (the full guide) still describes the earlier pages; regenerate its generated parts with
+  `python docs/make_readme.py` and rewrite its screen sections at the end of the redesign.
+- The plain Streamlit fallback has only the earlier pages.
+- Rules On/Off, Mute, review decisions and watched questions are per browser.
