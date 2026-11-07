@@ -17,7 +17,7 @@ Key: solid = calls · dashed = data moves · numbers = order.
 - **Every path, at any depth.** It walks the whole role hierarchy, database roles (`DB.ROLE`) included, so access inherited ten roles deep shows up next to direct grants, each with its full chain (`ANALYST_01 > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ > TABLE`).
 - **Who reads sensitive data.** It uses classification tags and masking or row access policies to show which columns each role sees in clear.
 - **Rule checks.** 23 checks of the role model, such as a technical role granted to a person, an admin role held by a user, dormant users or PUBLIC grants. Each finding comes with the fix as infrastructure-as-code text and the matching SQL.
-- **What if.** Pick grants to take away (a role from a user or role, a privilege, a whole role, or everything on PUBLIC). After you pick a role, only the users or roles that reach it are offered, direct ones first; one that gets it further down loses it where it is granted and see who loses what, who keeps it another way, which objects and roles are left behind, and which findings go away or appear. It is a simulation: it prints the REVOKE text for your infrastructure as code and never runs it.
+- **What if.** Pick grants to take away (a role from a user or role, a privilege, a whole role, or everything on PUBLIC). See who loses what, who keeps it another way, which objects and roles are left behind, and which findings go away or appear. Fixes from the rule checks collect in one change plan. It is a simulation: it prints the REVOKE text for your infrastructure as code and never runs it.
 - **Readable graphs.** One lane per depth from the user, many database roles of one database folded into one box, huge boxes grouped by schema and type, hover explains each line in words, and each box shows its worst rule finding ("High · 3", click opens them). Snowflake's own built-in grants that every user gets through PUBLIC are one folded box, not findings.
 - **Read-only.** It only reads from Snowflake. It never runs GRANT, REVOKE, CREATE or ALTER and writes nothing to Snowflake. Locally it keeps a copy of what it read in `.cache/` (git-ignored) for a day; no passwords.
 - **Works with what you have.** It shows the whole account if your role can read it, and only your own access if not (My access).
@@ -34,24 +34,26 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 | Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
 | Compare (`compare`) | Two people or roles side by side, the differences, and the text to make them match. |
-| Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text. For a database role: a skeleton for a new database role in its own database (`GRANT DATABASE ROLE ... TO DATABASE ROLE ...`), or why it can't be done when the object is in another database. |
-| Risks & fixes (`rules`) | Rule checks with findings, admin holders and the 23 rules; a change plan built from the fixes. |
+| Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text: `GRANT ROLE x TO USER u` for a person, `GRANT ROLE x TO ROLE r` for a role (with a too broad warning). For a database role: a skeleton for a new database role in its own database (`GRANT DATABASE ROLE ... TO DATABASE ROLE ...`), or why it can't be done when the object is in another database. |
+| Risks & fixes (`rules`) | Rule checks with findings and admin holders; risks by rule, person or object with a change plan built from the fixes; the Rules list (`show=list`): the 23 rules by area, with On/Off. |
 | What if (`whatif`) | If we revoke this, who loses what, who keeps it another way, and which findings go or appear. Simulation only. |
 | Review & sign-off (`review`) | The access review (CSV) and a people x objects grid with Keep / Revoke and a signed CSV. |
 | Sensitive data (`sensitive`) | Sensitive objects, who reads them, a catalog of how well each one is protected. |
 | Sensitive data flow (`flow`) | People -> roles -> sensitive objects, with the dormant and disabled people first. |
 | Granted vs used (`usage`) | Which granted tables and views were actually used (ACCESS_HISTORY), and what could be trimmed. |
-| What changed (`changes`) | This snapshot against the previous one: gained and lost access, new and fixed findings, watched questions. |
+| What changed (`changes`) | This snapshot against the previous one: gained and lost access, new and fixed findings, and watched questions asked again. |
 | User paths, Role paths (`user`, `role`) | The detailed pages of the earlier version, also shown inside A person or role. |
 
 Find (top bar) opens any user, role or object. Every view is a link (`?page=role&name=F_ANALYST`), so you can share it;
 older links (`?page=user&part=sees`, `?page=catalog`, ...) are sent to the screen that now shows that part.
-Streamlit runs the same React app, so it has every screen.
+Streamlit runs the same React app as one component, so it has every screen (My access and What changed only in the local version).
 
 ![Home: search, shortcuts, risks and data protection](docs/img/redesign/home.png)
 ![A person or role: the role hierarchy diagram as the first tab](docs/img/redesign/access.png)
 ![Who has access to an object, grouped by level](docs/img/redesign/object_who.png)
 ![Can they?: the answer and diagram](docs/img/redesign/check_answer.png)
+![Can they? for a role: Partly, the row policy returns no rows](docs/img/redesign/check_role.png)
+![Request access for a role: GRANT ROLE ... TO ROLE](docs/img/redesign/request_role.png)
 ![Risks & fixes with the change plan](docs/img/redesign/risks.png)
 ![Sensitive data flow](docs/img/redesign/flow.png)
 ![Granted vs used](docs/img/redesign/usage.png)
@@ -82,10 +84,10 @@ The **local web app (React)** is the recommended and default version: it runs on
 
 With `SOURCE=direct` the shared data is read only when you click **Load shared data** (a copy from the last 24 h opens at
 once), so **My access** works without waiting for it. Without ACCOUNT_USAGE it reads with one `SHOW` per role, sent 16 at a
-time (`SHOW_THREADS`); `IMPORTED PRIVILEGES` on database `SNOWFLAKE` makes it one fast query. The sidebar's
+time (`SHOW_THREADS`); `IMPORTED PRIVILEGES` on database `SNOWFLAKE` makes it one fast query. The side menu's
 **Incomplete** box says what could not be read and which grant fixes it.
 
-Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The sidebar shows **Data from &lt;time&gt;**; **Read Snowflake again** reads it again. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
+Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The top bar shows **Data from &lt;time&gt;**; **↻** (Read Snowflake again) reads it again. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
 
 ### 1. Install once (PowerShell; needs Python 3.10+ and git, no Node or npm)
 ```
@@ -142,12 +144,12 @@ More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, ...): README.html.
 ### What you see depends on your role
 | Your role has | You see |
 |---|---|
-| Only a warehouse | **My access** (top bar): your own roles and everything they reach (User, Role, Object, Can they?, Rule checks on your own roles) |
+| Only a warehouse | **My access** (top bar): your own roles and everything they reach, on every screen except Review & sign-off, Sensitive data flow and What changed |
 | `MANAGE GRANTS` | The whole account, read with `SHOW` (slow: one query per role) |
 | `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` | The whole account, including tags, policies and query history (fast) |
 
 - If something can't be read, the app still loads and shows **Incomplete** with what is missing and why.
-- My access reads with your own rights and writes nothing to Snowflake. It has no sensitivity (tags need the governance views), Rule checks run on your own roles only, and Access review is not available in it.
+- My access reads with your own rights and writes nothing to Snowflake. It has no sensitivity (tags need the governance views), and Risks & fixes runs on your own roles only.
 
 ### Objects in Snowflake (`SOURCE=objects`)
 A developer whose role can create tables and procedures runs this once, from the same folder and `.env`:
@@ -248,7 +250,7 @@ is in [README.html](README.html) > Data sources.
 
 ## Also in this repo
 - **`sf.py` runs plain SQL from your machine.** It uses the same `.env` and logins. Run `python sf.py "select current_user(), current_role()"` or `python sf.py -f query.sql`, or from Python: `from sf import run; cols, rows = run("select 1")`.
-- **Tests:** `python test_access.py`, `python test_sql.py` and `python test_server.py` (all set `FAKE=1` themselves). They include a check that every page renders.
+- **Tests:** `python test_access.py`, `python test_sql.py` and `python test_server.py` (all set `FAKE=1` themselves): every page answers, and `app.py` hands every page to the Streamlit component. Web: `cd web; npm test`.
 - **Commit guardrail:** `.githooks/pre-commit` blocks a commit if a staged file matches a term in `~/.company-terms.txt`. Turn it on once with `git config core.hooksPath .githooks`, after creating that file (one regex per line). Without the file, the hook blocks every commit.
 - **Roles and grants** are managed as infrastructure as code. This app only reads them and never changes them.
 

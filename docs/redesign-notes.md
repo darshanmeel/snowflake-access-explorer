@@ -211,7 +211,6 @@ stays, what changes, and the order of the work.
   tab away.
 - Nearest ways in has no grant simulation: What if simulates removals only; the row shows who holds the role today and
   what else it brings, and What it brings opens the role.
-- CLAUDE.md's `.cache/` rule does not mention `<key>.prev.pkl` yet (README does); an agent may not edit CLAUDE.md.
 - The company-term pre-commit hook could not run: `~/.company-terms.txt` is missing on this machine.
 
 ## Phases
@@ -225,6 +224,6 @@ stays, what changes, and the order of the work.
 
 ## What is left
 
-- README.html (the full guide) still describes the earlier pages; regenerate its generated parts with
-  `python docs/make_readme.py` and rewrite its screen sections at the end of the redesign.
+- README.html (the full guide) describes every screen of the redesign with screenshots from `docs/img/redesign`;
+  `python docs/make_readme.py` regenerates its diagrams and rule table. The old screenshots in `docs/img` are removed.
 - Rules On/Off, Mute, review decisions and watched questions are per browser.

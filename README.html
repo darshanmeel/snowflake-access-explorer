@@ -112,17 +112,20 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <body>
 <main>
 
-<div class="eyebrow">User guide · Streamlit · read-only</div>
+<div class="eyebrow">User guide · local web app and Streamlit · read-only</div>
 <h1>Snowflake access explorer</h1>
 <ul class="lead">
-  <li><b>Who has what:</b> every privilege a user, role or object has, with the role path that gives it, at any depth.</li>
-  <li><b>Can they?</b> One user, one privilege, one object: yes or no, every path, and what to revoke to remove it.</li>
-  <li><b>What is wrong:</b> 23 rule checks, who reads sensitive data and whether it is masked, and a sign-off review export.</li>
+  <li><b>Who has what:</b> everything a person or role can reach, and everyone who can reach an object, with the role path that gives it, at any depth.</li>
+  <li><b>Can they?</b> One person or role, one privilege, one object: Yes, Partly or No, every path, where to cut it, and the nearest way in with the request text.</li>
+  <li><b>What is wrong:</b> 23 rule checks with a change plan, who reads sensitive data and whether it is masked, a review grid to sign off, granted against used, and what changed since the last snapshot.</li>
 </ul>
 <nav class="toc">
-  <a href="#overview">Overview</a><a href="#flow">Process</a><a href="#graph">Reading a graph</a><a href="#user">User</a><a href="#role">Role</a>
-  <a href="#object">Object</a><a href="#check">Can they?</a><a href="#rules">Rule checks</a><a href="#sensitive">Sensitive data</a>
-  <a href="#review">Access review</a><a href="#big">Big accounts</a><a href="#mine">My access</a><a href="#run">Run modes and setup</a><a href="#model">Role model</a><a href="#sql">SQL</a><a href="#sources">Data sources</a><a href="#side">Settings and limits</a>
+  <a href="#overview">Overview</a><a href="#flow">Process</a><a href="#layout">Finding your way</a><a href="#graph">Reading a graph</a>
+  <a href="#home">Home</a><a href="#access">A person or role</a><a href="#object">Object</a><a href="#check">Can they?</a><a href="#request">Request access</a>
+  <a href="#map">Access graph</a><a href="#see">What they see</a><a href="#compare">Compare</a><a href="#rules">Risks &amp; fixes</a><a href="#whatif">What if</a>
+  <a href="#review">Review</a><a href="#sensitive">Sensitive data</a><a href="#dataflow">Data flow</a><a href="#usage">Granted vs used</a><a href="#changes">What changed</a>
+  <a href="#detail">User / Role paths</a><a href="#big">Big accounts</a><a href="#mine">My access</a>
+  <a href="#run">Run modes and setup</a><a href="#model">Role model</a><a href="#sql">SQL</a><a href="#sources">Data sources</a><a href="#side">Settings and limits</a>
 </nav>
 
 <section class="card" id="overview">
@@ -131,13 +134,13 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <p class="key">Key: pill = actor · teal = code routine · grey DATA = tables · 2px ink border ENTRY = where viewers start · solid arrow = calls · dashed arrow = data moves · numbers = order.</p>
   <div class="wrap">
 <!--map:overview-->
-<div class="canvas" style="width:1080px;height:440px"><svg class="arrows" width="1080" height="440" viewBox="0 0 1080 440" aria-hidden="true"><defs><marker id="ah-overview" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#17191D"/></marker></defs><g class="ln"><line x1="390" y1="100" x2="390" y2="180" marker-end="url(#ah-overview)"/><line x1="180" y1="220" x2="300" y2="220" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/><line x1="480" y1="220" x2="600" y2="220" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/><line x1="990" y1="340" x2="990" y2="260" marker-end="url(#ah-overview)"/><line x1="780" y1="220" x2="900" y2="220" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/><line x1="900" y1="380" x2="780" y2="380" marker-end="url(#ah-overview)"/><line x1="690" y1="260" x2="690" y2="340" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/></g><g class="lb"><text x="398" y="144" text-anchor="start">1 CALL</text><text x="240" y="212" text-anchor="middle">2 read grants</text><text x="540" y="212" text-anchor="middle">3 write run</text><text x="998" y="304" text-anchor="start">4 open</text><text x="840" y="212" text-anchor="middle">5 last OK run</text><text x="840" y="372" text-anchor="middle">6 SQL</text><text x="698" y="304" text-anchor="start">7 last OK run</text></g></svg><div class="box actor" style="left:300px;top:40px;width:180px;height:60px"><b>Developer or app user</b><small>CALL or Rebuild button</small></div><div class="box data" style="left:0px;top:180px;width:180px;height:80px"><span class="eb">DATA</span><b>Snowflake</b><small>ACCOUNT_USAGE · SHOW</small></div><div class="box code" style="left:300px;top:180px;width:180px;height:80px"><span class="eb">PROCEDURE</span><b>SP_ACCESS_SNAPSHOT</b><small>owner&#x27;s rights</small></div><div class="box data" style="left:600px;top:180px;width:180px;height:80px"><span class="eb">DATA</span><b>TBL_ACCESS_*</b><small>8 tables · one run per CALL</small></div><div class="box entry" style="left:900px;top:180px;width:180px;height:80px"><span class="eb">ENTRY</span><b>Streamlit app</b><small>7 pages · read-only</small></div><div class="box code" style="left:600px;top:340px;width:180px;height:80px"><span class="eb">SQL FUNCTIONS</span><b>TF_ACCESS_OF</b><small>TF_WHO_CAN · TF_CAN</small></div><div class="box actor" style="left:900px;top:340px;width:180px;height:80px"><b>Viewer · auditor</b><small>browser or worksheet</small></div></div>
+<div class="canvas" style="width:1080px;height:440px"><svg class="arrows" width="1080" height="440" viewBox="0 0 1080 440" aria-hidden="true"><defs><marker id="ah-overview" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#17191D"/></marker></defs><g class="ln"><line x1="390" y1="100" x2="390" y2="180" marker-end="url(#ah-overview)"/><line x1="180" y1="220" x2="300" y2="220" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/><line x1="480" y1="220" x2="600" y2="220" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/><line x1="990" y1="340" x2="990" y2="260" marker-end="url(#ah-overview)"/><line x1="780" y1="220" x2="900" y2="220" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/><line x1="900" y1="380" x2="780" y2="380" marker-end="url(#ah-overview)"/><line x1="690" y1="260" x2="690" y2="340" stroke-dasharray="5 4" marker-end="url(#ah-overview)"/></g><g class="lb"><text x="398" y="144" text-anchor="start">1 CALL</text><text x="240" y="212" text-anchor="middle">2 read grants</text><text x="540" y="212" text-anchor="middle">3 write run</text><text x="998" y="304" text-anchor="start">4 open</text><text x="840" y="212" text-anchor="middle">5 last OK run</text><text x="840" y="372" text-anchor="middle">6 SQL</text><text x="698" y="304" text-anchor="start">7 last OK run</text></g></svg><div class="box actor" style="left:300px;top:40px;width:180px;height:60px"><b>Developer or app user</b><small>CALL or Rebuild snapshot</small></div><div class="box data" style="left:0px;top:180px;width:180px;height:80px"><span class="eb">DATA</span><b>Snowflake</b><small>ACCOUNT_USAGE · SHOW</small></div><div class="box code" style="left:300px;top:180px;width:180px;height:80px"><span class="eb">PROCEDURE</span><b>SP_ACCESS_SNAPSHOT</b><small>owner&#x27;s rights</small></div><div class="box data" style="left:600px;top:180px;width:180px;height:80px"><span class="eb">DATA</span><b>TBL_ACCESS_*</b><small>9 tables · one run per CALL</small></div><div class="box entry" style="left:900px;top:180px;width:180px;height:80px"><span class="eb">ENTRY</span><b>Access explorer</b><small>web or Streamlit · read-only</small></div><div class="box code" style="left:600px;top:340px;width:180px;height:80px"><span class="eb">SQL FUNCTIONS</span><b>TF_ACCESS_OF</b><small>TF_WHO_CAN · TF_CAN</small></div><div class="box actor" style="left:900px;top:340px;width:180px;height:80px"><b>Viewer · auditor</b><small>browser or worksheet</small></div></div>
 <!--/map:overview-->
   </div>
   <div class="two" style="margin-top:18px">
     <ul>
-      <li>1–3: the procedure reads grants, users, query history, tags, policies and streams with its owner's rights, then writes one run (<code>RUN_ID</code>) into the snapshot tables.</li>
-      <li>The app's <b>Rebuild snapshot in Snowflake</b> button runs the same CALL, still with the owner's rights.</li>
+      <li>1–3: the procedure reads grants, users, query history, tags, policies, streams and (optional) object usage with its owner's rights, then writes one run (<code>RUN_ID</code>) into the snapshot tables.</li>
+      <li>The app's <b>Rebuild snapshot</b> button (top bar, <code>SOURCE=objects</code>) runs the same CALL, still with the owner's rights.</li>
     </ul>
     <ul>
       <li>5, 7: the app and the SQL functions read only the last <code>STATUS = 'OK'</code> run: nobody sees half a snapshot.</li>
@@ -154,19 +157,43 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <p class="key">Key: grey band = who acts · white = step · lavender diamond = decision · grey DATA = tables · pill = viewer · solid arrow = then · dashed arrow = data moves · numbers = order.</p>
   <div class="wrap">
 <!--map:flow-->
-<div class="canvas" style="width:1080px;height:640px"><div class="lane" style="top:0px;height:120px"><span>DEVELOPER</span></div><div class="lane" style="top:120px;height:260px"><span>SNOWFLAKE</span></div><div class="lane" style="top:380px;height:140px"><span>APP</span></div><div class="lane" style="top:520px;height:120px"><span>VIEWER</span></div><svg class="arrows" width="1080" height="640" viewBox="0 0 1080 640" aria-hidden="true"><defs><marker id="ah-flow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#17191D"/></marker></defs><g class="ln"><line x1="280" y1="60" x2="340" y2="60" marker-end="url(#ah-flow)"/><line x1="410" y1="92" x2="410" y2="160" marker-end="url(#ah-flow)"/><line x1="410" y1="428" x2="410" y2="240" marker-end="url(#ah-flow)"/><line x1="340" y1="200" x2="280" y2="200" marker-end="url(#ah-flow)"/><line x1="480" y1="200" x2="540" y2="200" marker-end="url(#ah-flow)"/><line x1="680" y1="200" x2="740" y2="200" marker-end="url(#ah-flow)"/><line x1="810" y1="240" x2="810" y2="288" marker-end="url(#ah-flow)"/><line x1="880" y1="200" x2="940" y2="200" stroke-dasharray="5 4" marker-end="url(#ah-flow)"/><line x1="1010" y1="232" x2="1010" y2="428" stroke-dasharray="5 4" marker-end="url(#ah-flow)"/><line x1="880" y1="460" x2="940" y2="460" marker-end="url(#ah-flow)"/><line x1="1010" y1="548" x2="1010" y2="492" marker-end="url(#ah-flow)"/></g><g class="lb"><text x="310" y="52" text-anchor="middle">1</text><text x="418" y="130" text-anchor="start">2 CALL</text><text x="418" y="338" text-anchor="start">2 or button</text><text x="310" y="192" text-anchor="middle">yes</text><text x="510" y="192" text-anchor="middle">3 no</text><text x="710" y="192" text-anchor="middle">4</text><text x="818" y="268" text-anchor="start">no</text><text x="910" y="192" text-anchor="middle">5 yes</text><text x="1002" y="334" text-anchor="end">6 last OK run</text><text x="1018" y="524" text-anchor="start">7 open</text></g></svg><div class="box step" style="left:140px;top:28px;width:140px;height:64px"><b>Deploy</b><small>run_sql.py 1_setup.sql</small></div><div class="box step" style="left:340px;top:28px;width:140px;height:64px"><b>CALL the procedure</b><small>2_snapshot.sql</small></div><div class="box dec" style="left:340px;top:160px;width:140px;height:80px"><svg class="dia" viewBox="0 0 140 80" preserveAspectRatio="none"><polygon points="70,1 139,40 70,79 1,40"/></svg><b>Run RUNNING,</b><small>under 1 h old?</small></div><div class="box step" style="left:140px;top:168px;width:140px;height:64px"><b>Return SKIPPED</b><small>nothing written</small></div><div class="box step" style="left:540px;top:168px;width:140px;height:64px"><b>Read sources</b><small>ACCOUNT_USAGE or SHOW</small></div><div class="box dec" style="left:740px;top:160px;width:140px;height:80px"><svg class="dia" viewBox="0 0 140 80" preserveAspectRatio="none"><polygon points="70,1 139,40 70,79 1,40"/></svg><b>Every core</b><small>dataset read?</small></div><div class="box step" style="left:740px;top:288px;width:140px;height:64px"><b>FAILED run</b><small>its rows deleted</small></div><div class="box data" style="left:940px;top:168px;width:140px;height:64px"><span class="eb">DATA</span><b>OK run</b><small>TBL_ACCESS_*</small></div><div class="box step" style="left:340px;top:428px;width:140px;height:64px"><b>Rebuild snapshot</b><small>button, any app user</small></div><div class="box step" style="left:740px;top:428px;width:140px;height:64px"><b>Reload page data</b><small>button: clears the cache</small></div><div class="box step" style="left:940px;top:428px;width:140px;height:64px"><b>Load last OK run</b><small>cached 1 h</small></div><div class="box actor" style="left:940px;top:548px;width:140px;height:64px"><b>Open a page</b><small>or a shared link</small></div></div>
+<div class="canvas" style="width:1080px;height:640px"><div class="lane" style="top:0px;height:120px"><span>DEVELOPER</span></div><div class="lane" style="top:120px;height:260px"><span>SNOWFLAKE</span></div><div class="lane" style="top:380px;height:140px"><span>APP</span></div><div class="lane" style="top:520px;height:120px"><span>VIEWER</span></div><svg class="arrows" width="1080" height="640" viewBox="0 0 1080 640" aria-hidden="true"><defs><marker id="ah-flow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#17191D"/></marker></defs><g class="ln"><line x1="280" y1="60" x2="340" y2="60" marker-end="url(#ah-flow)"/><line x1="410" y1="92" x2="410" y2="160" marker-end="url(#ah-flow)"/><line x1="410" y1="428" x2="410" y2="240" marker-end="url(#ah-flow)"/><line x1="340" y1="200" x2="280" y2="200" marker-end="url(#ah-flow)"/><line x1="480" y1="200" x2="540" y2="200" marker-end="url(#ah-flow)"/><line x1="680" y1="200" x2="740" y2="200" marker-end="url(#ah-flow)"/><line x1="810" y1="240" x2="810" y2="288" marker-end="url(#ah-flow)"/><line x1="880" y1="200" x2="940" y2="200" stroke-dasharray="5 4" marker-end="url(#ah-flow)"/><line x1="1010" y1="232" x2="1010" y2="428" stroke-dasharray="5 4" marker-end="url(#ah-flow)"/><line x1="880" y1="460" x2="940" y2="460" marker-end="url(#ah-flow)"/><line x1="1010" y1="548" x2="1010" y2="492" marker-end="url(#ah-flow)"/></g><g class="lb"><text x="310" y="52" text-anchor="middle">1</text><text x="418" y="130" text-anchor="start">2 CALL</text><text x="418" y="338" text-anchor="start">2 or button</text><text x="310" y="192" text-anchor="middle">yes</text><text x="510" y="192" text-anchor="middle">3 no</text><text x="710" y="192" text-anchor="middle">4</text><text x="818" y="268" text-anchor="start">no</text><text x="910" y="192" text-anchor="middle">5 yes</text><text x="1002" y="334" text-anchor="end">6 last OK run</text><text x="1018" y="524" text-anchor="start">7 open</text></g></svg><div class="box step" style="left:140px;top:28px;width:140px;height:64px"><b>Deploy</b><small>run_sql.py 1_setup.sql</small></div><div class="box step" style="left:340px;top:28px;width:140px;height:64px"><b>CALL the procedure</b><small>2_snapshot.sql</small></div><div class="box dec" style="left:340px;top:160px;width:140px;height:80px"><svg class="dia" viewBox="0 0 140 80" preserveAspectRatio="none"><polygon points="70,1 139,40 70,79 1,40"/></svg><b>Run RUNNING,</b><small>under 1 h old?</small></div><div class="box step" style="left:140px;top:168px;width:140px;height:64px"><b>Return SKIPPED</b><small>nothing written</small></div><div class="box step" style="left:540px;top:168px;width:140px;height:64px"><b>Read sources</b><small>ACCOUNT_USAGE or SHOW</small></div><div class="box dec" style="left:740px;top:160px;width:140px;height:80px"><svg class="dia" viewBox="0 0 140 80" preserveAspectRatio="none"><polygon points="70,1 139,40 70,79 1,40"/></svg><b>Every core</b><small>dataset read?</small></div><div class="box step" style="left:740px;top:288px;width:140px;height:64px"><b>FAILED run</b><small>its rows deleted</small></div><div class="box data" style="left:940px;top:168px;width:140px;height:64px"><span class="eb">DATA</span><b>OK run</b><small>TBL_ACCESS_*</small></div><div class="box step" style="left:340px;top:428px;width:140px;height:64px"><b>Rebuild snapshot</b><small>button, top bar</small></div><div class="box step" style="left:740px;top:428px;width:140px;height:64px"><b>Read again (↻)</b><small>drops the app&#x27;s copy</small></div><div class="box step" style="left:940px;top:428px;width:140px;height:64px"><b>Load last OK run</b><small>kept 24 h</small></div><div class="box actor" style="left:940px;top:548px;width:140px;height:64px"><b>Open a page</b><small>or a shared link</small></div></div>
 <!--/map:flow-->
   </div>
   <ul style="margin-top:14px">
     <li>Core datasets: grants, future grants, role → user, users. If one fails the run is FAILED and its rows deleted; tags, policies, streams or usage failing only marks that source <code>UNAVAILABLE</code>.</li>
-    <li><b>Rebuild snapshot in Snowflake</b> also clears the app's cache, so the new run shows at once; otherwise <b>Reload page data</b> or wait for the 1 h cache.</li>
+    <li><b>Rebuild snapshot</b> also drops the app's copy, so the new run shows at once; otherwise <b>↻</b> (Read Snowflake again) reads the last OK run, or the copy is read again after <code>CACHE_HOURS</code> (24 h).</li>
+    <li>When a new read replaces the copy in <code>.cache/</code>, the older one stays as <code>&lt;name&gt;.prev.pkl</code>: the previous snapshot that <a href="#changes">What changed</a> compares with.</li>
   </ul>
+</section>
+
+<section class="card" id="layout">
+  <div class="eyebrow">Orientation</div>
+  <h2>Finding your way</h2>
+  <p class="key">The local web app (React + FastAPI) and the Streamlit version run the same React app, so every screen below looks and works the same in both.</p>
+  <figure><img src="docs/img/redesign/home_search.png" alt="Home with the search open: people, roles, objects and screens that match"><figcaption>Top bar, side menu and Home's search: each hit carries a one-line answer.</figcaption></figure>
+  <div class="two">
+    <div><h3>Top bar</h3><ul>
+      <li><b>Find</b>: any person, role or object; a user and a role with the same name are two hits.</li>
+      <li><b>Shared snapshot</b> / <b>My access</b>: the whole account, or only your own access read live with your rights (<a href="#mine">My access</a>).</li>
+      <li><b>Data from &lt;time&gt;</b> and <b>↻</b> (Read Snowflake again); with <code>SOURCE=objects</code> also <b>Rebuild snapshot</b>, which CALLs the procedure. <b>Demo data</b> marks fake data; <b>Dark</b> switches the theme.</li>
+      <li><b>Incomplete · N sources</b> (side menu): what could not be read, why, and the grant that fixes it.</li>
+    </ul></div>
+    <div><h3>Side menu and tabs</h3><ul>
+      <li><b>Answers</b>: Home, A person or role, Who has access to an object, Can they?, Access graph, What they see, Compare, Request access.</li>
+      <li><b>Admin</b>: Risks &amp; fixes (badge: High findings), What if, Review &amp; sign-off, Sensitive data, Sensitive data flow, Granted vs used, What changed.</li>
+      <li><b>Detail</b>: User paths and Role paths, the full detail pages.</li>
+      <li>Every screen splits into tabs. The first tab keeps the detailed diagram or table; the newer views are the tabs next to it.</li>
+      <li>Every view is a link (<code>?page=check&amp;role=F_MARKETING&amp;obj=…</code>), so you can share it. Older links (<code>?page=user&amp;part=sees</code>, <code>?page=catalog</code>, …) open the screen that now shows that part.</li>
+      <li>Change plan, rule On/Off and mutes, review decisions and watched questions are saved in this browser only.</li>
+    </ul></div>
+  </div>
 </section>
 
 <section class="card" id="graph">
   <div class="eyebrow">Legend</div>
   <h2>How to read a graph</h2>
-  <p class="key">Every graph runs left to right: the start, one lane per depth, then objects. Click a box to open it; hover a box or line for details. A user and a role with the same name are two boxes; the user reads <span class="mono">NAME (user)</span>. Find (top bar) lists both.</p>
+  <p class="key">Every graph runs left to right: the start, one lane per depth, then objects. Click a box to open it; hover a box or line for details; drag to pan, + / − / fit to zoom. A user and a role with the same name are two boxes. The legend sits under each graph.</p>
   <div class="legend" style="margin-top:16px">
     <dl>
       <dt><span class="n user">ENGINEER_01</span></dt><dd>User (person or service)</dd>
@@ -191,124 +218,198 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
     <dl>
       <dt><span class="mono" style="font-size:11px">DEPTH 2</span></dt><dd>Lane = roles from the start to the role, that role included</dd>
       <dt><span class="n tech">T_X <span style="font-size:10px">D2 · also D3</span></span></dt><dd>Drawn once at its shortest depth; also reached at D3</dd>
-      <dt><span class="badge bad">! 4</span></dt><dd>Breaks rule 4; red High, amber Medium, grey Low. Only High unless "All rule hits"</dd>
+      <dt><span class="badge bad">High · 3</span></dt><dd>Rule findings on the box: red Critical / High, amber Medium, grey Low; click opens them</dd>
       <dt><span class="mono" style="font-size:11px">SELECT ×40</span></dt><dd>Arrow label: the privilege, on 40 objects of a group</dd>
-      <dt><svg width="22" height="17" viewBox="0 0 18 14" fill="#ECE6DB" stroke="#5E554A"><rect x="5.5" y=".5" width="12" height="8" rx="2"/><rect x="3" y="3" width="12" height="8" rx="2"/><rect x=".5" y="5.5" width="12" height="8" rx="2" stroke-width="1.4"/></svg><span class="mono" style="font-size:11px;margin-left:6px">DB1 · 400 objects</span></dt><dd>Group box: many objects of one schema or database; click to open</dd>
-      <dt><span class="n fold">⋯ 47 roles ⋯</span></dt><dd>Folded roles; click to draw them all</dd>
-      <dt><span class="n fold">+129 more</span></dt><dd>Lane over 12 boxes; click to show all</dd>
+      <dt><svg width="22" height="17" viewBox="0 0 18 14" fill="#ECE6DB" stroke="#5E554A"><rect x="5.5" y=".5" width="12" height="8" rx="2"/><rect x="3" y="3" width="12" height="8" rx="2"/><rect x=".5" y="5.5" width="12" height="8" rx="2" stroke-width="1.4"/></svg><span class="mono" style="font-size:11px;margin-left:6px">DB1 · 400 objects</span></dt><dd>Combined box: many objects of one schema, database or type; click to open it</dd>
+      <dt><span class="n fold">⋯ 47 roles ⋯</span></dt><dd>Folded roles; click to draw them</dd>
+      <dt><span class="n fold">⋯ Snowflake built-in (via PUBLIC) ⋯</span></dt><dd>Snowflake's own grants every user gets through PUBLIC: one folded box, never findings (<code>?builtin=1</code> shows them)</dd>
     </dl>
   </div>
 </section>
 
-<section class="card screen" id="user">
-  <header><h2>User</h2><span class="q">?page=user&amp;name=ENGINEER_01</span></header>
-  <p class="answers"><b>Answers</b>What can this user reach, through every role, at any depth, and how?</p>
-  <figure><img src="docs/img/user-graph.png" alt="User page for ENGINEER_01: findings, profile, KPIs and role graph"><figcaption>ENGINEER_01: rule findings, profile, KPIs, account-level privilege, role graph.</figcaption></figure>
+<section class="card screen" id="home">
+  <header><h2>Home</h2><span class="q">?page=home</span></header>
+  <p class="answers"><b>Answers</b>Where do I start, what can I reach, and how risky is the account?</p>
+  <figure><img src="docs/img/redesign/home.png" alt="Home: search, shortcuts, your access, account risks and data protection"><figcaption>Search, shortcuts, Access of ENGINEER_01, Account risks and Data protection.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Filters: user, Only on object, Only privilege, Walk role hierarchy (depth limit); <b>All granted roles</b> (as secondary roles ALL) or <b>Default role only</b>; <b>Data only</b> hides USAGE on databases and schemas.</li>
-      <li>Amber banner: rule findings for the user and the roles granted to it. Red banner: admin roles or account-level privileges, with the chain.</li>
-      <li>Graph: click an object to open Can they? for this user; click a role to open it.</li>
-      <li>Below the graph: Privileges (shortest path each), every path of privileges reached more than once, Can read the data?, Sensitive data by granted role, Granted roles, Roles and warehouses used. Each table exports CSV.</li>
+      <li>Search a person, role, table or screen, or type a question: <code>can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER</code> (a role works too: <code>can F_MARKETING read …</code>). Press <b>/</b> to jump to it.</li>
+      <li>Each hit has a one-line answer (what a person or role reaches, who reaches an object); warehouses are their own group; matching screens are listed too.</li>
+      <li><b>Try</b> shortcuts open a screen filled with the first hit, or the default user.</li>
     </ul></div>
-    <div><h3>Numbers</h3><dl class="nums">
-      <dt>Distinct privileges</dt><dd>Privilege-on-object pairs reached, on N objects</dd>
-      <dt>Grant paths</dt><dd>All chains summed; a privilege with 2+ paths survives removing one role</dd>
-      <dt>Roles reachable</dt><dd>Roles the walk reaches; N granted directly</dd>
-      <dt>Deepest grant</dt><dd>Largest depth of any privilege</dd>
-      <dt>Sensitive objects</dt><dd>Sensitive objects it can read (<code>READ_PRIVS</code>)</dd>
-      <dt>Admin roles</dt><dd>Admin roles reached; caption: account-level privileges</dd>
-      <dt>Profile</dt><dd>Type, Status, Default role, Secondary roles (All / None), Default warehouse, Last login (dormant mark)</dd>
-      <dt>Use role · Paths</dt><dd>Granted role that carries the privilege · number of chains</dd>
-      <dt>Used (30 d)</dt><dd>Queries per granted role (7 d on the INFORMATION_SCHEMA fallback)</dd>
+    <div><h3>Cards</h3><dl class="nums">
+      <dt>Access of …</dt><dd>Your objects as a ladder: Read only, Read + change, Owns; plus runs and account powers</dd>
+      <dt>Account risks</dt><dd>Findings by severity, with users, roles and objects counted</dd>
+      <dt>Data protection</dt><dd>Sensitive columns not masked, dormant or disabled people reading sensitive data, tagged objects and masked columns (opens the catalog), Data flow, tables with row policies</dd>
     </dl></div>
   </div>
 </section>
 
-<section class="card screen" id="role">
-  <header><h2>Role</h2><span class="q">?page=role&amp;name=F_ENGINEER</span></header>
-  <p class="answers"><b>Answers</b>Who holds this role, what does it hold, and who loses what if it is revoked?</p>
-  <figure><img src="docs/img/role-graph.png" alt="Role page for F_ENGINEER: KPIs, findings, held by and holds graph"><figcaption>F_ENGINEER: KPIs, findings, held roles, "Held by (up) and holds (down)" graph.</figcaption></figure>
-  <figure><img src="docs/img/role-holds-grid.png" alt="Holds (down) grid for T_SALES_CORE_READ"><figcaption>T_SALES_CORE_READ: has / lacks per object type.</figcaption></figure>
+<section class="card screen" id="access">
+  <header><h2>A person or role</h2><span class="q">?page=access&amp;user=ENGINEER_01 · ?page=access&amp;role=F_ENGINEER</span></header>
+  <p class="answers"><b>Answers</b>What can this person or role reach, through every role, at any depth?</p>
+  <figure><img src="docs/img/redesign/access.png" alt="A person or role: header, sentence, tiles and the role hierarchy diagram"><figcaption>ENGINEER_01: roles in use, the sentence, the ladder tiles and the first tab.</figcaption></figure>
+  <div class="two">
+    <figure><img src="docs/img/redesign/access_rows.png" alt="One row per object"><figcaption>One row per object, at the most it allows.</figcaption></figure>
+    <figure><img src="docs/img/redesign/access_history.png" alt="History tab"><figcaption>History: what changed for this person.</figcaption></figure>
+  </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Graph: holders on the left (Held by · Dn), the role in the shaded lane, what it holds on the right (Holds · Dn).</li>
-      <li>Held by (up): every grantee with depth, <b>Only via</b> (roles every path passes through), path and path count. <b>If revoked from</b> a direct grantee (a user and a role of the same name are separate picks): who loses the role and which privileges, net of other paths, with the fix text and REVOKE SQL.</li>
-      <li>Holds (down): one table per object type, one column per privilege: ✓ granted, dashed ✓ inherited, <i>owner</i> implied by OWNERSHIP, – lacks. <b>Show</b> keeps objects lacking one privilege.</li>
-      <li>Then Effective privileges (inherited, with path) and Can read the data? with this role in use. Filters: Walk upward, Users only, Only sensitive.</li>
+      <li>One picker for a person or a role, with recently viewed chips next to it. The header shows the profile and the roles in use (default, secondary, PUBLIC).</li>
+      <li>Buttons: Can they?, Show as graph, What they see, Compare with…, Granted vs used.</li>
+      <li>The sentence and tiles: can read, can change, owns, sensitive unmasked, can run (warehouses, tasks, functions, procedures). A tile opens the matching rows.</li>
     </ul></div>
-    <div><h3>Numbers</h3><dl class="nums">
-      <dt>Kind</dt><dd>Functional, technical, group or admin; owner role if any</dd>
-      <dt>Direct grants</dt><dd>Privileges on the role itself, incl. future grants</dd>
-      <dt>Effective privileges</dt><dd>Own plus inherited from the roles it holds ("all" for an admin role)</dd>
-      <dt>Roles above it</dt><dd>Roles that inherit it; N grant it directly</dd>
-      <dt>Users who get it</dt><dd>Users at any depth; N granted directly</dd>
-      <dt>Farthest holder</dt><dd>Roles from the farthest holder down to this one</dd>
-      <dt>Sensitive objects reached</dt><dd>Sensitive objects readable through it</dd>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Diagram &amp; privileges</dt><dd>For a role: Diagram, held by &amp; holds. The full detail page (<a href="#detail">User / Role paths</a>): filters, profile, KPIs, rule findings, the role hierarchy by depth, privilege tabs</dd>
+      <dt>One row per object</dt><dd>Each object at the most it allows, with the role it comes through. Chips All / Read only / Can change / Owns / More than one way; Group by Schema or Type; sort Riskiest first or Name</dd>
+      <dt>History</dt><dd>The <a href="#changes">What changed</a> feed for this subject</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="object">
-  <header><h2>Object</h2><span class="q">?page=object&amp;name=SALES.CORE.TBL_CUSTOMER</span></header>
-  <p class="answers"><b>Answers</b>Who can touch this object, how, and what does each of them see of it?</p>
-  <figure><img src="docs/img/object-sensitivity.png" alt="Object page for SALES.CORE.TBL_CUSTOMER with sensitivity card and policy text"><figcaption>SALES.CORE.TBL_CUSTOMER: admin reach, KPIs, Sensitivity card, policy text.</figcaption></figure>
+  <header><h2>Who has access to an object</h2><span class="q">?page=object&amp;name=SALES.CORE.TBL_CUSTOMER&amp;show=who</span></header>
+  <p class="answers"><b>Answers</b>Who can touch this table, view, warehouse or schema, how, and what does each of them see of it?</p>
+  <figure><img src="docs/img/redesign/object_who.png" alt="Who has access, grouped by level"><figcaption>Who has access: a bar per level, people grouped by level, the side panel for one person.</figcaption></figure>
+  <div class="two">
+    <figure><img src="docs/img/redesign/object.png" alt="Diagram, paths and users"><figcaption>Diagram, paths &amp; users (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/object_admin.png" alt="Admin holders"><figcaption>Admin holders (<code>preset=admin</code>).</figcaption></figure>
+  </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Filters: Type, Object, Privilege; Exclude disabled users; Graph: users only.</li>
-      <li>Red banner: users who reach it only through admin roles; not drawn in the graph.</li>
-      <li>Sensitivity: tags with their origin (column, table, schema, database), masking policy per column and who sees it clear; <b>Policy text</b> shows each policy body.</li>
-      <li>Effective access by user: a tick per privilege (click: Can they?), a cell per sensitive column and for rows, Via (granted roles per class), Depth, Paths. CSV adds Reviewer and Keep/Revoke.</li>
-      <li>Then Paths into the object (graph), What each role sees (<a href="#sensitive">policies</a>), All grantees.</li>
+      <li>Above the tabs: breadcrumb, name, tags (type, sensitive columns, masking and row policies, owner) and <b>Access for [person]</b>: that person's level on this object.</li>
+      <li>Levels: Admin, Owns, Can change, Read only, Can use, Can see names. Disabled and dormant rows are tinted; "N disabled still hold access" is called out.</li>
+      <li>Click a row: <b>How X gets in</b> lists all paths (to Can they?) and What if revoked?. <b>Group people with the same path</b> (on for warehouses) reads "23 people via PUBLIC (everyone)".</li>
+      <li>A red banner lists users who reach it only through admin roles.</li>
     </ul></div>
-    <div><h3>Numbers</h3><dl class="nums">
-      <dt>People with access</dt><dd>Enabled persons; service, disabled and via-admin users counted apart; read / write / own split</dd>
-      <dt>Roles with access</dt><dd>Roles at any depth; N hold grants directly</dd>
-      <dt>Owner</dt><dd>Role with OWNERSHIP; "deployed by" the build user</dd>
-      <dt>Longest chain</dt><dd>Roles from the farthest grantee to the grant holder</dd>
-      <dt>Clear for</dt><dd>Roles the masking policy shows in clear: "in session" counts inherited roles, "primary role only" does not; "everyone who can read" without masking</dd>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Diagram, paths &amp; users</dt><dd>Paths into the object graph, KPIs (people, admin, read / write / own, roles on the way, longest chain) and sub-tabs Who has access, Users × privileges (links the review grid), What each role sees, Sensitivity (tags and their origin, masking per column, policy text)</dd>
+      <dt>Who has access</dt><dd>People or Roles, grouped by level, with status, last login, path chips, privileges and path count</dd>
+      <dt>History</dt><dd>What changed on this object</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="check">
-  <header><h2>Can they?</h2><span class="q">?page=check&amp;name=ENGINEER_01&amp;obj=…&amp;priv=SELECT</span></header>
-  <p class="answers"><b>Answers</b>Can user or role X use privilege P on object Y, through which paths, and how would it be removed?</p>
-  <figure><img src="docs/img/can-they.png" alt="Can they? ENGINEER_01 SELECT on TBL_CUSTOMER: yes through 3 paths"><figcaption>ENGINEER_01 SELECT on SALES.CORE.TBL_CUSTOMER: yes, 3 paths, removal options, combined graph.</figcaption></figure>
+  <header><h2>Can they?</h2><span class="q">?page=check&amp;name=ENGINEER_01&amp;obj=… · ?page=check&amp;role=F_MARKETING&amp;obj=…</span></header>
+  <p class="answers"><b>Answers</b>Can this person or role use this privilege on this object, through which routes, where would I cut it, and what is the nearest way in?</p>
+  <figure><img src="docs/img/redesign/check_role.png" alt="Can they? Partly for role F_MARKETING on FINANCE.REPORT.TBL_REVENUE"><figcaption>A role as the subject: Partly for F_MARKETING on FINANCE.REPORT.TBL_REVENUE. SELECT is granted, but the row policy returns no rows.</figcaption></figure>
+  <div class="two">
+    <figure><img src="docs/img/redesign/check_yes.png" alt="Can they? Yes for a person"><figcaption>Yes for a person, with the privilege row.</figcaption></figure>
+    <figure><img src="docs/img/redesign/check_role_nearest.png" alt="Nearest ways in for a role"><figcaption>No for F_MARKETING: the nearest ways in, missing link dashed red.</figcaption></figure>
+  </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Every granted role counts (secondary roles ALL); no depth limit.</li>
-      <li>Answer: green yes; amber when the user is disabled or dormant; "via ownership" or "through admin role"; grey No.</li>
-      <li>Can read the data?: rows and each sensitive column, from the policy text. <b>Run with</b>: the USE ROLE / USE WAREHOUSE that works without secondary roles.</li>
-      <li>To remove this access: options with fewest users losing it first, as fix text plus equivalent REVOKE SQL; "all 2 needed" when several grants must go.</li>
-      <li>No: <b>What to ask for</b> lists roles that would give it, fewest privileges first.</li>
-      <li>A role as the subject (<code>role=</code>): its own grants and the roles it inherits. A database role gets ways in only from database roles of its own database, and no USE ROLE line (USE ROLE can't take a database role).</li>
+      <li>The question is a sentence: Can [person or role] [privilege] [object]? The privilege can be one privilege or "do anything to".</li>
+      <li>Verdict: <b>Yes</b>, <b>Partly</b> (granted, but the row policy returns no rows or columns are masked) or <b>No</b>, with each privilege held or struck through.</li>
+      <li>A person: every granted role counts (secondary roles ALL), no depth limit. A role: its own grants plus the roles it inherits; routes start at the role, "held by N people" is the blast radius, and No reads "Neither R nor any of its N roles".</li>
+      <li>A database role: ways in only from database roles of its own database, and no USE ROLE line (USE ROLE can't take a database role). An admin role answers Yes through itself.</li>
     </ul></div>
-    <div><h3>Numbers</h3><dl class="nums">
-      <dt>Paths</dt><dd>Distinct chains that give the privilege</dd>
-      <dt>Shortest depth</dt><dd>Roles on the shortest chain, grant holder included</dd>
-      <dt>Path n · Dn</dt><dd>Each chain, its depth, and how the grant applies (direct, inherited through a technical role, via a secondary role when the default role is not on it)</dd>
-      <dt>N users lose it</dt><dd>Users who lose the privilege if that option is applied, net of other paths</dd>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Answer &amp; diagram</dt><dd>The banner, KPIs (privileges, paths, shortest depth), paths combined as a graph, every path with What if revoked?, where to cut and What they see with the USE ROLE line</dd>
+      <dt>Routes &amp; where to cut</dt><dd>One lane per distinct route; roles on every route are places to cut, with side effects (people who lose it, other privileges lost), Simulate (What if) and the revoke as SQL / Terraform / ticket</dd>
+      <dt>Nearest ways in</dt><dd>On No: the fewest grants that would give it, then the fewest people who would get it too, with the too broad and rule 1 warnings; Request and What it brings</dd>
+      <dt>Rows &amp; columns</dt><dd>1 Grant, 2 Rows, 3 Columns, each with its result and the reason from the policy text</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="request">
+  <header><h2>Request access</h2><span class="q">?page=request&amp;name=…&amp;obj=… · ?page=request&amp;for_role=F_MARKETING&amp;obj=…</span></header>
+  <p class="answers"><b>Answers</b>Which existing role should I ask for, who approves it, and what text goes in the pull request or ticket?</p>
+  <figure><img src="docs/img/redesign/request_role.png" alt="Request access for role F_MARKETING on HR.PAYROLL.TBL_PAY_00"><figcaption>For a role: F_MARKETING needs SELECT on HR.PAYROLL.TBL_PAY_00; the text is GRANT ROLE F_HR TO ROLE F_MARKETING, with the undo.</figcaption></figure>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>For (person or role), object, then <b>Read it</b> or <b>Change it</b>: the privileges that needs.</li>
+      <li>Suggested roles: the smallest existing functional role first, with its holders and what else it brings (sensitive columns it shows included); the role picked on Can they? is offered too. <b>None of these</b> writes a commented skeleton for a new role, for the owner to decide.</li>
+      <li>For a person: <code>GRANT ROLE x TO USER u</code>. For a role: <code>GRANT ROLE x TO ROLE r</code>, with the too broad (it also reaches the people holding r) and rule 1 warnings; a role that already holds r (a loop) is never offered.</li>
+      <li>For a database role: a skeleton for a new database role in its own database (<code>GRANT DATABASE ROLE … TO DATABASE ROLE …</code>), or why it can't be done when the object is in another database.</li>
+    </ul></div>
+    <div><h3>Fields</h3><dl class="nums">
+      <dt>For how long</dt><dd>Writes the expiry date as a comment</dd>
+      <dt>Approver</dt><dd>From the object's owner tag (<code>OWNER_TAGS</code>), else blank</dd>
+      <dt>Why you need it</dt><dd>Goes into the comments</dd>
+      <dt>Ready to copy</dt><dd>SQL, Terraform or ticket text, Copy or Download. Text only: the app never runs it</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="map">
+  <header><h2>Access graph</h2><span class="q">?page=graph&amp;table=… | role=… | user=…&amp;show=trace</span></header>
+  <p class="answers"><b>Answers</b>How does access flow from a table, role or person through the role graph, and which paths are risky?</p>
+  <div class="two">
+    <figure><img src="docs/img/redesign/graph_diagram.png" alt="Role hierarchy by depth"><figcaption>Role hierarchy, by depth (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/graph_person_risky.png" alt="Trace graph with risky paths"><figcaption>Trace graph from a person, risky paths in red.</figcaption></figure>
+  </div>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>Start from a Table, Role or Person. Lines are coloured by what they end up granting (read, write, own, use; admin and account privileges red dotted); width = people flowing.</li>
+      <li>People with the same path are stacked (<code>same=0</code> ungroups); admin people and roles can be hidden (<code>admin=0</code>); PUBLIC built-ins folded (<code>builtin=1</code> unfolds).</li>
+      <li>Risky paths (<code>risky=1</code>): to an admin role or account privilege, via PUBLIC, or a read role that writes.</li>
+      <li>Click a box: everything not through it fades; the side panel lists the people through it and what it leads to, with Open its page, What if removed? and Make it the start.</li>
+    </ul></div>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Role hierarchy, by depth</dt><dd>The diagram of the person, role or object page</dd>
+      <dt>Trace graph</dt><dd>Columns by shortest step, colour by grant, focus on click</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="see">
+  <header><h2>What they see</h2><span class="q">?page=see&amp;user=…&amp;show=cards</span></header>
+  <p class="answers"><b>Answers</b>Which columns does this person or role see in clear or masked, which rows, and why?</p>
+  <div class="two">
+    <figure><img src="docs/img/redesign/see_cards.png" alt="Column by column cards"><figcaption>Column by column: one card per object.</figcaption></figure>
+    <figure><img src="docs/img/redesign/see_tables.png" alt="What they see tables"><figcaption>What they see · tables (the first tab).</figcaption></figure>
+  </div>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>Each card: the rows chip (all, filtered, no rows, unknown) and each column visible or masked, with the reason from the policy text.</li>
+      <li><b>Add masking →</b> (rule 6) on a sensitive column without a policy. Only sensitive or All protected objects (<code>all=1</code>).</li>
+      <li>Policies are read from their text, not evaluated: role listed = all rows / clear; role not listed and the body ignores the argument columns = no rows; role check AND argument condition = filtered; anything else = unknown. <code>IS_ROLE_IN_SESSION</code> counts inherited roles, <code>CURRENT_ROLE()</code> only the primary role.</li>
+    </ul></div>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>What they see · tables</dt><dd>What they see, Sensitive data they can see, Role usage</dd>
+      <dt>Column by column</dt><dd>The sentence, the cards and role usage bars</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="compare">
+  <header><h2>Compare</h2><span class="q">?page=compare&amp;a=…&amp;b=…&amp;scope=sensitive|all|db&amp;show=diff</span></header>
+  <p class="answers"><b>Answers</b>How do two people or roles differ, and what text would make them match?</p>
+  <figure><img src="docs/img/redesign/compare_diff.png" alt="Compare: differences"><figcaption>Differences first, the same ones folded.</figcaption></figure>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>Counts: only A, only B, both but different, same. Scope: sensitive data, everything or one database.</li>
+      <li><b>Make B match A</b> or <b>Remove A's extras</b> writes SQL / Terraform / ticket text; <b>Simulate</b> runs it on What if.</li>
+    </ul></div>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>What each sees</dt><dd>Side by side, per object</dd>
+      <dt>Differences</dt><dd>The differences and the plan to fix them</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="rules">
-  <header><h2>Rule checks</h2><span class="q">?page=rules&amp;rule=4&amp;sev=High&amp;grantee=…</span></header>
-  <p class="answers"><b>Answers</b>Where does the role model break its own rules, and what is the fix?</p>
-  <figure><img src="docs/img/rule-checks.png" alt="Rule checks: severity counts, rule map and rule rows"><figcaption>Severity counts, rule map, Role model and Admin rule rows.</figcaption></figure>
+  <header><h2>Risks &amp; fixes</h2><span class="q">?page=rules · &amp;show=fixes&amp;sev=High&amp;by=rule|person|object · &amp;show=list</span></header>
+  <p class="answers"><b>Answers</b>Where does the role model break its own rules, what is the fix, and what happens if I apply it?</p>
+  <figure><img src="docs/img/redesign/risks.png" alt="Risks and change plan"><figcaption>Risks &amp; change plan: severity tiles, rules by people affected, the change plan on the right.</figcaption></figure>
+  <div class="two">
+    <figure><img src="docs/img/redesign/risks_person.png" alt="Risks grouped by person"><figcaption>Grouped by person.</figcaption></figure>
+    <figure><img src="docs/img/redesign/rules.png" alt="Rules list"><figcaption>Rules: by area, with On/Off.</figcaption></figure>
+  </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Strip: findings per severity, plus Passing; click one to filter.</li>
-      <li>Rule map: the role model as boxes; badge "rule · findings" sits where the rule applies; click to filter.</li>
-      <li>Rules: grouped by area, most severe first; open a row for meaning, why, fix and an example.</li>
-      <li>Findings: one row per rule and fix (same fix for many grantees merged), detail, path, fix as infrastructure-as-code text + SQL. People with admin roles: every admin holder with the chain.</li>
+      <li>Severity tiles filter (click the active one again for all); the Admin holders tile opens the object screen's admin preset.</li>
+      <li>Group by rule, person or object; rule rows are sorted by people affected. Open one: why it matters, findings with chain chips, <b>Add fix to plan</b>, See on the graph, Rule settings, Mute with a reason.</li>
+      <li>The <b>Change plan</b> panel: items, impact tiles (people lose, keep it another way, findings fixed, new findings), who loses what, SQL / Terraform / ticket text, Open full what-if. Simulation only.</li>
+      <li>Findings without a grant to revoke show their fix as text.</li>
     </ul></div>
-    <div><h3>Numbers</h3><dl class="nums">
-      <dt>High · Medium · Low</dt><dd>Findings of that severity</dd>
-      <dt>Passing</dt><dd>Rules with no finding</dd>
-      <dt>Affects</dt><dd>Users who lose access when the fix is applied, net of other paths</dd>
-      <dt>Nav badge</dt><dd>All findings in the snapshot</dd>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Rule checks</dt><dd>Findings with severity tabs (one row per rule and fix, detail, path, fix as infrastructure-as-code text + SQL, CSV), Admin holders with the chain, Rules</dd>
+      <dt>Risks &amp; change plan</dt><dd>The view above</dd>
+      <dt>Rules</dt><dd>The 23 rules by area with severity counts, a findings link and On/Off; expand for What it checks and How to fix</dd>
     </dl></div>
   </div>
   <h3 style="margin-top:20px">The 23 rules</h3>
@@ -317,82 +418,176 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <!--/map:rules-->
 </section>
 
-<section class="card screen" id="sensitive">
-  <header><h2>Sensitive data</h2><span class="q">?page=sensitive&amp;tag=…&amp;db=…&amp;a=…&amp;b=…</span></header>
-  <p class="answers"><b>Answers</b>Which objects hold sensitive data, who can read them, and is it masked?</p>
-  <figure><img src="docs/img/sensitive-data.png" alt="Sensitive data page with KPIs, sensitive objects and role comparison"><figcaption>Governance line, KPIs, sensitive objects, F_ENGINEER vs F_ANALYST.</figcaption></figure>
-  <figure><img src="docs/img/policies.png" alt="What each role sees cards for two row-policy tables"><figcaption>Policies, Object page "What each role sees": filtered rows by role; "rows unknown" when the policy uses a mapping table.</figcaption></figure>
+<section class="card screen" id="whatif">
+  <header><h2>What if</h2><span class="q">?page=whatif&amp;changes=… · &amp;show=plan&amp;by=people|objects|roles|findings</span></header>
+  <p class="answers"><b>Answers</b>If we revoke this, who loses what, who keeps it another way, and which findings go or appear?</p>
+  <div class="two">
+    <figure><img src="docs/img/redesign/whatif_plan.png" alt="Change plan"><figcaption>Change plan: the form, plan chips and impact tiles.</figcaption></figure>
+    <figure><img src="docs/img/redesign/whatif.png" alt="Changes and impact tables"><figcaption>Changes &amp; impact tables (the first tab).</figcaption></figure>
+  </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Sensitive = a tag in <code>SENSITIVE_TAGS</code> on a column, the object, its schema or database.</li>
-      <li>Top line: whether row access policies, masking and tags are used at all.</li>
-      <li>Tables: sensitive objects, most reached first; who can read sensitive data (admin holders last); Role comparison of two roles, differences listed.</li>
-      <li>Policies are read from their text, not evaluated: role listed = all rows / clear; role not listed and the body ignores the argument columns = no rows; role check AND argument condition = filtered; anything else = unknown.</li>
-      <li><code>IS_ROLE_IN_SESSION</code> counts inherited roles, <code>CURRENT_ROLE()</code> only the primary role.</li>
+      <li>One line: [Revoke role | Drop role | Revoke privilege | Empty PUBLIC] [role] from [user or role] [Add to plan]. After you pick a role, only the users or roles that reach it are offered, direct ones first.</li>
+      <li>Seven impact tiles; people rows expand to Loses / Keeps through another path. Objects left unreached and roles left empty are listed.</li>
+      <li>The same plan as Risks &amp; fixes, saved in this browser. A simulation: it prints REVOKE text for your infrastructure as code and never runs it.</li>
     </ul></div>
-    <div><h3>Numbers</h3><dl class="nums">
-      <dt>Sensitive objects</dt><dd>Tagged objects; N columns · N whole objects</dd>
-      <dt>People who can read them</dt><dd>Enabled persons; via admin, disabled, service counted apart</dd>
-      <dt>Unmasked sensitive columns</dt><dd>Sensitive columns with no masking policy</dd>
-      <dt>Dormant or disabled with access</dt><dd>Non-service users not active who still read sensitive data</dd>
-      <dt>Masked</dt><dd>"k of n masked" per object</dd>
-      <dt>People · Roles</dt><dd>Readers per object; hover for names</dd>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Changes &amp; impact tables</dt><dd>Users, Objects, Roles, Findings, Text to apply (CSV)</dd>
+      <dt>Change plan</dt><dd>Group by People / Objects / Roles / Findings, CodeOutput (SQL / Terraform / ticket)</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="review">
-  <header><h2>Access review</h2><span class="q">?page=review&amp;db=SALES</span></header>
-  <p class="answers"><b>Answers</b>Who can reach what in one database, as a list to sign off?</p>
-  <figure><img src="docs/img/access-review.png" alt="Access review for SALES"><figcaption>SALES: filters, KPIs, first review rows.</figcaption></figure>
+  <header><h2>Review &amp; sign-off</h2><span class="q">?page=review&amp;db=SALES · &amp;show=grid&amp;scope=sensitive|db|all</span></header>
+  <p class="answers"><b>Answers</b>Who can reach what, as a list or a grid to keep or revoke and sign off?</p>
+  <figure><img src="docs/img/redesign/review_grid.png" alt="Review grid and sign-off"><figcaption>Review grid: people × objects, the ladder colour in each cell, Keep / Revoke per row.</figcaption></figure>
+  <div class="two">
+    <figure><img src="docs/img/redesign/review.png" alt="Access review list"><figcaption>Access review (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/review_privileges.png" alt="People by privileges of one object"><figcaption>One object: people × its privileges.</figcaption></figure>
+  </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Filters: Database (or all), Schema, Object, Exclude disabled users, Hide USAGE on database and schema (screen only).</li>
-      <li>One row per user and object: privileges with class badges, sensitive tags, granted roles; the shortest path on its own line under the row. Plus one row per admin user.</li>
-      <li>Export CSV: every row, a header with run and filter, blank Reviewer and Keep/Revoke columns.</li>
+      <li>Scope chips: Sensitive data, Database X, Everything; People only, Only dormant / disabled, Hide USAGE. Hover a cell for the path and privileges.</li>
+      <li>Dormant, disabled and never-logged-in people are tinted with "Suggested: revoke" (service users never are).</li>
+      <li>Footer: decided count; <b>Test revokes in the change plan</b> simulates them on What if; <b>Sign off</b> downloads a CSV with the reviewer, the decisions and a UTC timestamp, in the browser.</li>
+    </ul></div>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Access review</dt><dd>One row per user and object (Sensitive objects / All), KPIs, shortest path, CSV with blank Reviewer and Keep/Revoke columns</dd>
+      <dt>Review grid &amp; sign-off</dt><dd>The grid above; <code>object=…&amp;columns=privileges</code> for one object</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="sensitive">
+  <header><h2>Sensitive data</h2><span class="q">?page=sensitive · &amp;show=catalog</span></header>
+  <p class="answers"><b>Answers</b>Which objects hold sensitive data, who can read them, and how well is each one protected?</p>
+  <figure><img src="docs/img/redesign/catalog.png" alt="Sensitive objects catalog"><figcaption>Catalog: most exposed first, column chips red (unmasked) and green (masked).</figcaption></figure>
+  <figure><img src="docs/img/redesign/sensitive.png" alt="Sensitive objects"><figcaption>Sensitive objects (the first tab).</figcaption></figure>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>Sensitive = a tag in <code>SENSITIVE_TAGS</code> on a column, the object, its schema or database.</li>
+      <li>Catalog filters: All, Not protected (a sensitive column without masking), PII / identifiers (<code>PII_TAGS</code>), Confidential (<code>CONFIDENTIAL_TAGS</code>).</li>
+      <li>Status: Not protected, Partly ("1 of 3 columns masked"), Protected, or Whole object (row policy). Readers counted (+ admins); Who → opens the object screen.</li>
+    </ul></div>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Sensitive objects</dt><dd>Tagged objects, most reached first, masked count</dd>
+      <dt>Who can read them</dt><dd>People and roles, admin holders last</dd>
+      <dt>Compare two roles</dt><dd>Two roles side by side on sensitive data; <a href="#compare">Compare</a> does the same for people too</dd>
+      <dt>Catalog</dt><dd>The protection view above</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="dataflow">
+  <header><h2>Sensitive data flow</h2><span class="q">?page=flow&amp;sel=…</span></header>
+  <p class="answers"><b>Answers</b>Which groups of people reach sensitive data, through which roles, and are the dormant or disabled among them?</p>
+  <figure><img src="docs/img/redesign/flow.png" alt="Sensitive data flow"><figcaption>People → granted role → sensitive object; box height and line width = people.</figcaption></figure>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>People are grouped Active, Dormant or disabled, Admins, Service. The object subtitle is red when columns are unmasked.</li>
+      <li>Click a box to follow it: only its people and their links stay, with the headline sentence and a panel (people, Who has access / Open the role, Review these people). Default: Dormant or disabled; <code>sel=none</code> shows everyone.</li>
+      <li>Over 12 roles the smallest fold into "Other roles (N)". Shared snapshot only.</li>
+    </ul></div>
+    <figure><img src="docs/img/redesign/flow_object.png" alt="Flow followed from one object"><figcaption>Followed from one object.</figcaption></figure>
+  </div>
+</section>
+
+<section class="card screen" id="usage">
+  <header><h2>Granted vs used</h2><span class="q">?page=usage&amp;user=…&amp;days=30|90|180&amp;show=trim</span></header>
+  <p class="answers"><b>Answers</b>Which granted tables and views were actually used, and what could be trimmed?</p>
+  <div class="two">
+    <figure><img src="docs/img/redesign/usage.png" alt="Granted vs used"><figcaption>Granted level against used level, weekly bars, suggestion.</figcaption></figure>
+    <figure><img src="docs/img/redesign/usage_trim.png" alt="Trim to what is used"><figcaption>Trim to what is used: the revokes as text.</figcaption></figure>
+  </div>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>One row per table or view reached: granted level, used level or Not used, weekly bars, last used, and Keep / Remove INSERT never used / Remove all. Chips All, Not used, Partly used, Keep, Sensitive.</li>
+      <li><b>Trim to what is used: N grants</b> adds the revokes, at the roles that hold them, to the change plan (ownership is never revoked).</li>
+      <li>Reads <code>ACCOUNT_USAGE.ACCESS_HISTORY</code> (Enterprise edition), aggregated per user, object and week: query metadata, never table data. Without it the screen says why and which grant enables it.</li>
+    </ul></div>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Granted vs used</dt><dd>The rows, over 30, 90 or 180 days</dd>
+      <dt>Trim to what is used</dt><dd>SQL / Terraform / ticket text</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="changes">
+  <header><h2>What changed</h2><span class="q">?page=changes&amp;show=watch</span></header>
+  <p class="answers"><b>Answers</b>What changed since the previous snapshot, and did the answer to the questions I watch change?</p>
+  <div class="two">
+    <figure><img src="docs/img/redesign/changes.png" alt="What changed feed"><figcaption>The feed: gained and lost access, new and fixed findings.</figcaption></figure>
+    <figure><img src="docs/img/redesign/changes_watch.png" alt="Watched questions"><figcaption>Watched questions, tagged New / Changed / No change.</figcaption></figure>
+  </div>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>Compares the current snapshot with the previous one, which the local version keeps in <code>.cache/</code> as <code>&lt;name&gt;.prev.pkl</code> when a new read replaces it. Inside Snowflake, with <code>CACHE_HOURS=0</code> or before a second read, the screen says why it is empty.</li>
+      <li>Grants gained and lost with who gains or loses what, people turned dormant or disabled, new and fixed findings, and <code>GRANTED_BY</code>. Filters All, Gained access, Lost access, New findings, Sensitive only.</li>
+      <li>Watched questions (Can [person] read [object]? / Who can read [object]? / Who holds admin roles?) are saved in this browser and asked again on each snapshot. Notify is text only; nothing is sent. Shared snapshot only.</li>
+    </ul></div>
+    <div><h3>Tabs</h3><dl class="nums">
+      <dt>Changes</dt><dd>The feed with icons, impact, finding chips and links</dd>
+      <dt>Watched questions</dt><dd>Your questions and how their answer moved</dd>
+    </dl></div>
+  </div>
+</section>
+
+<section class="card screen" id="detail">
+  <header><h2>User paths and Role paths</h2><span class="q">?page=user&amp;name=ENGINEER_01 · ?page=role&amp;name=F_ENGINEER</span></header>
+  <p class="answers"><b>Answers</b>Everything about one user or role on one page: profile, numbers, findings, the role hierarchy and every privilege with its path.</p>
+  <div class="two">
+    <figure><img src="docs/img/redesign/user_paths.png" alt="User paths for ENGINEER_01"><figcaption>User paths: ENGINEER_01.</figcaption></figure>
+    <figure><img src="docs/img/redesign/role_paths.png" alt="Role paths for F_ENGINEER"><figcaption>Role paths: F_ENGINEER, held by and holds.</figcaption></figure>
+  </div>
+  <div class="two">
+    <div><h3>How to read</h3><ul>
+      <li>The same pages as the first tab of <a href="#access">A person or role</a>. Filters: Roles (all granted roles, as secondary roles ALL, or the default role only), Max depth, Data only (hides USAGE on databases and schemas), Only on object, Only privilege.</li>
+      <li>Rule findings by severity (show opens them); a red box for account privileges and admin roles, with the chain.</li>
+      <li>Privilege tabs: Account, Granted roles, Database roles, Usage, Warehouses, Execute, Read, Write, Own, Manage, All, each with its own diagram. Then Reached more than one way, What they see, Sensitive data they can see, Role usage.</li>
+      <li>Role paths: Held by (users, roles, with <b>Only via</b> and If revoked from), What it holds (one table per object type: granted, inherited, owner, lacks), What it sees.</li>
     </ul></div>
     <div><h3>Numbers</h3><dl class="nums">
-      <dt>Objects</dt><dd>Objects in the database that a user reaches</dd>
-      <dt>Users</dt><dd>Users with a row; N not active</dd>
-      <dt>Rows to review</dt><dd>All rows; N admin rows · N hidden USAGE</dd>
-      <dt>Sensitive objects</dt><dd>Tagged objects among them</dd>
+      <dt>Privileges</dt><dd>Privilege-on-object pairs reached, on N objects</dd>
+      <dt>Paths</dt><dd>All chains summed; N reached more than one way survive removing one role</dd>
+      <dt>Roles</dt><dd>Roles the walk reaches; N granted directly</dd>
+      <dt>Deepest chain</dt><dd>Largest depth of any privilege</dd>
+      <dt>Sensitive objects</dt><dd>Sensitive objects it can read (<code>READ_PRIVS</code>)</dd>
+      <dt>Admin roles · Account privileges</dt><dd>Admin roles reached; account-level privileges</dd>
+      <dt>Role: Effective privileges</dt><dd>Own plus inherited ("all" for an admin role); held by roles, users, farthest user</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="big">
-  <header><h2>Big accounts</h2><span class="q">?schema=DB.SCHEMA · ?full=1 · ?expand=3 · ?unfold=1</span></header>
+  <header><h2>Big accounts</h2><span class="q">?full=1 · ?builtin=1</span></header>
   <p class="answers"><b>Answers</b>How do I read a graph with thousands of objects and hundreds of roles?</p>
-  <figure><img src="docs/img/grouped-big-graph.png" alt="Summary graph for BIG_01: granted roles, folded roles, grant holders, databases"><figcaption>BIG_01 (the big test account): 2,000 objects grouped by database, summary view.</figcaption></figure>
-  <figure><img src="docs/img/schema-drill-down.png" alt="SVC_DEPLOY drill-down into SALES.PIPELINE"><figcaption>SVC_DEPLOY › SALES.PIPELINE: drill-down into one schema.</figcaption></figure>
+  <figure><img src="docs/img/redesign/graph_table.png" alt="Access graph from a table with combined boxes"><figcaption>Access graph from a table: many holders combined into boxes that open on click.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Grouping: over 12 objects a graph groups them by schema, over 12 schemas by database. A database grant or a warehouse keeps its own box. Tables still list every object.</li>
-      <li>Click a group box: the drill-down shows only that schema or database in graph, KPIs and tables; the breadcrumb goes back.</li>
-      <li>Summary (User, Role): over 30 role boxes or 6 role lanes the graph shows granted roles → one "⋯ N roles ⋯" box each → grant holders (best of each group first) → groups. <b>Show full chain</b> or the fold box opens <code>?full=1</code>.</li>
-      <li>Fit to width: scaled into the card, never below 75 % (then it scrolls); a run of 3+ single roles folds into one box.</li>
+      <li>Grouping: over 12 objects in a lane the graph combines them by schema, over 12 schemas by database, then by type. A database grant or a warehouse keeps its own box. Tables always list every object.</li>
+      <li>Click a combined box to draw its members; many database roles of one database fold into one box.</li>
+      <li>Summary: over 30 role boxes or 6 role lanes the graph shows granted roles → one "⋯ N roles ⋯" box each → grant holders → groups. The fold box or <code>?full=1</code> draws the full chain.</li>
+      <li>Paths: counts are always exact; full chains are listed up to <code>MAX_PATHS</code> ("first 200 of N").</li>
     </ul></div>
     <div><h3>Numbers</h3><dl class="nums">
-      <dt>Header</dt><dd>"2,000 objects, grouped by database"</dd>
-      <dt>Group box</dt><dd>N objects; lock N = sensitive objects; warning N = findings</dd>
+      <dt>Group box</dt><dd>N objects; lock = sensitive objects; badge = findings</dd>
       <dt>SELECT ×40</dt><dd>The privilege on 40 of the group's objects</dd>
-      <dt>Fold box</dt><dd>Roles between a granted role and its grant holders; "down to D7" = deepest</dd>
-      <dt>Summary note</dt><dd>Roles folded in all</dd>
-      <dt>+N more</dt><dd>Boxes past the first 12 of a lane</dd>
+      <dt>Fold box</dt><dd>Roles between a granted role and its grant holders</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="mine">
   <header><h2>My access</h2><span class="q">?data=mine</span></header>
-  <p class="answers"><b>Answers</b>What can I reach, read live with my own rights, without the shared tables?</p>
-  <figure><img src="docs/img/my-access.png" alt="My access view for ENGINEER_01"><figcaption>Demo My access for ENGINEER_01 (<code>DEMO_USER</code>'s slice of the fake data).</figcaption></figure>
+  <p class="answers"><b>Answers</b>What can I reach, read live with my own rights, without the shared data?</p>
+  <figure><img src="docs/img/redesign/my_access.png" alt="My access view for ENGINEER_01"><figcaption>Demo My access for ENGINEER_01 (<code>DEMO_USER</code>'s slice of the fake data).</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Sidebar Data: <b>My access (live, only me)</b>, then <b>Load my access</b>. Nothing is written; kept in server memory per browser for 1 h.</li>
-      <li>Pages: User (titled My access), Role, Object, Sensitive data, Can they?, Rule checks (on your own roles only). Access review is hidden.</li>
-      <li>Object shows what your roles reach, not everyone. No tags or policies: sensitivity shows "—" with a link to the shared snapshot. Rule checks and rule hits cover your own roles; rules that need tags, streams or last logins are listed as "Not checked here".</li>
-      <li>KPIs as on the <a href="#user">User</a> page.</li>
+      <li>Top bar: <b>My access</b>, then <b>Load my access</b> (<b>Reload my access</b> reads it again). Nothing is written; kept per user in memory and in <code>.cache/</code> for <code>CACHE_HOURS</code>.</li>
+      <li>Every screen except the shared-only ones (Review &amp; sign-off, Sensitive data flow, What changed) works on your own roles.</li>
+      <li>No tags or policies: sensitivity shows "unknown". Rule checks cover your own roles; rules that need tags, streams or last logins are listed as "Not checked here".</li>
+      <li>Not inside Snowflake: there the app runs with its owner's rights, not the viewer's, so My access is hidden.</li>
     </ul></div>
     <div><h3>Sources</h3><dl class="nums">
       <dt>Roles</dt><dd><code>CURRENT_AVAILABLE_ROLES()</code></dd>
@@ -406,27 +601,27 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <section class="card" id="run">
   <div class="eyebrow">Side view · setup</div>
   <h2>Run modes and what you need</h2>
-  <p class="key">Set the mode in <code>.env</code>; then <code>streamlit run app.py</code>. Install steps: README.md.</p>
+  <p class="key">Set the mode in <code>.env</code> (or <code>run.py --fake | --direct | --objects</code>); then <code>python run.py</code> (local web app, http://localhost:8000) or <code>python run.py streamlit</code> (http://localhost:8501). Install steps: README.md.</p>
 <table><thead><tr><th>Mode</th><th>Set in <code>.env</code></th><th>Needs in Snowflake</th><th>You see</th></tr></thead><tbody>
-<tr><td><b>Fake data</b></td><td><code>FAKE=1</code> (default without <code>.env</code>)</td><td>Nothing</td><td>The demo account used in these screenshots</td></tr>
-<tr><td><b>My access</b></td><td>Direct settings below; open <code>?data=mine</code>, click <b>Load my access</b></td><td>A warehouse; for the 7-day query history also a database (<code>SNOWFLAKE_DATABASE</code> or your default namespace)</td><td>Your own roles and everything they reach</td></tr>
-<tr><td><b>Direct</b></td><td><code>FAKE=0</code>, <code>ACCESS_SNAPSHOT=</code> (empty), <code>SNOWFLAKE_*</code></td><td>A role and a warehouse; whole account: <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (fast) or <code>MANAGE GRANTS</code> (SHOW, slow)</td><td>The whole account, as far as your role can read it</td></tr>
-<tr><td><b>Snapshot tables</b></td><td><code>FAKE=0</code>, <code>ACCESS_SNAPSHOT=&lt;DB&gt;.&lt;SCHEMA&gt;</code>, <code>SNOWFLAKE_*</code></td><td>The one-time setup below; viewers need <code>&lt;APP_ROLE&gt;</code></td><td>One shared, scheduled copy of the whole account</td></tr>
+<tr><td><b>Fake data</b></td><td><code>FAKE=1</code> (<code>run.py --fake</code>)</td><td>Nothing</td><td>The demo account used in these screenshots</td></tr>
+<tr><td><b>My access</b></td><td>Snowflake settings below; <b>My access</b> in the top bar, then <b>Load my access</b></td><td>A warehouse; for the 7-day query history also a database (<code>SNOWFLAKE_DATABASE</code> or your default namespace)</td><td>Your own roles and everything they reach</td></tr>
+<tr><td><b>Direct</b></td><td><code>SOURCE=direct</code> (the default), <code>SNOWFLAKE_*</code></td><td>A role and a warehouse; whole account: <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (fast) or <code>MANAGE GRANTS</code> (SHOW, slow)</td><td>The whole account, as far as your role can read it</td></tr>
+<tr><td><b>Snapshot tables</b></td><td><code>SOURCE=objects</code>, <code>ACCESS_SNAPSHOT=&lt;DB&gt;.&lt;SCHEMA&gt;</code>, <code>SNOWFLAKE_*</code></td><td>The one-time setup below; viewers need <code>&lt;APP_ROLE&gt;</code></td><td>One shared, scheduled copy of the whole account</td></tr>
 </tbody></table>
   <div class="two" style="margin-top:18px">
     <div>
       <h3>Direct mode</h3>
       <ul>
         <li>For accounts where procedures can't be created: no tables, procedures, functions or setup; nothing is written.</li>
-        <li>At start the app reads grants, future grants, users, query history, tags, policies and streams with your role, keeps them in memory for 1 h. <b>Read Snowflake again</b> (sidebar) reads again.</li>
-        <li>Same sources as the procedure (<a href="#sources">Data sources</a>): <code>ACCOUNT_USAGE</code> where readable, else <code>SHOW</code> / <code>INFORMATION_SCHEMA</code> (one query per role and per schema: minutes on a big account).</li>
-        <li>The sidebar shows <code>direct</code> and, under Incomplete, which dataset fell back and why.</li>
+        <li>The app reads grants, future grants, users, query history, tags, policies, streams and object usage with your role when you click <b>Load shared data</b> (a copy from the last 24 h opens at once), and keeps them in memory and <code>.cache/</code> for 24 h. <b>↻</b> (Read Snowflake again) reads again.</li>
+        <li>Same sources as the procedure (<a href="#sources">Data sources</a>): <code>ACCOUNT_USAGE</code> where readable, else <code>SHOW</code> / <code>INFORMATION_SCHEMA</code> (one query per role and per schema, 16 at a time (<code>SHOW_THREADS</code>): minutes on a big account).</li>
+        <li><b>Incomplete</b> (side menu) says which dataset fell back or could not be read, and which grant fixes it.</li>
       </ul>
     </div>
     <div>
       <h3>Login</h3>
       <ul>
-        <li>Browser SSO by default: a tab opens on the machine running Streamlit, so run the app on your own machine.</li>
+        <li>Browser SSO by default: a tab opens on the machine running the app, so run it on your own machine (a shared server needs a key pair).</li>
         <li>Key pair instead: <code>SNOWFLAKE_PRIVATE_KEY_FILE</code> (+ <code>SNOWFLAKE_PRIVATE_KEY_PWD</code> if encrypted). No passwords.</li>
         <li>One login per new connection; an admin's <code>ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;</code> lets one login last ~4 h.</li>
       </ul>
@@ -437,11 +632,11 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <pre>copy settings.sql settings.local.sql      # fill in DB, SCHEMA, WH, DEV_ROLE, APP_ROLE (SnowSQL: also HERE)
 python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql
 python run_sql.py sql/2_snapshot.sql;  python run_sql.py sql/2_snapshot_verify.sql   # = CALL SP_ACCESS_SNAPSHOT(&#x27;AUTO&#x27;)</pre>
-<ol><li><code>DEV_ROLE</code> needs <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (or <code>MANAGE GRANTS</code>); without it the snapshot holds only what that role sees (table below).</li><li><code>1_setup.sql</code> grants <code>APP_ROLE</code> its access to the tables. Grant <code>APP_ROLE</code> to the people who use the app, through your infrastructure as code.</li><li>Optional, admin: <code>ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;</code> users then log in once per ~4 h instead of once per connection.</li><li>Keep data fresh: schedule the snapshot with a task (the owner needs <code>EXECUTE TASK</code>), or use the app&#x27;s <b>Rebuild snapshot in Snowflake</b>, then <b>Reload page data</b>:<pre>CREATE TASK &lt;DB&gt;.&lt;SCHEMA&gt;.TSK_ACCESS_SNAPSHOT WAREHOUSE = &lt;WH&gt; SCHEDULE = &#x27;USING CRON 0 6 * * * UTC&#x27;
+<ol><li><code>DEV_ROLE</code> needs <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (or <code>MANAGE GRANTS</code>); without it the snapshot holds only what that role sees (table below).</li><li><code>1_setup.sql</code> grants <code>APP_ROLE</code> its access to the tables. Grant <code>APP_ROLE</code> to the people who use the app, through your infrastructure as code.</li><li>Optional, admin: <code>ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;</code> users then log in once per ~4 h instead of once per connection.</li><li>Keep data fresh: schedule the snapshot with a task (the owner needs <code>EXECUTE TASK</code>), or use the app&#x27;s <b>Rebuild snapshot</b> button:<pre>CREATE TASK &lt;DB&gt;.&lt;SCHEMA&gt;.TSK_ACCESS_SNAPSHOT WAREHOUSE = &lt;WH&gt; SCHEDULE = &#x27;USING CRON 0 6 * * * UTC&#x27;
 AS CALL &lt;DB&gt;.&lt;SCHEMA&gt;.SP_ACCESS_SNAPSHOT(&#x27;AUTO&#x27;);
 ALTER TASK &lt;DB&gt;.&lt;SCHEMA&gt;.TSK_ACCESS_SNAPSHOT RESUME;</pre></li></ol>
 <ul><li>SnowSQL instead of <code>run_sql.py</code>: <code>!source</code> the same <code>sql/</code> files in order (set <code>HERE</code> in <code>settings.local.sql</code>).</li><li><code>1_setup_verify.sql</code> shows which ACCOUNT_USAGE views the role can read (SKIPPED = that dataset uses its fallback, see Data sources).</li><li>Remove everything: <code>python run_sql.py sql/3_cleanup.sql; python run_sql.py sql/3_cleanup_verify.sql</code>.</li></ul>
-<table><thead><tr><th>Role</th><th>Needs</th></tr></thead><tbody><tr><td>Developer <code>&lt;DEV_ROLE&gt;</code> (owns tables and procedure)</td><td>Create tables and procedures in <code>&lt;SCHEMA&gt;</code>. To see every grant: <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (or DB roles <code>SECURITY_VIEWER</code> + <code>GOVERNANCE_VIEWER</code>, the latter for query history, tags and policies), or <code>MANAGE GRANTS</code> for SHOW. Without them the snapshot holds only what the role sees.</td></tr><tr><td>App <code>&lt;APP_ROLE&gt;</code></td><td>USAGE on database, schema, warehouse · SELECT on the 9 <code>TBL_ACCESS_</code> tables (8 snapshot tables + <code>TBL_ACCESS_FINDING</code>) · USAGE on <code>SP_ACCESS_SNAPSHOT</code> (rebuild button only) · USAGE on <code>TF_ACCESS_OF</code>, <code>TF_WHO_CAN</code>, <code>TF_CAN</code> (worksheet SQL)</td></tr><tr><td>Any user, My access</td><td>Nothing extra: a warehouse and a database whose INFORMATION_SCHEMA they can read</td></tr></tbody></table>
+<table><thead><tr><th>Role</th><th>Needs</th></tr></thead><tbody><tr><td>Developer <code>&lt;DEV_ROLE&gt;</code> (owns tables and procedure)</td><td>Create tables and procedures in <code>&lt;SCHEMA&gt;</code>. To see every grant: <code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code> (or DB roles <code>SECURITY_VIEWER</code> + <code>GOVERNANCE_VIEWER</code>, the latter for query history, tags and policies), or <code>MANAGE GRANTS</code> for SHOW. Without them the snapshot holds only what the role sees.</td></tr><tr><td>App <code>&lt;APP_ROLE&gt;</code></td><td>USAGE on database, schema, warehouse · SELECT on the 10 <code>TBL_ACCESS_</code> tables (9 snapshot tables + <code>TBL_ACCESS_FINDING</code>) · USAGE on <code>SP_ACCESS_SNAPSHOT</code> (rebuild button only) · USAGE on <code>TF_ACCESS_OF</code>, <code>TF_WHO_CAN</code>, <code>TF_CAN</code> (worksheet SQL)</td></tr><tr><td>Any user, My access</td><td>Nothing extra: a warehouse and a database whose INFORMATION_SCHEMA they can read</td></tr></tbody></table>
 <ul><li>The procedure runs with its owner&#x27;s rights: whoever clicks, a low-privilege user can&#x27;t overwrite the snapshot with a partial one.</li><li>A CALL while another run is RUNNING (under 1 h old) returns <code>SKIPPED</code>. The app reads only the last <code>STATUS = &#x27;OK&#x27;</code> run.</li></ul>
 </section>
 
@@ -471,16 +666,16 @@ CALL SP_ACCESS_FINDINGS(&#x27;{&quot;MAX_DEPTH_RULE&quot;: 4, &quot;DORMANT_DAYS
   <h2>Data sources</h2>
   <p class="key">Decided per dataset at every read (procedure CALL or direct mode).</p>
 <table><thead><tr><th>Dataset</th><th>ACCOUNT_USAGE (lag up to ~2 h)</th><th>Fallback</th><th>Table</th></tr></thead><tbody><tr><td>Role -&gt; object, role -&gt; role</td><td><code>GRANTS_TO_ROLES</code> (to roles and database roles)</td><td><code>SHOW ROLES</code> + <code>SHOW GRANTS TO ROLE</code>; <code>SHOW DATABASE ROLES</code> + <code>SHOW GRANTS TO DATABASE ROLE</code></td><td><code>TBL_ACCESS_GRANT</code></td></tr><tr><td>Role -&gt; user</td><td><code>GRANTS_TO_USERS</code></td><td><code>SHOW GRANTS OF ROLE</code></td><td><code>TBL_ACCESS_USER_ROLE</code></td></tr><tr><td>Future grants</td><td>none</td><td>always <code>SHOW FUTURE GRANTS IN DATABASE / SCHEMA</code></td><td><code>TBL_ACCESS_GRANT</code> (<code>IS_FUTURE</code>)</td></tr><tr><td>User profile</td><td><code>USERS</code></td><td><code>SHOW USERS</code></td><td><code>TBL_ACCESS_USER</code></td></tr><tr><td>Roles, warehouses used</td><td><code>QUERY_HISTORY</code>, 30 days</td><td><code>INFORMATION_SCHEMA.QUERY_HISTORY</code>, 7 days</td><td><code>TBL_ACCESS_USAGE</code></td></tr><tr><td>Tags</td><td><code>TAG_REFERENCES</code> (Enterprise)</td><td>per table: <code>INFORMATION_SCHEMA.TAG_REFERENCES(_ALL_COLUMNS)</code>, max 300</td><td><code>TBL_ACCESS_TAG</code></td></tr><tr><td>Masking and row access policies, with text</td><td><code>POLICY_REFERENCES</code> + <code>MASKING_POLICIES</code> / <code>ROW_ACCESS_POLICIES</code></td><td>per table: <code>POLICY_REFERENCES</code>, text from <code>DESCRIBE</code></td><td><code>TBL_ACCESS_POLICY</code></td></tr><tr><td>Streams (rule 22)</td><td>none</td><td>always <code>SHOW STREAMS IN ACCOUNT</code></td><td><code>TBL_ACCESS_STREAM</code></td></tr><tr><td>Objects used (Granted vs used), per user, object, week and read / write</td><td><code>ACCESS_HISTORY</code> (Enterprise), 180 days, aggregated in SQL: query metadata, never table data</td><td>none: the screen explains it</td><td><code>TBL_ACCESS_OBJECT_USE</code></td></tr><tr><td>Run log</td><td></td><td></td><td><code>TBL_ACCESS_RUN</code></td></tr></tbody></table>
-<ul><li><code>P_SOURCE</code>: <code>AUTO</code> (default: ACCOUNT_USAGE where readable, else SHOW) · <code>ACCOUNT_USAGE</code> (fail if not readable) · <code>SHOW</code> (live, 2 queries per role).</li><li>What changed compares the snapshot with the previous one the local version kept in <code>.cache/</code> when a refresh replaced it (nothing more is read; not inside Snowflake, where the app keeps memory only).</li><li>Tags, policies, streams, usage, object usage: an error sets that source to <code>UNAVAILABLE</code>; the run stays OK. Any other failed dataset: the run is <code>FAILED</code> and its rows deleted.</li><li>My access reads <code>CURRENT_AVAILABLE_ROLES()</code>, <code>SHOW GRANTS TO ROLE / USER</code>, <code>SHOW GRANTS TO DATABASE ROLE</code> (each database role held, recursively), <code>DESC USER</code>, <code>ACCOUNT_USAGE.QUERY_HISTORY</code> (30 days) when readable, else <code>QUERY_HISTORY_BY_USER</code> (7 days), as the user.</li><li>Column names of the tag/policy views and <code>SHOW STREAMS</code> are marked &quot;to verify&quot; in <code>sql/1_setup.sql</code>.</li></ul>
+<ul><li><code>P_SOURCE</code>: <code>AUTO</code> (default: ACCOUNT_USAGE where readable, else SHOW) · <code>ACCOUNT_USAGE</code> (fail if not readable) · <code>SHOW</code> (live, 2 queries per role).</li><li>Objects used is an optional step that may fail: without Enterprise edition or <code>IMPORTED PRIVILEGES</code> the table stays empty, the source is <code>UNAVAILABLE</code> and Granted vs used says why. <code>USE_DAYS</code> sets the 180 days.</li><li>What changed compares the snapshot with the previous one the local version kept in <code>.cache/</code> as <code>&lt;name&gt;.prev.pkl</code> when a new read replaced it (nothing more is read; not inside Snowflake, where the app keeps memory only).</li><li>Tags, policies, streams, usage, object usage: an error sets that source to <code>UNAVAILABLE</code>; the run stays OK. Any other failed dataset: the run is <code>FAILED</code> and its rows deleted.</li><li>My access reads <code>CURRENT_AVAILABLE_ROLES()</code>, <code>SHOW GRANTS TO ROLE / USER</code>, <code>SHOW GRANTS TO DATABASE ROLE</code> (each database role held, recursively), <code>DESC USER</code>, <code>ACCOUNT_USAGE.QUERY_HISTORY</code> (30 days) when readable, else <code>QUERY_HISTORY_BY_USER</code> (7 days), as the user.</li><li>Column names of the tag/policy views and <code>SHOW STREAMS</code> are marked &quot;to verify&quot; in <code>sql/1_setup.sql</code>.</li></ul>
 </section>
 
 <section class="card" id="side">
   <div class="eyebrow">Side view</div>
   <h2>Settings (env vars)</h2>
 <p>Set them in <code>.env</code> (template <code>.env.example</code>) or as environment variables: a name missing or empty in <code>.env</code> comes from the environment, and a variable set in the shell wins. The <code>SNOWFLAKE_*</code> rows connect; the rest choose the data and tune the rules.</p>
-<table class="set"><thead><tr><th>Variable</th><th>Default</th><th>Does</th></tr></thead><tbody><tr><td><code>SNOWFLAKE_ACCOUNT</code>, <code>SNOWFLAKE_USER</code></td><td></td><td>Required for Snowflake: <code>&lt;org&gt;-&lt;account&gt;</code> and your login name</td></tr><tr><td><code>SNOWFLAKE_ROLE</code>, <code>SNOWFLAKE_WAREHOUSE</code></td><td></td><td>Role and warehouse for the session (else your defaults)</td></tr><tr><td><code>SNOWFLAKE_DATABASE</code>, <code>SNOWFLAKE_SCHEMA</code></td><td></td><td>Optional session namespace (My access reads query history through it)</td></tr><tr><td><code>SNOWFLAKE_PRIVATE_KEY_FILE</code>, <code>SNOWFLAKE_PRIVATE_KEY_PWD</code></td><td></td><td>Key pair login instead of browser SSO; the password only for an encrypted key</td></tr><tr><td><code>FAKE</code></td><td><code>1</code></td><td><code>0</code> = Snowflake via <code>sf.py</code></td></tr><tr><td><code>ACCESS_SNAPSHOT</code></td><td></td><td><code>&lt;DB&gt;.&lt;SCHEMA&gt;</code> of the tables (Snowflake only); empty = direct mode, no tables</td></tr><tr><td><code>DEMO_USER</code></td><td><code>ENGINEER_01</code></td><td>Default user, and the &quot;me&quot; of My access outside Snowflake</td></tr><tr><td><code>ROLE_PREFIXES</code></td><td><code>F_,T_</code></td><td>Functional and technical role prefixes</td></tr><tr><td><code>BUILD_ROLES</code></td><td><code>&lt;functional prefix&gt;DEPLOY</code></td><td>fnmatch patterns of the build identity: may hold OWNER roles (rule 4), skipped by rules 17, 19–23</td></tr><tr><td><code>MAX_HOPS</code></td><td><code>50</code></td><td>Safety cap on role hops per walk</td></tr><tr><td><code>MAX_PATHS</code></td><td><code>200</code></td><td>Full chains listed per row; path counts are always exact</td></tr><tr><td><code>CAP_PRIVS</code></td><td>READ: <code>SELECT, REFERENCES, USAGE, READ</code> · WRITE: READ + <code>INSERT, UPDATE, DELETE, TRUNCATE, WRITE</code> · EXECUTE: <code>USAGE</code> · OWNER: <code>OWNERSHIP</code></td><td>Rule 18: standard privileges per capability suffix, JSON</td></tr><tr><td><code>SENSITIVE_TAGS</code></td><td><code>PRIVACY_CATEGORY=IDENTIFIER|QUASI_IDENTIFIER|SENSITIVE,SENSITIVITY=PII|CONFIDENTIAL</code></td><td>Tag (last name part, any case) = values that make data sensitive; no <code>=</code> = any value</td></tr><tr><td><code>READ_PRIVS</code></td><td><code>SELECT,OWNERSHIP</code></td><td>Privileges that count as &quot;can read&quot;</td></tr><tr><td><code>DORMANT_DAYS</code></td><td><code>90</code></td><td>No login for this long (or never) before the run&#x27;s <code>FINISHED_AT</code> (rules 7, 16)</td></tr><tr><td><code>MAX_DEPTH_RULE</code></td><td><code>5</code></td><td>Rule 14 threshold</td></tr><tr><td><code>READ_ROLE_PATTERNS</code></td><td><code>_READ$|_READ_|_R$|_R_|_RO$|_RO_|READONLY|READ_ONLY|VIEWER|_VIEW$|REPORTING|_RPT</code></td><td>Rule 17 name heuristic (regex, any case)</td></tr><tr><td><code>READ_SHARE</code>, <code>READ_MIN_OBJECTS</code></td><td><code>0.8</code>, <code>5</code></td><td>Rule 17 behaviour heuristic: share of tables/views a role only reads, over at least this many</td></tr></tbody></table>
+<table class="set"><thead><tr><th>Variable</th><th>Default</th><th>Does</th></tr></thead><tbody><tr><td><code>SNOWFLAKE_ACCOUNT</code>, <code>SNOWFLAKE_USER</code></td><td></td><td>Required for Snowflake: <code>&lt;org&gt;-&lt;account&gt;</code> and your login name</td></tr><tr><td><code>SNOWFLAKE_ROLE</code>, <code>SNOWFLAKE_WAREHOUSE</code></td><td></td><td>Role and warehouse for the session (else your defaults)</td></tr><tr><td><code>SNOWFLAKE_DATABASE</code>, <code>SNOWFLAKE_SCHEMA</code></td><td></td><td>Optional session namespace (My access reads query history through it)</td></tr><tr><td><code>SNOWFLAKE_PRIVATE_KEY_FILE</code>, <code>SNOWFLAKE_PRIVATE_KEY_PWD</code></td><td></td><td>Key pair login instead of browser SSO; the password only for an encrypted key</td></tr><tr><td><code>FAKE</code></td><td></td><td><code>1</code> = fake data (<code>run.py --fake</code>); anything else = Snowflake via <code>sf.py</code></td></tr><tr><td><code>SOURCE</code></td><td><code>direct</code> (<code>objects</code> if only <code>ACCESS_SNAPSHOT</code> is set)</td><td><code>direct</code>: the app reads Snowflake with your role, nothing created · <code>objects</code>: the snapshot tables</td></tr><tr><td><code>ACCESS_SNAPSHOT</code></td><td><code>SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA</code></td><td><code>&lt;DB&gt;.&lt;SCHEMA&gt;</code> of the tables; <code>SOURCE=objects</code> without any of these is an error</td></tr><tr><td><code>CACHE_HOURS</code></td><td><code>24</code></td><td>Hours the copy in <code>.cache/</code> is used; <code>0</code> = memory only (and no What changed)</td></tr><tr><td><code>SHOW_THREADS</code></td><td><code>16</code></td><td>SHOW statements sent at once when ACCOUNT_USAGE is not readable</td></tr><tr><td><code>APP</code>, <code>WEB_PORT</code>, <code>STREAMLIT_PORT</code>, <code>HOST</code></td><td><code>web</code>, <code>8000</code>, <code>8501</code>, <code>127.0.0.1</code></td><td>What <code>run.py</code> starts and where; <code>HOST=0.0.0.0</code> only on a private shared server</td></tr><tr><td><code>BUILTIN</code></td><td><code>SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*</code></td><td>Snowflake's built-in roles and objects, folded under PUBLIC and left out of rule checks (<code>?builtin=1</code> shows them)</td></tr><tr><td><code>DEMO_USER</code></td><td><code>ENGINEER_01</code></td><td>Default user, and the &quot;me&quot; of My access outside Snowflake</td></tr><tr><td><code>ROLE_PREFIXES</code></td><td><code>F_,T_</code></td><td>Functional and technical role prefixes</td></tr><tr><td><code>BUILD_ROLES</code></td><td><code>&lt;functional prefix&gt;DEPLOY</code></td><td>fnmatch patterns of the build identity: may hold OWNER roles (rule 4), skipped by rules 17, 19–23</td></tr><tr><td><code>MAX_HOPS</code></td><td><code>50</code></td><td>Safety cap on role hops per walk</td></tr><tr><td><code>MAX_PATHS</code></td><td><code>200</code></td><td>Full chains listed per row; path counts are always exact</td></tr><tr><td><code>CAP_PRIVS</code></td><td>READ: <code>SELECT, REFERENCES, USAGE, READ</code> · WRITE: READ + <code>INSERT, UPDATE, DELETE, TRUNCATE, WRITE</code> · EXECUTE: <code>USAGE</code> · OWNER: <code>OWNERSHIP</code></td><td>Rule 18: standard privileges per capability suffix, JSON</td></tr><tr><td><code>SENSITIVE_TAGS</code></td><td><code>PRIVACY_CATEGORY=IDENTIFIER|QUASI_IDENTIFIER|SENSITIVE,SENSITIVITY=PII|CONFIDENTIAL</code></td><td>Tag (last name part, any case) = values that make data sensitive; no <code>=</code> = any value</td></tr><tr><td><code>READ_PRIVS</code></td><td><code>SELECT,OWNERSHIP</code></td><td>Privileges that count as &quot;can read&quot;</td></tr><tr><td><code>DORMANT_DAYS</code></td><td><code>90</code></td><td>No login for this long (or never) before the run&#x27;s <code>FINISHED_AT</code> (rules 7, 16)</td></tr><tr><td><code>MAX_DEPTH_RULE</code></td><td><code>5</code></td><td>Rule 14 threshold</td></tr><tr><td><code>READ_ROLE_PATTERNS</code></td><td><code>_READ$|_READ_|_R$|_R_|_RO$|_RO_|READONLY|READ_ONLY|VIEWER|_VIEW$|REPORTING|_RPT</code></td><td>Rule 17 name heuristic (regex, any case)</td></tr><tr><td><code>READ_SHARE</code>, <code>READ_MIN_OBJECTS</code></td><td><code>0.8</code>, <code>5</code></td><td>Rule 17 behaviour heuristic: share of tables/views a role only reads, over at least this many</td></tr><tr><td><code>PII_TAGS</code>, <code>CONFIDENTIAL_TAGS</code></td><td><code>IDENTIFIER|PII|PERSONAL</code>, <code>CONFIDENTIAL|SECRET|RESTRICTED</code></td><td>Catalog filters (regex, any case)</td></tr><tr><td><code>OWNER_TAGS</code></td><td><code>OWNER,DATA_OWNER</code></td><td>Tags whose value is the approver on Request access</td></tr><tr><td><code>BROAD_PEOPLE</code></td><td><code>1</code></td><td>Nearest ways in and Request access warn &quot;too broad&quot; when a role also gives the access to more people than this</td></tr><tr><td><code>GRID_MAX</code></td><td><code>60</code></td><td>Object columns drawn in the review grid, most reached first</td></tr><tr><td><code>USE_DAYS</code></td><td><code>180</code></td><td>Days of ACCESS_HISTORY read for Granted vs used</td></tr></tbody></table>
   <h2 style="margin-top:28px">Limits</h2>
-<ul><li>Data is as old as the last CALL, plus up to ~2 h ACCOUNT_USAGE lag; tags need Enterprise edition.</li><li>Live session roles of other users can&#x27;t be read: the app shows defaults and roles used in queries.</li><li>SHOW fallback: 2 queries per role (slow on many roles); query history then 7 days or none.</li><li>Database roles are held roles; one the reading role may not inspect is listed in the notes, its grants unknown.</li><li>Masked / clear and all / filtered / no rows come from the policy text, not evaluated; subqueries, mapping tables, UDFs, NOT, CASE, user checks give &quot;unknown&quot;.</li><li>Sensitive reach counts <code>READ_PRIVS</code> on the object only; USAGE on its database/schema is not checked.</li><li>Rule 17 is a heuristic (name or mostly-read behaviour); review before acting. Rule 13 skips technical roles.</li><li>Object, Can they? and Access review list every path into an object: the slow part on very large, nested accounts.</li><li>Pages render one at a time per app process (<code>access.py</code> keeps lookups in module globals, under a lock).</li><li>My access has no tags or policies, so no sensitivity or access review; Rule checks run on your own roles, without the sensitive-data, stream and dormant-user rules.</li></ul>
+<ul><li>Data is as old as the last CALL, plus up to ~2 h ACCOUNT_USAGE lag; tags need Enterprise edition.</li><li>Live session roles of other users can&#x27;t be read: the app shows defaults and roles used in queries.</li><li>SHOW fallback: 2 queries per role (slow on many roles); query history then 7 days or none.</li><li>Database roles are held roles; one the reading role may not inspect is listed in the notes, its grants unknown.</li><li>Masked / clear and all / filtered / no rows come from the policy text, not evaluated; subqueries, mapping tables, UDFs, NOT, CASE, user checks give &quot;unknown&quot;.</li><li>Sensitive reach counts <code>READ_PRIVS</code> on the object only; USAGE on its database/schema is not checked.</li><li>Rule 17 is a heuristic (name or mostly-read behaviour); review before acting. Rule 13 skips technical roles.</li><li>Object, Can they? and Access review list every path into an object: the slow part on very large, nested accounts.</li><li>Change plan, rule On/Off and mutes, review decisions and watched questions are saved in this browser only, not shared.</li><li>Streamlit runs the React app as one component; an account that blocks components cannot run it: use the local version (or Container Services). Inside Snowflake there is no My access and no What changed.</li><li>Pages render one at a time per app process (<code>access.py</code> keeps lookups in module globals, under a lock).</li><li>My access has no tags or policies, so no sensitivity, review, data flow or What changed; Rule checks run on your own roles, without the sensitive-data, stream and dormant-user rules.</li></ul>
 
 </section>
 

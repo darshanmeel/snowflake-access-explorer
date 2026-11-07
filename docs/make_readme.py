@@ -1,7 +1,7 @@
 """Fill the generated parts of README.html between <!--map:NAME--> markers.
     python docs/make_readme.py
 overview, flow: boxes on a fixed canvas plus one SVG arrow layer (straight arrows only, never through a box).
-rules: titles and severities from access.py, areas from server.RULE_INFO. The rest of README.html is plain HTML."""
+rules: titles and severities from access.py, areas from server.RULE_INFO (the Rules tab of Risks & fixes). The rest of README.html is plain HTML."""
 import pathlib
 import re
 import sys
@@ -16,11 +16,11 @@ import server  # noqa: E402
 C0, R0 = [0, 300, 600, 900], [40, 180, 340]
 # id: (kind, x, y, w, h, eyebrow, name, sub)
 OVERVIEW = {
-    "dev": ("actor", C0[1], R0[0], 180, 60, "", "Developer or app user", "CALL or Rebuild button"),
+    "dev": ("actor", C0[1], R0[0], 180, 60, "", "Developer or app user", "CALL or Rebuild snapshot"),
     "sf": ("data", C0[0], R0[1], 180, 80, "DATA", "Snowflake", "ACCOUNT_USAGE · SHOW"),
     "sp": ("code", C0[1], R0[1], 180, 80, "PROCEDURE", "SP_ACCESS_SNAPSHOT", "owner's rights"),
-    "tbl": ("data", C0[2], R0[1], 180, 80, "DATA", "TBL_ACCESS_*", "8 tables · one run per CALL"),
-    "app": ("entry", C0[3], R0[1], 180, 80, "ENTRY", "Streamlit app", "7 pages · read-only"),
+    "tbl": ("data", C0[2], R0[1], 180, 80, "DATA", "TBL_ACCESS_*", "9 tables · one run per CALL"),
+    "app": ("entry", C0[3], R0[1], 180, 80, "ENTRY", "Access explorer", "web or Streamlit · read-only"),
     "tf": ("code", C0[2], R0[2], 180, 80, "SQL FUNCTIONS", "TF_ACCESS_OF", "TF_WHO_CAN · TF_CAN"),
     "user": ("actor", C0[3], R0[2], 180, 80, "", "Viewer · auditor", "browser or worksheet"),
 }
@@ -54,9 +54,9 @@ FLOW = {
     "ok": mid(C1[3] + 70, 200, "dec", "", "Every core", "dataset read?", 80),
     "fail": mid(C1[3] + 70, 320, "step", "", "FAILED run", "its rows deleted"),
     "run": mid(C1[4] + 70, 200, "data", "DATA", "OK run", "TBL_ACCESS_*"),
-    "rebuild": mid(C1[1] + 70, 460, "step", "", "Rebuild snapshot", "button, any app user"),
-    "reload": mid(C1[3] + 70, 460, "step", "", "Reload page data", "button: clears the cache"),
-    "load": mid(C1[4] + 70, 460, "step", "", "Load last OK run", "cached 1 h"),
+    "rebuild": mid(C1[1] + 70, 460, "step", "", "Rebuild snapshot", "button, top bar"),
+    "reload": mid(C1[3] + 70, 460, "step", "", "Read again (↻)", "drops the app's copy"),
+    "load": mid(C1[4] + 70, 460, "step", "", "Load last OK run", "kept 24 h"),
     "open": mid(C1[4] + 70, 580, "actor", "", "Open a page", "or a shared link"),
 }
 FLOW_ARROWS = [
