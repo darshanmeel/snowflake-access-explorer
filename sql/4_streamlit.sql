@@ -2,7 +2,7 @@
 -- Before: 1_setup.sql and 2_snapshot.sql (inside Snowflake the app reads the TBL_ACCESS_ tables). The React bundle
 -- web/dist-st is committed: no npm needed. The app runs with the owner's rights (&DEV_ROLE) and writes nothing.
 -- Settings for the app inside Snowflake: sis/.env (required, git-ignored; template sis.env.example), uploaded as the
--- app's .env: SOURCE=objects and ACCESS_SNAPSHOT=<DB>.<SCHEMA>; ST_REACT=html if the page stays blank. Never SNOWFLAKE_ACCOUNT.
+-- app's .env: SOURCE=objects and ACCESS_SNAPSHOT=<DB>.<SCHEMA>. Never SNOWFLAKE_ACCOUNT.
 -- Safe to run again: files are overwritten and the app is replaced, which loads the new files.
 -- SnowSQL: !source sql/4_streamlit.sql (from the repo folder)
 !source settings.local.sql

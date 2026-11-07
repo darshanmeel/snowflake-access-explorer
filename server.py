@@ -272,7 +272,7 @@ def need(cond, message):
         raise ApiError(404, "not_found", message)
 
 
-# ---------- rule texts and notes (keep in step with app.py) ----------
+# ---------- rule texts and notes ----------
 
 RULE_INFO = {
     "1": ("shortcut", "Role model", "A user or group role holds a technical role directly, skipping the functional "
@@ -381,7 +381,7 @@ def notes_of(run, view):
             for k, v in (run.get("NOTES") or {}).items() for t, m, f in [note_info(k, src.get(k), view)]]
 
 
-# ---------- rule hits on graph edges (app.breaks) ----------
+# ---------- rule hits on graph edges ----------
 
 def breaks(rows, ro):
     """{(x, y, cls): [(num, severity, title)]} for the graph edges a rule finding's fix points at."""
@@ -1163,7 +1163,7 @@ def role_page(p, view):
 # ---------- object ----------
 
 def via_groups(x):
-    """Classes that share their granted roles merged, then the grant holders (app.via_html)."""
+    """Classes that share their granted roles merged, then the grant holders."""
     groups = {}
     for cl, rs in x["via"].items():
         g = groups.setdefault(tuple(rs), ([], []))

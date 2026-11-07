@@ -1483,7 +1483,7 @@ def paths_note(row):
     return f"first {len(row['paths'])} of {row['count']:,}" if row["count"] > len(row["paths"]) else ""
 
 
-# ---------- graph inputs (ui.lane_graph): lanes, edges, notes; one box per node at its shortest depth ----------
+# ---------- graph inputs (the React graph, web/src/components/Graph.tsx): lanes, edges, notes; one box per node at its shortest depth ----------
 
 def notes(ch, nodes, word="D{}"):
     """{node: (badge, tooltip)}: badge "D2 · also D3" when a node is reached at more than one depth; the tooltip
@@ -1505,7 +1505,7 @@ def role_links(paths):
 
 
 def priv_links(rows):
-    """Holder -> object links, one per privilege (lane_graph merges one class into one line): rows with privilege,
+    """Holder -> object links, one per privilege (the graph merges one class into one line): rows with privilege,
     type, paths (...->holder->object)."""
     return list(dict.fromkeys((p[-2], p[-1], priv_class(r["privilege"], r["type"]), r["privilege"])
                               for r in rows for p in r["paths"]))
@@ -2555,7 +2555,7 @@ def group_objects(rows, level="schema"):
     return sorted(res, key=lambda g: (-g["objects"], g["group"]))
 
 
-MAX_OBJECTS = 12  # objects drawn one by one; more roll up into groups (ui.lane_graph shows 12 boxes per lane)
+MAX_OBJECTS = 12  # objects drawn one by one; more roll up into groups (the React graph shows 12 boxes per lane, graphs.ts MAX_BOXES)
 
 
 def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False, limit=None, user=None, otype=None,
@@ -2655,8 +2655,8 @@ SUMMARY_ROLES, SUMMARY_LANES = 30, 6  # over this many role boxes or role lanes 
 
 
 def too_big(g):
-    """Does a graph_input() graph need the summary? Role lanes counted as ui.fold_chain draws them: a run of 3+
-    lanes of one role each is one lane."""
+    """Does a graph_input() graph need the summary? Role lanes counted with a run of 3+ lanes of one role each
+    as one lane."""
     sizes = [len(ns) for _, ns in g["lanes"][1:-1]]
     n, i = 0, 0
     while i < len(sizes):
@@ -2671,7 +2671,7 @@ def too_big(g):
 def summary(g):
     """A big graph_input() graph as start -> roles granted directly -> one "⋯ N roles ⋯" box per granted role (the
     roles between it and its grant holders) -> grant holders -> objects / groups. Granted roles and holders ranked by
-    objects reached (ui.lane_graph shows the first 12, then "+N more"); no also-deeper links. Returns a copy of g with
+    objects reached (the graph shows the first 12 per lane); no also-deeper links. Returns a copy of g with
     kinds[fold box] = "fold" and folded = the number of roles hidden in fold boxes."""
     lanes, edges = g["lanes"], g["edges"]
     sid, ends = lanes[0][1][0], lanes[-1][1]
@@ -2705,7 +2705,7 @@ def summary(g):
     queues = [rank(hs, objs.get) for hs in by_end.values()]
     holders = list(dict.fromkeys(q[i] for i in range(max(map(len, queues), default=0)) for q in queues if i < len(q)))
     out, folds, notes, hidden = [(sid, r) for r in direct], [], {}, set()
-    for i, r in enumerate(direct[:12]):  # lane_graph shows 12: no fold box for a granted role behind "+N more"
+    for i, r in enumerate(direct[:12]):  # the graph shows 12 a lane: no fold box for a granted role it never draws
         mids = {x for x in below[r] if x not in objs and x not in direct}
         word = f"{len(mids)} role" + "s" * (len(mids) != 1)
         fid = f"⋯ {word} ⋯" + " " * i  # unique when two boxes fold as many roles
@@ -2727,7 +2727,7 @@ def summary(g):
 
 
 def graph_info(lanes, edges, okey=None):
-    """Rule hits and Has / Lacks of any graph (ui.lane_graph info): {node: {rules}} for the drawn nodes with
+    """Rule hits and Has / Lacks of any graph (the graph's info): {node: {rules}} for the drawn nodes with
     findings, {(a, b, cls): {rules, has, lacks}} for the drawn edges a finding applies to, Has / Lacks on arrows into
     single objects. okey: {object: its group node} when objects are grouped (their findings go to the group)."""
     fi, fe, _ = finding_index()
@@ -4406,6 +4406,3 @@ def findings(only=None):
     out = (rules_model(only) + rules_admin(only) + rules_sensitive(only) + rules_users() + rule17(only) + rule18()
            + rule19() + rules_operate() + rule22() + rule23(only))
     return sorted(out, key=lambda f: int(f["num"]))
-
-
-LOADED = os.path.getmtime(__file__)  # app.fresh() reloads this module when the file is newer

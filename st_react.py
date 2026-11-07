@@ -4,13 +4,12 @@ Each function draws one component and returns the click as a dict, or None:
   {"id": <node id or name>, "name": <user/role/object name>, "kind": <NodeKind or None>, "action": <NodeAction or None>, "row": <table row, tables only>}
 params(click) turns it into query params; the caller does st.query_params.update(...) and st.rerun().
 
-app() runs the whole React app (all pages) as one component; app.py uses it by default.
+app() runs the whole React app (all pages) as one component; app.py uses it.
 
 MODE (env ST_REACT, default "component"):
   component  bidirectional v1 component from web/dist-st (declare_component(path=...)); clicks and API calls come back.
-  html       fallback when SiS blocks path= components: the bundle inlined into st.components.v1.html,
-             display only (always returns None); app.py then runs its plain Streamlit pages.
-  native     app.py runs its plain Streamlit pages (no React).
+  html       the bundle inlined into st.components.v1.html for the single components (graph, table, ...), display
+             only (always returns None). app() needs component mode: its API calls must come back to Python.
 """
 import json
 import os
@@ -135,7 +134,7 @@ def chips(items, key, max_shown=12, theme=None):
 
 
 def params(click):
-    """Query params for a click (same pages and keys as app.py's links)."""
+    """Query params for a click (same pages and keys as the app's links)."""
     act = click.get("action") or {}
     k = act.get("kind")
     if k == "page":

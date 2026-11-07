@@ -14,7 +14,7 @@ stays, what changes, and the order of the work.
 | Rules | `access.py` `checks()` | 23 rules, `SEVERITY`, findings with `grantee`, `edges` (grantee -> to, privilege), `paths`, `iac` / `sql` fix text, `losers`. `server.finding()` shapes them; `RULE_INFO` has area, meaning and fix. |
 | What if | `access.what_if` / `changes_of` | Cut sets (user, link, priv, drop, public), restores every lookup after; result has users who lose, keep, findings fixed / new, and IaC + REVOKE text. Never runs it. |
 | Policies | `access.data_view(name, obj)` | Columns clear / masked and rows all / filtered / none, each with the reason ("MP_EMAIL shows the value to F_ENGINEER"). |
-| Streamlit | `app.py` + `st_react.py` | Default: the React app as one component, API calls answered by `server.py` in Python. `ST_REACT=native` keeps the plain Streamlit pages (`app.py` + `ui.py`) as a fallback. |
+| Streamlit | `app.py` + `st_react.py` | The React app as one component, API calls answered by `server.py` in Python. The plain Streamlit pages are removed; `ui.py` keeps the tokens, help texts and type icons `server.py` sends. |
 | URL params | `App.tsx` `read()` | `page`, `name`, `data=mine`, `builtin=1` (show Snowflake built-ins), page filters (`schema`, `otype`, `on`, `priv`, `rule`, ...). |
 | Tests | `test_access.py`, `test_server.py`, `test_sql.py`, `web` vitest | `python test_access.py` (also with `ROLE_PREFIXES=ZF_,ZT_`), `python test_server.py`, `npm test` in `web/`. Demo: `python run.py --fake`. |
 
@@ -194,10 +194,16 @@ stays, what changes, and the order of the work.
   Name sort; the Access and Object screens add to Recently viewed. Object, Users x privileges links the review grid with
   privilege columns. Catalog, Granted vs used and the review grid use the list toolbar (search + CSV).
 
+- **Plain Streamlit fallback removed** (not needed): `app.py` only runs the React app (`st_react.app`); the native pages
+  (`ST_REACT=native`, and `ST_REACT=html`, which showed them too) are gone, and `ui.py` keeps only what `server.py`
+  sends (tokens, help, type icons, privilege classes and order). `ST_REACT=html` now only says that the app needs the
+  component. `test_pages` runs app.py for every page key, shared and mine, and checks that it hands the page to the
+  component; the SVG lane graph tests went with `ui.lane_graph`, the graph inputs are still checked (`test_graph_inputs`).
+
 ## Not done, and why
 
 - Rules On/Off and Mute are per browser (localStorage), not shared: a shared setting would need a store the app writes to.
-- The plain Streamlit fallback (`ST_REACT=native`) keeps its current pages and names a React-only screen in a banner; the default Streamlit mode runs the React app and gets every new screen.
+- No Streamlit fallback without the React component: if an account blocks it, use the container runtime or the local version.
 - The old pages stay the default tab of each new screen (the user's choice), so the brief's "Replaces" column is met one
   tab away.
 - Nearest ways in has no grant simulation: What if simulates removals only; the row shows who holds the role today and
@@ -218,5 +224,4 @@ stays, what changes, and the order of the work.
 
 - README.html (the full guide) still describes the earlier pages; regenerate its generated parts with
   `python docs/make_readme.py` and rewrite its screen sections at the end of the redesign.
-- The plain Streamlit fallback has only the earlier pages (it says so on a React-only screen).
 - Rules On/Off, Mute, review decisions and watched questions are per browser.

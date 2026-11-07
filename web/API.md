@@ -10,7 +10,7 @@ TypeScript types: `web/src/api/types.ts` (keep both in step).
   REVOKE, CREATE, ALTER or DROP. The only write-like call is `CALL <ACCESS_SNAPSHOT>.SP_ACCESS_SNAPSHOT('AUTO')`
   (owner's rights), from `POST /api/reload` with `what=rebuild`. Fix texts (`iac`, `sql`) are text to copy, never run.
 - **No logic in server.py.** Every number, path, rule and walk comes from `access.py` (the functions named per endpoint
-  below). The server only picks, filters (the same filters app.py applies), renames to the JSON keys here, and adds
+  below). The server only picks, filters (the same filters for every page), renames to the JSON keys here, and adds
   `refs`. Page texts (headings, help) live in the React app.
 - **Layout-free graphs.** Graphs are nodes, edges, lanes (depth) and groups. React Flow + ELK place them.
 - **One lock.** `access.py` keeps its lookups in module globals. Every request runs
@@ -44,13 +44,13 @@ with the object count, note `("hidden", tooltip)`, info `{count: grants, noun: "
 draws the real grants instead. `meta.builtin` tells what is hidden.
 
 Every page endpoint accepts `view`. `review` is shared only (`400 shared_only` in mine). URL state of the React app
-mirrors app.py (`?page=user&name=...&depth=3&data=mine`), so links stay shareable; `data=mine` becomes `view=mine`.
+mirrors the page URL (`?page=user&name=...&depth=3&data=mine`), so links stay shareable; `data=mine` becomes `view=mine`.
 
 ## Data loading and caching
 
 ### Modes (meta.mode / meta.source)
 
-Same switches as app.py (`cache.config()`):
+Switches (`cache.config()`):
 
 | `FAKE` | `SOURCE` | source | Shared data | My access |
 |---|---|---|---|---|
@@ -66,18 +66,18 @@ The data is read once a day (`cache.get`: memory 24 h, and `.cache/` for `CACHE_
 
 - In memory: `{"data": dict, "at": epoch}`. Loaded on the first request that needs it; reused while younger than
   3600 s (same as `@st.cache_data(ttl=3600)` on `app.shared`). Expired: the next request loads again.
-- Build key: `("shared", run["RUN_ID"], str(run["FINISHED_AT"]))`, as app.py.
+- Build key: `("shared", run["RUN_ID"], str(run["FINISHED_AT"]))`.
 - A load error is kept for the request only (not cached): `503 shared_unreadable`, and the UI points to My access.
 
 ### My access: per browser session, 1 hour, memory only
 
 - Cookie `ae_sid`: 32 random hex chars (`os.urandom(16).hex()`), set by `POST /api/mine/load`. `HttpOnly`,
   `SameSite=Strict`, `Path=/api`, `Max-Age=3600`. Not `Secure` locally (http://localhost).
-- Server dict `MINE = {sid: {"data": dict, "key": ("mine", <random hex>), "user": str, "at": epoch}}`. `key` is the
-  `stamp()` of app.py: random, so two sessions never share `a.build` lookups or rule findings.
+- Server dict `MINE = {sid: {"data": dict, "key": ("mine", <random hex>), "user": str, "at": epoch}}`. `key` is
+  random, so two sessions never share `a.build` lookups or rule findings.
 - Every `view=mine` request: look up the cookie; missing, unknown or older than 3600 s -> `409 mine_not_loaded`
   (expired entries are dropped on the way). Found -> `a.build(data, key)` and answer from memory: no Snowflake call per
-  click. Same as `app.mine_for(browser)` (ttl 3600) keyed by the XSRF cookie.
+  click.
 - `POST /api/mine/load` again replaces the entry (Reload my access). Nothing is written to disk, logs or the shared
   cache; no other browser sees it.
 
@@ -580,7 +580,7 @@ Screen 16, where sensitive data flows (shared only; `state` "mine" / "none" othe
 
 ### GET /api/rules?view=&grantee=&sev=&rule=
 
-Rule checks; works in mine (the rules run on the slice that was loaded, as app.py). Producers:
+Rule checks; works in mine (the rules run on the slice that was loaded). Producers:
 `a.cached("rows", a.rule_rows)`, `a.RULES`, `a.SEVERITY`, `a.admin_people()`, `a.row_terms` + `a.policies_of` (rows
 unknown note); rule texts per number are in `meta.rules`.
 
@@ -770,9 +770,7 @@ Answer: `Graph`. Producers: as the pages; tab graphs `a.down_graph(start, rows_o
 ## Doubts
 
 1. **Tab mapping** (account / warehouses / granted / database_roles on top of `a.priv_cat`) and the RULE_INFO / note
-   texts live in app.py today, and app.py can't be imported (it runs `main()`). Copying them into server.py duplicates
-   logic; better: `access.py` gets `priv_tab(pv, kind)` and the rule area/meaning/fix and note texts (or a small shared
-   `texts.py`), used by both. Until then server.py copies them, marked `# keep in step with app.py`.
+   texts live in server.py (app.py, now only the Streamlit wrapper, no longer has its own copy).
 2. **Fold children.** `a.summary()` returns fold boxes but not which roles each hides; `groups[fold].nodes` needs
    them. Without an access.py change the server derives them from the full graph (roles below the granted role that
    are not holders); the cleaner fix is `summary()` returning `members`.

@@ -6,14 +6,12 @@ import re
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 from collections import Counter
 
 os.environ["FAKE"] = "1"  # never Snowflake here, whatever .env says
 
 import access as a
 import cache
-import ui
 
 F, T = a.FUNC, a.TECH
 
@@ -533,44 +531,29 @@ def test_db_roles():
 
 
 def test_pages():
-    """Every page renders without an exception on the fake data (one AppTest run each, no browser)."""
+    """app.py (Streamlit) runs for every page key without an exception and hands the page to the React component
+    (st_react.app). AppTest can't draw the component; test_server.py checks the content of every page."""
+    from unittest import mock
     from streamlit.testing.v1 import AppTest
+    import server
+    import st_react
     os.environ["FAKE"] = "1"  # never Snowflake here, whatever .env says
-    os.environ["ST_REACT"] = "native"  # the plain Streamlit pages; the React app is checked in test_server
-    app, c = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.py"), "SALES.CORE.TBL_CUSTOMER"
-    for q in (dict(page="user", name="ANALYST_01"), dict(page="role", name=T + "SALES_CORE_READ"),
-              dict(page="object", name=c), dict(page="sensitive"), dict(page="check", name="ENGINEER_01", priv="SELECT", obj=c),
-              dict(page="check", name="ANALYST_01", priv="INSERT", obj=c), dict(page="rules"), dict(page="review"),
-              dict(page="user", data="mine"), dict(page="rules", data="mine"),
-              dict(page="user", name="SVC_DEPLOY", schema="SALES.PIPELINE", otype="TASK"),
-              dict(page="role", name=F + "DEPLOY", schema="SALES.PIPELINE", otype="TASK"),
-              dict(page="user", name="HR_01", schema="HR.PAYROLL"), dict(page="role", name="HR.SC_R_PAYROLL"),
-              dict(page="home"), dict(page="graph", table=c), dict(page="flow")):  # React-only screens: the User page
+    app = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.py")
+    for view in ("shared", "mine"):
+        for k in server.PAGES:
+            with mock.patch.object(st_react, "MODE", "component"), mock.patch.object(st_react, "app") as comp:
+                at = AppTest.from_file(app, default_timeout=120)
+                at.query_params.update(dict(page=k) | (dict(data="mine") if view == "mine" else {}))
+                at.run()
+                assert not at.exception, (k, view, [x.value for x in at.exception])
+                assert comp.call_count == 1 and not at.error, (k, view)
+    at = AppTest.from_file(app, default_timeout=120)  # the real component call: no value yet, nothing answered
+    at.run()
+    assert not at.exception and not at.error
+    with mock.patch.object(st_react, "MODE", "html"):  # display only: the app says it needs the component
         at = AppTest.from_file(app, default_timeout=120)
-        at.query_params.update(q)
         at.run()
-        assert not at.exception, (q, [x.value for x in at.exception])
-        md = " ".join(m.value for m in at.markdown)
-        if q.get("page") in ("home", "graph", "flow"):
-            assert "is in the React version only" in md, q
-        elif q.get("page") == "user":
-            assert "React version only" not in md
-        if q == dict(page="user", name="ANALYST_01"):  # VIEW LINEAGE via PUBLIC, explained
-            assert "Via PUBLIC (VIEW LINEAGE)" in md and "not a rule finding" in md
-        if q == dict(page="rules", data="mine"):
-            assert "Not checked here" in md
-    at = AppTest.from_file(app, default_timeout=120)  # My access, loaded: its notes are explained
-    at.query_params.update(dict(page="user", data="mine"))
-    at.run()
-    for b in at.button:
-        if "Load" in b.label:
-            b.click().run()
-    md = " ".join(m.value for m in at.markdown)
-    assert not at.exception and "Incomplete: role list fallback not readable" in md and "last 7 days only" in md
-    at = AppTest.from_file(app, default_timeout=120)  # one Privileges tab, kept in the URL
-    at.query_params.update(dict(page="user", name="HR_01", tab="read"))
-    at.run()
-    assert not at.exception and "Read privileges" in " ".join(m.value for m in at.markdown)
+        assert not at.exception and "needs the React component" in at.error[0].value
 
 
 def test_kinds():
@@ -599,12 +582,6 @@ def test_public():
                  [("PUBLIC", "VIEW LINEAGE", "ACCOUNT", "ACCOUNT"), ("PUBLIC", "SELECT", "TABLE", "DB.S.T")]))
     assert [x["detail"] for x in a.rules_admin() if x["num"] == "9"] == ["SELECT on TABLE DB.S.T"]
     assert not a.admin_people() and a.account_privs("U1", True)
-
-
-def test_graph():
-    html = ui.lane_graph([("U", [f"U{i}" for i in range(15)] + ["<x>"])], [], lambda n: "user", "light",
-                         lambda n: "?n=" + n)
-    assert "+4 more" in html and "expand=0" in html and "<x>" not in html
 
 
 def test_cap():
@@ -1016,89 +993,7 @@ def test_namespaces():
     assert lanes[0][1] == ["Z" + a.UTAG] and "Z" in {n for _, ns in lanes[1:] for n in ns}
 
 
-# ---------- graph geometry: every page graph of the fake data, parsed back from the SVG ----------
-
-def polyline(d):
-    """SVG path d (M, H, V, C) -> points; curves sampled."""
-    pts = []
-    for cmd, args in re.findall(r"([MHVC])([^MHVC]*)", d):
-        v = [float(x) for x in args.split()]
-        x, y = pts[-1] if pts else (0, 0)
-        if cmd == "M":
-            pts.append((v[0], v[1]))
-        elif cmd == "H":
-            pts.append((v[0], y))
-        elif cmd == "V":
-            pts.append((x, v[0]))
-        else:
-            for k in range(1, 17):
-                s = k / 16
-                pts.append(tuple((1 - s) ** 3 * p0 + 3 * (1 - s) ** 2 * s * p1 + 3 * (1 - s) * s * s * p2 + s ** 3 * p3
-                                 for p0, p1, p2, p3 in zip((x, y), v[0:2], v[2:4], v[4:6])))
-    return pts
-
-
-def hits(p, q, b, m=0.5):
-    """Does segment p-q enter the inside of box b = (x, y, w, h) shrunk by m? (Liang-Barsky clipping)"""
-    x0, y0, x1, y1 = b[0] + m, b[1] + m, b[0] + b[2] - m, b[1] + b[3] - m
-    lo, hi = 0.0, 1.0
-    dx, dy = q[0] - p[0], q[1] - p[1]
-    for d, a, c in ((-dx, p[0] - x0, 0), (dx, x1 - p[0], 0), (-dy, p[1] - y0, 0), (dy, y1 - p[1], 0)):
-        if d == 0:
-            if a < 0:
-                return False
-        else:
-            t = a / d
-            if d < 0:
-                lo = max(lo, t)
-            else:
-                hi = min(hi, t)
-    return lo < hi
-
-
-def overlap(b, c):
-    return b[0] < c[0] + c[2] and c[0] < b[0] + b[2] and b[1] < c[1] + c[3] and c[1] < b[1] + b[3]
-
-
-def geometry(html, where):
-    svg = ET.fromstring(html[html.index("<svg"):html.index("</svg>") + 6])
-    boxes = {}
-    for el in svg.iter("a"):
-        r = el.find("rect")
-        boxes.setdefault(el.get("data-n"), []).append(tuple(float(r.get(k)) for k in ("x", "y", "width", "height")))
-    assert all(len(v) == 1 for v in boxes.values()), (where, "one box per node")
-    boxes = {k: v[0] for k, v in boxes.items()}
-    names = list(boxes)
-    for i, x in enumerate(names):
-        for y in names[i + 1:]:
-            assert not overlap(boxes[x], boxes[y]), (where, "boxes overlap", x, y)
-    edges = [(p.get("data-a"), p.get("data-b"), p.get("data-c"), p.get("data-back") == "1", polyline(p.get("d")))
-             for p in svg.iter("path") if p.get("data-a")]
-    for a_, b_, c, back, pts in edges:
-        sa, sb = boxes[a_], boxes[b_]
-        segs = list(zip(pts, pts[1:]))
-        for name, bx in boxes.items():  # endpoints too: an edge touches their border, never their inside
-            assert not any(hits(p, q, bx, 1 if name in (a_, b_) else 0.5) for p, q in segs), (where, a_, b_, c, "crosses", name)
-        assert abs(pts[-1][0] - sb[0]) < .2 and sb[1] < pts[-1][1] < sb[1] + sb[3], (where, a_, b_, "ends at left side")
-        assert pts[-2][1] == pts[-1][1] and pts[-2][0] < pts[-1][0], (where, a_, b_, "enters from the left")
-        if back:  # out of the top or bottom of the source
-            assert sa[0] < pts[0][0] < sa[0] + sa[2] and min(abs(pts[0][1] - sa[1]), abs(pts[0][1] - sa[1] - sa[3])) < .2
-        else:
-            assert abs(pts[0][0] - sa[0] - sa[2]) < .2, (where, a_, b_, "leaves from the right side")
-            assert all(q[0] >= p[0] - .05 for p, q in segs), (where, a_, b_, c, "x goes back")
-    labels = [(g.get("data-a"), g.get("data-b"), g.get("data-c"),
-               tuple(float(g.find("rect").get(k)) for k in ("x", "y", "width", "height")))
-              for g in svg.iter("g") if g.get("data-a")]
-    for i, (a_, b_, c, r) in enumerate(labels):
-        for x in labels[i + 1:]:
-            assert not overlap(r, x[3]), (where, "labels overlap", a_, b_, x[:2])
-        for name, bx in boxes.items():
-            assert not overlap(r, bx), (where, "label on node", a_, b_, name)
-        for e in edges:
-            if e[:3] != (a_, b_, c):
-                assert not any(hits(p, q, r, 0) for p, q in zip(e[4], e[4][1:])), (where, "label on edge", a_, b_, e[:3])
-    return boxes, edges, labels
-
+# ---------- graph inputs: every page graph of the fake data (drawn by the React graph, web/src/components) ----------
 
 def page_graphs():
     """(where, (lanes, edges, notes), selected lane) for every graph the pages draw on the fake data."""
@@ -1123,103 +1018,23 @@ def page_graphs():
             yield f"object {o}", g, None
 
 
-def test_graph_geometry():
+def test_graph_inputs():
     n, holders = 0, 0
     for where, (lanes, edges, notes), sel in page_graphs():
-        for fit in (False, True):
-            html = ui.lane_graph(lanes, edges, a.kind_of, "light", lambda x: "?n=" + x, sel, fit=fit, notes=notes)
-            boxes, drawn, _ = geometry(html, (where, fit))
-            n += 1
+        lane = {x: i for i, (_, ns) in enumerate(lanes) for x in ns}
+        assert len(lane) == sum(len(ns) for _, ns in lanes), (where, "one box per node")
+        assert all(e[0] in lane and e[1] in lane for e in edges), (where, "edges join drawn nodes")
+        n += 1
         if where.startswith("object "):  # lanes follow the chain: every line runs left to right
-            lane = {x: i for i, (_, ns) in enumerate(lanes) for x in ns}
             assert all(lane[e[0]] < lane[e[1]] for e in edges), where
             holders += any("also grant holder" in b for b, _ in notes.values())
-    assert n > 100 and holders
-    # ENGINEER_01: T_SALES_CORE_READ once, at depth 2, also reached at depth 3 through the WRITE role (dotted, back edge)
+    assert n > 50 and holders
+    # ENGINEER_01: T_SALES_CORE_READ once, at depth 2, also reached at depth 3 through the WRITE role (also-deeper edge)
     rows = a.grants("ENGINEER_01", True)
     lanes, edges, notes = a.down_graph("ENGINEER_01", rows, a.walk("ENGINEER_01", True))
     assert notes[T + "SALES_CORE_READ"][0] == "D2 · also D3"
-    html = ui.lane_graph(lanes, edges, a.kind_of, "dark", lambda x: "?n=" + x, notes=notes)
-    boxes, drawn, labels = geometry(html, "ENGINEER_01")
-    back = [e for e in drawn if e[3]]
-    assert [(e[0], e[1]) for e in back] == [(T + "SALES_CORE_WRITE", T + "SALES_CORE_READ")]
-    assert "D3: ENGINEER_01 &gt; " + F + "ENGINEER &gt; " + T + "SALES_CORE_WRITE" in html
-    assert ui.plabel(["INSERT", "UPDATE", "DELETE", "TRUNCATE"]) == "INSERT · UPDATE · DELETE +1"
-
-
-# ---------- render kit: group nodes, rule hits, dotted also-deeper edges, long labels ----------
-
-def kit_graph():
-    """A small graph with every render feature: (lanes, edges, kind_of, notes, info)."""
-    f1, f2 = F + "KIT_ANALYST", F + "KIT_ENGINEER"
-    tr, tw, tx, ty = T + "KIT_SALES_READ", T + "KIT_SALES_WRITE", T + "KIT_HUB_READ", T + "KIT_HUB_LINK"
-    lanes = [("Start", ["KIT_USER"]), ("D1", [f1, f2]), ("D2", [tr, tw, tx]), ("D3", [ty]),
-             ("Objects", ["KITDB.SALES", "KITDB.HUB", "KITDB.SALES.ORDERS", "KITDB"])]
-    kinds = {"KIT_USER": "user", f1: "functional", f2: "functional", "KITDB.SALES": "schema", "KITDB.HUB": "schema",
-             "KITDB.SALES.ORDERS": "object", "KITDB": "database"}
-    edges = [("KIT_USER", f1), ("KIT_USER", f2), (f1, tr), (f2, tw), (f2, tx), (tx, ty),
-             (tw, tr), (ty, tr),  # also deeper: dotted, back into tr's left side
-             (tr, "KITDB.SALES", "read", "SELECT", 120), (tr, "KITDB.SALES", "read", "REFERENCES", 120),
-             (tw, "KITDB.SALES", "write", "INSERT", 8), (tw, "KITDB.SALES", "write", "UPDATE", 8),
-             (tw, "KITDB.SALES", "write", "DELETE", 3), (tw, "KITDB.SALES", "write", "TRUNCATE", 1),
-             (tr, "KITDB.SALES.ORDERS", "read", "SELECT"),
-             (tw, "KITDB.SALES.ORDERS", "write", "INSERT"), (tw, "KITDB.SALES.ORDERS", "write", "UPDATE"),
-             (tw, "KITDB.SALES.ORDERS", "write", "DELETE"), (tw, "KITDB.SALES.ORDERS", "write", "TRUNCATE"),
-             (tx, "KITDB.HUB", "read", "SELECT", 40), (ty, "KITDB", "use", "USAGE")]
-    notes = {tr: ("D2 · also D3", "D2: KIT_USER > " + f1 + " > " + tr)}
-    hit = [("17", "High", "Read-only role can write")]
-    info = {"KITDB.SALES": {"count": 128, "noun": "objects", "sensitive": 3, "findings": 2},
-            "KITDB.HUB": {"count": 40, "noun": "objects"}, "KITDB": {"count": 1, "noun": "database"},
-            tw: {"rules": hit + [("4", "Medium", "Role with no users"), ("9", "Low", "Unused"), ("2", "Low", "x")]},
-            (tw, "KITDB.SALES", "write"): {"rules": hit, "has": ["INSERT"], "lacks": ["SELECT"]},
-            (ty, tr, "inherit"): {"rules": [("6", "Medium", "Technical role holds a technical role")]},
-            (f2, tx, "inherit"): {"rules": [("5", "Low", "Cross-database link")]}}
-    return lanes, edges, lambda x: kinds.get(x, "technical"), notes, info
-
-
-def test_graph_kit():
-    lanes, edges, kind_of, notes, info = kit_graph()
-    n = 0
-    for theme in ("light", "dark"):
-        for fit in (False, True):
-            html = ui.lane_graph(lanes, edges, kind_of, theme, lambda x: "?n=" + x, fit=fit, notes=notes, info=info)
-            boxes, drawn, labels = geometry(html, ("kit", theme, fit))
-            for a_, b_, c, back, pts in drawn:
-                assert pts[-2][0] < pts[-1][0] and abs(pts[-1][0] - boxes[b_][0]) < .2, (a_, b_, "enters from the left")
-                if back:  # dotted, and no detour: x never grows before the last run into the target
-                    assert all(q[0] <= p[0] + .05 for p, q in zip(pts[:-1], pts[1:-1])), (a_, b_, "backward detour")
-                else:
-                    assert all(q[0] >= p[0] - .05 for p, q in zip(pts, pts[1:])), (a_, b_, "x goes back")
-            n += 1
-            svg = ET.fromstring(html[html.index("<svg"):html.index("</svg>") + 6])
-            for p in svg.iter("path"):  # every drawn edge and its hit stroke has a title naming both ends
-                if p.get("data-a"):
-                    tip = p.find("title").text
-                    assert p.get("data-a") in tip and p.get("data-b") in tip, tip
-            back = [e for e in drawn if e[3]]
-            assert sorted((e[0], e[1]) for e in back) == sorted([(T + "KIT_SALES_WRITE", T + "KIT_SALES_READ"),
-                                                                 (T + "KIT_HUB_LINK", T + "KIT_SALES_READ")])
-            assert 'stroke-dasharray="2 3"' in html and "128 objects" in html and "D2 · also D3" in html
-            assert "Rule 17 (High): Read-only role can write" in html and "Has: INSERT" in html and "Lacks: SELECT" in html
-            assert "INSERT ×8 · UPDATE ×8 · DELETE ×3 +1" in html  # at most 3 privileges, then +N
-            assert "INSERT · UPDATE · DELETE +1" in html and "SELECT ×120 · REFERENCES ×120" in html
-            assert "+1</text>" in html  # 4 rules on one node: 3 badges, then +1
-            if fit:  # scaled into the card, but never below a readable size: then it scrolls
-                tag = html[html.index("<svg"):html.index(">", html.index("<svg"))]
-                w = float(re.search(r'viewBox="0 0 (\d+)', tag).group(1))
-                assert f"min-width:{w * ui.MIN_SCALE:.0f}px" in tag and "scroll sideways" not in html
-    assert n == 4
-    # every page graph again with rule hits on every edge and node: badges never break the layout
-    k = 0
-    for where, (lanes, edges, notes), sel in page_graphs():
-        k += 1
-        if k % 7:
-            continue
-        rs = [("17", "High", "x"), ("4", "Medium", "y")]
-        inf = {ui._norm(e)[:2] + (ui._norm(e)[2],): {"rules": rs} for e in edges}
-        inf |= {x: {"rules": rs} for _, ns in lanes for x in ns}
-        geometry(ui.lane_graph(lanes, edges, a.kind_of, "light", lambda x: "?n=" + x, sel, notes=notes, info=inf),
-                 (where, "rules"))
+    assert (T + "SALES_CORE_WRITE", T + "SALES_CORE_READ") in [tuple(e[:2]) for e in edges]
+    assert "D3: ENGINEER_01 > " + F + "ENGINEER > " + T + "SALES_CORE_WRITE" in notes[T + "SALES_CORE_READ"][1]
 
 
 def test_summary():
@@ -1235,17 +1050,6 @@ def test_summary():
         folds = [n for n, k in s["kinds"].items() if k == "fold"]
         assert folds and s["folded"] > 0 and all(s["notes"][f][0].startswith("down to D") for f in folds)
         assert s["lanes"][-1] == g["lanes"][-1]  # the same groups as the full graph
-        kind = lambda n: s["kinds"].get(n) or a.node_kind(n)
-        for fit in (False, True):
-            html = ui.lane_graph(s["lanes"], s["edges"], kind, "light", lambda x: "?n=" + x, fit=fit, notes=s["notes"],
-                                 info=s["info"])
-            boxes, drawn, _ = geometry(html, ("summary", scope, fit))
-            assert not [e for e in drawn if e[3]], "no also-deeper edges in a summary"
-            w = float(re.search(r'viewBox="0 0 ([\d.]+)', html).group(1))
-            assert all(b[0] >= 0 and b[0] + b[2] <= w for b in boxes.values()), (scope, "node outside the SVG")
-            if fit:  # fits a 1440 px page's graph card without scrolling
-                assert w * ui.MIN_SCALE <= ui.WIDE and "scroll sideways" not in html, (scope, w)
-            assert sum(n.startswith("⋯") for n in boxes) == len(folds) and len(boxes) <= 1 + 3 * 13 + 13
 
 
 def test_cache():
@@ -1532,9 +1336,9 @@ def test_review_fixes():  # service users are never dormant on the new screens, 
 
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
-              test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
-              test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
+              test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public,
+              test_cap, test_graph_inputs, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
+              test_data_view, test_namespaces, test_summary, test_each, test_live, test_db_roles, test_builtin,
               test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow,
               test_usage_changes, test_review_fixes, test_pages):
         a.build(a.fake())

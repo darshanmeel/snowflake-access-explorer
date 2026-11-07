@@ -46,8 +46,7 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 
 Find (top bar) opens any user, role or object. Every view is a link (`?page=role&name=F_ANALYST`), so you can share it;
 older links (`?page=user&part=sees`, `?page=catalog`, ...) are sent to the screen that now shows that part.
-Streamlit (default mode) runs the same React app, so it has every screen. The plain Streamlit fallback (`ST_REACT=native`)
-keeps only the earlier pages (User, Role, Object, Sensitive data, Can they?, Rule checks, Access review).
+Streamlit runs the same React app, so it has every screen.
 
 ![Home: search, shortcuts, risks and data protection](docs/img/redesign/home.png)
 ![A person or role: the role hierarchy diagram as the first tab](docs/img/redesign/access.png)
@@ -219,8 +218,8 @@ It uses the app's own Snowflake session, keeps data in memory only (24 h) and wr
 
 - The app runs with its **owner's rights** (`DEV_ROLE`): every viewer sees what that role reads, not their own access.
   So **My access** (each person's own view) is hidden there; it is a feature of the local version.
-- If the page stays blank (the React component blocked in your account), add `ST_REACT=html` to `sis/.env` and run step 3
-  again: the app then shows its plain Streamlit pages (same data, simpler look).
+- The app needs the React component (`web/dist-st`). If the page stays blank (the component blocked in your account),
+  there is no plain Streamlit fallback: use the container runtime or the local version.
 - Remove it: `python run_sql.py sql/3_cleanup.sql` (drops the app and its stage too).
 
 ### Streamlit anywhere else
