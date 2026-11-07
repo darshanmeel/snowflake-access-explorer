@@ -235,6 +235,25 @@ def test_read_only():  # the only write-like statement is the snapshot CALL
     assert "SP_ACCESS_SNAPSHOT" in src and not any(w in src for w in ("cur.execute(f\"GRANT", "REVOKE ROLE"))
 
 
+def test_who():  # screen 2: who has access to an object, the admin preset, warehouses grouped by route
+    keys = ["object", "people", "roles", "groups", "counts", "columns", "default_user", "refs"]
+    d = js("/api/who?name=SALES.CORE.TBL_CUSTOMER", keys)
+    n = d["counts"]
+    assert n["people"] == len(d["people"]) == sum(n["levels"].values()) and n["levels"]["admin"] == 2, n
+    assert d["object"]["columns"] == 3 and d["object"]["masking"] and d["object"]["owners"]
+    e = next(x for x in d["people"] if x["name"] == "ENGINEER_01")
+    assert e["level"] == "change" and e["columns"] and e["login"] and d["refs"]["kinds"][e["first"]] == "functional"
+    assert {c["column"] for c in d["columns"]} >= {"EMAIL", "PHONE"}
+    w = js("/api/who?name=WH_SALES_XS")
+    assert w["groups"][0]["route"][0] == "PUBLIC" and not w["columns"]
+    p = js("/api/who?preset=admin")
+    assert p["object"]["preset"] == "admin" and {x["name"] for x in p["people"]} == {"ADMIN_01", "OPS_01"}
+    for o in a.objects:
+        js(f"/api/who?name={o}", keys)
+    assert js("/api/who?view=mine")["people"] is not None
+    get("/api/who?name=NOPE", 404)
+
+
 def test_access_home():  # screens 0 and 1: one row per object at its highest level, counted once
     d = js("/api/access?user=ENGINEER_01", ["who", "counts", "objects", "heat", "why", "refs"])
     n = d["counts"]

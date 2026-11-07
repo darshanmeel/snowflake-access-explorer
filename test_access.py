@@ -1277,12 +1277,33 @@ def test_ladder():  # access ladder: highest level per object, counts at or abov
     assert len(dw) == 15 and len({(x["database"], x["schema"]) for x in dw}) == 5
 
 
+def test_who_has():  # screen 2: one entry per user / role at its highest step, admins inherit, same routes grouped
+    w = a.who_has("SALES.CORE.TBL_CUSTOMER")
+    by = {x["name"]: x for x in w["people"]}
+    assert by["ENGINEER_01"]["level"] == "change" and by["ENGINEER_01"]["first"] == F + "ENGINEER" and by["ENGINEER_01"]["ways"] > 1
+    assert by["SVC_DEPLOY"]["level"] == "own" and by["ANALYST_01"]["privileges"] == ["SELECT"]
+    assert by["OPS_01"]["level"] == "admin" and by["OPS_01"]["path"] == ["OPS_01", "SYSADMIN"] and by["OPS_01"]["first"] is None
+    assert [x["level"] for x in w["people"]] == sorted((x["level"] for x in w["people"]), key=lambda l: -a.OBJ_LEVELS.index(l))
+    assert {x["name"] for x in w["roles"]} >= {F + "ENGINEER", T + "SALES_CORE_READ"} and all(x["users"] >= 0 for x in w["roles"])
+    assert a.obj_level("USAGE", "WAREHOUSE") == "use" and a.obj_level("OPERATE", "WAREHOUSE") == "change"
+    g = a.same_paths(a.who_has("WH_SALES_XS")["people"])
+    assert g[0]["route"][0] == "PUBLIC" and len(g[0]["names"]) > 10 and g[0]["level"] == "use", g[0]
+    assert sum(len(x["names"]) for x in g) == len(a.who_has("WH_SALES_XS")["people"])
+    adm = a.admin_access()
+    assert {x["name"] for x in adm["people"]} == set(a.admin_users()) and all(x["level"] == "admin" for x in adm["people"])
+    assert all(x["name"] not in a.ADMIN for x in adm["roles"])
+    cols, seen = a.column_view("SALES.CORE.TBL_CUSTOMER", list(by))
+    em = next(c for c in cols if c["column"] == "EMAIL")
+    assert em["policies"] and em["masked"] and "ENGINEER_01" in em["clear"]
+    assert next(c for c in seen["ANALYST_01"] if c["column"] == "EMAIL")["state"] == "masked"
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public, test_graph,
               test_cap, test_graph_geometry, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_graph_kit, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_whatif_indirect, test_ladder, test_pages):
+              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

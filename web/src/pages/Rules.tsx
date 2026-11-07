@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
-import type { AdminPerson, RulesPage } from "../api/types";
+import type { AdminPerson, Refs, RulesPage } from "../api/types";
 import { Banner, Card, DataTable, FindingList, PathText, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, Head, Load, NameLink } from "./common";
@@ -42,18 +42,9 @@ export function RulesPageView() {
               </Card>
             )}
             {tab === "admins" && (
-              <Card title="People with admin roles or account privileges" scroll>
-                <DataTable csv="admin_people.csv" rows={d.admins} rowTone={() => "bad"}
-                  columns={[
-                    col("u", "User", (r: AdminPerson) => r.user, { wrap: "nowrap", render: (r: AdminPerson) => <NameLink id={r.user} refs={d.refs} /> }),
-                    col("t", "Type", (r: AdminPerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
-                    col("s", "Status", (r: AdminPerson) => r.status, { wrap: "nowrap" }),
-                    col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap" }),
-                    col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap" }),
-                    col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
-                    col("p", "Path", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "nowrap",
-                      render: (r: AdminPerson) => <PathText path={r.paths[0] ?? []} more={r.paths.slice(1)} kinds={d.refs.kinds} onOpen={o.open} /> }),
-                  ]} />
+              <Card title="People with admin roles or account privileges" scroll
+                right={<button className="ae-btn" onClick={() => c.nav("object", { preset: "admin" })}>Open as Who has access</button>}>
+                <AdminTable admins={d.admins} refs={d.refs} />
               </Card>
             )}
             {tab === "rules" && (
@@ -71,5 +62,23 @@ export function RulesPageView() {
         );
       }}</Load>
     </>
+  );
+}
+
+/** Users with an admin role or an account privilege, with their shortest path (Rule checks, Admin holders preset). */
+export function AdminTable({ admins, refs }: { admins: AdminPerson[]; refs: Refs }) {
+  const o = useOpen(refs);
+  return (
+    <DataTable csv="admin_people.csv" rows={admins} rowTone={() => "bad"}
+      columns={[
+        col("u", "User", (r: AdminPerson) => r.user, { wrap: "nowrap", render: (r: AdminPerson) => <NameLink id={r.user} refs={refs} /> }),
+        col("t", "Type", (r: AdminPerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
+        col("s", "Status", (r: AdminPerson) => r.status, { wrap: "nowrap" }),
+        col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap" }),
+        col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap" }),
+        col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
+        col("p", "Path", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "nowrap",
+          render: (r: AdminPerson) => <PathText path={r.paths[0] ?? []} more={r.paths.slice(1)} kinds={refs.kinds} onOpen={o.open} /> }),
+      ]} />
   );
 }

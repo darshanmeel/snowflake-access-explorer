@@ -416,6 +416,24 @@ Grantees are merged per (grantee, kind, path) as `app.object_page`; their `tabs`
 mapping as the user page) drive the category tabs. `active` drops disabled users; `users` keeps only chains that end
 at a user (graph and grantees). `sees` and `sensitivity` are shared only (null in mine).
 
+### GET /api/who?view=&name=|preset=admin
+
+Screen 2 (page key `object`): who has access to one object, or with `preset=admin` who holds an admin role.
+`access.who_has` / `admin_access` / `same_paths` / `column_view`.
+
+```
+{ view, object: { id, preset, type, database, schema, name, sensitive, tags[], columns (sensitive count), masking[],
+                  row_policies[], owners[], owner_note },
+  people: [{ name, id, level: admin|own|change|read|use|names, privileges[], path, first, holder, ways, depth,
+             admin[], status, service, days, login, mark, columns: [{ column, state, reason }] }],
+  roles:  [{ name, kind, level, privileges[], path, first, holder, ways, depth, users }],
+  groups: [{ level, privileges[], route[], names[] }],   // people with the same route ("12 people via PUBLIC")
+  counts: { levels: {level: n}, people, roles, disabled, dormant },
+  columns: [{ column, tags[], sensitive, policies[], clear[], masked[], unknown[] }],
+  default_user, refs }
+```
+A user holding an admin role is `admin` and shown by its shortest path to the admin role. 404 for an unknown name.
+
 ### GET /api/check?view=&name=&obj=&priv=SELECT
 
 Can they? Producers: `a.can(u, priv, obj)`, `a.admin_paths(u, True)`, `a.login_days`, `a.is_dormant`,

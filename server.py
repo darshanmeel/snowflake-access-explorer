@@ -1271,6 +1271,44 @@ def object_page(p, view):
         grantees=grantees, capped=sorted(a.capped))
 
 
+def who_page(p, view):
+    """Screen 2: who has access to one object (name=), or the Admin holders preset (preset=admin): people and roles at
+    their highest step, people with the same route grouped, the object's tags and policies, and who sees each sensitive
+    column unmasked."""
+    if p.get("preset") == "admin":
+        w, o, t, cols, seen = a.admin_access(), None, None, [], {}
+        head = dict(id=None, preset="admin", type="Admin roles", database=None, schema=None, name="Admin roles",
+                    sensitive=False, tags=[], columns=0, masking=[], row_policies=[], owners=[], owner_note="")
+    else:
+        need(a.objects, "No objects in this data.")
+        o = p.get("name") or next((x for x in a.objects if a.kinds[x] == "TABLE"), a.objects[0])
+        need(o in a.kinds, f"{o} is not in this snapshot")
+        t = a.kinds[o]
+        w = a.who_has(o, t)
+        data = a.is_data(t)
+        cols, seen = a.column_view(o, [x["name"] for x in w["people"] if x["level"] in ("read", "change", "own", "admin")]) \
+            if data else ([], {})
+        ps, s = a.policies_of(o), a.object_stats(o, t)
+        db, sc, nm = a.split_name(o, t)
+        head = dict(id=o, preset=None, type=t, database=db, schema=sc, name=a.future_label(o, t) or nm,
+                    sensitive=o in S["sens"], tags=[a.tag_label(tg, v) for c, tg, v, _ in a.tags_of(o) if not c],
+                    columns=len(a.sensitive_cols(o)) if data else 0,
+                    masking=sorted({x["name"] for xs in ps["columns"].values() for x in xs}),
+                    row_policies=[x["name"] for x in ps["rows"]], owners=s["owners"], owner_note=s["owner_note"])
+    for x in w["people"]:
+        x["id"] = a.uid(x["name"], True)
+        x["login"], x["mark"] = login(x["name"])
+        x["columns"] = seen.get(x["name"], [])
+    for x in w["roles"]:
+        x["kind"] = nk(x["name"])
+    levels = {lv: sum(x["level"] == lv for x in w["people"]) for lv in a.OBJ_LEVELS[::-1]}
+    return dict(view=view, object=head, people=w["people"], roles=w["roles"], groups=a.same_paths(w["people"]),
+                counts=dict(levels=levels, people=len(w["people"]), roles=len(w["roles"]),
+                            disabled=sum(x["status"] == "disabled" for x in w["people"]),
+                            dormant=sum(x["status"] in ("dormant", "never") for x in w["people"])),
+                columns=cols, default_user=DEMO_USER if view == "shared" else (a.users[0] if a.users else None))
+
+
 # ---------- can they ----------
 
 ALL = "*"  # Can they?: every privilege on the object
@@ -1727,8 +1765,8 @@ def mkrefs(out):
 
 ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
-          "whatif": whatif_page}
-WITH_REFS = {"access", "user", "role", "object", "check", "sensitive", "rules", "review", "whatif"}
+          "whatif": whatif_page, "who": who_page}
+WITH_REFS = {"who", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "whatif"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
@@ -1794,7 +1832,7 @@ def make_app():
             return serve(name, dict(request.query_params), sid_of(request))
         return h
 
-    for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph", "whatif"):
+    for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph", "whatif", "who"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

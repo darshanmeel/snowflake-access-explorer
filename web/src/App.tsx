@@ -26,6 +26,11 @@ const GROUPS: [string, string][] = [["answers", "Answers"], ["admin", "Admin"], 
 
 /** Old links to the new screens (docs/redesign-notes.md). No page: Home; an unknown page: Home. */
 export function redirect(page: string | null, params: Params): { page: Page; params: Params } {
+  if (page === "admins" || (page === "rules" && params.tab === "admins")) {
+    const { tab: _t, ...rest } = params;
+    return { page: "object", params: { ...rest, preset: "admin" } };
+  }
+  if (page === "who") return { page: "object", params };
   if (!page || !PAGES.includes(page as Page)) return { page: "home", params };
   if (page === "access" && params.name) {
     const { name, ...rest } = params;

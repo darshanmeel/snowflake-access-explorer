@@ -47,5 +47,10 @@ describe("home and links", () => {
     expect(redirect("nope", {}).page).toBe("home");
     expect(redirect("user", { name: "X" })).toEqual({ page: "user", params: { name: "X" } });
     expect(redirect("access", { name: "X" })).toEqual({ page: "access", params: { user: "X" } });
+    expect(redirect("rules", { tab: "admins" })).toEqual({ page: "object", params: { preset: "admin" } });
+    expect(redirect("admins", {})).toEqual({ page: "object", params: { preset: "admin" } });
+    expect(redirect("who", { name: "DB.S.T" })).toEqual({ page: "object", params: { name: "DB.S.T" } });
+    expect(redirect("object", { name: "DB.S.T" })).toEqual({ page: "object", params: { name: "DB.S.T" } });
+    expect(redirect("rules", { rule: "6" })).toEqual({ page: "rules", params: { rule: "6" } });
   });
 });

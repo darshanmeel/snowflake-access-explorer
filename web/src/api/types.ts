@@ -876,3 +876,57 @@ export interface HomePage {
   protection: { unmasked: number; unmasked_names: string[]; dormant: number; dormant_names: string[]; tagged: number;
     masked: number; row_tables: number } | null;
 }
+
+// ---------- who has access (screen 2) ----------
+
+export type ObjLevel = "names" | "use" | "read" | "change" | "own" | "admin";
+
+/** One user or role on one object, at its highest step (a.who_entry). */
+export interface WhoEntry {
+  name: string;
+  level: ObjLevel;
+  privileges: string[]; // highest first; admin preset: the admin roles held
+  path: Path; // shortest: name ... grant holder, object (admin without a grant: ends at the admin role)
+  first: string | null;
+  holder: string;
+  ways: number;
+  depth: number | null;
+}
+
+export interface WhoPerson extends WhoEntry {
+  id: string;
+  admin: string[];
+  status: UserStatus;
+  service: boolean;
+  days: number | null;
+  login: string;
+  mark: string;
+  columns: { column: string; state: string; reason: string }[];
+}
+
+export interface WhoRole extends WhoEntry { kind: NodeKind; users: number }
+
+export interface WhoColumn {
+  column: string;
+  tags: string[];
+  sensitive: boolean;
+  policies: string[];
+  clear: string[];
+  masked: string[];
+  unknown: string[];
+}
+
+export interface WhoPage {
+  view: View;
+  object: {
+    id: string | null; preset: "admin" | null; type: string; database: string | null; schema: string | null; name: string;
+    sensitive: boolean; tags: string[]; columns: number; masking: string[]; row_policies: string[]; owners: string[]; owner_note: string;
+  };
+  people: WhoPerson[];
+  roles: WhoRole[];
+  groups: { level: ObjLevel; privileges: string[]; route: string[]; names: string[] }[];
+  counts: { levels: Record<ObjLevel, number>; people: number; roles: number; disabled: number; dormant: number };
+  columns: WhoColumn[];
+  default_user: string | null;
+  refs: Refs;
+}

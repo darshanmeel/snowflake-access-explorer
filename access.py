@@ -1007,6 +1007,98 @@ def ladder_counts(objs):
                 account=sum(x["category"] == "account" for x in objs))
 
 
+OBJ_LEVELS = ("names", "use", "read", "change", "own", "admin")  # one object's steps: "use" = run it (a warehouse)
+
+
+def obj_level(pv, kind=""):
+    """Step of one privilege on the Who has access screen: the ladder (level_of), else own, change (MODIFY,
+    OPERATE, CREATE ...: changes or runs the object) or use (USAGE on a warehouse, function ...)."""
+    return level_of(pv, kind) or {"own": "own", "manage": "change"}.get(priv_class(pv, kind), "use")
+
+
+def who_entry(name, rows, kind):
+    """One user or role from its grantees() rows on one object: level (highest step), privileges (highest first),
+    path (shortest of the highest step, name->...->holder->object), first (role after name; None when name holds the
+    grant), holder, ways (distinct routes, counted), depth."""
+    lv = lambda pv: OBJ_LEVELS.index(obj_level(pv, kind))
+    rs = sorted(rows, key=lambda r: (-lv(r["privilege"]), len(r["path"]), r["privilege"]))
+    best = rs[0]["path"]
+    return dict(name=name, level=obj_level(rs[0]["privilege"], kind),
+                privileges=sorted({r["privilege"] for r in rs}, key=lambda pv: (-lv(pv), pv)), path=best,
+                first=best[1] if len(best) > 2 else None, holder=best[-2],
+                ways=max(len({tuple(p[:-1]) for r in rs for p in r["paths"]}), max(r["count"] for r in rs)),
+                depth=rs[0]["depth"])
+
+
+def person(u, e, adm):
+    """A user's entry with status and login; a user holding an admin role is "admin", shown by the shortest path to
+    an admin role (admin roles inherit every role, so that is the path that gives the access)."""
+    if adm.get(u):
+        ps = sorted(admin_paths(u, True), key=len)
+        e = e | dict(level="admin", path=ps[0], first=(ps[0][1:-1] or [None])[0], holder=ps[0][-1], ways=len(ps),
+                     depth=depth(ps[0], True))
+    return e | dict(admin=adm.get(u, []), status=status(u), service=is_service(u), days=login_days(u))
+
+
+def who_has(obj, kind=None):
+    """Who has access to one object (screen 2): dict(people, roles), one who_entry each, highest step first. A user
+    holding an admin role is "admin" (see person()), also without any grant on obj. People also: admin (admin roles
+    held), status, service, days (since the last login); roles: users (how many users reach the role)."""
+    k0 = kind or kinds.get(obj)
+    by = {}
+    for r in grantees(obj, kind):
+        by.setdefault((r["grantee"], r["kind"] == "user"), []).append(r)
+    adm = admin_users()
+    people = [person(n, who_entry(n, rs, k0), adm) for (n, u), rs in by.items() if u]
+    people += [person(u, dict(name=u, privileges=[]), adm) for u in adm if (u, True) not in by]
+    roles = [who_entry(n, rs, k0) | dict(users=len(ups(n)[1])) for (n, u), rs in by.items() if not u]
+    rank = lambda e: (-OBJ_LEVELS.index(e["level"]), e["name"])
+    return dict(people=sorted(people, key=rank), roles=sorted(roles, key=rank))
+
+
+def admin_access():
+    """The Admin holders preset of screen 2: users and roles holding an admin role, as who_has() entries (privileges =
+    the admin roles held, path = the shortest one to an admin role)."""
+    ps = group(((x, from_user(p)), p) for x, p in admin_holders())
+    out, adm = dict(people=[], roles=[]), admin_users()
+    for (x, u), qs in sorted(ps.items()):
+        e = dict(name=x, level="admin", privileges=sorted({q[-1] for q in qs}), path=qs[0], first=(qs[0][1:-1] or [None])[0],
+                 holder=qs[0][-1], ways=len(qs), depth=depth(qs[0], u))
+        if u:
+            out["people"].append(person(x, e, adm))
+        elif x not in ADMIN:
+            out["roles"].append(e | dict(users=len(ups(x)[1])))
+    return out
+
+
+def same_paths(entries):
+    """Entries with the same level, privileges and route after their own name in one group ("12 people via PUBLIC"),
+    biggest first. Group: level, privileges, route (path without the first name), names."""
+    gs = {}
+    for e in entries:
+        gs.setdefault((e["level"], tuple(e["privileges"]), tuple(e["path"][1:])), []).append(e["name"])
+    return sorted((dict(level=k[0], privileges=list(k[1]), route=list(k[2]), names=v) for k, v in gs.items()),
+                  key=lambda g: (-len(g["names"]), -OBJ_LEVELS.index(g["level"]), g["route"]))
+
+
+def column_view(obj, names):
+    """Who sees each sensitive or masked column of obj in clear, over the users in names (data_view with any role
+    they hold). Returns (columns, seen): column dict(column, tags, sensitive, policies, clear, masked, unknown [users]),
+    seen {user: [dict(column, state, reason)]}."""
+    ps, sc = policies_of(obj), set(sensitive_cols(obj))
+    cols = {c: dict(column=c, tags=[], sensitive=c in sc, policies=[x["name"] for x in ps["columns"].get(c, [])],
+                    clear=[], masked=[], unknown=[]) for c in sorted(sc | set(ps["columns"]))}
+    seen = {}
+    for u in names:
+        for c in data_view(u, obj, True)["columns"]:
+            if c["column"] in cols:
+                x = cols[c["column"]]
+                x["tags"] = c["tags"]
+                x[c["state"] if c["state"] in ("clear", "masked") else "unknown"].append(u)
+                seen.setdefault(u, []).append(dict(column=c["column"], state=c["state"], reason=c["reason"]))
+    return list(cols.values()), seen
+
+
 def tag_label(t, v):
     """"PRIVACY_CATEGORY=IDENTIFIER": tag (last name part) = value."""
     return f"{t.split('.')[-1]}={v}"

@@ -37,8 +37,25 @@ stays, what changes, and the order of the work.
   (SQL / Terraform / ticket text), `ExpandableRow`, `EmptyState`, `IdentityCard`.
 - Derived fields in `access.py`: `level_of` (ladder), `category` (data / runnable / account / names / hold),
   `access_objects` (one row per object at its highest level, path summary), with tests.
-- New screens as page keys: `home` (0) and `access` (1, a person or a role). Next: object (2), Can they? (3 and 12),
+- New screens as page keys: `home` (0) and `access` (1, a person or a role). Next: Can they? (3 and 12),
   graph (4), what they see (7), compare (9), then the admin screens.
+
+## Done
+
+- **Screen 1, A person or role** (`access`): "Diagram & privileges" (the old User / Role paths page) is the default
+  tab, "One row per object" next to it.
+- **Screen 2, Who has access to an object** (`object`, endpoint `/api/who`): "Diagram, paths & users" (the old Object
+  page: graph, admin banner, Who has access by path / by user or role, Users × privileges, What each role sees,
+  Sensitivity) is the default tab. Above the tabs: breadcrumb, name, tags (type, sensitive columns, masking and row
+  policies, owner) and the "Access for [person]" strip (`as=`, defaults to the signed-in / demo user). Tab "Who has
+  access" (`show=who`): stacked bar per level and "N disabled still hold access", People / Roles (`by=roles`), rows
+  grouped by level (Admin, Owns, Can change, Read only, Can use, Can see names) with status, last login, PathChips,
+  privileges and path count, disabled / dormant rows tinted; side panel "How X gets in" (`sel=`) with All paths (Can
+  they?) and What if revoked?, and Sensitive columns (who sees each one unmasked). "Group people with the same path"
+  (`same=1`, on by default for warehouses) shows "23 people via PUBLIC (everyone)". `preset=admin` is the Admin
+  holders preset: its default tab is the Rule checks Admin holders table, which links here. Redirects:
+  `rules&tab=admins` and `admins` -> `object&preset=admin`, `who` -> `object`. Home search already lands objects here.
+  `access.py`: `obj_level`, `who_entry`, `who_has`, `admin_access`, `same_paths`, `column_view`.
 
 ## Not done, and why
 
