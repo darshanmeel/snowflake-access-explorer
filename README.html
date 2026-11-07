@@ -273,7 +273,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 
 <section class="card screen" id="check">
   <header><h2>Can they?</h2><span class="q">?page=check&amp;name=ENGINEER_01&amp;obj=…&amp;priv=SELECT</span></header>
-  <p class="answers"><b>Answers</b>Can user X use privilege P on object Y, through which paths, and how would it be removed?</p>
+  <p class="answers"><b>Answers</b>Can user or role X use privilege P on object Y, through which paths, and how would it be removed?</p>
   <figure><img src="docs/img/can-they.png" alt="Can they? ENGINEER_01 SELECT on TBL_CUSTOMER: yes through 3 paths"><figcaption>ENGINEER_01 SELECT on SALES.CORE.TBL_CUSTOMER: yes, 3 paths, removal options, combined graph.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
@@ -282,6 +282,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li>Can read the data?: rows and each sensitive column, from the policy text. <b>Run with</b>: the USE ROLE / USE WAREHOUSE that works without secondary roles.</li>
       <li>To remove this access: options with fewest users losing it first, as fix text plus equivalent REVOKE SQL; "all 2 needed" when several grants must go.</li>
       <li>No: <b>What to ask for</b> lists roles that would give it, fewest privileges first.</li>
+      <li>A role as the subject (<code>role=</code>): its own grants and the roles it inherits. A database role gets ways in only from database roles of its own database, and no USE ROLE line (USE ROLE can't take a database role).</li>
     </ul></div>
     <div><h3>Numbers</h3><dl class="nums">
       <dt>Paths</dt><dd>Distinct chains that give the privilege</dd>

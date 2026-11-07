@@ -1180,6 +1180,15 @@ def test_nearest():  # screens 3, 12, 15: lanes and cuts, nearest ways in, sugge
     rs = a.suggest(["SELECT"], o, F + "ANALYST", is_user=False)
     assert rs and all(x["role"] != F + "ANALYST" and F + "ANALYST" not in a.best_paths(x["role"]) for x in rs)
     assert a.suggest(["SELECT"], o, "HR.SC_R_PEOPLE", is_user=False) == []  # an account role can't go to a database role
+    # a database role as the subject: no USE ROLE (it can't be activated), ways in only from its own database
+    dr = "DW.SC_C_CORE"
+    g = a.grants(dr, False)[0]
+    yd = a.can(dr, g["privilege"], g["object"], is_user=False)
+    assert (yd["paths"] or yd["owner"]) and yd["use_role"] is None
+    near = [(s, n) for s in sorted(a.db_roles) for x in a.objects if a.is_data(a.kinds[x])
+            for n in a.nearest(s, "SELECT", x, is_user=False)]
+    assert near and all(a.role_kind(x["role"]) == "database" and a.role_db(x["role"]) == a.role_db(s) for s, x in near)
+    assert a.role_db(dr) == "DW" and a.role_db(F + "ENGINEER") is None
 
 
 def test_graph_see_compare():  # screens 4, 7, 9: access graph, what they see, compare
@@ -1355,13 +1364,22 @@ def test_review_fixes():  # service users are never dormant on the new screens, 
     assert any(e["text"] == f"New user {r}" for e in mine) and any(r in e["subjects"] and r + a.UTAG not in e["subjects"] for e in ev)
 
 
+def test_readme_rules():  # docs/make_readme.py fills README.html's rule table from access.py and server.RULE_INFO
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("make_readme", os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "make_readme.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    t = m.rules()
+    assert t.count('<td class="num">') == len(a.RULES) and t.count('class="grp"') == len({v[1] for v in m.server.RULE_INFO.values()})
+
+
 if __name__ == "__main__":
     for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
               test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public,
               test_cap, test_graph_inputs, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
               test_data_view, test_namespaces, test_summary, test_each, test_live, test_db_roles, test_builtin,
               test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow,
-              test_usage_changes, test_review_fixes, test_pages):
+              test_usage_changes, test_review_fixes, test_readme_rules, test_pages):
         a.build(a.fake())
         t()
     if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals

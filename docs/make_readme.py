@@ -1,8 +1,7 @@
 """Fill the generated parts of README.html between <!--map:NAME--> markers.
     python docs/make_readme.py
 overview, flow: boxes on a fixed canvas plus one SVG arrow layer (straight arrows only, never through a box).
-rules: titles and severities from access.py, areas from app.py. The rest of README.html is plain HTML."""
-import ast
+rules: titles and severities from access.py, areas from server.RULE_INFO. The rest of README.html is plain HTML."""
 import pathlib
 import re
 import sys
@@ -11,6 +10,7 @@ from html import escape
 HERE = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 import access as a  # noqa: E402
+import server  # noqa: E402
 
 # L0 overview: 1080 x 440 canvas (fits the 1084 px card), 20 px grid, 120 px between boxes
 C0, R0 = [0, 300, 600, 900], [40, 180, 340]
@@ -123,10 +123,9 @@ def canvas(name, w, h, boxes, arrows, lanes=()):
 
 
 def rules():
-    src = (HERE / "app.py").read_text(encoding="utf-8")
-    area = dict(re.findall(r'^\s+"(\d+)": \("[\w-]+", "([^"]+)"', src, re.M))
-    areas = ast.literal_eval(re.search(r"^AREAS = (\[.*?\])", src, re.M | re.S).group(1))
-    assert set(area) == set(a.RULES) and set(area.values()) <= set(areas)
+    area = {n: v[1] for n, v in server.RULE_INFO.items()}
+    areas = list(dict.fromkeys(area.values()))  # first-seen order of RULE_INFO
+    assert set(area) == set(a.RULES)
     tone = {"High": "bad", "Medium": "warn", "Low": "low"}
     rows = []
     for ar in areas:

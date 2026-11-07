@@ -175,7 +175,12 @@ def test_request():  # screen 15: suggested role, approver, read / change, alrea
     get("/api/request?obj=NOPE", 404)
     m = a.FUNC + "MARKETING"  # a role as the subject: GRANT ROLE x TO ROLE y, everyone holding it gets it too
     r = js(f"/api/request?for_role={m}&obj=HR.PEOPLE.TBL_EMPLOYEE", keys)
-    assert r["user"] == m and r["subject"] == dict(kind="functional", name=m, id=m, user=False, people=1) and not r["has"]
+    assert r["user"] == m and r["subject"] == dict(kind="functional", name=m, id=m, user=False, people=1, database=None) and not r["has"]
+    assert r["database"] == "HR"
+    dr = js("/api/request?for_role=DW.SC_C_CORE&obj=HR.PEOPLE.TBL_EMPLOYEE")  # a database role: its database, no suggestions
+    assert dr["subject"]["database"] == "DW" and dr["subject"]["kind"] == "database_role" and dr["suggestions"] == []
+    dc = js("/api/check?role=DW.SC_C_CORE&obj=DW")
+    assert dc["verdict"] == "yes" and dc["use_role"] is None  # USE ROLE can't take a database role
     assert r["suggestions"] and all(x["role"] != m and m not in a.best_paths(x["role"]) for x in r["suggestions"])
     t = js(f"/api/request?for_role={m}&obj=HR.PEOPLE.TBL_EMPLOYEE&role={a.TECH}HR_PEOPLE_READ")
     assert t["asked"] is None or t["asked"]["to"] == m

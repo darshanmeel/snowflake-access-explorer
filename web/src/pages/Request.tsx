@@ -58,7 +58,8 @@ function Body({ d }: { d: RequestPage }) {
   const ch = choices.find((x) => x.role === pick);
   const note = { by: forRole ? undefined : d.user, reason, approver, expiry: expiryOf(days) || "until revoked" };
   const changes: Change[] = ch ? [{ op: "grant", role: ch.role, to: ch.to ?? d.user, toUser: !ch.to }] : [];
-  const text = ch ? undefined : newRoleOf(d.user, d.privileges, d.type, d.object, note, viaNew, forRole);
+  const inDb = d.subject.database ? { db: d.subject.database, objDb: d.database } : undefined; // a database role subject
+  const text = ch ? undefined : newRoleOf(d.user, d.privileges, d.type, d.object, note, viaNew, forRole, inDb);
   const now = d.level ? (LEVEL_WORD[d.level] ?? d.level).toLowerCase() : null;
   return (
     <div className="ae-req">
@@ -117,8 +118,10 @@ function Body({ d }: { d: RequestPage }) {
           </div>
         ) : (
           <div className="ae-note">
-            <b>No existing role fits.</b> No functional role gives {d.privileges.join(", ")} on {d.object} without an admin or build role{forRole ? ` or a loop through ${d.user}` : ""}.
-            The text on the right is a commented skeleton for a new role{d.owners.length ? `; the owner (${d.owners.join(", ")}) decides` : ""}.
+            <b>No existing role fits.</b> {inDb
+              ? <>Only a database role of {inDb.db} can be granted to the database role {d.user}{inDb.objDb === inDb.db ? "" : `, and it can't hold privileges on ${d.object} (not in ${inDb.db})`}.</>
+              : <>No functional role gives {d.privileges.join(", ")} on {d.object} without an admin or build role{forRole ? ` or a loop through ${d.user}` : ""}.</>}
+            {" "}The text on the right is {inDb && inDb.objDb !== inDb.db ? "why it can't be done this way" : `a commented skeleton for a new ${inDb ? "database " : ""}role`}{d.owners.length ? `; the owner (${d.owners.join(", ")}) decides` : ""}.
           </div>
         )}
         <div className="ae-req-row">

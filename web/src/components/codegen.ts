@@ -46,7 +46,8 @@ export function terraformOf(cs: Change[], n: Note = {}): string {
     }
     if (c.role && isDbRole(c.role)) {
       out.push(`resource "snowflake_grant_database_role" "${slug(`${c.role}_to_${c.to}`)}" {`,
-        `  database_role_name = "${c.role}"`, c.toUser ? `  # database roles cannot be granted to users: grant to an account role` : `  parent_role_name   = "${c.to}"`, "}");
+        `  database_role_name = "${c.role}"`, c.toUser ? `  # database roles cannot be granted to users: grant to an account role`
+          : isDbRole(c.to) ? `  parent_database_role_name = "${c.to}"` : `  parent_role_name   = "${c.to}"`, "}");
     } else if (c.role) {
       out.push(`resource "snowflake_grant_account_role" "${slug(`${c.role}_to_${c.to}`)}" {`,
         `  role_name        = "${c.role}"`, c.toUser ? `  user_name        = "${c.to}"` : `  parent_role_name = "${c.to}"`, "}");
@@ -92,11 +93,14 @@ export function expiryOf(days: number, now = new Date()): string {
 
 /** No existing role fits: a commented skeleton for a new role (every line a comment, so nothing runs by accident).
  * dbRole: the new account role holds this database role (a database role can't be granted to a user).
- * toRole: user is a role, so the new role is granted to that role. */
+ * toRole: user is a role, so the new role is granted to that role.
+ * inDb: user is a database role: { db: its database, objDb: the object's database }. Only a database role of the same
+ * database can be granted to it, and a database role holds privileges only on objects in its own database. */
 export function newRoleOf(user: string, privs: string[], objectType: string, object: string, n: Note = {}, dbRole?: string,
-  toRole = false): { sql: string; tf: string; ticket: string } {
+  toRole = false, inDb?: { db: string; objDb: string }): { sql: string; tf: string; ticket: string } {
   const r = "<NEW_ROLE>";
   const head = (m: string) => [`${m} No existing role gives ${user} ${privs.join(", ")} on ${object}. The owner decides; a skeleton:`, ...comments(n, m)];
+  if (inDb) return newDbRoleOf(user, privs, objectType, object, n, inDb, head);
   const give = dbRole ? `-- GRANT DATABASE ROLE ${q(dbRole)} TO ROLE ${r};` : `-- GRANT ${privs.join(", ")} ON ${objectType} ${q(object)} TO ROLE ${r};`;
   const sql = [...head("--"), `-- CREATE ROLE ${r};`, give, `-- GRANT ROLE ${r} TO ${toRole ? "ROLE" : "USER"} ${q(user)};`].join("\n") + "\n";
   const tfGive = dbRole
@@ -109,5 +113,28 @@ export function newRoleOf(user: string, privs: string[], objectType: string, obj
   const ticket = [`Access request · ${user}`, `Object: ${object}`, `Need: ${privs.join(", ")}`,
     dbRole ? `Role: a new account role holding ${dbRole}` : "Role: none fits, owner to decide (new role)",
     ...(n.expiry ? [`Expires: ${n.expiry}`] : []), `Approver: ${n.approver || "(owner of the object)"}`, `Reason: ${n.reason || "(fill in)"}`].join("\n") + "\n";
+  return { sql, tf, ticket };
+}
+
+/** newRoleOf for a database role subject: a new database role in its database, or why it can't be done. */
+function newDbRoleOf(user: string, privs: string[], objectType: string, object: string, n: Note,
+  { db, objDb }: { db: string; objDb: string }, head: (m: string) => string[]): { sql: string; tf: string; ticket: string } {
+  const r = `${db}.<NEW_ROLE>`;
+  const tail = (m: string) => [...(n.expiry ? [`Expires: ${n.expiry}`] : []), `Approver: ${n.approver || "(owner of the object)"}`, `Reason: ${n.reason || "(fill in)"}`].map((l) => m ? `${m} ${l}` : l);
+  if (objDb !== db) {
+    const why = `${user} is a database role of ${db}: it can only hold privileges on objects in ${db}, and ${object} is not in it. Ask for an account role that holds ${user} instead.`;
+    return { sql: [`-- ${why}`, ...comments(n, "--")].join("\n") + "\n", tf: [`# ${why}`, ...comments(n, "#")].join("\n") + "\n",
+      ticket: [`Access request · ${user}`, `Object: ${object}`, `Need: ${privs.join(", ")}`, `Not possible this way: ${why}`, ...tail("")].join("\n") + "\n" };
+  }
+  const sql = [...head("--"), `-- CREATE DATABASE ROLE ${r};`, `-- GRANT ${privs.join(", ")} ON ${objectType} ${q(object)} TO DATABASE ROLE ${r};`,
+    `-- GRANT DATABASE ROLE ${r} TO DATABASE ROLE ${q(user)};`].join("\n") + "\n";
+  const tf = [...head("#"), `# resource "snowflake_database_role" "new_role" {`, `#   database = "${db}"`, `#   name     = "<NEW_ROLE>"`, "# }",
+    `# resource "snowflake_grant_privileges_to_database_role" "new_role_${slug(object)}" {`, `#   database_role_name = "${r}"`,
+    `#   privileges         = [${privs.map((p) => `"${p}"`).join(", ")}]`, "#   on_schema_object {", `#     object_type = "${objectType}"`,
+    `#     object_name = "${object}"`, "#   }", "# }",
+    `# resource "snowflake_grant_database_role" "new_role_to_${slug(user)}" {`, `#   database_role_name        = "${r}"`,
+    `#   parent_database_role_name = "${user}"`, "# }"].join("\n") + "\n";
+  const ticket = [`Access request · ${user}`, `Object: ${object}`, `Need: ${privs.join(", ")}`,
+    `Role: a new database role in ${db}, granted to ${user}`, ...tail("")].join("\n") + "\n";
   return { sql, tf, ticket };
 }

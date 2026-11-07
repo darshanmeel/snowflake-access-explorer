@@ -30,11 +30,11 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 | Home (`home`) | Search a person, role, table or screen, or type "can X read Y". Your access, account risks, data protection. |
 | A person or role (`access`) | What can they reach, through every role? Role hierarchy diagram and privilege tabs first, then one row per object at the most it allows. |
 | Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. |
-| Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. |
+| Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. For a database role: ways in only from database roles of its own database, and no USE ROLE line (a database role can't be activated). |
 | Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
 | Compare (`compare`) | Two people or roles side by side, the differences, and the text to make them match. |
-| Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text. |
+| Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text. For a database role: a skeleton for a new database role in its own database (`GRANT DATABASE ROLE ... TO DATABASE ROLE ...`), or why it can't be done when the object is in another database. |
 | Risks & fixes (`rules`) | Rule checks with findings, admin holders and the 23 rules; a change plan built from the fixes. |
 | What if (`whatif`) | If we revoke this, who loses what, who keeps it another way, and which findings go or appear. Simulation only. |
 | Review & sign-off (`review`) | The access review (CSV) and a people x objects grid with Keep / Revoke and a signed CSV. |

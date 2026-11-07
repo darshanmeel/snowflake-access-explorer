@@ -89,6 +89,17 @@ describe("Request access text", () => {
     const t = newRoleOf("F_X", ["SELECT"], "TABLE", "D.S.T", {}, undefined, true);
     expect(t.sql).toContain("-- GRANT ROLE <NEW_ROLE> TO ROLE F_X;");
     expect(t.tf).toContain('parent_role_name = "F_X"');
+    // a database role as the subject: a new database role in its database, never GRANT ROLE ... TO ROLE <db role>
+    const d = newRoleOf("DW.X", ["SELECT"], "TABLE", "DW.S.T", {}, undefined, true, { db: "DW", objDb: "DW" });
+    expect(d.sql).toContain("-- CREATE DATABASE ROLE DW.<NEW_ROLE>;");
+    expect(d.sql).toContain("-- GRANT SELECT ON TABLE DW.S.T TO DATABASE ROLE DW.<NEW_ROLE>;");
+    expect(d.sql).toContain("-- GRANT DATABASE ROLE DW.<NEW_ROLE> TO DATABASE ROLE DW.X;");
+    expect(d.sql).not.toContain("GRANT ROLE");
+    expect(d.tf).toContain('parent_database_role_name = "DW.X"');
+    const other = newRoleOf("DW.X", ["SELECT"], "TABLE", "HR.S.T", {}, undefined, true, { db: "DW", objDb: "HR" });
+    expect(other.sql).toContain("can only hold privileges on objects in DW");
+    expect(other.sql.split("\n").every((l) => !l || l.startsWith("--"))).toBe(true);
+    expect(sqlOf([{ op: "grant", role: "DW.A", to: "DW.X", toUser: false }])).toContain("GRANT DATABASE ROLE DW.A TO DATABASE ROLE DW.X;");
     expect(sqlOf([{ op: "grant", role: "F_ENGINEER", to: "F_ANALYST", toUser: false }])).toContain("GRANT ROLE F_ENGINEER TO ROLE F_ANALYST;");
   });
 });

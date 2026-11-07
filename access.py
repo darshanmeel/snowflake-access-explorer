@@ -950,6 +950,11 @@ def kind_of(name):
     return role_kind(name)
 
 
+def role_db(name):
+    """The database of a database role (held as DB.ROLE in db_roles, qualified from its grant data), else None."""
+    return name.split(".", 1)[0] if name in db_roles else None
+
+
 def role_kind(name):
     """kind_of for a name known to be a role or object: a role named like a user is still a role."""
     if name in ADMIN:
@@ -2892,7 +2897,8 @@ def can(user, priv, obj, default_only=False, is_user=True):
     paths: [dict(path user->...->holder->object, depth, holder, how)], shortest first;
     shortest: depth or None; choke: roles on every path, in shortest-path order; owner: paths to OWNERSHIP when
     priv is another privilege (OWNERSHIP implies it: "Yes, via ownership"); options: removal(); ask: ask_for() when
-    there is no path; use_role, warehouse: what to run with (a role: itself); status: user status (None for a role);
+    there is no path; use_role, warehouse: what to run with (a role: itself; a database role: None, USE ROLE can't
+    take one); status: user status (None for a role);
     closest: when no path, the shortest chain grantee->...->holder->object holding priv on obj (from a user if any,
     else from a role), else None. Depth as everywhere: a role start is depth 1 itself."""
     dr = (profile.get(user) or {}).get("DEFAULT_ROLE")
@@ -2918,7 +2924,7 @@ def can(user, priv, obj, default_only=False, is_user=True):
     best = ps or owner
     return dict(paths=rows, shortest=rows[0]["depth"] if rows else None, choke=choke, closest=closest, owner=owner,
                 options=removal(user, priv, obj, is_user), ask=[] if best else ask_for(priv, obj),
-                use_role=(best[0][1] if is_user else user) if best else None,
+                use_role=(best[0][1] if is_user else None if role_kind(user) == "database" else user) if best else None,
                 warehouse=wh if wh in whs else (whs[0] if whs else None), status=status(user) if is_user else None)
 
 
@@ -3009,11 +3015,12 @@ def nearest(user, priv, obj, limit=5, is_user=True):
     missing), role, to, to_user, cost, people (others who would get it), holders (users holding R today), extra, also,
     rule1 (a technical role on a user or group role), broad (warning or None).
     is_user=False, a role S as subject: grant R to S (1 grant; everyone holding S gets it too: people), never a role
-    that already holds S (a loop) and, for a database role S, only a database role (an account role can't go to one)."""
+    that already holds S (a loop) and, for a database role S, only a database role of the same database (an account
+    role can't go to one, nor a database role of another database)."""
     have = set(best_paths(user, is_user))
     loop = set() if is_user else ups(user)[0]
     rev = {r: p for r, p in reverse(obj, priv).items() if r not in have and r not in loop and suggestable(r)
-           and (is_user or role_kind(user) != "database" or role_kind(r) == "database")}
+           and (is_user or role_kind(user) != "database" or role_db(r) == role_db(user))}
     if not rev:
         return []
     already = set().union(*(ups(r)[1] for r, pv, k in on.get(obj, []) if pv == priv), {user} if is_user else set())

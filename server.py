@@ -1348,9 +1348,10 @@ def asker(p, view, key="role"):
 
 
 def subject_of(u, user):
-    """Who the question is about: kind (user or role kind), name, id (a.uid), user, people (users holding a role)."""
+    """Who the question is about: kind (user or role kind), name, id (a.uid), user, people (users holding a role),
+    database (of a database role, else None)."""
     return dict(kind="user" if user else nk(u), name=u, id=a.uid(u, user), user=user,
-                people=None if user else len(a.ups(u)[1]))
+                people=None if user else len(a.ups(u)[1]), database=None if user else a.role_db(u))
 
 
 def check_page(p, view):
@@ -1437,7 +1438,7 @@ def check_page(p, view):
     partly = bool(layers) and (layers[1]["result"] == "No rows" or not layers[2]["ok"])
     verdict = "partly" if ans["yes"] and partly else "yes" if ans["yes"] else "no"
     return dict(
-        verdict=verdict, layers=layers, roles_count=len(set(a.best_paths(u, user)) - {u}), ask_priv=ask,
+        verdict=verdict, layers=layers, roles_count=len(set(a.best_paths(u, user)) - (set() if user else {u})), ask_priv=ask,
         held=[dict(privilege=x, held=x in has) for x in opts], lanes=ls[:20], lanes_total=len(ls), cut=cut,
         cuts=[] if mine or not ps else [dict(iac=x["iac"], sql=x["sql"], people=x["people"], lost=x["lost"],
                                              edges=[dict(grantee=e["grantee"], to=e["to"], priv=e["priv"], user=e["user"])
@@ -1476,8 +1477,8 @@ def request_page(p, view):
     sug = [] if held else a.suggest(pvs, o, u, is_user=user)
     for x in sug:
         x |= dict(people=0 if user else who["people"], broad=not user and who["people"] > a.BROAD)
-    return dict(view=view, user=u, subject=who, object=o, type=k, need=nd, privileges=pvs, level=now, has=held,
-                asked=asked, suggestions=sug, approver=a.approver(o), owners=a.object_stats(o, k)["owners"])
+    return dict(view=view, user=u, subject=who, object=o, type=k, database=a.split_name(o, k)[0], need=nd,
+                privileges=pvs, level=now, has=held, asked=asked, suggestions=sug, approver=a.approver(o), owners=a.object_stats(o, k)["owners"])
 
 
 # ---------- access graph (screen 4) ----------

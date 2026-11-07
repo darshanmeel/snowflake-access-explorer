@@ -28,7 +28,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   `STREAMLIT_PORT` (8501) so both run side by side.
 - **Streamlit in Snowflake:** `app.py` runs the same React app (`web/src/App.tsx`) as one Streamlit component
   (`st_react.app`): its API calls come back to Python and are answered by `server.py` functions, so both versions show
-  identical pages. `ST_REACT=native` (or `html`) runs the plain Streamlit pages in `app.py` + `ui.py` as a fallback.
+  identical pages. There is no plain Streamlit fallback: `app.py` only sets the page up and runs `st_react.app`
+  (`ST_REACT=html` only says that the app needs the component).
 - Built bundles `web/dist` and `web/dist-st` are committed: users only run Python, never npm. After any change in
   `web/src`, rebuild both (`npm run build`, `npm run build:st`) and commit them.
   Must keep running as a Streamlit app inside Snowflake: `sql/4_streamlit.sql` deploys it (stage + `CREATE STREAMLIT`,
@@ -37,7 +38,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - `access.py` is the only place for data, walks and rules; both versions call it, neither has its own logic.
 - **If you change one version, change the other in the same task:** a page, tab, column, graph style or rule shown
   locally must show in Streamlit too (and the reverse). Shared React components change once in `web/src/components/`;
-  rebuild both bundles. `test_server.py` and `test_pages` both cover every page.
+  rebuild both bundles. `test_server.py` checks every page's content, `test_pages` that `app.py` hands every page to the component.
 
 ## RBAC model
 - Account roles, plus database roles: a database role (named `DB.ROLE`, kind "database") is a role that is held, not
@@ -60,7 +61,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   + snowflake-connector-python, plus fastapi + uvicorn for the local web version only.
   Web: React + TypeScript + Vite, @xyflow/react + elkjs for graphs; nothing else without asking.
 - App: `access.py` (fake data, snapshot loader, graph walks, rule checks; no Streamlit import, testable, `test_access.py`),
-  `ui.py` (theme tokens, CSS, HTML components, SVG lane graph; no data logic) and `app.py` (pages, URL state).
+  `ui.py` (only what `server.py` sends: TOKENS and node styles, HELP, TYPE_ICON, PCLASS, psort; no data logic) and
+  `app.py` (page setup, runs `st_react.app`).
 - Snowflake side: names in `settings.local.sql` (template `settings.sql`), `sql/<n>_<step>.sql` with `-- name:` statements
   (`(may fail)`, `(expect N)`) plus `_verify.sql`, run by `run_sql.py` or SnowSQL. Use `&NAME`, never hard-code names.
 - Load the snapshot once and cache it (`st.cache_data`, ttl 1h). The app does its walks in Python, not SQL. For use
@@ -71,7 +73,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Depth = roles from the start to the grant holder, holder included, the same on every page; graph lanes by shortest depth.
 - Big accounts: `graph_input()` rolls objects up to schema / database nodes over `MAX_OBJECTS` (12, a lane's boxes); tables list every object.
   Over 30 role boxes or 6 role lanes, `summary()` draws granted roles -> one fold box each -> grant holders -> groups (`?full=1`: all).
-- Graphs: `ui.lane_graph` (own SVG, one lane per depth, nodes are links). Node styles from `ui.TOKENS`:
+- Graphs: the React graph in `web/src/components/` (@xyflow/react + elkjs, one lane per depth, nodes are links). Node styles from `ui.TOKENS`:
   user = pill, functional = blue, technical = coffee, group role = dashed amber, database role = dashed grey-blue, object = grey,
   admin role / account privilege = red. Put the legend next to each graph.
 - Keep `FAKE=1` mode on the fake data in `access.py`, so it runs without Snowflake. Fake data keeps at least
@@ -90,4 +92,5 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   23 schema CREATE on read-only role.
 - `python test_access.py` and `python test_sql.py` green (test_access reruns itself with `ROLE_PREFIXES=ZF_,ZT_`).
 - Spot-check paths: a user via a group role, a role reached through 2 paths, an admin holder.
-- `test_pages` (in test_access.py): every page renders without an exception.
+- `test_pages` (in test_access.py): `app.py` hands every page key in `server.PAGES` (shared and mine) to the component
+  without an exception; `test_server.py` checks what each page answers.

@@ -608,7 +608,7 @@ export interface Nearest {
 }
 
 /** Who Can they? / Request access asks about: a user or a role (separate namespaces; id as in a.uid). */
-export interface Subject { kind: NodeKind; name: string; id: string; user: boolean; people: number | null }
+export interface Subject { kind: NodeKind; name: string; id: string; user: boolean; people: number | null; database: string | null }
 
 export interface CheckPage {
   verdict: "yes" | "partly" | "no";
@@ -660,6 +660,7 @@ export interface RequestPage {
   subject: Subject;
   object: string;
   type: string;
+  database: string; // the object's database ("" for an account-level object)
   need: "read" | "change";
   privileges: string[];
   level: string | null; // the user's step on the object today
