@@ -1,9 +1,9 @@
-# React components in Streamlit (st_react.py)
+# The React app in Streamlit (st_react.py)
 
 The same React app as the local web version, packaged as one Streamlit component for app.py and Streamlit in
 Snowflake (SiS). `app.py` only calls `st_react.app()`: the whole app (`web/src/App.tsx`) runs in the component, its API
-calls come back as the component value and are answered in Python by `server.py`. There are no plain Streamlit pages.
-The single components below (`graph`, `table`, ...) stay available for other Streamlit apps.
+calls come back as the component value and are answered in Python by `server.py`. There are no plain Streamlit pages
+and no other components.
 
 ## Build
 
@@ -18,61 +18,42 @@ npm run build:st        # -> web/dist-st/index.html + assets/ (one JS, one CSS, 
 - Relative paths, no CDN, no worker (ELK from `elk.bundled.js`), no `eval`, no `data:` assets.
 - `web/dist-st/` is committed: SiS cannot run npm.
 
-## Python API
+## How the app talks to Python
 
-```python
-import st_react
-
-click = st_react.graph(graph_json, key="g")                  # Graph JSON, as server.py sends it
-click = st_react.privilege_tabs(rows, key="p", roles=reach, account=acct, refs=refs)
-click = st_react.table(df, key="t", link="Role", numeric={"Paths"}, wrap={"Path": "truncate"})
-click = st_react.chips([{"id": "F_SALES", "kind": "functional"}], key="c")
-if click:
-    st.query_params.update(st_react.params(click))
-    st.rerun()
-```
-
-- A click returns `{"id", "name", "kind", "action", "row"?}`, once. The component keeps its value across reruns, so
-  `st_react` drops a nonce it has already returned (in `st.session_state["_st_react_seen"]`). Without that,
-  `st.rerun()` would loop.
-- `params(click)` maps the click to the same query keys the app uses: node actions `page` (page plus its params),
-  `drill` (`schema`), `otype`, `full` and `expand`. A plain name opens the user, object or role page.
-- Combined boxes (schema, database or type groups, folded role lanes) expand inside the component and send nothing.
-- `theme=`: `"light"` or `"dark"`. When it is left out, the component follows Streamlit's theme.
-- Data must be JSON, the same shapes as `web/API.md`. Build it with the same producer functions server.py uses, so
-  both versions keep one logic.
+- Every API call of the app becomes a request in the component value (all open requests each time, ids with a
+  per-load prefix). `st_react.app()` answers them with `st_react.answer()` (the same `server.py` functions the local
+  server calls), sends the answers back in the next render and reruns.
+- The page's query string goes to the frame URL-encoded (`urlencode`) and comes back as the frame's own URL; Python
+  compares the decoded parameters, so names with `&`, `+`, `#` or spaces survive a shared link.
+- Until the component sends its first value, `app.py` shows a hint ("If this message stays, the React component did not
+  load"), so a blocked component or a missing `web/dist-st` is not a blank page.
 
 ## What works in SiS
 
-| | Warehouse runtime (Streamlit 1.22 to 1.52) | Container runtime (1.50+) |
-|---|---|---|
-| `declare_component(path=web/dist-st)`, clicks back to Python | Preview, announced Aug 2025 but not confirmed in the docs. **Test first.** | expected to work |
-| `ST_REACT=html` (`components.v1.html`, bundle inlined) | works for the single components, display only; not for `app()` | same |
-| Fonts (bundled woff2) | yes with `path=`. Inlined: the font URLs do not resolve, so the system mono font is used | same |
-| CSV button inside the component (blob URL) | unknown: blob URLs are not documented. Keep `st.download_button` | unknown |
-| ELK layout | main thread, no worker, no eval in the bundle | same |
+| | Warehouse runtime (Streamlit 1.22 to 1.52) |
+|---|---|
+| `declare_component(path=web/dist-st)`, values back to Python | Preview, announced Aug 2025 but not confirmed in the docs. **Test first.** |
+| Fonts (bundled woff2) | yes with `path=` |
+| CSV download inside the component (blob URL) | unknown: blob URLs are not documented |
+| ELK layout | main thread, no worker, no eval in the bundle |
 
-- **html switch:** env var `ST_REACT=html`, or set `st_react.MODE = "html"` before the first call. Every single
-  component then returns `None`. `app()` can't run that way (its API calls never reach Python), so app.py then only
-  says that it needs the component. The bundle
-  (about 1.8 MB) is sent again on every rerun, which is well under the 32 MB message limit.
-- Streamlit 1.56 warns that `st.components.v1.html` will be replaced by `st.iframe`. The warehouse runtime only goes up
-  to 1.52, so keep `components.v1.html` for now.
-- If `path=` fails but the container runtime is available, Components v2 is the next option
-  (`st.components.v2.component` with the JS and CSS inline). It needs an ES-module build that exports a default
-  function; not built yet.
+- `sql/4_streamlit.sql` creates a warehouse-runtime app only. If the component is blocked there, the app can't run in
+  Snowflake: use the local version (or a shared server, README > On a shared server).
+- Streamlit 1.56 warns that Components v1 will change. The warehouse runtime only goes up to 1.52, which is what
+  `environment.yml` pins.
 
 ## Test before building on it
 
-1. Deploy a small app that calls `st_react.graph()` on both runtimes.
-2. Check that the component loads, that a node click reaches Python (`st.write(click)`), and that combined boxes expand.
+1. Deploy (`sql/4_streamlit.sql`) and open the app in Snowsight.
+2. The hint must go away and Home must show data; click a few pages and a graph node.
 3. Check the browser console for CSP errors (ELK, fonts, blob CSV).
-4. If it fails on the warehouse runtime, the app can't run there: use the container runtime or the local version.
+4. If the hint stays, the component is blocked on the warehouse runtime: use the local version.
 
 ## SiS packaging: files to upload
 
-Upload to the stage or git path used by `CREATE STREAMLIT ... FROM`. Files are copied when the app is created, so
-recreate or redeploy after each change. `MAIN_FILE` must be at the root.
+`sql/4_streamlit.sql` uploads these to the stage used by `CREATE STREAMLIT ... FROM` (`test_sis_upload` checks the
+list against what `app.py` imports). Files are copied when the app is created, so run it again after each change.
+`MAIN_FILE` must be at the root.
 
 ```
 app.py              MAIN_FILE
@@ -82,12 +63,13 @@ server.py           (answers the app's API calls; FastAPI is imported only when 
 sf.py
 st_react.py
 ui.py               (theme tokens, help texts, type icons: sent in /api/meta)
-environment.yml     warehouse runtime: channels [snowflake], streamlit and pandas pinned with "="
+environment.yml     warehouse runtime: channel snowflake, streamlit=1.52.* pinned, snowflake-snowpark-python
+sis/.env            the app's .env (INSIDE=1, SOURCE=objects, ACCESS_SNAPSHOT)
 web/dist-st/index.html
 web/dist-st/assets/*.js, *.css, *.woff2
 ```
 
-- Do not upload `web/src`, `web/node_modules`, `web/dist`, `.env` or `settings.local.sql` (`sis/.env` is the app's `.env`).
+- Do not upload `web/src`, `web/node_modules`, `web/dist`, `.env`, `.streamlit/` or `settings.local.sql`.
 - `st_react.py` finds the bundle at `<folder of st_react.py>/web/dist-st`, so keep that layout.
-- Rebuild (`npm run build:st`) and upload `dist-st` again whenever a component changes. The asset names contain a
-  hash, so remove the old `assets/` files first; otherwise `ST_REACT=html` would also inline the stale ones.
+- The asset names contain a hash: the script removes the old `assets/` files before it uploads the new ones
+  (`CLEAR_WEB_ASSETS`), and `4_streamlit_verify.sql` expects exactly 4.

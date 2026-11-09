@@ -1,0 +1,5 @@
+# Tests (test_access.py, test_server.py, test_sql.py): both versions plus the test-only packages
+-r requirements.txt
+-r requirements-web.txt
+duckdb>=1.0  # test_sql.py runs the SQL functions on DuckDB
+httpx==0.28.1  # fastapi TestClient (test_server.py)

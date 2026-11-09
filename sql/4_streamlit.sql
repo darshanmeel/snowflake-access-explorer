@@ -35,12 +35,17 @@ PUT 'file://&HERE/st_react.py' @&DB.&SCHEMA.STG_ACCESS_APP AUTO_COMPRESS = FALSE
 -- name: PUT_UI
 PUT 'file://&HERE/ui.py' @&DB.&SCHEMA.STG_ACCESS_APP AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 
--- packages (streamlit, snowflake-snowpark-python); the rest is the standard library
+-- packages (streamlit pinned, snowflake-snowpark-python); the rest is the standard library.
+-- .streamlit/config.toml is not uploaded: its settings (toolbar, usage stats) are for local runs only.
 -- name: PUT_ENVIRONMENT
 PUT 'file://&HERE/environment.yml' @&DB.&SCHEMA.STG_ACCESS_APP AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 
 -- name: PUT_WEB_INDEX
 PUT 'file://&HERE/web/dist-st/index.html' @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-st AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
+
+-- the bundle's file names carry a content hash: remove the old ones, or every redeploy adds another 2 MB copy
+-- name: CLEAR_WEB_ASSETS (may fail)
+REMOVE @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-st/assets/;
 
 -- name: PUT_WEB_ASSETS
 PUT 'file://&HERE/web/dist-st/assets/*' @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-st/assets AUTO_COMPRESS = FALSE OVERWRITE = TRUE;

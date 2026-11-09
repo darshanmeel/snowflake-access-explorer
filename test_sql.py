@@ -120,13 +120,25 @@ def check_can(con, user, priv, obj):
     return sum(want.values())
 
 
+SLOW = os.environ.get("SLOW") == "1"  # every name at every limit (about a minute); else the limits at its edges
+
+
+def limits(name, user):
+    """No limit, 0, 1 and the name's own deepest depth and one less: where a depth limit can go wrong."""
+    if SLOW:
+        return LIMITS
+    deep = max((r["depth"] for r in a.grants(name, user)), default=1)
+    return list(dict.fromkeys([None, 0, 1, deep - 1, deep]))
+
+
 def test_demo():
     con = load(a.fake())
-    n = sum(check_access_of(con, u, True, lim) for u in a.users for lim in LIMITS)
-    n += sum(check_access_of(con, r, False, lim) for r in a.roles if r not in a.users for lim in LIMITS)
+    n = sum(check_access_of(con, u, True, lim) for u in a.users for lim in limits(u, True))
+    n += sum(check_access_of(con, r, False, lim) for r in a.roles if r not in a.users for lim in limits(r, False))
     assert n > 1000
     privs = {o: sorted({pv for _, pv, _ in a.on[o]}) for o in a.objects}
-    assert sum(check_who_can(con, o, pv, lim) for o in OBJS for pv in [None] + privs[o] for lim in LIMITS) > 100
+    lims = LIMITS if SLOW else [None, 1, 2, 4]
+    assert sum(check_who_can(con, o, pv, lim) for o in OBJS for pv in [None] + privs[o] for lim in lims) > 100
     some = [o for o in a.objects if not a.is_builtin(o)] + [o for o in a.objects if a.is_builtin(o)][:5]
     assert sum(check_who_can(con, o, None, None) for o in some) > 100
     assert sum(check_can(con, u, pv, o) for u in a.users for o in OBJS for pv in privs[o] + ["USAGE"]) > 10
@@ -276,7 +288,49 @@ def test_object_use():
     assert "OBJECT_USE" in ns["DATA"][-1] and 'keep("object_use"' in body
 
 
+def test_show_fallback():
+    """SP_ACCESS_SNAPSHOT's SHOW fallback and access.live() (Direct mode) give the same role grants, database-role
+    grants and user roles from the same SHOW answers, and an unreadable database role skips only itself in both."""
+    import test_access
+    d = a.fake()
+    bad = next(g["GRANTEE_ROLE"] for g in d["GRANT"] if "." in g["GRANTEE_ROLE"])  # one database role
+    show, _ = test_access.fake_snowflake(d, au=False)
+
+    def answer(sql):
+        if " ".join(sql.split()) == "SHOW GRANTS TO DATABASE ROLE " + a.db_ident(bad):
+            raise RuntimeError("Insufficient privileges")
+        return show(sql)
+
+    con = load(d, build=False)
+    for t, c, k in (("GRANT", "GRANT_OPTION", "BOOLEAN"), ("GRANT", "GRANTED_BY", "VARCHAR"), ("USER_ROLE", "GRANTED_BY", "VARCHAR")):
+        con.execute(f"ALTER TABLE TBL_ACCESS_{t} ADD COLUMN IF NOT EXISTS {c} {k}")  # the full columns of 1_setup.sql
+    body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
+    ns = {}
+    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    session = fake_session(con)
+    duck_sql = session.sql
+
+    def sql(text, params=None):
+        if text.lstrip().upper().startswith("SHOW") or "ACCOUNT_USAGE" in text:
+            got = answer(text)
+            return SimpleNamespace(collect=lambda: [SimpleNamespace(as_dict=lambda r=r: r) for r in got])
+        return duck_sql(text, params)
+
+    session.sql = sql
+    out = ns["grants"](session, "run-9", "SHOW")
+    assert out["grants"][0] == "SHOW" and f"{bad}: Insufficient privileges" in out["grants"][1], out
+    proc = Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
+                   for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-9'"))
+    proc_users = Counter((r["USER_NAME"], r["ROLE_NAME"]) for r in query(con, "SELECT * FROM TBL_ACCESS_USER_ROLE WHERE RUN_ID = 'run-9'"))
+    live = a.live(answer)
+    direct = Counter((g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"]) for g in live["GRANT"] if not g["IS_FUTURE"])
+    same(proc, direct, "SHOW grants")
+    same(proc_users, Counter((x["USER_NAME"], x["ROLE_NAME"]) for x in live["USER_ROLE"]), "SHOW user roles")
+    assert not any(k[0] == bad for k in proc) and any("." in k[0] for k in proc)  # the other database roles are read
+    assert f"{bad}: " in str(live["run"].get("NOTES"))
+
+
 if __name__ == "__main__":
-    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use):
+    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_show_fallback):
         t()
         print("ok", t.__name__)

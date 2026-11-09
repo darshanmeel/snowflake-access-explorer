@@ -1,7 +1,9 @@
 # Packages for Streamlit in Snowflake (warehouse runtime), uploaded by sql/4_streamlit.sql. Everything else is the standard library.
+# streamlit pinned: the newest the warehouse runtime offers (web/ST.md), so a redeploy can't change it. The code needs 1.30+
+# (st.query_params). Another version: SELECT * FROM INFORMATION_SCHEMA.PACKAGES WHERE PACKAGE_NAME = 'streamlit'.
 name: access_explorer
 channels:
   - snowflake
 dependencies:
-  - streamlit
+  - streamlit=1.52.*
   - snowflake-snowpark-python

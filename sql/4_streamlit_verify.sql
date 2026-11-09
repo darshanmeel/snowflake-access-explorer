@@ -7,5 +7,9 @@ SHOW STREAMLITS LIKE 'ST_ACCESS_EXPLORER' IN SCHEMA &DB.&SCHEMA;
 -- name: STAGE_FILES
 LIST @&DB.&SCHEMA.STG_ACCESS_APP;
 
+-- the bundle only, no stale copies of an older build: one JS, one CSS, two fonts
+-- name: WEB_ASSETS (expect 4)
+LIST @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-st/assets/;
+
 -- name: GRANT_STREAMLIT
 SHOW GRANTS ON STREAMLIT &DB.&SCHEMA.ST_ACCESS_EXPLORER;

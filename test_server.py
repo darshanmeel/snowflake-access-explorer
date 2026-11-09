@@ -1,6 +1,8 @@
-import json
 """server.py on the fake data: every endpoint answers 200 with the keys of web/API.md. Run: python test_server.py"""
+import json
 import os
+import re
+from contextlib import contextmanager
 
 os.environ["FAKE"] = "1"
 
@@ -8,7 +10,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import server  # noqa: E402
 
-c = TestClient(server.make_app())
+c = TestClient(server.make_app(), base_url="http://localhost")
 a = server.a
 
 USER = {"view", "user", "filters", "banners", "findings", "findings_total", "kpis", "account", "graph", "tabs", "privileges",
@@ -248,7 +250,7 @@ def test_mine():
         get(f"/api/{u}{sep}view=mine")
     get("/api/review?view=mine", 400)
     assert js("/api/meta?view=mine")["loaded"]
-    other = TestClient(server.make_app())  # another browser: nothing loaded
+    other = TestClient(server.make_app(), base_url="http://localhost")  # another browser: nothing loaded
     assert other.get("/api/user?view=mine").status_code == 409
 
 
@@ -286,9 +288,157 @@ def test_whatif():
     get("/api/whatif?changes=" + quote(json.dumps([{"op": "drop_role", "role": "NOPE"}])), 400)
 
 
-def test_read_only():  # the only write-like statement is the snapshot CALL
-    src = open(server.__file__, encoding="utf-8").read()
-    assert "SP_ACCESS_SNAPSHOT" in src and not any(w in src for w in ("cur.execute(f\"GRANT", "REVOKE ROLE"))
+READ_ONLY = re.compile(r"^\s*(SELECT|WITH|SHOW|DESC(RIBE)?|USE SECONDARY ROLES ALL|CALL \S+\.SP_ACCESS_SNAPSHOT\()", re.I)
+
+
+@contextmanager
+def snowflake(answer, direct=False, where="D.S"):
+    """server.py as on Snowflake, every statement through a recording connection (sf.rows) answered by answer(sql)."""
+    sent = []
+
+    class Cur:
+        def execute(self, sql):
+            sent.append(sql)
+            self.got = answer(sql)
+            self.description = [(k,) for k in (self.got[0] if self.got else {})] or None
+
+        def fetchall(self):
+            return [tuple(r.values()) for r in self.got]
+
+    conn = type("Conn", (), {"cursor": lambda self: Cur(), "close": lambda self: None})()
+    old = server.MODE, server.DIRECT, server.WHERE, server.connect, server.cache.HOURS
+    server.MODE, server.DIRECT, server.WHERE, server.connect = "snowflake", direct, where, lambda: conn
+    server.cache.HOURS = 0  # memory only: no test file in .cache/
+    server.cache.MEM.pop(server.KEY, None)
+    try:
+        yield sent
+    finally:
+        server.MODE, server.DIRECT, server.WHERE, server.connect, server.cache.HOURS = old
+        server.cache.MEM.pop(server.KEY, None)
+
+
+def test_read_only():
+    """Every statement the app sends, recorded at the connection (sf.rows): reads only, plus the snapshot CALL."""
+    import test_access
+    show, _ = test_access.fake_snowflake(a.fake(), True)
+
+    def answer(sql):
+        if "SP_ACCESS_SNAPSHOT" in sql:
+            return [{"R": json.dumps({"status": "OK", "notes": {}})}]
+        try:
+            return show(sql)
+        except AssertionError:  # a snapshot table read the fake does not know: no rows
+            return []
+    sent = []
+    for direct in (True, False):
+        with snowflake(answer, direct) as got:
+            c.post("/api/reload", json={"what": "load"})
+            c.post("/api/reload", json={"what": "rebuild"})
+            c.post("/api/mine/load")
+            sent += got
+    assert len(sent) > 20 and any("SP_ACCESS_SNAPSHOT" in s for s in sent)
+    assert all(READ_ONLY.match(s) for s in sent), [s for s in sent if not READ_ONLY.match(s)][:5]
+
+
+def test_rebuild_outcome():
+    """Rebuild snapshot says what the procedure returned: FAILED or SKIPPED is no success, and the copy stays."""
+    for res, ok, word in (({"status": "FAILED", "notes": {"error": "x broke"}}, False, "Snapshot failed: x broke"),
+                          ({"status": "SKIPPED", "notes": {"error": "run 7 is still running"}}, False, "Snapshot skipped: run 7"),
+                          ({"status": "OK", "notes": {}}, True, "Snapshot rebuilt.")):
+        with snowflake(lambda sql, res=res: [{"R": json.dumps(res)}]):
+            server.cache.MEM[server.KEY] = (a.fake(), 0)
+            r = c.post("/api/reload", json={"what": "rebuild"}).json()
+            assert r["ok"] is ok and r["message"].startswith(word) and (server.KEY in server.cache.MEM) is not ok, r
+
+    def boom(sql):
+        raise RuntimeError("Warehouse WH is suspended")
+    with snowflake(boom):
+        r = c.post("/api/reload", json={"what": "rebuild"})
+        assert r.status_code == 503 and r.json()["detail"] == "rebuild_failed" and "suspended" in r.json()["message"]
+        r = c.post("/api/mine/load")  # the real reason, not "Request failed (500)"
+        assert r.status_code == 503 and r.json()["detail"] == "mine_unreadable" and "suspended" in r.json()["message"]
+
+
+def test_mine_shared_server():
+    """My access reads with the server's login: off on a shared server (HOST not loopback) and with a key pair."""
+    def env(**kw):
+        old = {k: os.environ.get(k) for k in kw}
+        os.environ.update({k: v for k, v in kw.items() if v is not None})
+        for k, v in kw.items():
+            if v is None:
+                os.environ.pop(k, None)
+        return old
+    for kw, mode, off in ((dict(HOST="0.0.0.0"), "fake", True), (dict(SNOWFLAKE_PRIVATE_KEY_FILE="k.p8"), "snowflake", True),
+                          (dict(SNOWFLAKE_PRIVATE_KEY_FILE="k.p8", MY_ACCESS="1"), "snowflake", False),
+                          (dict(MY_ACCESS="0"), "fake", True), (dict(HOST="127.0.0.1"), "fake", False)):
+        old, m = env(**kw), server.MODE
+        server.MODE = mode
+        try:
+            assert (server.mine_off() is not None) is off, kw
+            if mode == "fake":
+                r = c.post("/api/mine/load")
+                assert (r.status_code == 409 and r.json()["detail"] == "mine_unavailable") is off, (kw, r.text)
+                assert js("/api/meta")["mine_available"] is not off
+        finally:
+            server.MODE = m
+            env(**old)
+
+
+def test_same_site():
+    """The local API answers only its own host names and refuses a POST from another site's page."""
+    evil = TestClient(server.make_app(), base_url="http://attacker.example")
+    assert evil.get("/api/meta").status_code == 400  # DNS rebinding: a foreign Host header
+    r = c.post("/api/reload", json={"what": "page"}, headers={"Origin": "http://attacker.example"})
+    assert r.status_code == 403 and r.json()["detail"] == "cross_site"
+    assert c.post("/api/reload", content='{"what":"rebuild"}', headers={"Origin": "null", "Content-Type": "text/plain"}).status_code == 403
+    assert c.post("/api/reload", json={"what": "page"}, headers={"Origin": "http://localhost"}).json()["ok"]
+    old = os.environ.get("ALLOWED_HOSTS")
+    os.environ["ALLOWED_HOSTS"] = "access.example"
+    try:
+        assert TestClient(server.make_app(), base_url="http://access.example").get("/api/mine").status_code == 200
+    finally:
+        os.environ.pop("ALLOWED_HOSTS") if old is None else os.environ.__setitem__("ALLOWED_HOSTS", old)
+
+
+def test_error_text():
+    """An unexpected error answers JSON with its message, as the Streamlit version shows it."""
+    old = server.ROUTES["home"]
+    server.ROUTES["home"] = lambda p, view: 1 / 0
+    try:
+        r = TestClient(server.make_app(), base_url="http://localhost", raise_server_exceptions=False).get("/api/home")
+        assert r.status_code == 500 and r.json() == {"detail": "error", "message": "ZeroDivisionError: division by zero"}
+    finally:
+        server.ROUTES["home"] = old
+
+
+def test_bundles_fresh():
+    """web/dist and web/dist-st were built from the web/src next to them (vite.config.ts writes src-hash.txt): a change
+    in web/src needs npm run build and npm run build:st, both committed."""
+    import hashlib
+    import pathlib
+    web = pathlib.Path(server.__file__).with_name("web")
+    src = web / "src"
+    h = hashlib.sha256()
+    for f in sorted(p.relative_to(src).as_posix() for p in src.rglob("*") if p.is_file() and "node_modules" not in p.parts):
+        if re.search(r"\.(tsx?|css)$", f) and not re.search(r"\.test\.tsx?$", f):
+            h.update(f"{f}\n{(src / f).read_bytes().decode('utf-8').replace(chr(13), '')}\n".encode("utf-8"))
+    for d in ("dist", "dist-st"):
+        got = (web / d / "src-hash.txt").read_text().strip() if (web / d / "src-hash.txt").is_file() else None
+        assert got == h.hexdigest(), f"web/{d} is older than web/src: cd web; npm run build; npm run build:st"
+
+
+def test_review_check():
+    """Can they? for a role: depth via ownership is the same as the path depth; role loops get a side note."""
+    own = js(f"/api/check?role={a.TECH}SALES_RAW_OWNER&obj=SALES.RAW.TBL_ORDER_RAW&priv=SELECT")
+    paths = js(f"/api/check?role={a.TECH}SALES_RAW_OWNER&obj=SALES.RAW.TBL_ORDER_RAW&priv=OWNERSHIP")
+    assert own["answer"]["how"] == "owner" and dict(own["answer"]["stats"])["Shortest depth"] == 1 == paths["paths"][0]["depth"]
+    cut = next(x for x in paths["cuts"] if any(e["priv"] == "OWNERSHIP" for e in x["edges"]))
+    assert "COPY CURRENT GRANTS" in cut["sql"] and "REVOKE OWNERSHIP" not in cut["sql"]  # the text the page shows
+    assert not [n for n in js("/api/meta")["notes"] if n["key"] == "role_loop"]
+    import test_access
+    a.build(test_access.tiny([("B", "A"), ("C", "B"), ("B", "C")], [("A", "U")]))
+    assert [n["raw"] for n in server.loop_notes()] == ["B, C"]
+    a.build(a.fake())
 
 
 def test_who():  # screen 2: who has access to an object, the admin preset, warehouses grouped by route

@@ -1,20 +1,37 @@
 /// <reference types="vitest/config" />
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+
+/** sha256 of the .ts / .tsx / .css files of web/src without tests (paths sorted, line endings ignored): test_server.py
+ * checks that both committed bundles were built from the web/src they sit next to. */
+function srcHash(): string {
+  const src = resolve(import.meta.dirname, "src");
+  const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true })
+    .flatMap((e) => e.name === "node_modules" ? [] : e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]);
+  const files = walk(src).map((f) => relative(src, f).split("\\").join("/"))
+    .filter((f) => /\.(tsx?|css)$/.test(f) && !/\.test\.tsx?$/.test(f)).sort();
+  const h = createHash("sha256");
+  for (const f of files) h.update(`${f}\n${readFileSync(join(src, f), "utf8").split("\r").join("")}\n`);
+  return h.digest("hex");
+}
+const stamp = (outDir: string) => ({ name: "src-hash", closeBundle: () => writeFileSync(join(outDir, "src-hash.txt"), srcHash() + "\n") });
 
 // npm run build    -> dist/     local SPA, served by server.py
 // npm run build:st -> dist-st/  Streamlit component (st_react.py): relative paths, no CDN, no worker, no data: URLs,
 //                               one JS + one CSS file, index.html at its root (Streamlit in Snowflake CSP).
 export default defineConfig(({ mode }) => {
   const st = mode === "st";
+  const outDir = resolve(import.meta.dirname, st ? "dist-st" : "dist");
   return {
     // st: no crossorigin on the stylesheet, so it loads even if Snowflake serves the component from another origin
-    plugins: [react(), ...(st ? [{ name: "no-crossorigin", transformIndexHtml: (h: string) => h.replace(/ crossorigin/g, "") }] : [])],
+    plugins: [react(), stamp(outDir), ...(st ? [{ name: "no-crossorigin", transformIndexHtml: (h: string) => h.replace(/ crossorigin/g, "") }] : [])],
     base: "./",
     root: st ? resolve(import.meta.dirname, "st") : import.meta.dirname,
     build: {
-      outDir: resolve(import.meta.dirname, st ? "dist-st" : "dist"),
+      outDir,
       emptyOutDir: true,
       chunkSizeWarningLimit: 2500,
       assetsInlineLimit: st ? 0 : 4096,

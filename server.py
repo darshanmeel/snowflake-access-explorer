@@ -20,7 +20,7 @@ import ui
 
 MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|objects (README > Settings)
 DIRECT = SOURCE == "direct"  # no tables: read the grants straight from Snowflake (a.live)
-KEY = cache.name(SOURCE)
+KEY = cache.name(SOURCE, where=WHERE)  # another snapshot location, user or role: another copy
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
 TTL = cache.TTL  # shared data and My access stay in memory this long (seconds)
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
@@ -70,18 +70,17 @@ def connect():  # one connection per load; st_react.py may replace this
 
 def with_query(fn):
     """fn(query) with query(sql) -> list of dicts, on a fresh connection."""
+    import sf
     conn = connect()
 
     def query(sql):
-        cur = conn.cursor()
-        cur.execute(sql)
-        cols = [c[0] for c in cur.description or []]
-        return [dict(zip(cols, r)) for r in cur.fetchall()] if cols else []
+        cols, got = sf.rows(conn, sql)
+        return [dict(zip(cols, r)) for r in got]
 
     try:
         return fn(query)
     finally:
-        if "SNOWFLAKE_ACCOUNT" in os.environ:  # inside Snowflake it is the app's session: keep it open
+        if sf.owned():  # inside Snowflake it is the app's session: keep it open
             conn.close()
 
 
@@ -121,20 +120,45 @@ def mine_state(sid):
                 expires_at=when(m["at"] + TTL) if m else None)
 
 
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def mine_off():
+    """Why My access is off here, else None. It reads with the server's own login, so it is the viewer's access only
+    on their own machine with their own SSO login: not inside Snowflake (the owner's rights), not on a server others
+    reach (HOST not loopback), not with a key pair (a service user). MY_ACCESS=1 / 0 decides outside Snowflake."""
+    if a.INSIDE:
+        return ("My access is not available inside Snowflake: the app runs with its owner's rights, not yours. "
+                "Use the local version for your own access.")
+    v = os.environ.get("MY_ACCESS")
+    if v in ("0", "1"):
+        return None if v == "1" else "My access is turned off here (MY_ACCESS=0)."
+    if os.environ.get("HOST", "127.0.0.1") not in LOOPBACK:
+        return ("My access is off on a shared server: it would read with the server's login, not yours. "
+                "Run the local version on your own machine for your own access.")
+    if MODE == "snowflake" and os.environ.get("SNOWFLAKE_PRIVATE_KEY_FILE"):
+        return ("My access is off with a key-pair login: that is a service user, not you. Log in with SSO (no "
+                "SNOWFLAKE_PRIVATE_KEY_FILE), or set MY_ACCESS=1 when the key pair is your own user.")
+    return None
+
+
 def load_mine(sid, fresh=False):
     """The logged-in user's own access: read with their rights, kept in server memory under sid and, like the shared
     data, in .cache/ for CACHE_HOURS (fresh: read again)."""
-    if a.INSIDE:  # the app's session has the owner's rights: it would show the owner's access as the viewer's
-        raise ApiError(409, "mine_unavailable", "My access is not available inside Snowflake: the app runs with its "
-                       "owner's rights, not yours. Use the local version for your own access.")
+    why = mine_off()
+    if why:
+        raise ApiError(409, "mine_unavailable", why)
     for k in list(MINE):
         mine_entry(k)  # drops the expired ones
     at = time.time()
     if MODE == "snowflake":
-        key = cache.name("mine", os.environ.get("SNOWFLAKE_USER") or sid)
+        key = cache.name("mine", os.environ.get("SNOWFLAKE_USER") or sid, WHERE)
         if fresh:
             cache.drop(key)
-        d, at = cache.get(key, lambda: with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None)))
+        try:
+            d, at = cache.get(key, lambda: with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None)))
+        except Exception as x:  # a cancelled SSO, no warehouse, the network: the real message, as for the shared data
+            raise ApiError(503, "mine_unreadable", a.line(x))
     else:
         d0 = load_shared()
         with LOCK:
@@ -358,6 +382,15 @@ def note_info(k, source, view):
                            "USAGE on those databases."),
         "error": ("Snapshot run failed", "The last SP_ACCESS_SNAPSHOT run failed.", "Run sql/2_snapshot.sql and read its error."),
     }.get(k, (k.replace("_", " ").capitalize(), "Read with a fallback, or partly.", None))
+
+
+def loop_notes():
+    """A side note per role loop (a.loops): path counts through it are approximate."""
+    return [dict(key="role_loop", title="Role loop", raw=", ".join(x),
+                 meaning=f"Roles {', '.join(x[:5])}{' ...' if len(x) > 5 else ''} hold each other: path counts through "
+                 "them are approximate, and a page that lists every path can show more than it counts.",
+                 fix="Snowflake refuses such grants: read the snapshot again once the change that made it is done.")
+            for x in a.loops()]
 
 
 def snap_time(run):
@@ -1389,7 +1422,7 @@ def check_page(p, view):
     if not ps and r["owner"]:
         ans = dict(yes=True, how="owner", title=yes_text or "Yes, via ownership",
                    text=f"{u} reaches OWNERSHIP of {o}, which implies {pv}.{note}", tone=tone,
-                   stats=[["Paths", len(r["owner"])], ["Shortest depth", len(r["owner"][0]) - 2]])
+                   stats=[["Paths", len(r["owner"])], ["Shortest depth", a.depth(r["owner"][0][:-1], user)]])
     elif not ps and admin:
         ans = dict(yes=True, how="admin", title=yes_text or f"Yes, through admin role {', '.join(dict.fromkeys(x[-1] for x in admin))}",
                    text=f"{u} can {pv} {o}: the admin role inherits every role, not through a granted role path.{note}"
@@ -1998,7 +2031,7 @@ def theme_tokens():
 def meta(p, sid):
     view = p.get("view", "shared")
     base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
-                mine=mine_state(sid), mine_available=not a.INSIDE, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
+                mine=mine_state(sid), mine_available=mine_off() is None, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
@@ -2019,7 +2052,7 @@ def meta(p, sid):
             badge = {"rules": sum(x["severity"] == worst for x in S["rows"]), "sensitive": len(S["sens"])}
             base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
                                               when=when, old=old),
-                        sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view),
+                        sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view) + loop_notes(),
                         pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k])
                                for k, lab in PAGES.items() if not (view == "mine" and k in SHARED_ONLY)],
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
@@ -2045,8 +2078,15 @@ def reload(body):
             return dict(ok=False, result=None, message="Demo: the CALL runs only on Snowflake (not FAKE=1).")
         res = None
         if not DIRECT:
-            r = with_query(lambda q: q(f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"))
+            try:
+                r = with_query(lambda q: q(f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"))
+            except Exception as x:
+                raise ApiError(503, "rebuild_failed", a.line(x))
             res = json.loads(list(r[0].values())[0])
+            st = (res or {}).get("status")
+            if st != "OK":  # SKIPPED (another run still going) or FAILED: say so, and keep the copy we have
+                err = ((res or {}).get("notes") or {}).get("error") or "no reason given"
+                return dict(ok=False, result=res, message=f"Snapshot {str(st or 'not rebuilt').lower()}: {err}")
         cache.drop(KEY)
         if DIRECT:  # a click: read now, not at the next page
             load_shared()
@@ -2118,15 +2158,48 @@ def serve_csv(name, params=None, sid=None):
 
 # ---------- the web app ----------
 
+def allowed_hosts():
+    """Host names the local server answers: loopback, HOST when it names one, this machine's names when it listens on
+    every address (HOST=0.0.0.0), plus ALLOWED_HOSTS (comma-separated; * = any)."""
+    import socket
+    host = os.environ.get("HOST", "127.0.0.1")
+    out = set(LOOPBACK) | {h.strip().lower() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()}
+    if host in ("0.0.0.0", "::"):
+        out |= {socket.gethostname().lower(), socket.getfqdn().lower()}
+    elif host:
+        out.add(host.lower())
+    return out
+
+
 def make_app():
     from fastapi import FastAPI, Request
     from fastapi.responses import FileResponse, JSONResponse, Response
 
     app = FastAPI(title="Snowflake access explorer API")
+    hosts = allowed_hosts()
+
+    @app.middleware("http")
+    async def same_site(request: Request, call_next):
+        """Only this server's own pages: a Host it serves (no DNS rebinding), and no POST from another site's page
+        (a form or no-cors fetch could start a rebuild or a login)."""
+        host = (request.headers.get("host") or "").lower()
+        name = host.rsplit(":", 1)[0] if not host.endswith("]") else host
+        if "*" not in hosts and name.strip("[]") not in hosts:
+            return JSONResponse(dict(detail="bad_host", message=f"Host {host} is not served here (ALLOWED_HOSTS)."),
+                                status_code=400)
+        origin = request.headers.get("origin")
+        if request.method not in ("GET", "HEAD") and origin and origin.split("://", 1)[-1].lower() != host:
+            return JSONResponse(dict(detail="cross_site", message="Requests from another site are refused."),
+                                status_code=403)
+        return await call_next(request)
 
     @app.exception_handler(ApiError)
     def api_error(request, x):
         return JSONResponse(dict(detail=x.detail, message=x.message), status_code=x.status)
+
+    @app.exception_handler(Exception)
+    def any_error(request, x):  # the message in the page, as the Streamlit version shows it (st_react.answer)
+        return JSONResponse(dict(detail="error", message=f"{type(x).__name__}: {x}"), status_code=500)
 
     def sid_of(request):
         return request.cookies.get("ae_sid")

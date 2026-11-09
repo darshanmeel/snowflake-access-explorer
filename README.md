@@ -104,7 +104,7 @@ Developers who change `web/src` rebuild both bundles with Node 20+ (`cd web; npm
 ```
 python run.py                    # local web app on your Snowflake data: http://localhost:8000
 python run.py --fake             # fake data, no Snowflake, no .env
-python run.py streamlit          # the Streamlit version: http://localhost:8501
+python run.py streamlit          # the Streamlit version (pip install -r requirements.txt): http://localhost:8501
 python run.py --direct | --objects   # SOURCE for this run
 python run.py --port 9000        # another port
 ```
@@ -149,7 +149,10 @@ More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, ...): README.html.
 | `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` | The whole account, including tags, policies and query history (fast) |
 
 - If something can't be read, the app still loads and shows **Incomplete** with what is missing and why.
+- Without `.env` (and not `--fake`) the app says to copy `.env.example` to `.env`; it never mistakes your laptop for Snowflake.
 - My access reads with your own rights and writes nothing to Snowflake. It has no sensitivity (tags need the governance views), and Risks & fixes runs on your own roles only.
+- My access is only offered when the login is yours: off inside Snowflake, on a shared server (`HOST` not `127.0.0.1` / `localhost`) and with a key-pair login (a service user). `MY_ACCESS=1` turns it on when the key pair is your own user, `MY_ACCESS=0` turns it off.
+- The local server answers only its own host names (`localhost`, `127.0.0.1`, `HOST`, this machine's names with `HOST=0.0.0.0`, plus `ALLOWED_HOSTS`, comma-separated) and refuses a POST from another site's page.
 
 ### Objects in Snowflake (`SOURCE=objects`)
 A developer whose role can create tables and procedures runs this once, from the same folder and `.env`:
@@ -159,7 +162,8 @@ python run_sql.py sql/1_setup.sql;     python run_sql.py sql/1_setup_verify.sql 
 python run_sql.py sql/2_snapshot.sql;  python run_sql.py sql/2_snapshot_verify.sql   # CALL SP_ACCESS_SNAPSHOT('AUTO')
 ```
 Then set `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` in `.env` (and `SNOWFLAKE_ROLE=<APP_ROLE>` for viewers) and run `python run.py --objects`.
-- `DEV_ROLE` needs `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or `MANAGE GRANTS`) to see the whole account; viewers only need `APP_ROLE`.
+- `run_sql.py` stops with a message when `settings.local.sql` is missing or still has `<placeholders>`, and before any statement when a file a `PUT` needs is missing.
+- `DEV_ROLE` needs, on the role itself (`run_sql.py` runs `USE SECONDARY ROLES NONE`): `USAGE` on `<DB>`, `<SCHEMA>` and `<WH>`; on `<DB>.<SCHEMA>` `CREATE TABLE`, `CREATE PROCEDURE`, `CREATE FUNCTION`, `CREATE STAGE`, plus `CREATE STREAMLIT` for Streamlit in Snowflake and `CREATE TASK` with account `EXECUTE TASK` for the daily task; and `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or `MANAGE GRANTS`) to see the whole account. Viewers only need `APP_ROLE`.
 - Fresh data: schedule `CALL SP_ACCESS_SNAPSHOT('AUTO')` as a **daily task**, or rerun `sql/2_snapshot.sql` (README.html, Run modes and setup). **Rebuild snapshot** in the app runs the procedure too.
 - Without the app, in a worksheet: `SELECT * FROM TABLE(TF_ACCESS_OF('<USER>', NULL));`, `TF_WHO_CAN`, `TF_CAN`, `CALL SP_ACCESS_FINDINGS('{}')`.
 - SnowSQL instead of `run_sql.py`: `!source` the same `sql/` files in order. Remove everything: `python run_sql.py sql/3_cleanup.sql`.
@@ -183,12 +187,15 @@ A VM or container your team can reach, with Python 3.10+:
 ```
 git clone https://github.com/darshanmeel/snowflake-access-explorer.git
 cd snowflake-access-explorer
-python3 -m venv .venv; source .venv/bin/activate; pip install -r requirements-web.txt
+python3 -m venv .venv; source .venv/bin/activate; pip install -r requirements-web.txt   # Streamlit: -r requirements.txt
 HOST=0.0.0.0 python run.py                                                   # React on port 8000
 python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true   # or Streamlit
 ```
 - Browser SSO can't work on a server (the login tab would open there): create a service user with a **key pair** and set
-  `SNOWFLAKE_PRIVATE_KEY_FILE` (and `SNOWFLAKE_PRIVATE_KEY_PWD`) in `.env`. Everyone then sees what that user's role sees.
+  `SNOWFLAKE_PRIVATE_KEY_FILE` (and `SNOWFLAKE_PRIVATE_KEY_PWD`) in `.env`. Everyone then sees what that user's role sees,
+  so **My access** is off there (it would show the service user's access as each visitor's own).
+- With `HOST=0.0.0.0` the server answers this machine's names; for another name (a DNS alias, a proxy) add it to
+  `ALLOWED_HOSTS`.
 - Prefer `SOURCE=objects` with the daily snapshot task: the service role then needs only `SELECT` on the `TBL_ACCESS_` tables.
 - The app has no login of its own and shows who can reach what: put it behind your company sign-in (VPN, a reverse proxy
   with SSO) and never on the open internet.
@@ -201,27 +208,31 @@ It uses the app's own Snowflake session, keeps data in memory only (24 h) and wr
 
 1. Do the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) setup first (`1_setup.sql`, `2_snapshot.sql`, the daily task):
    inside Snowflake the app reads the `TBL_ACCESS_` tables.
-2. Settings for the app go in `sis/.env` (required, git-ignored), uploaded as the app's `.env`:
-   `copy sis.env.example sis\.env` (macOS/Linux: `cp sis.env.example sis/.env`) and fill in:
+2. Settings for the app go in `sis/.env` (required, git-ignored, so the `sis` folder is not in a fresh clone), uploaded
+   as the app's `.env`: `mkdir sis; copy sis.env.example sis\.env` (macOS/Linux: `mkdir -p sis && cp sis.env.example sis/.env`)
+   and fill in:
    ```
+   INSIDE=1
    SOURCE=objects
    ACCESS_SNAPSHOT=<DB>.<SCHEMA>
    ```
-   Inside Snowflake the app reads the snapshot tables: direct reads need `SHOW`, which is restricted there. Never put
-   `SNOWFLAKE_ACCOUNT` or a key in this file: without it the app knows it runs inside Snowflake and uses the app's session.
+   Inside Snowflake the app reads the snapshot tables: direct reads need `SHOW`, which is restricted there. It uses the
+   app's own session (`INSIDE=1`; it also finds the session by itself). Never put `SNOWFLAKE_ACCOUNT` or a key in this file.
 3. Upload the files and create the app, from the repo folder with the same `.env` and `settings.local.sql` as step 1:
    ```
    python run_sql.py sql/4_streamlit.sql;  python run_sql.py sql/4_streamlit_verify.sql
    ```
-   It creates the stage `STG_ACCESS_APP`, uploads the Python files, `environment.yml` (packages: `streamlit`,
-   `snowflake-snowpark-python`) and `web/dist-st`, creates the Streamlit app `ST_ACCESS_EXPLORER` (warehouse `WH`) and grants
-   `USAGE` on it to `APP_ROLE`. SnowSQL: `!source sql/4_streamlit.sql`.
+   It creates the stage `STG_ACCESS_APP`, uploads the Python files, `environment.yml` (packages: `streamlit=1.52.*`,
+   pinned so a redeploy can't change it, and `snowflake-snowpark-python`) and `web/dist-st` (the old bundle files removed
+   first), creates the Streamlit app `ST_ACCESS_EXPLORER` (warehouse `WH`) and grants `USAGE` on it to `APP_ROLE`.
+   SnowSQL: `!source sql/4_streamlit.sql`.
 4. Open it in Snowsight: **Projects > Streamlit > ST_ACCESS_EXPLORER**. To update after `git pull`, run step 3 again.
 
 - The app runs with its **owner's rights** (`DEV_ROLE`): every viewer sees what that role reads, not their own access.
   So **My access** (each person's own view) is hidden there; it is a feature of the local version.
-- The app needs the React component (`web/dist-st`). If the page stays blank (the component blocked in your account),
-  there is no plain Streamlit fallback: use the container runtime or the local version.
+- The app needs the React component (`web/dist-st`). If the message "the React component did not load" stays (the
+  component blocked in your account, or `web/dist-st` not uploaded), there is no plain Streamlit fallback: use the
+  local version.
 - Remove it: `python run_sql.py sql/3_cleanup.sql` (drops the app and its stage too).
 
 ### Streamlit anywhere else
@@ -239,8 +250,8 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 ### Container Services (optional)
 Only to give everyone the local web app without each person installing it: run `server.py` as a Snowpark Container Services
 service (any container image with Python and `requirements-web.txt`, `HOST=0.0.0.0`). Not needed to use the app.
-Snowflake sets `SNOWFLAKE_ACCOUNT` in the container, so the app logs in like on a shared server: give the service
-`SNOWFLAKE_USER` and a key pair (`SNOWFLAKE_PRIVATE_KEY_FILE`, mounted as a secret). Browser SSO can't work there.
+The app logs in like on a shared server: give the service `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER` and a key pair
+(`SNOWFLAKE_PRIVATE_KEY_FILE`, mounted as a secret). Browser SSO can't work there, and My access is off (key pair).
 
 ## Data sources
 Only metadata, never table data: `ACCOUNT_USAGE` grants, users, query history, tags and policies (or `SHOW` when
@@ -250,7 +261,7 @@ is in [README.html](README.html) > Data sources.
 
 ## Also in this repo
 - **`sf.py` runs plain SQL from your machine.** It uses the same `.env` and logins. Run `python sf.py "select current_user(), current_role()"` or `python sf.py -f query.sql`, or from Python: `from sf import run; cols, rows = run("select 1")`.
-- **Tests:** `python test_access.py`, `python test_sql.py` and `python test_server.py` (all set `FAKE=1` themselves): every page answers, and `app.py` hands every page to the Streamlit component. Web: `cd web; npm test`.
+- **Tests:** `pip install -r requirements-dev.txt` (both versions plus DuckDB and httpx), then `python test_access.py`, `python test_sql.py` and `python test_server.py` (all set `FAKE=1` themselves): every page answers, and `app.py` hands every page to the Streamlit component. `test_access.py` runs every `test_` function, reports all failures, then reruns with `ROLE_PREFIXES=ZF_,ZT_`. `test_perf` times the big test account with room for a busy machine: `PERF_SCALE=2` doubles its budgets, `PERF=0` skips it. Web: `cd web; npm test`.
 - **Commit guardrail:** `.githooks/pre-commit` blocks a commit if a staged file matches a term in `~/.company-terms.txt`. Turn it on once with `git config core.hooksPath .githooks`, after creating that file (one regex per line). Without the file, the hook blocks every commit.
 - **Roles and grants** are managed as infrastructure as code. This app only reads them and never changes them.
 

@@ -28,6 +28,23 @@ describe("code output", () => {
     expect(t).toContain("# Expires: 2026-12-31");
     expect(terraformOf([priv])).toContain("delete the resource");
   });
+  it("writes valid text for ownership, future grants and account objects", () => {
+    const own: Change = { op: "revoke", privilege: "OWNERSHIP", objectType: "TABLE", object: "SALES.RAW.TBL_ORDER_RAW", to: "T_SALES_RAW_OWNER" };
+    expect(sqlOf([own])).toContain("GRANT OWNERSHIP ON TABLE SALES.RAW.TBL_ORDER_RAW TO ROLE <new owner role> COPY CURRENT GRANTS;");
+    expect(sqlOf([own])).not.toContain("REVOKE OWNERSHIP");
+    const fut: Change = { op: "revoke", privilege: "SELECT", objectType: "FUTURE TABLE", object: "SALES.CORE.<TABLE>", to: "T_SALES_CORE_READ" };
+    expect(sqlOf([fut])).toContain("REVOKE SELECT ON FUTURE TABLES IN SCHEMA SALES.CORE FROM ROLE T_SALES_CORE_READ;");
+    expect(sqlOf([{ ...fut, object: "SALES.<TABLE>" }])).toContain("ON FUTURE TABLES IN DATABASE SALES FROM");
+    const grant = (objectType: string, object: string) => terraformOf([{ op: "grant", privilege: "USAGE", objectType, object, to: "F_X" }]);
+    expect(grant("WAREHOUSE", "WH_SALES_XS")).toContain('on_account_object {\n    object_type = "WAREHOUSE"\n    object_name = "WH_SALES_XS"');
+    expect(grant("DATABASE", "SALES")).toContain('object_type = "DATABASE"');
+    expect(grant("DATABASE", "SALES")).not.toContain("on_database");
+    expect(grant("SCHEMA", "SALES.CORE")).toContain('on_schema {\n    schema_name = "SALES.CORE"');
+    expect(grant("FUTURE TABLE", "SALES.CORE.<TABLE>")).toContain('object_type_plural = "TABLES"\n      in_schema   = "SALES.CORE"');
+    const db = terraformOf([{ op: "grant", privilege: "USAGE", objectType: "DATABASE", object: "HR", to: "HR.SC_R" }]);
+    expect(db).toContain('resource "snowflake_grant_privileges_to_database_role"');
+    expect(db).toContain('on_database = "HR"');
+  });
   it("writes ticket text", () => {
     const t = ticketOf([role, priv], note);
     expect(t).toContain("1. Grant role F_HR to user FIN_09");

@@ -238,13 +238,19 @@ def grants(session, run_id, mode):
         if d.get("kind", "STANDARD") != "STANDARD":
             continue
         try:
-            for r in rows(session, f"SHOW DATABASE ROLES IN DATABASE {ident(d['name'])}"):
-                q = f"{d['name']}.{clean(r['name'])}"
-                for x in rows(session, f"SHOW GRANTS TO DATABASE ROLE {ident(d['name'])}.{ident(clean(r['name']))}"):
-                    g.append([run_id, q, x["privilege"], x["granted_on"], clean(x["name"]), False,
-                              str(x.get("grant_option")).lower() == "true", x.get("granted_by")])
+            dbrs = rows(session, f"SHOW DATABASE ROLES IN DATABASE {ident(d['name'])}")
         except Exception as e:
             skipped.append(f"database roles in {d['name']}: {first_line(e)}")
+            continue
+        for r in dbrs:  # one unreadable database role skips only itself (as access.live does)
+            q = f"{d['name']}.{clean(r['name'])}"
+            try:
+                got = rows(session, f"SHOW GRANTS TO DATABASE ROLE {ident(d['name'])}.{ident(clean(r['name']))}")
+            except Exception as e:
+                skipped.append(f"{q}: {first_line(e)}")
+                continue
+            g += [[run_id, q, x["privilege"], x["granted_on"], clean(x["name"]), False,
+                   str(x.get("grant_option")).lower() == "true", x.get("granted_by")] for x in got]
     save(session, GRANT, GRANT_COLS, g)
     save(session, USER_ROLE, ["RUN_ID", "USER_NAME", "ROLE_NAME", "GRANTED_BY"], u)
     note = why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else "")

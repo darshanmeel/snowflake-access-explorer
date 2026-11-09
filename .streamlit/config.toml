@@ -1,13 +1,7 @@
-# colours come from ui.py (light/dark toggle); no [theme] here, it would fight the toggle
+# Local runs only (sql/4_streamlit.sql does not upload it). Colours come from ui.py (light/dark toggle); no [theme]
+# here, it would fight the toggle.
 [browser]
 gatherUsageStats = false
 
 [client]
 toolbarMode = "minimal"
-
-[server]
-# Streamlit reruns on a change to app.py, ui.py or access.py only while a browser tab is open, and toolbarMode
-# "minimal" hides its "File change · Rerun" prompt: runOnSave reruns open tabs by itself. An edit made with no tab
-# open is picked up by app.fresh() on the next page load. runOnSave is read when a session starts: after editing this
-# file, reload open tabs (or restart the server).
-runOnSave = true

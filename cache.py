@@ -3,7 +3,7 @@
 config(): FAKE / SOURCE / ACCESS_SNAPSHOT settings -> (mode, source, where).
 get(): the data once a day is enough: memory for 24 h, and locally a file in .cache/ for CACHE_HOURS (0 = memory only).
 When a new read replaces a local file of another run, that file is kept as <name>.prev.pkl (What changed compares them).
-A Streamlit-in-Snowflake app has no SNOWFLAKE_ACCOUNT variable and no local disk: memory only there.
+Streamlit in Snowflake (access.INSIDE) has no local disk: memory only there.
 """
 import os
 import pathlib
@@ -12,7 +12,7 @@ import re
 import threading
 import time
 
-import access  # noqa: F401  (loads .env)
+import access  # loads .env; access.INSIDE: no local disk
 
 DIR = pathlib.Path(__file__).with_name(".cache")
 HOURS = float(os.environ.get("CACHE_HOURS", "24"))
@@ -37,9 +37,17 @@ def config(env=os.environ):
     return "snowflake", "objects", where
 
 
-def name(what, user=None):
-    """Cache name of one account + source (fake|direct|objects), or of one user's "mine"."""
-    return "_".join(filter(None, (os.environ.get("SNOWFLAKE_ACCOUNT", "local"), what, user)))
+def name(what, user=None, where=""):
+    """Cache name of one account + source (fake|direct|objects) + snapshot location + login, or of one user's "mine":
+    everything that changes what a read returns, so another ACCESS_SNAPSHOT, user or role never gets this copy."""
+    e = os.environ
+    return "_".join(filter(None, (e.get("SNOWFLAKE_ACCOUNT", "local"), what, where, user or e.get("SNOWFLAKE_USER"),
+                                  e.get("SNOWFLAKE_ROLE"))))
+
+
+def local():
+    """Whether a local file may be kept: CACHE_HOURS > 0 and not inside Snowflake."""
+    return HOURS > 0 and not access.INSIDE
 
 
 def file(key):
@@ -73,7 +81,7 @@ def keep_prev(f, new):
 def prev(key):
     """(data, fetched_at) of the previous snapshot kept locally, else None (memory only, inside Snowflake, or none yet)."""
     f = file(key).with_suffix(".prev.pkl")
-    if HOURS <= 0 or "SNOWFLAKE_ACCOUNT" not in os.environ or not f.is_file():
+    if not local() or not f.is_file():
         return None
     d = load(f)
     return (d, f.stat().st_mtime) if d is not None else None
@@ -86,7 +94,7 @@ def get(key, fn, disk=True):
         if m and time.time() - m[1] < TTL:
             return m
         f = file(key)
-        disk = disk and HOURS > 0 and "SNOWFLAKE_ACCOUNT" in os.environ
+        disk = disk and local()
         m = None
         if disk and f.is_file() and time.time() - f.stat().st_mtime < HOURS * 3600:
             d = load(f)
@@ -109,7 +117,7 @@ def ready(key, disk=True):
     if m and time.time() - m[1] < TTL:
         return True
     f = file(key)
-    return (disk and HOURS > 0 and "SNOWFLAKE_ACCOUNT" in os.environ and f.is_file()
+    return (disk and local() and f.is_file()
             and time.time() - f.stat().st_mtime < HOURS * 3600)
 
 

@@ -3,7 +3,7 @@ import { redirect } from "../App";
 import type { CheckPage, Nearest } from "../api/types";
 import { expiryOf, newRoleOf, sqlOf } from "../components/codegen";
 import { parseQuestion } from "./Home";
-import { cutChanges, cutLabel, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
+import { cutChanges, cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 
 const roleEdge = { grantee: "F_ENGINEER", to: "HR.SC_W_PEOPLE", priv: null, user: false };
 const userEdge = { grantee: "ENGINEER_01", to: "F_ENGINEER", priv: null, user: true };
@@ -63,6 +63,24 @@ describe("Request access text", () => {
     expect(t.tf.trim().split("\n").every((l) => l.startsWith("#"))).toBe(true);
     expect(t.ticket).toContain("Approver: HR data owner");
     expect(newRoleOf("FIN_09", ["SELECT"], "TABLE", "HR.PEOPLE.T", {}, "HR.SC_R_PEOPLE").sql).toContain("-- GRANT DATABASE ROLE HR.SC_R_PEOPLE TO ROLE <NEW_ROLE>;");
+    const wh = newRoleOf("FIN_09", ["USAGE"], "WAREHOUSE", "WH_SALES_XS");
+    expect(wh.sql).toContain("-- GRANT USAGE ON WAREHOUSE WH_SALES_XS TO ROLE <NEW_ROLE>;");
+    expect(wh.tf).toContain("#   on_account_object {");
+    expect(wh.tf).not.toContain("on_schema_object");
+    const fut = newRoleOf("FIN_09", ["SELECT"], "FUTURE TABLE", "SALES.CORE.<TABLE>");
+    expect(fut.sql).toContain("-- GRANT SELECT ON FUTURE TABLES IN SCHEMA SALES.CORE TO ROLE <NEW_ROLE>;");
+    expect(fut.tf).toContain('object_type_plural = "TABLES"');
+    expect(newRoleOf("F_X", ["USAGE"], "SCHEMA", "SALES.CORE", {}, undefined, true).tf).toContain('#     schema_name = "SALES.CORE"');
+    const dbr = newRoleOf("DW.X", ["USAGE"], "SCHEMA", "DW.S", {}, undefined, true, { db: "DW", objDb: "DW" });
+    expect(dbr.tf).toContain('resource "snowflake_grant_privileges_to_database_role"');
+    expect(dbr.sql).toContain("-- GRANT USAGE ON SCHEMA DW.S TO DATABASE ROLE DW.<NEW_ROLE>;");
+  });
+  it("shows the server's text for a cut, one statement per line", () => {
+    const t = cutTexts({ iac: "Transfer ownership in the infrastructure-as-code repo: table A.B.C, now owned by role R; Remove in the infrastructure-as-code repo: role X granted to user U",
+      sql: "GRANT OWNERSHIP ON TABLE A.B.C TO ROLE <new owner role> COPY CURRENT GRANTS; REVOKE ROLE X FROM USER U;" }, "U");
+    expect(t.sql).toBe("-- Where to cut: U\nGRANT OWNERSHIP ON TABLE A.B.C TO ROLE <new owner role> COPY CURRENT GRANTS;\nREVOKE ROLE X FROM USER U;\n");
+    expect(t.tf.split("\n").filter(Boolean).every((l) => l.startsWith("#"))).toBe(true);
+    expect(t.ticket).toContain("2. Remove in the infrastructure-as-code repo: role X granted to user U");
   });
   it("keeps the brief's ?who=&what= links working", () => {
     expect(redirect("check", { who: "FIN_09", what: "HR.PEOPLE.T", do: "read" })).toEqual({ page: "check", params: { name: "FIN_09", obj: "HR.PEOPLE.T", do: "read" } });

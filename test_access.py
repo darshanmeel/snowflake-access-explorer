@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
+from urllib.parse import parse_qsl
 
 os.environ["FAKE"] = "1"  # never Snowflake here, whatever .env says
 
@@ -74,7 +75,8 @@ def test_can():
     assert [x["role"] for x in a.ask_for("SELECT", "SALES.CLEAN.TBL_ORDER")] == [F + "MARKETING"]  # never the build role
     assert a.ask_for("INSERT", "FINANCE.REPORT.TBL_REVENUE")[0]["role"] == F + "FINANCE_EDITOR"  # closest on a tie
     hows = [p["how"] for p in c["paths"]]
-    assert any("secondary" in h for h in hows) and any("technical role" in h for h in hows)
+    # the holder is reached from the default role too: in session without secondary roles, on every path
+    assert not any("secondary" in h for h in hows) and any("technical role" in h for h in hows)
     assert len(a.can("ENGINEER_01", "SELECT", "SALES.CORE.TBL_CUSTOMER", default_only=True)["paths"]) == 2
     no = a.can("ANALYST_01", "INSERT", "SALES.CORE.TBL_CUSTOMER")
     assert no["paths"] == [] and no["shortest"] is None
@@ -220,8 +222,8 @@ def test_sensitive():
     assert a.clear_for("ARRAY_CONTAINS(CURRENT_ROLE()::VARIANT, ARRAY_CONSTRUCT('A'))") is None
     assert a.clear_for("IS_DATABASE_ROLE_IN_SESSION('R')") is None
     assert a.clear_for("CURRENT_USER() = 'U' OR IS_ROLE_IN_SESSION('X')")[1] is False
-    pl = {p["name"].split(".")[-1]: p for p in a.policy_list()}
-    assert pl["MP_IP"]["clear"] is None and pl["MP_IP"]["note"].endswith("no tagged columns")
+    pl = {p["name"].split(".")[-1]: p for p in map(a.pol, a.policies)}
+    assert pl["MP_IP"]["clear"] is None
     assert a.policies_of("FINANCE.REPORT.TBL_REVENUE")["rows"][0]["args"] == "REGION"
     top = a.sensitive_rank()[:2]
     assert {x["object"] for x in top} == {"FINANCE.REPORT.TBL_REVENUE", "FINANCE.REPORT.VW_REVENUE_MONTHLY"}
@@ -461,7 +463,7 @@ def test_live():
         assert not [c for c in calls if re.match(r"\s*(INSERT|CREATE|UPDATE|DELETE|MERGE|DROP|ALTER|GRANT|CALL)", c, re.I)]
         src = s["run"]["SOURCES"]
         assert src["grants"] == src["users"] == ("ACCOUNT_USAGE" if au else "SHOW") and src["future_grants"] == "SHOW"
-        assert sum(g["IS_FUTURE"] for g in s["GRANT"]) == 1
+        assert sum(g["IS_FUTURE"] for g in s["GRANT"]) == 2  # SELECT and the owner's OWNERSHIP on future tables
         a.build(s)
         assert (sorted(a.role_grants), sorted(a.user_grants), sorted(a.privs), a.users, dict(a.profile)) == want, au
         assert a.role_kind("HR.SC_R_PEOPLE") == "database" and "HR.SC_R_PEOPLE" not in a.objects
@@ -541,7 +543,7 @@ def test_pages():
     app = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.py")
     for view in ("shared", "mine"):
         for k in server.PAGES:
-            with mock.patch.object(st_react, "MODE", "component"), mock.patch.object(st_react, "app") as comp:
+            with mock.patch.object(st_react, "app") as comp:
                 at = AppTest.from_file(app, default_timeout=120)
                 at.query_params.update(dict(page=k) | (dict(data="mine") if view == "mine" else {}))
                 at.run()
@@ -550,10 +552,77 @@ def test_pages():
     at = AppTest.from_file(app, default_timeout=120)  # the real component call: no value yet, nothing answered
     at.run()
     assert not at.exception and not at.error
-    with mock.patch.object(st_react, "MODE", "html"):  # display only: the app says it needs the component
+    assert "did not load" in at.info[0].value  # a blocked component leaves this hint, not a blank page
+    # the query string goes to the frame URL-encoded, and the frame's URL comes back decoded: '&', '+', '#', spaces
+    sent = []
+    with mock.patch.object(st_react, "_comp", lambda **kw: sent.append(kw["query"]) or
+                           {"requests": [], "url": "page=check&name=X%26Y+Z&q=a%2Bb"}):
         at = AppTest.from_file(app, default_timeout=120)
+        at.query_params.update(name="A & B#1")
         at.run()
-        assert not at.exception and "needs the React component" in at.error[0].value
+        assert not at.exception and dict(parse_qsl(sent[0])) == {"name": "A & B#1"}, sent
+        assert dict(at.query_params) == {"page": "check", "name": "X&Y Z", "q": "a+b"}, dict(at.query_params)
+        assert not at.info  # the component talked back: the hint is gone
+
+
+def test_sis_upload():
+    """sql/4_streamlit.sql uploads every repo module app.py needs (its imports, followed), the whole bundle,
+    environment.yml (Streamlit pinned to 1.30+) and sis/.env; old bundle files are removed first."""
+    import ast
+    import glob
+    here = os.path.dirname(os.path.abspath(__file__))
+    sql = open(os.path.join(here, "sql", "4_streamlit.sql"), encoding="utf-8").read()
+    put = set(re.findall(r"PUT 'file://&HERE/([^']+)'", sql))
+    need, todo = set(), ["app.py"]
+    while todo:
+        f = todo.pop()
+        if f in need:
+            continue
+        need.add(f)
+        for n in ast.walk(ast.parse(open(os.path.join(here, f), encoding="utf-8").read())):
+            names = [x.name for x in n.names] if isinstance(n, ast.Import) else [n.module] if isinstance(n, ast.ImportFrom) and n.module else []
+            todo += [m.split(".")[0] + ".py" for m in names if os.path.isfile(os.path.join(here, m.split(".")[0] + ".py"))]
+    assert need <= put, need - put
+    assert {"environment.yml", "sis/.env", "web/dist-st/index.html", "web/dist-st/assets/*"} <= put
+    assert glob.glob(os.path.join(here, "web", "dist-st", "assets", "*.js"))
+    assert sql.index("REMOVE @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-st/assets/") < sql.index("PUT 'file://&HERE/web/dist-st/assets/*'")
+    pin = re.search(r"^\s*-\s*streamlit=(\d+)\.(\d+)", open(os.path.join(here, "environment.yml"), encoding="utf-8").read(), re.M)
+    assert pin and (int(pin[1]), int(pin[2])) >= (1, 30), "environment.yml: pin streamlit (1.30+)"
+    assert f"streamlit={pin[1]}.{pin[2]}" in open(os.path.join(here, "web", "ST.md"), encoding="utf-8").read()
+
+
+def test_setup_errors():
+    """Clear messages instead of Snowflake syntax errors or a KeyError: unfilled settings, an unknown &NAME, a file
+    a PUT needs; a local run without .env is not "inside Snowflake" and says to create .env."""
+    import run_sql
+    import sf
+    old = dict(run_sql.NAMES)
+    try:
+        run_sql.NAMES.update(DB="<DB>")
+        for f in (run_sql.check_names, lambda: run_sql.fill("USE &NO_SUCH")):
+            try:
+                f()
+                raise AssertionError(f)
+            except SystemExit as x:
+                assert "DB" in str(x) or "NO_SUCH" in str(x), x
+    finally:
+        run_sql.NAMES.clear()
+        run_sql.NAMES.update(old)
+    assert run_sql.missing_files("PUT 'file://&HERE/no_such_dir/.env' @S;\nPUT 'file://&HERE/web/dist-st/assets/*' @S;") == ["no_such_dir/.env"]
+    env = {k: os.environ.pop(k) for k in ("SNOWFLAKE_ACCOUNT", "FAKE", "INSIDE") if k in os.environ}
+    try:
+        assert a.in_snowflake() is False  # no snowpark session here, whatever SNOWFLAKE_ACCOUNT says
+        os.environ["INSIDE"] = "1"
+        assert a.in_snowflake() is True
+        os.environ.pop("INSIDE")
+        try:
+            sf.connect()
+            raise AssertionError("connected without settings")
+        except RuntimeError as x:
+            assert "copy .env.example to .env" in str(x) and "--fake" in str(x)
+    finally:
+        os.environ.pop("INSIDE", None)
+        os.environ.update(env)
 
 
 def test_kinds():
@@ -569,6 +638,31 @@ def test_cycle():
     assert sorted(a.walk("U", True)) == [["U", "A"], ["U", "A", "B"], ["U", "PUBLIC"]]
     assert len(a.held("A")) == 2 and not a.capped
     assert set(a.bfs(["A"])) == {"A", "B"}
+
+
+def test_review_logic():
+    """Review 2026-11-09: PUBLIC is in every session, default role only, rule 15 scope, role loops."""
+    can = a.can("ADMIN_01", "USAGE", "WH_SALES_XS")  # through PUBLIC: active with or without secondary roles
+    assert can["paths"] and all("secondary" not in q["how"] for q in can["paths"] if "PUBLIC" in q["path"]), can["paths"]
+    d = tiny([("F_A", "F_B"), ("F_C", "F_C2")], [("F_A", "U"), ("F_B", "U"), ("F_C2", "U")],
+             [("F_A", "SELECT", "TABLE", "D.S.T"), ("F_C", "SELECT", "TABLE", "D.S.T2")])
+    d["USER"] = [dict(USER_NAME="U", DEFAULT_ROLE="F_A")]
+    a.build(d)
+    g = {r["object"]: r for r in a.grants("U", True, True)}  # only F_A in session: one route, not also U > F_B > F_A
+    assert g["D.S.T"]["count"] == 1 and g["D.S.T"]["path"] == ["U", "F_A", "D.S.T"] and "D.S.T2" not in g
+    assert [q["path"] for q in a.can("U", "SELECT", "D.S.T", default_only=True)["paths"]] == [["U", "F_A", "D.S.T"]]
+    assert "secondary" not in a.can("U", "SELECT", "D.S.T")["paths"][0]["how"]
+    assert "secondary" in a.can("U", "SELECT", "D.S.T2")["paths"][0]["how"]  # F_C2 is not the default role
+    a.build(a.fake())  # rule 15: future SELECT on sensitive tables, not the IaC owner's future OWNERSHIP
+    r15 = [x for x in a.rule_rows() if x["num"] == "15"]
+    assert len(r15) == 1 and r15[0]["detail"].startswith("SELECT on future tables in SALES.CORE")
+    assert any(r == T + "SALES_CORE_OWNER" and k == "FUTURE TABLE" for r, pv, k, o in a.privs)
+    # a role loop: A -> B, A -> C, B <-> C. Counted and listed walks differ there, so the app warns
+    a.build(tiny([("B", "A"), ("C", "A"), ("C", "B"), ("B", "C")], [("A", "U")], [("B", "SELECT", "TABLE", "D.S.T")]))
+    assert a.loops() == [["B", "C"]]
+    assert a.grants("U", True)[0]["count"] == 1 and len(a.can("U", "SELECT", "D.S.T")["paths"]) == 2
+    a.build(a.fake())
+    assert a.loops() == []
 
 
 def test_public():
@@ -801,27 +895,33 @@ def big():
                 USER=[dict(USER_NAME=u) for u in users], USAGE=[], TAG=tags, POLICY=pol)
 
 
+PERF_SCALE = float(os.environ.get("PERF_SCALE", "1"))  # a slow machine: PERF_SCALE=2 doubles every budget
+
+
 def timed(f, budget, reset=None):
-    """f() under budget seconds, best of up to 3 runs (reset() untimed before a retry, so caches start empty again):
-    one slow run on a busy machine is not a regression."""
-    took = []
-    while len(took) < 3 and (not took or min(took) >= budget):
+    """f() under budget (x PERF_SCALE) seconds, best of up to 5 runs (reset() untimed before a retry, so caches start
+    empty again): a slow run on a busy machine is not a regression, only a best run over budget is."""
+    took, budget = [], budget * PERF_SCALE
+    while len(took) < 5 and (not took or min(took) >= budget):
         if took and reset:
             reset()
         t = time.perf_counter()
         f()
         took.append(time.perf_counter() - t)
-    assert min(took) < budget, f"{min(took):.1f} s"
+    assert min(took) < budget, f"best {min(took):.1f} s of {len(took)} runs, budget {budget:.1f} s"
 
 
 def test_perf():
+    """Budgets with room for a busy machine: about half of each is what a laptop takes. PERF=0 skips it."""
+    if os.environ.get("PERF") == "0":
+        return
     d, got = big(), {}
 
     def first():
         a.build(d)
         got["rows"] = a.grants("BIG_01", True)
         got["groups"] = a.group_objects(got["rows"], "schema")
-    timed(first, 3)
+    timed(first, 5)
     rows, groups = got["rows"], got["groups"]
     assert len(a.objects) == 2000 and len(a.roles) >= 299 and len(a.users) == 500
     assert len({r["object"] for r in rows}) > 1000 and max(r["count"] for r in rows) > a.MAX_PATHS
@@ -830,17 +930,16 @@ def test_perf():
     def second():  # the graph, the rule checks, the summary and one busy object
         got["g"] = a.graph_input("BIG_01")
         a.rule_rows()
-        a.has_lacks_summary("BIG_01", True)
         a.grantees("DB0.S0.TBL_00")
         a.data_view("BIG_01", "DB0.S0.TBL_00", True)
-    timed(second, 8, lambda: a.build(d))
+    timed(second, 10, lambda: a.build(d))  # 4 - 6 s on a laptop
     g, n = got["g"], len({r["object"] for r in rows})
     assert g["header"] == f"{n:,} objects, grouped by {g['level']}" and g["level"] != "object"
     g = a.graph_input("BIG_01", groups[0]["group"])  # 40 tables in one schema: one type group
     assert g["level"] == "type" and g["lanes"][-1][1] == [groups[0]["group"] + " · TABLE"]
     for ch in ([dict(op="revoke_role_from_role", role=F + "TEAM_005", grantee=a.held_by[F + "TEAM_005"][0])],
                [dict(op="drop_role", role=F + "TEAM_010")]):  # what if: hundreds of users lose or keep access
-        timed(lambda: got.update(w=a.what_if(ch)), 3, lambda: a.build(d))  # 1.5 - 2 s on a laptop
+        timed(lambda: got.update(w=a.what_if(ch)), 5, lambda: a.build(d))  # 1.5 - 3 s on a laptop
         assert got["w"]["counts"]["users"] > 10
 
 
@@ -858,15 +957,15 @@ def test_group_graph():
     assert set(next(g for g in a.group_objects(a.grants("ANALYST_01", True), "database")
                     if g["group"] == "SALES")["holders"]) == holders  # every holder, not one per row
     g = a.graph_input("SVC_DEPLOY", max_objects=40)
-    assert g["level"] == "object" and g["header"] == "33 objects" and g["kinds"] == {a.BUILTIN_NODE: "fold"}
+    assert g["level"] == "object" and g["header"] == "34 objects" and g["kinds"] == {a.BUILTIN_NODE: "fold"}
     g = a.graph_input("SVC_DEPLOY", max_objects=20)  # over the cap: grouped by schema (14 groups, under 20)
-    assert g["header"] == "33 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
+    assert g["header"] == "34 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
     assert g["kinds"]["SALES.PIPELINE"] == "schema" and "SALES" not in g["kinds"] and "WH_SALES_XS" not in g["kinds"]
     assert (T + "SALES_PIPELINE_OWNER", "SALES.PIPELINE", "own", "OWNERSHIP", 9) in g["edges"]
     assert g["info"]["SALES.PIPELINE"]["count"] == 9 and "count" not in g["info"].get("SALES", {})
     g = a.graph_input("SVC_DEPLOY")  # over a lane's 12, and 14 schema groups: grouped by database
-    assert g["header"] == "33 objects, grouped by database" and g["kinds"]["SALES"] == "database"
-    assert g["info"]["SALES"]["count"] == 19 and g["info"]["SALES"]["noun"] == "objects"
+    assert g["header"] == "34 objects, grouped by database" and g["kinds"]["SALES"] == "database"
+    assert g["info"]["SALES"]["count"] == 20 and g["info"]["SALES"]["noun"] == "objects"
     d = a.graph_input("SVC_DEPLOY", "SALES")  # a database: its schemas, its own grants as objects
     assert d["level"] == "schema" and "SALES" in d["lanes"][-1][1] and "SALES" not in d["kinds"]
     g = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE", max_objects=3)
@@ -897,9 +996,8 @@ def test_has_lacks():
     o = a.has_lacks(F + "DEPLOY", "SALES.CORE.TBL_CUSTOMER")
     assert o["has"] == ["OWNERSHIP"] and o["lacks"] == [] and "INSERT" in o["implied"]
     assert a.has_lacks("ANALYST_01", "SALES.CORE.TBL_CUSTOMER", True)["has"] == ["SELECT"]
-    s = a.has_lacks_summary(T + "SALES_CORE_READ")
-    assert {(x["type"], x["text"]) for x in s} >= {("TABLE", "SELECT but not INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES")}
-    assert sum(x["count"] for x in s) == len({o for _, k, o in a.granted[T + "SALES_CORE_READ"] if not k.startswith("FUTURE")})
+    assert a.has_lacks(T + "SALES_CORE_READ", "SALES.CORE.TBL_CUSTOMER")["text"] == \
+        "SELECT but not INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES"
     assert a.valid_privs("TASK") == ["OWNERSHIP", "MONITOR", "OPERATE"]
 
 
@@ -928,7 +1026,7 @@ def test_data_view():
     assert m["EMAIL"]["state"] == "masked" and m["EMAIL"]["reason"].startswith(f"MP_EMAIL shows the value only to {F}ENGINEER")
     assert a.data_view("FIN_01", cust)["summary"] == "cannot read it (no SELECT or OWNERSHIP)"
     assert {v["object"] for v in a.data_views("MARKETING_01")} >= {rev, order, cust}
-    t = {p["name"].split(".")[-1]: a.policy_text(p) for p in a.policy_list()}
+    t = {p["name"].split(".")[-1]: a.policy_text(p) for p in map(a.pol, a.policies)}
     assert t["RAP_REGION"] == f"RAP_REGION: {F}FINANCE (in session): all rows; {F}DEPLOY (primary role): all rows; " \
                               "everyone else: no rows"
     assert "only rows where REGION = 'EU'" in t["RAP_ORDER_REGION"] and "unknown" in t["RAP_ORDER_MAP"]
@@ -942,8 +1040,6 @@ def test_data_view():
         assert (got and [r for g in got[0]["roles"] for r, _ in g]) == want if want else got is None, body
     k = a.governance_kpis()
     assert (k["row_tables"], k["masked_columns"]) == (3, 2) and k["text"]["Masking"] == "2 columns"
-    gr = {g["object"]: g for g in a.governance_rows()}
-    assert gr[rev]["row_policies"] and gr[cust]["masking"]["EMAIL"] and "EMAIL" in gr[cust]["column_tags"]
     a.build(tiny([], [("R", "U")], [("R", "SELECT", "TABLE", "D.S.T")]))
     assert set(a.governance_kpis()["text"].values()) == {"not used"} and a.data_view("U", "D.S.T")["summary"] == \
         "can read: all rows"
@@ -1053,10 +1149,30 @@ def test_summary():
 
 
 def test_cache():
+    import shutil
     import tempfile
     from pathlib import Path
+    old = cache.DIR, cache.HOURS, a.INSIDE, {k: os.environ.get(k) for k in ("SNOWFLAKE_USER", "SNOWFLAKE_ROLE")}
     cache.DIR = Path(tempfile.mkdtemp())
-    os.environ["SNOWFLAKE_ACCOUNT"] = "T"
+    try:
+        cache_steps()
+    finally:
+        shutil.rmtree(cache.DIR, ignore_errors=True)
+        cache.DIR, cache.HOURS, a.INSIDE = old[:3]
+        for k, v in old[3].items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+
+
+def cache_steps():
+    # the key holds what changes a read: snapshot location, user and role, so dev and prod never share a copy
+    os.environ["SNOWFLAKE_USER"], os.environ["SNOWFLAKE_ROLE"] = "U1", "R1"
+    keys = {cache.name("objects", where=w) for w in ("DEV.ACCESS", "PROD.ACCESS")}
+    os.environ["SNOWFLAKE_ROLE"] = "R2"
+    keys |= {cache.name("objects", where="DEV.ACCESS"), cache.name("mine", "U1", "DEV.ACCESS")}
+    assert len(keys) == 4 and len({cache.file(k) for k in keys}) == 4, keys
+    a.INSIDE = True  # inside Snowflake: no disk
+    assert not cache.local()
+    a.INSIDE = False
     reads = []
     def read():
         reads.append(1)
@@ -1081,8 +1197,6 @@ def test_cache():
     cache.drop("k")
     cache.get("k", read)
     assert not cache.file("k").exists()
-    cache.HOURS = 24
-    os.environ.pop("SNOWFLAKE_ACCOUNT")
     for env, err in (({"SOURCE": "objects"}, "ACCESS_SNAPSHOT"), ({"SOURCE": "x"}, "SOURCE must be")):
         try:
             cache.config(env)
@@ -1371,18 +1485,29 @@ def test_readme_rules():  # docs/make_readme.py fills README.html's rule table f
     spec.loader.exec_module(m)
     t = m.rules()
     assert t.count('<td class="num">') == len(a.RULES) and t.count('class="grp"') == len({v[1] for v in m.server.RULE_INFO.values()})
+    html = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.html"), encoding="utf-8").read()
+    for name, body in (("rules", t), ("overview", m.canvas("overview", 1080, 440, m.OVERVIEW, m.OVERVIEW_ARROWS)),
+                       ("flow", m.canvas("flow", 1080, 640, m.FLOW, m.FLOW_ARROWS, m.LANES))):
+        assert m.inject(html, name, body) == html, f"README.html {name} is out of date: python docs/make_readme.py"
 
 
 if __name__ == "__main__":
-    for t in (test_cache, test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_sensitive,
-              test_users, test_rules, test_fixes_clear, test_readonly, test_demo_db, test_kinds, test_cycle, test_public,
-              test_cap, test_graph_inputs, test_new_rules, test_fast, test_perf, test_group_graph, test_has_lacks,
-              test_data_view, test_namespaces, test_summary, test_each, test_live, test_db_roles, test_builtin,
-              test_whatif, test_whatif_indirect, test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow,
-              test_usage_changes, test_review_fixes, test_readme_rules, test_pages):
+    import traceback
+    again = "ROLE_PREFIXES" in os.environ  # the rerun with another naming
+    skip = {"test_perf", "test_pages", "test_live"} if again else set()  # they name no role: once is enough
+    tests = [fn for n, fn in globals().items() if n.startswith("test_") and callable(fn) and n not in skip]
+    failed = []
+    for t in sorted(tests, key=lambda fn: fn.__name__ != "test_cache"):  # every test_ function, test_cache first
         a.build(a.fake())
-        t()
-    if "ROLE_PREFIXES" not in os.environ:  # again with another naming: nothing may depend on F_/T_ literals
+        try:
+            t()
+        except Exception:
+            failed.append(t.__name__)
+            print(f"FAIL {t.__name__}\n{traceback.format_exc()}")
+    if not again:  # again with another naming: nothing may depend on F_/T_ literals
         env = {k: v for k, v in os.environ.items() if k != "BUILD_ROLES"} | {"ROLE_PREFIXES": "ZF_,ZT_"}
-        subprocess.run([sys.executable, __file__], env=env, check=True)
-    print("ok", os.environ.get("ROLE_PREFIXES", "F_,T_"))
+        if subprocess.run([sys.executable, __file__], env=env).returncode:
+            failed.append("rerun with ROLE_PREFIXES=ZF_,ZT_")
+    if failed:
+        sys.exit(f"FAILED {os.environ.get('ROLE_PREFIXES', 'F_,T_')}: {', '.join(failed)}")
+    print(f"ok {os.environ.get('ROLE_PREFIXES', 'F_,T_')} ({len(tests)} tests)")

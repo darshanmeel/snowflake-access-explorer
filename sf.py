@@ -4,7 +4,7 @@
     python sf.py -f query.sql
 
 Settings: env vars or .env. Login: key pair when SNOWFLAKE_PRIVATE_KEY_FILE is set, else SSO in the browser.
-No other method (no password). Inside Snowflake (SiS): the app's own session.
+No other method (no password). Inside Snowflake (SiS, access.INSIDE): the app's own session, never closed.
 
 In Python:
     from sf import connect, run
@@ -13,21 +13,20 @@ In Python:
 import os
 import sys
 
-import snowflake.connector
-
-import access  # noqa: F401  (loads .env)
+import access  # loads .env; access.INSIDE: running as Streamlit in Snowflake
 
 
 def connect():
-    if "SNOWFLAKE_ACCOUNT" not in os.environ:  # Streamlit in Snowflake has no account variable: use the app's session
-        try:
-            from snowflake.snowpark.context import get_active_session
-            return get_active_session().connection
-        except Exception:
-            pass  # not inside Snowflake: the KeyError below names the missing setting
+    if access.INSIDE:  # the app's own session (owner's rights); owned() says not to close it
+        from snowflake.snowpark.context import get_active_session
+        return get_active_session().connection
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
+        raise RuntimeError("SNOWFLAKE_ACCOUNT is not set: copy .env.example to .env and fill it in "
+                           "(README > Settings), or run python run.py --fake")
+    import snowflake.connector
     args = dict(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=os.environ["SNOWFLAKE_USER"],
+        user=os.environ.get("SNOWFLAKE_USER"),
         role=os.environ.get("SNOWFLAKE_ROLE"),
         warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE"),
         database=os.environ.get("SNOWFLAKE_DATABASE"),
@@ -42,22 +41,31 @@ def connect():
     return snowflake.connector.connect(**{k: v for k, v in args.items() if v})
 
 
+def owned():
+    """Whether connect() made a connection of our own (to close), not the app's session inside Snowflake."""
+    return not access.INSIDE
+
+
+def rows(conn, sql):
+    """(column names, rows) of one statement; every read of the app goes through here."""
+    cur = conn.cursor()
+    cur.execute(sql)
+    return [c[0] for c in cur.description or []], cur.fetchall()
+
+
 def run(sql, conn=None):
     own = conn is None
     conn = conn or connect()
     try:
-        cur = conn.cursor()
-        cur.execute(sql)
-        cols = [c[0] for c in cur.description or []]
-        return cols, cur.fetchall()
+        return rows(conn, sql)
     finally:
-        if own:
+        if own and owned():
             conn.close()
 
 
 if __name__ == "__main__":
     sql = open(sys.argv[2]).read() if sys.argv[1] == "-f" else sys.argv[1]
-    cols, rows = run(sql)
+    cols, got = run(sql)
     print("\t".join(cols))
-    for r in rows:
+    for r in got:
         print("\t".join(str(v) for v in r))

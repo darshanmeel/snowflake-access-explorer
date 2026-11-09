@@ -22,8 +22,23 @@ for line in ENV.read_text(encoding="utf-8-sig").splitlines() if ENV.is_file() el
     k, v = k.strip(), v.strip().strip("\"'")
     if k and v and not k.startswith("#"):
         os.environ.setdefault(k, v)
-# Streamlit in Snowflake: no account variable there (the app uses its own session, with the owner's rights)
-INSIDE = "SNOWFLAKE_ACCOUNT" not in os.environ and os.environ.get("FAKE") != "1"
+
+
+def in_snowflake():
+    """Streamlit in Snowflake: the app has an active Snowpark session (its own, with the owner's rights). INSIDE=1/0
+    in the settings says so explicitly. Not a missing SNOWFLAKE_ACCOUNT: a local run without .env is not inside."""
+    if os.environ.get("FAKE") == "1":
+        return False
+    if os.environ.get("INSIDE") in ("0", "1"):
+        return os.environ["INSIDE"] == "1"
+    try:
+        from snowflake.snowpark.context import get_active_session
+        return get_active_session() is not None
+    except Exception:  # no snowpark (a local install) or no session
+        return False
+
+
+INSIDE = in_snowflake()
 
 ADMIN = {"ACCOUNTADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "ORGADMIN"}
 # account privileges Snowflake grants to PUBLIC by default (plus the SNOWFLAKE.* database roles): not rule 9
@@ -141,6 +156,7 @@ def fake():
                 if k in ("PROCEDURE", "FUNCTION"):
                     pv.append((f"{base}_EXECUTE", "USAGE", k, name))
     pv += [(f"{T}SALES_CORE_READ", "SELECT", "FUTURE TABLE", "SALES.CORE.<TABLE>"),
+           (f"{T}SALES_CORE_OWNER", "OWNERSHIP", "FUTURE TABLE", "SALES.CORE.<TABLE>"),  # the IaC owner: no rule 15
            (f"{T}SHARED_STAGE_READ", "USAGE", "SCHEMA", "SHARED.STAGE"),  # schema not modelled above
            (f"{F}SECURITY", "MANAGE GRANTS", "ACCOUNT", "ACCOUNT"),  # fake: account privilege on a functional role
            (f"{F}ANALYST", "USAGE", "WAREHOUSE", "WH_SALES_XS"),  # fake: direct privilege on a functional role
@@ -614,8 +630,8 @@ def live(query):
             else:
                 qs += [(name, f"{name}.{clean(r['name'])}") for r in got]
         for (name, q), got in zip(qs, many([f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}" for _, q in qs])):
-            if isinstance(got, Exception):
-                skipped.append(f"database roles in {name}: {line(got)}")
+            if isinstance(got, Exception):  # one unreadable database role skips only itself (as SP_ACCESS_SNAPSHOT)
+                skipped.append(f"{q}: {line(got)}")
                 continue
             d["GRANT"] += [dict(GRANTEE_ROLE=q, PRIVILEGE=g["privilege"], GRANTED_ON=g["granted_on"],
                                 OBJECT_NAME=clean(g["name"]), IS_FUTURE=False,
@@ -1332,14 +1348,16 @@ def best_paths(name, user=False):
 
 
 def starts(name, user=False, default_only=False):
-    """Start paths: [role], or [user, role] per granted role. default_only: only paths to the user's default role
-    (it may be inherited, not granted directly)."""
+    """Start paths: [role], or [user, role] per granted role. default_only: one start, the shortest path to the user's
+    default role (it may be inherited, not granted directly): only that role is in session, so no route through
+    another granted role counts."""
     if not user:
         return [[name]]
     paths = [[name, r] for r in roles_of.get(name, [])]
     if default_only:
         dr = (profile.get(name) or {}).get("DEFAULT_ROLE")
-        paths = [p for s in paths for p in down(s, user=True) if p[-1] == dr]
+        best = paths_from(paths).get(dr) if dr else None
+        paths = [best] if best else []
     got = {r for p in paths for r in p[1:]}
     return paths + ([] if "PUBLIC" in got else [[name, "PUBLIC"]])  # every user holds PUBLIC; it is never listed
 
@@ -1392,6 +1410,49 @@ def dag(sts):
                     state[r], kids[r] = 1, []
                     stack.append((r, iter(holds.get(r, []))))
     return kids
+
+
+def loops():
+    """Role loops (roles that hold each other, directly or through others): [sorted roles], once per data set.
+    Snowflake refuses such grants, but a snapshot read during an IaC apply or a What if can hold one. Inside a loop
+    the counted walks (dag drops the link that closes it) and the listed ones (down) can differ: the app warns."""
+    def make():
+        index, low, on_stack, stack, out, n = {}, {}, set(), [], [], 0
+        for root in sorted(holds):
+            if root in index:
+                continue
+            work = [(root, iter(holds.get(root, [])))]
+            index[root] = low[root] = n
+            n += 1
+            stack.append(root)
+            on_stack.add(root)
+            while work:
+                v, it = work[-1]
+                w = next(it, None)
+                if w is None:
+                    work.pop()
+                    if work:
+                        low[work[-1][0]] = min(low[work[-1][0]], low[v])
+                    if low[v] == index[v]:
+                        comp = set()
+                        while True:
+                            x = stack.pop()
+                            on_stack.discard(x)
+                            comp.add(x)
+                            if x == v:
+                                break
+                        if len(comp) > 1 or v in holds.get(v, []):
+                            out.append(sorted(comp))
+                elif w not in index:
+                    index[w] = low[w] = n
+                    n += 1
+                    stack.append(w)
+                    on_stack.add(w)
+                    work.append((w, iter(holds.get(w, []))))
+                elif w in on_stack:
+                    low[v] = min(low[v], index[w])
+        return sorted(out)
+    return cached("loops", make)
 
 
 def top_hop(hops):
@@ -1813,18 +1874,6 @@ def policies_of(obj):
     return dict(columns=cols, rows=rows)
 
 
-def policy_list():
-    """Every policy row with a note: dict(policy fields..., object, column, note)."""
-    out = []
-    for p in policies:
-        note = ""
-        if not p["OBJECT_NAME"] and p.get("TAG_NAME"):
-            n = sum(1 for t in tags if t["DOMAIN"] == "COLUMN" and t["TAG_NAME"].upper() == p["TAG_NAME"].upper())
-            note = f"attached to tag {p['TAG_NAME']}, " + (f"{n} tagged columns" if n else "no tagged columns")
-        out.append(pol(p) | dict(object=p["OBJECT_NAME"], column=p["COLUMN_NAME"], note=note))
-    return out
-
-
 def masked(name, obj, col=None):
     """clear | masked | ? for a column (col) or the rows (col None: all rows = clear, filtered or no rows = masked) of
     obj, when name is in use. Short form of data_view(), which gives the reason."""
@@ -2019,25 +2068,6 @@ def policy_text(p):
     if c is None or not c[1]:
         return f"{short}: masked or clear depends on policy logic (not derived from the text)"
     return f"{short}: clear for {either(c[0].items())}; everyone else: masked" if c[0] else f"{short}: masked for every role"
-
-
-def governance_rows():
-    """Tables and views with a tag or a policy. Row: object, kind, tags [object tags, inherited included],
-    column_tags {column: [labels]}, masking {column: [policy names]}, row_policies [names], sensitive."""
-    out = []
-    for o in objects:
-        if not is_data(kinds[o]):
-            continue
-        tg, ps = tags_of(o), policies_of(o)
-        if tg or ps["columns"] or ps["rows"]:
-            ct = {}
-            for c, t, v, _ in tg:
-                if c:
-                    ct.setdefault(c, []).append(tag_label(t, v))
-            out.append(dict(object=o, kind=kinds[o], tags=[tag_label(t, v) for c, t, v, _ in tg if not c],
-                            column_tags=ct, masking={c: [x["name"] for x in v] for c, v in ps["columns"].items()},
-                            row_policies=[x["name"] for x in ps["rows"]], sensitive=o in sens))
-    return out
 
 
 def row_tables():
@@ -2477,17 +2507,6 @@ def privs_on(name, user=False):
     return cached(("privs_on", name, user), make)
 
 
-def has_lacks_summary(name, user=False):
-    """Per role (or user): objects grouped by type and privilege set, largest group first.
-    Row: type, has, lacks, implied, text, objects (names), count."""
-    out = {}
-    for o in sorted(o for o in privs_on(name, user) if kinds.get(o, "ACCOUNT") != "ACCOUNT"
-                    and not kinds[o].startswith("FUTURE")):
-        x = has_lacks(name, o, user)
-        out.setdefault((x["type"], tuple(x["has"])), x | dict(objects=[]))["objects"].append(o)
-    return sorted((x | dict(count=len(x["objects"])) for x in out.values()), key=lambda x: (-x["count"], x["type"]))
-
-
 # ---------- big accounts: objects rolled up to schema / database ----------
 
 CLS_ORDER = ["read", "write", "own", "use", "manage", "admin"]
@@ -2904,12 +2923,14 @@ def can(user, priv, obj, default_only=False, is_user=True):
     dr = (profile.get(user) or {}).get("DEFAULT_ROLE")
     acc = access_of(user, is_user, default_only)
     ps = sorted((p + [obj] for pv, k, o, p in acc if pv == priv and o == obj), key=len)
+    # in session without secondary roles: what the default role reaches, and PUBLIC's (every session has PUBLIC)
+    primary = set(bfs([dr])) | set(bfs(["PUBLIC"])) if is_user and dr else None
     rows = []
     for p in ps:
         how = f"direct grant on {p[-2]}"
         if len(p) > (3 if is_user else 2) and role_kind(p[-3]) in ("technical", "database"):
             how = f"inherited through {role_kind(p[-3])} role {p[-3]}"
-        if is_user and dr not in p[1:-1]:
+        if primary is not None and p[-2] not in primary:
             how += ", via secondary role"
         rows.append(dict(path=p, depth=len(p) - (2 if is_user else 1), holder=p[-2], how=how))
     owner = [] if priv == "OWNERSHIP" else sorted((p + [obj] for pv, k, o, p in acc if pv == "OWNERSHIP" and o == obj),
@@ -4248,8 +4269,10 @@ def rules_sensitive(only=None):
                 edges += [priv_edge(r, pv, k, o) for pv, k, o in granted.get(r, []) if o in s and pv in READ_PRIVS]
                 out.append(find("11", r, f"reads {len(objs)} sensitive: {', '.join(objs)}; {len(users_through(r))} "
                                          "users", got[objs[0]], edges))
-    for r, pv, k, o in privs:  # 15
-        if k.startswith("FUTURE"):
+    for r, pv, k, o in privs:  # 15: read access to future tables / views; owning them (the IaC owner or build
+        # pattern) and future functions, stages or schemas open no data before classification
+        if (k.startswith("FUTURE") and is_data(k.replace("FUTURE ", "")) and pv in READ_PRIVS - {"OWNERSHIP"}
+                and not is_build(r) and r not in ADMIN):
             where = o.rsplit(".", 1)[0]
             hit = sorted(x for x in s if x.startswith(where + "."))
             if hit:

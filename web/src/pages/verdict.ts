@@ -16,6 +16,19 @@ export function cutLabel(es: Edge[]): string {
   return `Revoke ${es.map((x) => x.priv).join(", ")} on ${e.to} from ${e.grantee}`;
 }
 
+/** One cut's text as the server writes it (access.revoke: OWNERSHIP is a transfer, future grants ON FUTURE .. IN
+ * SCHEMA / DATABASE): one statement per line; Terraform and ticket name what to remove in the IaC repo. */
+export function cutTexts(cut: { iac: string; sql: string }, user: string): { sql: string; tf: string; ticket: string } {
+  const items = cut.iac.split("; ");
+  return {
+    sql: `-- Where to cut: ${user}\n${cut.sql.replace(/;\s+/g, ";\n").trim()}\n`,
+    tf: [`# Where to cut: ${user}`, ...items.map((t) => `# ${t}, then plan and apply.`)].join("\n") + "\n",
+    ticket: [`Access change (${items.length} item${items.length === 1 ? "" : "s"})`, "", ...items.map((t, i) => `${i + 1}. ${t}`), "",
+      "Reason: (fill in)", "Approver: (owner of the object)",
+      "Apply through infrastructure as code; manual grants are removed by reconciliation."].join("\n") + "\n",
+  };
+}
+
 /** The revokes of one cut as CodeOutput changes (text only). */
 export function cutChanges(es: Edge[], objectType: string): Change[] {
   return es.map((e) => e.priv

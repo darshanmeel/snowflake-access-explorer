@@ -7,7 +7,7 @@ import { useApi } from "../api/client";
 import type { CheckPage, ListItem, Path, Refs } from "../api/types";
 import { Banner, Card, CodeOutput, DataTable, EmptyState, KpiRow, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { cutChanges, cutLabel, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
+import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 import { col, GraphCard, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
@@ -150,7 +150,7 @@ function Routes({ d }: { d: CheckPage }) {
               </li>
             ))}
           </ul>
-          {cut && <CodeOutput changes={cutChanges(cut.edges, d.type)} name={`revoke_${d.user.toLowerCase()}`} />}
+          {cut && <CodeOutput changes={[]} texts={cutTexts(cut, d.user)} name={`revoke_${d.user.toLowerCase()}`} />}
         </Card>
         <Card title="What they see">
           {d.read ? (

@@ -19,8 +19,25 @@ NAMES = dict(re.findall(r"^!define (\w+)=(.*?)\s*$", SETTINGS.read_text(encoding
 NAMES["HERE"] = HERE.resolve().as_posix()  # PUT needs an absolute path to access.py
 
 
+def check_names():
+    """Stop before Snowflake sees '<DB>': settings.local.sql missing or not filled in."""
+    todo = sorted(k for k, v in NAMES.items() if v.startswith("<"))
+    if todo:
+        raise SystemExit(f"{SETTINGS.name}: {', '.join(todo)} not filled in. Copy settings.sql to settings.local.sql "
+                         "and fill in the names (README > Setup).")
+
+
 def fill(sql):
-    return re.sub(r"&(\w+)", lambda m: NAMES[m.group(1)], sql)
+    def name(m):
+        if m.group(1) not in NAMES:
+            raise SystemExit(f"&{m.group(1)} is not defined in {SETTINGS.name}")
+        return NAMES[m.group(1)]
+    return re.sub(r"&(\w+)", name, sql)
+
+
+def missing_files(text):
+    """Local files named in PUT 'file://&HERE/...' lines that are not there (a wildcard needs one match)."""
+    return [p for p in re.findall(r"PUT 'file://&HERE/([^']+)'", text) if not list(HERE.glob(p))]
 
 
 def statements(text):
@@ -30,12 +47,18 @@ def statements(text):
 
 
 def main(path):
+    check_names()
+    text = (HERE / path).read_text(encoding="utf-8")
+    gone = missing_files(text)
+    if gone:  # before any statement runs, so no half-uploaded stage
+        raise SystemExit(f"Missing: {', '.join(gone)}" + (" (copy sis.env.example to sis/.env, README > Streamlit in "
+                                                          "Snowflake)" if "sis/.env" in gone else ""))
     conn = connect()
     cur = conn.cursor()
     for s in ("USE ROLE &DEV_ROLE", "USE SECONDARY ROLES NONE", "USE WAREHOUSE &WH", "USE DATABASE &DB"):
         cur.execute(fill(s))
     check, bad = path.endswith("_verify.sql"), []
-    for name, flags, sql in statements((HERE / path).read_text(encoding="utf-8")):
+    for name, flags, sql in statements(text):
         may_fail, expect = "may fail" in flags, re.search(r"expect (\d+)", flags)
         try:
             cur.execute(fill(sql))

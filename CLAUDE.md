@@ -28,13 +28,19 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   `STREAMLIT_PORT` (8501) so both run side by side.
 - **Streamlit in Snowflake:** `app.py` runs the same React app (`web/src/App.tsx`) as one Streamlit component
   (`st_react.app`): its API calls come back to Python and are answered by `server.py` functions, so both versions show
-  identical pages. There is no plain Streamlit fallback: `app.py` only sets the page up and runs `st_react.app`
-  (`ST_REACT=html` only says that the app needs the component).
+  identical pages. There is no plain Streamlit fallback and no other component: `app.py` only sets the page up, shows a
+  "component did not load" hint until the frame talks back, and runs `st_react.app`.
 - Built bundles `web/dist` and `web/dist-st` are committed: users only run Python, never npm. After any change in
   `web/src`, rebuild both (`npm run build`, `npm run build:st`) and commit them.
   Must keep running as a Streamlit app inside Snowflake: `sql/4_streamlit.sql` deploys it (stage + `CREATE STREAMLIT`,
-  settings from the required `sis/.env`, `SOURCE=objects`); there (`a.INSIDE`: no `SNOWFLAKE_ACCOUNT`) `sf.connect()`
-  uses the app's session, never closed, and My access is hidden (owner's rights, not the viewer's). Container Services: optional, only to give everyone the local version.
+  settings from the required `sis/.env`, `INSIDE=1`, `SOURCE=objects`); there (`a.INSIDE`: an active Snowpark session or
+  `INSIDE=1`, never "no `SNOWFLAKE_ACCOUNT`") `sf.connect()` uses the app's session, never closed (`sf.owned()`), and
+  My access is hidden (owner's rights, not the viewer's). My access is also off on a shared server (`HOST` not loopback)
+  and with a key-pair login (`server.mine_off()`, `MY_ACCESS=1|0` decides). Container Services: optional, only to give everyone the local version.
+- The local API answers only its own host names (`server.allowed_hosts()`, `ALLOWED_HOSTS`) and refuses a cross-site
+  POST (Origin check); errors answer JSON with the real message in both versions.
+- All Snowflake reads go through `sf.rows()`; `test_read_only` records every statement and allows only reads plus the
+  `SP_ACCESS_SNAPSHOT` CALL.
 - `access.py` is the only place for data, walks and rules; both versions call it, neither has its own logic.
 - **If you change one version, change the other in the same task:** a page, tab, column, graph style or rule shown
   locally must show in Streamlit too (and the reverse). Shared React components change once in `web/src/components/`;
@@ -65,7 +71,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   `app.py` (page setup, runs `st_react.app`).
 - Snowflake side: names in `settings.local.sql` (template `settings.sql`), `sql/<n>_<step>.sql` with `-- name:` statements
   (`(may fail)`, `(expect N)`) plus `_verify.sql`, run by `run_sql.py` or SnowSQL. Use `&NAME`, never hard-code names.
-- Load the snapshot once and cache it (`st.cache_data`, ttl 1h). The app does its walks in Python, not SQL. For use
+- Load the snapshot once per process and keep it with `cache.get` (memory, plus `.cache/` for `CACHE_HOURS`, 24 h by
+  default; memory only inside Snowflake; the key holds account, source, snapshot location, user and role). The app does its walks in Python, not SQL. For use
   without the app, `sql/1_setup.sql` also creates the table functions `TF_ACCESS_OF` / `TF_WHO_CAN` / `TF_CAN` and the
   procedure `SP_ACCESS_FINDINGS` (runs `access.py`); `test_sql.py` keeps them equal to `access.py`.
 - Walks give full paths: exact path counts without listing (count over the role graph), the shortest by BFS, every chain
@@ -90,7 +97,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   18 unusual privilege set · 19 EXECUTE TASK on person/consumer · 20 task OPERATE outside owner/build ·
   21 warehouse MODIFY/OPERATE outside owner/build · 22 stream on sensitive table without table read ·
   23 schema CREATE on read-only role.
-- `python test_access.py` and `python test_sql.py` green (test_access reruns itself with `ROLE_PREFIXES=ZF_,ZT_`).
+- `python test_access.py` and `python test_sql.py` green (test_access runs every `test_` function, reports all failures,
+  reruns itself with `ROLE_PREFIXES=ZF_,ZT_`; `PERF_SCALE` / `PERF=0` for test_perf). Test packages: `requirements-dev.txt`.
 - Spot-check paths: a user via a group role, a role reached through 2 paths, an admin holder.
 - `test_pages` (in test_access.py): `app.py` hands every page key in `server.PAGES` (shared and mine) to the component
   without an exception; `test_server.py` checks what each page answers.

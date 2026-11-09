@@ -3,7 +3,12 @@
 # Terms: one extended regex per line in ~/.company-terms.txt, kept outside the repo so the names never enter it.
 list="$HOME/.company-terms.txt"
 [ -s "$list" ] || { echo "pre-commit: $list missing or empty, commit blocked"; exit 1; }
-if git grep --cached -I -n -i -E -f "$list" || git diff --cached --name-only | grep -i -E -f "$list"; then
+# CRLF endings (a list saved on Windows) would put \r into every pattern, and a blank line matches everything
+pat=$(mktemp)
+trap 'rm -f "$pat"' EXIT
+tr -d '\r' < "$list" | grep -v '^[[:space:]]*$' > "$pat"
+[ -s "$pat" ] || { echo "pre-commit: $list has no terms, commit blocked"; exit 1; }
+if git grep --cached -I -n -i -E -f "$pat" || git diff --cached --name-only | grep -i -E -f "$pat"; then
   echo "pre-commit: company terms found (above), commit blocked"
   exit 1
 fi
