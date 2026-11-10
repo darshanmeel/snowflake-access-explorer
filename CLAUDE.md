@@ -77,6 +77,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   procedure `SP_ACCESS_FINDINGS` (runs `access.py`); `test_sql.py` keeps them equal to `access.py`.
 - Walks give full paths: exact path counts without listing (count over the role graph), the shortest by BFS, every chain
   listed lazily up to `MAX_PATHS` ("first 200 of N"). Guard against cycles. Users and roles are separate namespaces.
+  Pages never list every path to answer (can / removal / cut_points / loses / facts / who_users count; `test_counted`,
+  `test_perf` on `test_access.big()`). `build()` keeps `KEEP_BUILT` (3) built data sets, so a view switch costs no rebuild.
 - Depth = roles from the start to the grant holder, holder included, the same on every page; graph lanes by shortest depth.
 - Big accounts: `graph_input()` rolls objects up to schema / database nodes over `MAX_OBJECTS` (12, a lane's boxes); tables list every object.
   Over 30 role boxes or 6 role lanes, `summary()` draws granted roles -> one fold box each -> grant holders -> groups (`?full=1`: all).

@@ -138,8 +138,9 @@ SNOWFLAKE_WAREHOUSE=<WH>
 | `APP`, `WEB_PORT`, `STREAMLIT_PORT` | `web`, `8000`, `8501` | What `run.py` starts, and where |
 | `SHOW_THREADS` | `16` | SHOW statements sent at once when ACCOUNT_USAGE is not readable (`1` = one after another) |
 | `HOST` | `127.0.0.1` | Address the local web app listens on; `0.0.0.0` on a shared server ([Deploy](#deploy)) |
+| `KEEP_BUILT` | `3` | Data sets kept built in memory besides the loaded one (shared, My access, `builtin=1`): switching back costs no rebuild |
 
-More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, ...): README.html.
+More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, `MAX_PATHS`, ...): README.html. Path counts are exact and counted over the role graph; full chains are listed up to `MAX_PATHS`, so big accounts stay quick (README.html > Limits).
 
 ### What you see depends on your role
 | Your role has | You see |

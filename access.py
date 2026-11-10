@@ -869,6 +869,8 @@ ROLE_ON = ("ROLE", "DATABASE_ROLE")  # GRANTED_ON of a role link (with USAGE): a
 memo = {}  # results that only depend on the data set (rule findings, ...), cleared by build()
 hidden = []  # GRANT rows of Snowflake's built-in grants (builtin_grant) left out by build(builtin=False)
 source = {}  # data: the dict build() got, builtin: its flag (what_if rebuilds from them)
+KEEP_BUILT = int(os.environ.get("KEEP_BUILT", "3"))  # data sets kept built besides the loaded one (shared, My access, builtin=1)
+built = {}  # (key, builtin) -> state() of a data set built before, with its cached results (memo)
 
 
 def is_builtin(name):
@@ -886,6 +888,13 @@ def build(d, key=None, builtin=False):
     built-in grants (BUILTIN); left out by default, kept in hidden."""
     global roles, users, objects, run
     if key is not None and memo.get("key") == (key, builtin):
+        return
+    if (memo.get("key") or (None,))[0] is not None:  # keep the loaded one: switching back costs no rebuild
+        built[memo["key"]] = state()
+        while len(built) > KEEP_BUILT:
+            built.pop(next(iter(built)))
+    if key is not None and (key, builtin) in built:
+        restore(built.pop((key, builtin)))
         return
     memo.clear()
     memo["key"] = (key, builtin)
@@ -1028,6 +1037,7 @@ CATS = {"usage": "Usage", "read": "Read", "write": "Write", "execute": "Execute"
         "hold": "Hold"}  # Privileges tabs, in this order
 
 
+@functools.cache  # pure, and called for every grant a walk reaches
 def priv_cat(pv, kind=""):
     """Privileges tab of a privilege: usage (USAGE / MONITOR on a database, schema, warehouse, ...), read, write,
     execute (USAGE on a function or procedure, EXECUTE ..., OPERATE on a task), own, manage (CREATE ..., MODIFY, account
@@ -1052,6 +1062,7 @@ RUN_TYPES = {"WAREHOUSE", "FUNCTION", "PROCEDURE", "TASK", "PIPE", "ALERT", "COM
              "STREAMLIT", "SEQUENCE"}
 
 
+@functools.cache  # pure, and called for every grant a walk reaches
 def category(pv, kind=""):
     """Where a grant shows on the access screen: data (on the ladder), runnable (warehouses, functions, procedures,
     tasks), account (account privileges and CREATE / MODIFY on a database or schema), names (USAGE on a database or
@@ -1068,6 +1079,7 @@ def category(pv, kind=""):
     return "data"
 
 
+@functools.cache  # pure, and called for every grant a walk reaches
 def level_of(pv, kind=""):
     """Ladder step of one privilege on a data object (None: not on the ladder, e.g. APPLY on a table)."""
     k = (kind or "").replace("FUTURE ", "")
@@ -1081,8 +1093,9 @@ CAT_RANK = ("data", "runnable", "account", "names")
 
 def access_objects(rows, user=False):
     """One entry per object from grants() rows, at the highest ladder step any of its privileges gives ("admin" when a
-    path runs through an admin role). path summary: first role after the subject (None: granted straight), grant
-    holder of the shortest path, ways = distinct routes (every path, counted)."""
+    path runs through an admin role: build() drops the role links of admin roles, so one can only be the grant holder).
+    path summary: first role after the subject (None: granted straight), grant holder of the shortest path, ways =
+    distinct routes (every path, counted)."""
     by = {}
     for r in rows:
         c = category(r["privilege"], r["type"])
@@ -1097,17 +1110,53 @@ def access_objects(rows, user=False):
     out = []
     for x in by.values():
         rs = sorted(x.pop("rows"), key=lambda r: (len(r["path"]), r["privilege"]))
-        steps = [level_of(r["privilege"], r["type"]) for r in rs if x["category"] in ("data", "names")]
-        top = max((s for s in steps if s), key=LEVELS.index, default=None)
-        if top and any(n in ADMIN for r in rs for p in r["paths"] for n in p[1:-1]):
-            top = "admin"
+        hs = {h for r in rs for h in r["holders"]}
+        admin = any(h in ADMIN for h in hs) and (user or rs[0]["path"][0] not in ADMIN)  # a role's own grant is not "via"
+        top, order = ladder([(r["privilege"], r["type"]) for r in rs], x["category"], x["type"], admin)
         best = rs[0]["path"]
-        routes = {tuple(p[:-1]) for r in rs for p in r["paths"]}
-        ways = max(len(routes), max(r["count"] for r in rs))
-        order = sorted({r["privilege"] for r in rs}, key=lambda pv: (-LEVELS.index(level_of(pv, x["type"]) or "names"), pv))
+        lists = {id(r["paths"]): r["paths"] for r in rs}  # rows of one holder and object share their path list
+        most = max(r["count"] for r in rs)
+        ways = most if most >= sum(map(len, lists.values())) else \
+            max(most, len({tuple(p[:-1]) for ps in lists.values() for p in ps}))
         out.append(x | dict(level=top, privileges=order, path=best, first=best[1] if len(best) > 2 else None,
-                            holder=best[-2], ways=ways, depth=depth(best[:-1], user),
-                            holders=sorted({h for r in rs for h in r["holders"]})))
+                            holder=best[-2], ways=ways, depth=depth(best[:-1], user), holders=sorted(hs)))
+    return out
+
+
+def ladder(pk, cat, typ, admin):
+    """(level, privileges highest first) of one object's grants pk [(privilege, type)] in category cat."""
+    top, order = ladder_of(frozenset(pk), cat, typ, admin)
+    return top, list(order)
+
+
+@functools.cache  # pure: a whole account has few distinct privilege sets
+def ladder_of(pk, cat, typ, admin):
+    steps = [level_of(pv, k) for pv, k in pk] if cat in ("data", "names") else []
+    top = max((s for s in steps if s), key=LEVELS.index, default=None)
+    if top and admin:
+        top = "admin"
+    return top, tuple(sorted({pv for pv, _ in pk}, key=lambda pv: (-LEVELS.index(level_of(pv, typ) or "names"), pv)))
+
+
+def object_levels(keys, start, user=False):
+    """access_objects() without paths, from the grants reached {(privilege, type, object): holders}: [dict(object,
+    type, database, schema, category, level, privileges, holders)], in object order."""
+    by = {}
+    for (pv, k, o), hs in keys.items():
+        c = category(pv, k)
+        if c != "hold":
+            x = by.setdefault((o, pv) if c == "account" else (o, ""), [[], set(), c])
+            x[0].append((pv, k))
+            x[1] |= hs
+            if CAT_RANK.index(c) < CAT_RANK.index(x[2]):
+                x[2] = c
+    out = []
+    for (o, _), (pk, hs, c) in sorted(by.items()):
+        k = min(pk)[1]  # the first row's type, as grants() sorts them
+        db, sc, _ = split_name(o, k)
+        lv, order = ladder_of(frozenset(pk), c, k, any(h in ADMIN for h in hs) and (user or start not in ADMIN))
+        out.append(dict(object=o, type=k, database=db, schema=sc, category=c, level=lv, privileges=list(order),
+                        holders=hs))
     return out
 
 
@@ -1146,6 +1195,7 @@ def reach_counts(name, user=False):
 OBJ_LEVELS = ("names", "use", "read", "change", "own", "admin")  # one object's steps: "use" = run it (a warehouse)
 
 
+@functools.cache  # pure, and called for every grant a walk reaches
 def obj_level(pv, kind=""):
     """Step of one privilege on the Who has access screen: the ladder (level_of), else own, change (MODIFY,
     OPERATE, CREATE ...: changes or runs the object) or use (USAGE on a warehouse, function ...)."""
@@ -1196,10 +1246,10 @@ def admin_access():
     """The Admin holders preset of screen 2: users and roles holding an admin role, as who_has() entries (privileges =
     the admin roles held, path = the shortest one to an admin role)."""
     ps = group(((x, from_user(p)), p) for x, p in admin_holders())
-    out, adm = dict(people=[], roles=[]), admin_users()
+    out, adm, ways = dict(people=[], roles=[]), admin_users(), admin_ways()
     for (x, u), qs in sorted(ps.items()):
         e = dict(name=x, level="admin", privileges=sorted({q[-1] for q in qs}), path=qs[0], first=(qs[0][1:-1] or [None])[0],
-                 holder=qs[0][-1], ways=len(qs), depth=depth(qs[0], u))
+                 holder=qs[0][-1], ways=ways[(x, u)], depth=depth(qs[0], u))
         if u:
             out["people"].append(person(x, e, adm))
         elif x not in ADMIN:
@@ -1389,15 +1439,17 @@ def chains(paths, up_paths=False):
 
 # ---------- fast walks: path counts without enumerating, shortest by BFS, chains listed lazily (MAX_PATHS) ----------
 
-def dag(sts):
+def dag(sts, links=None):
     """Role links reachable from the start paths, minus the links that close a loop (depth-first back edges):
-    {role: [child roles]}, in holds order. Duplicate grant rows stay, so they count twice as in down()."""
+    {role: [child roles]}, in holds order (links=held_by: the walk up). Duplicate grant rows stay, so they count twice
+    as in down()."""
+    links = holds if links is None else links
     kids, state = {}, {}
     for s in sts:
         if s[-1] in state:
             continue
         state[s[-1]], kids[s[-1]] = 1, []
-        stack = [(s[-1], iter(holds.get(s[-1], [])))]
+        stack = [(s[-1], iter(links.get(s[-1], [])))]
         while stack:
             v, it = stack[-1]
             r = next(it, None)
@@ -1408,7 +1460,7 @@ def dag(sts):
                 kids[v].append(r)
                 if r not in state:
                     state[r], kids[r] = 1, []
-                    stack.append((r, iter(holds.get(r, []))))
+                    stack.append((r, iter(links.get(r, []))))
     return kids
 
 
@@ -1520,7 +1572,7 @@ def listed(sts, kids, hops, targets, cap=None):
             out.append(p)
         if len(p) - 1 < top:
             for r in kids[p[-1]]:
-                if r in keep and r not in block:
+                if r in keep and r not in block and r not in p:
                     go(p + [r], block)
 
     for s in sts:
@@ -1547,6 +1599,169 @@ def capped_paths(ps, count, best):
 def paths_note(row):
     """"first 200 of 1,234" when a row lists fewer chains than it has, else ""."""
     return f"first {len(row['paths'])} of {row['count']:,}" if row["count"] > len(row["paths"]) else ""
+
+
+# ---------- counted walks to the holders of one grant: Can they?, Where to cut, Remove (paths counted, not listed) ----------
+
+def holding(obj, ok):
+    """Roles holding a privilege ok(privilege) on obj: {role: grant rows} (a duplicate row counts twice, as in grants())."""
+    w = {}
+    for r, pv, k in on.get(obj, []):
+        if ok(pv):
+            w[r] = w.get(r, 0) + 1
+    return w
+
+
+def tally(f, w):
+    """The walk f = fast(...) to the holders w ({role: grant rows}): dict(sts, kids, cnt, hops, w (the holders it
+    reaches), down {role: paths from it to a holder}, total (every path)). Counted over the role graph, never listed."""
+    sts, kids, cnt, hops = f
+    w = {h: n for h, n in w.items() if h in cnt}
+    down = {}
+
+    def dn(r):
+        if r not in down:
+            down[r] = w.get(r, 0) + sum(dn(c) for c in kids.get(r, []))
+        return down[r]
+    for r in kids:
+        dn(r)
+    return dict(sts=sts, kids=kids, cnt=cnt, hops=hops, w=w, down=down, total=sum(cnt[h] * n for h, n in w.items()))
+
+
+def via_role(t, r, user):
+    """Paths of tally t that pass through role r (r on a start path too: the default role's own route)."""
+    return t["cnt"].get(r, 0) * t["down"].get(r, 0) + sum(t["down"].get(s[-1], 0) for s in t["sts"] if r in s[user:-1])
+
+
+def via_link(t, x, y, user, first=False):
+    """Paths of tally t that use the link x -> y: first: the grant of role y to the user x; y None: x's own grant."""
+    if y is None:
+        return t["cnt"].get(x, 0) * t["w"].get(x, 0)
+    if first:
+        return sum(t["down"].get(s[-1], 0) for s in t["sts"] if s[:2] == [x, y])
+    on_start = sum(t["down"].get(s[-1], 0) for s in t["sts"] if (x, y) in zip(s[user:], s[user + 1:]))
+    return on_start + t["cnt"].get(x, 0) * t["kids"].get(x, []).count(y) * t["down"].get(y, 0)
+
+
+def first_short(t):
+    """The first of the shortest paths of tally t in down() order (what sorting every path by length puts first)."""
+    kids, ups, dist = t["kids"], {}, {h: 0 for h in t["w"]}
+    for v, rs in kids.items():
+        for r in rs:
+            ups.setdefault(r, []).append(v)
+    todo = list(dist)
+    while todo:
+        nxt = []
+        for r in todo:
+            for v in ups.get(r, []):
+                if v not in dist:
+                    dist[v] = dist[r] + 1
+                    nxt.append(v)
+        todo = nxt
+    ok = [s for s in t["sts"] if s[-1] in dist]
+    if not ok:
+        return None
+    p = list(min(ok, key=lambda s: len(s) + dist[s[-1]]))
+    while dist[p[-1]]:
+        p.append(next(r for r in kids[p[-1]] if dist.get(r) == dist[p[-1]] - 1))
+    return p
+
+
+def paths_to(t, obj):
+    """Paths of tally t to obj (name->...->holder->obj), shortest first, at most MAX_PATHS with the shortest always in;
+    t["total"] counts them all."""
+    if not t["w"]:
+        return []
+    w, kids = t["w"], t["kids"]
+    if loops():  # dag dropped the link that closes a loop: list over every link, as the walks did before
+        kids = {v: [r for r in holds.get(v, []) if r in kids] for v in kids}
+    ps = [q + [obj] for q in listed(t["sts"], kids, t["hops"], set(w)) for _ in range(w[q[-1]])][:MAX_PATHS]
+    return capped_paths(ps, t["total"], first_short(t) + [obj]) if t["total"] > len(ps) else sorted(ps, key=len)
+
+
+def first_path(t, obj):
+    """The first path of tally t in down() order (removal and cut_points walk its links), with obj."""
+    return listed(t["sts"], t["kids"], t["hops"], set(t["w"]), 1)[0] + [obj]
+
+
+def reach_without(name, user, gone):
+    """Roles name still reaches once the links in gone {(grantee, role)} are cut (the user's own grant of role r is
+    (name, r)): reach only, so big accounts stay fast."""
+    seen, todo = set(), []
+    for s in starts(name, user):
+        if s[-1] not in seen and not any(q in gone for q in zip(s, s[1:])):
+            seen.add(s[-1])
+            todo.append(s[-1])
+    while todo:
+        v = todo.pop()
+        for r in holds.get(v, []):
+            if r not in seen and (v, r) not in gone:
+                seen.add(r)
+                todo.append(r)
+    return seen
+
+
+def grant_keys(rs, skip=None):
+    """{(privilege, object)} the roles rs hold, objects other than skip."""
+    return {(pv, o) for r in rs for pv, k, o in granted.get(r, []) if o != skip}
+
+
+# ---------- the walk up: who holds a role or a grant, counted, shortest by BFS, chains listed lazily (MAX_PATHS) ----------
+
+def users_on(v):
+    """Users holding role v straight (every user holds PUBLIC; it is never listed)."""
+    return users if v == "PUBLIC" else users_of.get(v, [])
+
+
+def up_walk(srcs, hops=None, user_hops=None):
+    """The walk up from the roles srcs (a repeat counts twice) to every role and user holding them, as up() lists it,
+    without listing: dict(rows {(name, is_user): (count, shortest up path src->...->grantee)}, paths(key): up paths
+    of key, shortest first, at most MAX_PATHS with the shortest in). hops: max role hops; user_hops: max hops to a user
+    (default hops)."""
+    sts = [[r] for r in srcs]
+    kids = dag(sts, held_by)
+    uh = hops if user_hops is None else user_hops
+    uhr = None if uh is None else uh - 1  # a user hangs off a role at most uh - 1 hops up
+    rc, sp = counts(sts, kids, hops), shortest(sts, kids, hops)
+    ru, su = (rc, sp) if uhr == hops else (counts(sts, kids, uhr), shortest(sts, kids, uhr))
+    rows = {(v, False): (n, sp[v]) for v, n in rc.items()}
+    uc, ub, on_u = {}, {}, {}  # on_u: user -> {role holding it straight: grant rows}
+    for v, n in ru.items():
+        for u in users_on(v):
+            uc[u] = uc.get(u, 0) + n
+            on_u.setdefault(u, {}).setdefault(v, 0)
+            on_u[u][v] += 1
+    for v, p in su.items():  # BFS order: the first user path found is the first shortest one up() lists
+        for u in users_on(v):
+            ub.setdefault(u, p + [uid(u, True)])
+    rows.update({(u, True): (n, ub[u]) for u, n in uc.items()})
+
+    def paths(key):
+        x, u = key
+        n, best = rows[key]
+        if u:
+            ts = on_u[x]
+            ps = [p + [uid(x, True)] for p in listed(sts, kids, uhr, set(ts)) for _ in range(ts[p[-1]])][:MAX_PATHS]
+        else:
+            ps = listed(sts, kids, hops, {x})
+        return capped_paths(ps, n, best) if n > len(ps) else sorted(ps, key=len)
+    return dict(rows=rows, paths=paths)
+
+
+def up_only_via(srcs, key, avoid):
+    """True when every up path from srcs to key = (name, is_user) passes through role avoid (reach without it)."""
+    x, u = key
+    seen = set(srcs) - {avoid}
+    todo = list(seen)
+    while todo:
+        v = todo.pop()
+        if (u and x in users_on(v)) or (not u and v == x):
+            return False
+        for g in held_by.get(v, []):
+            if g not in seen and g != avoid:
+                seen.add(g)
+                todo.append(g)
+    return True
 
 
 # ---------- graph inputs (the React graph, web/src/components/Graph.tsx): lanes, edges, notes; one box per node at its shortest depth ----------
@@ -1685,8 +1900,66 @@ def account_privs(name, user=False, default_only=False, limit=None):
 
 
 def admin_holders():
-    """Users and roles holding an admin role: rows (grantee, path grantee->...->admin role)."""
-    return [(node_name(p[-1]), p[::-1]) for r in sorted(ADMIN) for p in list(up([r]))[1:]]
+    """Users and roles holding an admin role: rows (grantee, path grantee->...->admin role), at most MAX_PATHS paths
+    per grantee and admin role (admin_ways counts them all)."""
+    out = []
+    for r in sorted(ADMIN):
+        w = up_walk([r])
+        ps = [(x, u, p) for x, u in w["rows"] if (x, u) != (r, False) for p in w["paths"]((x, u))]
+        out += [(x, p[::-1]) for x, u, p in sorted(ps, key=lambda q: up_order(q[2], q[0], q[1]))]
+    return out
+
+
+def up_order(p, x, user):
+    """Sort key of an up path p (src->...->grantee x) in the order up() lists them: each step's place among the
+    holders, a role's users after the roles holding it."""
+    roles = p[:-1] if user else p
+    key = tuple(held_by[a].index(b) for a, b in zip(roles, roles[1:]))
+    return key + ((len(held_by.get(roles[-1], [])) + users_on(roles[-1]).index(x),) if user else ())
+
+
+def admin_ways():
+    """{(grantee, is_user): paths to any admin role}, counted."""
+    out = {}
+    for r in sorted(ADMIN):
+        for (x, u), (n, _) in up_walk([r])["rows"].items():
+            if (x, u) != (r, False):
+                out[(x, u)] = out.get((x, u), 0) + n
+    return out
+
+
+def up_rows(r):
+    """up_walk([r])["rows"], once per data set."""
+    return cached(("up", r), lambda: up_walk([r])["rows"])
+
+
+def firsts(x, h):
+    """The roles user x holds straight (PUBLIC too) that reach role h: the second step of x's paths to h."""
+    f = memo.setdefault("firsts", {})
+    if (x, h) not in f:
+        f[(x, h)] = {g for g in roles_of.get(x, []) + ["PUBLIC"] if g in ups(h)[0]}
+    return f[(x, h)]
+
+
+def who_users(obj, kind=None):
+    """The users of who_can(obj, kind), counted instead of listed: {(user, privilege): dict(path (the shortest,
+    user->...->holder, as who_can() and a sort by length give it), firsts (their granted roles on any path), count)},
+    in who_can() order."""
+    out = {}
+    for r, pv, k in on.get(obj, []):
+        if kind not in (None, k):
+            continue
+        for (x, u), (n, p) in up_rows(r).items():
+            if not u:
+                continue
+            e, q = out.get((x, pv)), p[::-1]
+            if e is None:
+                out[(x, pv)] = dict(path=q, firsts=set(firsts(x, r)), count=n)
+            else:
+                e["path"] = q if len(q) < len(e["path"]) else e["path"]
+                e["firsts"] |= firsts(x, r)
+                e["count"] += n
+    return out
 
 
 def from_user(path):
@@ -2026,14 +2299,14 @@ def data_view(name, obj, user=None):
     state clear | masked | unknown, reason, policy, body)] for every tagged or masked column, rows dict(state all |
     filtered | none | unknown, reason, policy, body, condition), summary)."""
     user = kind_of(name) == "user" if user is None else user
-    inside = {r for s in starts(name, user) for r in bfs(s)}
+    inside = cached(("inside", name, user), lambda: {r for s in starts(name, user) for r in bfs(s)})
     ps, tg, sc = policies_of(obj), tags_of(obj), sensitive_cols(obj)
     cols = sorted(set(ps["columns"]) | {c for c, *_ in tg if c})
     columns = [dict(column=c, tags=[tag_label(t, v) for x, t, v, _ in tg if x == c], sensitive=c in sc,
                     **col_view(name, user, ps["columns"].get(c, []), inside)) for c in cols]
     rows = row_view(name, user, ps["rows"][0], inside) if ps["rows"] else \
         dict(state="all", reason="no row access policy", policy=None, body=None, condition=None)
-    read = any(pv in READ_PRIVS and o == obj for r in inside for pv, k, o in granted.get(r, []))
+    read = any(pv in READ_PRIVS and r in inside for r, pv, k in on.get(obj, []))
     seen = {"all": "all rows", "filtered": "filtered rows", "none": "no rows", "unknown": "rows unknown"}[rows["state"]]
     bits = [seen] + [f"{c['column']} {c['state']}" for c in columns if c["state"] != "clear"]
     return dict(object=obj, name=name, can_read=read, tags=[f"{tag_label(t, v)} ({o})" for c, t, v, o in tg if not c],
@@ -2182,9 +2455,10 @@ def sens_flow(max_roles=None):
     s, adm = sensitive(), admin_users()
     via = {}  # (granted role, object) -> users
     for o in s:
-        for x, pv, p in who_can(o):
-            if pv in READ_PRIVS and from_user(p) and x not in adm:
-                via.setdefault((p[1], o), set()).add(x)
+        for (x, pv), e in who_users(o).items():
+            if pv in READ_PRIVS and x not in adm:
+                for g in e["firsts"]:
+                    via.setdefault((g, o), set()).add(x)
         if adm:
             via.setdefault((ADMIN_BOX, o), set()).update(adm)
     per = {}
@@ -2235,14 +2509,13 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
     adm, cells, roles = admin_users(), {}, {}
     if obj:
         k, got = kinds.get(obj, ""), {}
-        for x, pv, p in who_can(obj):
-            if from_user(p):
-                got.setdefault(x, {}).setdefault(pv, []).append(p + [obj])
+        for (x, pv), e in who_users(obj).items():
+            got.setdefault(x, {})[pv] = e
         pvs = sorted({pv for v in got.values() for pv in v}, key=lambda pv: (-OBJ_LEVELS.index(obj_level(pv, k)), pv))
         cols = [dict(id=pv, name=pv, ns=obj, note=obj_level(pv, k), sensitive=False) for pv in pvs]
         for x, v in got.items():
-            cells[x] = {pv: dict(level=obj_level(pv, k), privileges=[pv], path=min(ps, key=len)) for pv, ps in v.items()}
-            roles[x] = {p[1] for ps in v.values() for p in ps}
+            cells[x] = {pv: dict(level=obj_level(pv, k), privileges=[pv], path=e["path"] + [obj]) for pv, e in v.items()}
+            roles[x] = set().union(*(e["firsts"] for e in v.values()))
         total = len(cols)
     else:
         s, reach = sensitive(), {}
@@ -2250,12 +2523,12 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
             [o for o in objects if split_name(o)[0] and (scope != "db" or split_name(o)[0] == db)]
         for o in objs:
             got = {}
-            for x, pv, p in who_can(o):
-                if from_user(p) and not (hide_usage and pv == "USAGE"):
-                    got.setdefault(x, []).append((pv, p + [o]))
+            for (x, pv), e in who_users(o).items():
+                if not (hide_usage and pv == "USAGE"):
+                    got.setdefault(x, []).append((pv, e))
             for x, rs in got.items():
-                cells.setdefault(x, {})[o] = grid_cell(rs, kinds.get(o, ""))
-                roles.setdefault(x, set()).update(p[1] for _, p in rs)
+                cells.setdefault(x, {})[o] = grid_cell([(pv, e["path"] + [o]) for pv, e in rs], kinds.get(o, ""))
+                roles.setdefault(x, set()).update(*(e["firsts"] for _, e in rs))
             if got:
                 reach[o] = len(got)
         objs = sorted(reach, key=lambda o: (o not in s, -reach[o], o))
@@ -2279,6 +2552,12 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
 # ---------- page aggregations: plain lists of dicts ----------
 
 def grants(name, user=False, default_only=False, limit=None):
+    """grant_rows(), once per data set and walk (a page asks for the same walk two or three times): the rows are
+    shared, do not change them."""
+    return cached(("grants", name, user, default_only, limit, MAX_PATHS), lambda: grant_rows(name, user, default_only, limit))
+
+
+def grant_rows(name, user=False, default_only=False, limit=None):
     """User or role page (effective privileges, inherited included): one row per (privilege, type, object).
     Row: privilege, type, object, database, schema, name, cls (priv_class), holder, granted (depth-1 role: "Use role"),
     direct (held by the role itself), depth, path (shortest, name->...->holder->object), paths (shortest first, at
@@ -2341,22 +2620,24 @@ def holds_of(role):
 def held(role, limit=None):
     """Role page, held by (up). Row: grantee, kind, depth (roles from the grantee to this role, both included;
     a user holding it directly = 1, a role holding it directly = 2), direct, path (shortest, grantee->...->role),
-    paths, count, only_via (roles every path passes through: revoking one of them removes it)."""
-    g = group(((node_name(p[-1]), from_user(p[::-1])), p[::-1]) for p in list(up([role], limit))[1:])
-    out = []
-    for (x, u), ps in sorted(g.items(), key=lambda x: (len(x[1][0]), x[0])):
-        d = depth(ps[0], u)
-        if limit is None or d <= limit:
-            out.append(dict(grantee=x, kind="user" if u else role_kind(x), depth=d, direct=len(ps[0]) == 2, path=ps[0],
-                            paths=ps,
-                            count=len(ps), only_via=[n for n in ps[0][1:-1] if all(n in p for p in ps)]))
-    return out
+    paths (at most MAX_PATHS), count (every path, counted), only_via (roles every path passes through: revoking one of
+    them removes it)."""
+    w, out = up_walk([role], limit, limit), []
+    for (x, u), (n, best) in w["rows"].items():
+        d = depth(best[::-1], u)
+        if (x, u) == (role, False) or (limit is not None and d > limit):
+            continue
+        ps = [p[::-1] for p in w["paths"]((x, u))]
+        via = [v for v in ps[0][1:-1] if all(v in p for p in ps)] if n == len(ps) else \
+            [v for v in ps[0][1:-1] if up_only_via([role], (x, u), v)]
+        out.append(dict(grantee=x, kind="user" if u else role_kind(x), depth=d, direct=len(ps[0]) == 2, path=ps[0],
+                        paths=ps, count=n, only_via=via))
+    return sorted(out, key=lambda r: (len(r["path"]), r["grantee"], r["kind"] == "user"))
 
 
 def loses(user, grantee, role):
     """[(privilege, object)] user no longer reaches once role is revoked from grantee (every path uses that grant)."""
-    g = group(((pv, o), p) for pv, k, o, p in access_of(user, True))
-    return sorted(key for key, ps in g.items() if all((grantee, role) in zip(p, p[1:]) for p in ps))
+    return sorted(grant_keys(best_paths(user, True)) - grant_keys(reach_without(user, True, {(grantee, role)})))
 
 
 def role_stats(role, limit=None):
@@ -2375,12 +2656,16 @@ def role_stats(role, limit=None):
 def grantees(obj, kind=None, limit=None):
     """Object page, all grantees: one row per (grantee, privilege). Row: grantee, kind, privilege, cls,
     depth (see depth(): grant holder = 1, ANALYST_01 on TBL_CUSTOMER = 3), path (shortest, grantee->...->holder->object),
-    paths, count."""
-    g = group(((x, from_user(p), pv), p + [obj]) for x, pv, p in who_can(obj, kind, limit))
-    k0 = kind or kinds.get(obj)
-    return [dict(grantee=x, kind="user" if u else role_kind(x), privilege=pv, cls=priv_class(pv, k0),
-                 depth=depth(ps[0][:-1], u), path=ps[0], paths=ps, count=len(ps))
-            for (x, u, pv), ps in sorted(g.items(), key=lambda x: (len(x[1][0]), x[0]))]
+    paths (at most MAX_PATHS), count (every path, counted)."""
+    k0, out = kind or kinds.get(obj), []
+    rows = [(r, pv) for r, pv, k in on.get(obj, []) if kind in (None, k)]
+    for pv in dict.fromkeys(pv for _, pv in rows):
+        w = up_walk([r for r, q in rows if q == pv], None if limit is None else limit - 1, limit)
+        for (x, u), (n, _) in w["rows"].items():
+            ps = [p[::-1] + [obj] for p in w["paths"]((x, u))]
+            out.append(dict(grantee=x, kind="user" if u else role_kind(x), privilege=pv, cls=priv_class(pv, k0),
+                            depth=depth(ps[0][:-1], u), path=ps[0], paths=ps, count=n))
+    return sorted(out, key=lambda r: (len(r["path"]), r["grantee"], r["kind"] == "user", r["privilege"]))
 
 
 STANDARD = {"TABLE": {"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES"}, "VIEW": {"SELECT", "REFERENCES"},
@@ -2394,8 +2679,11 @@ def valid_privs(kind):
     """Privileges that exist on objects of this type (in the data, plus the standard ones of the type, so My access
     can ask about one it lacks), common ones first; OWNERSHIP always."""
     order = ["OWNERSHIP", "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "USAGE"]
-    return sorted({pv for _, pv, k, _ in privs if k == kind} | STANDARD.get(kind, set()) | {"OWNERSHIP"},
-                  key=lambda p: (order.index(p) if p in order else 99, p))
+    by = cached("valid", lambda: {})  # per type once per data set: a graph asks for every edge
+    if kind not in by:
+        by[kind] = sorted({pv for _, pv, k, _ in privs if k == kind} | STANDARD.get(kind, set()) | {"OWNERSHIP"},
+                          key=lambda p: (order.index(p) if p in order else 99, p))
+    return list(by[kind])
 
 
 def admin_users():
@@ -2411,8 +2699,10 @@ def admin_people():
     """Users holding an admin role or an account-level privilege (MANAGE GRANTS, ...), service users included.
     Row: user, roles, paths (user->...->admin role), account [(privilege, path)], service, status, last_login, days."""
     ps = group((x, p) for x, p in admin_holders() if from_user(p))
+    some = set().union(*(ups(r)[1] for r, pv, k, o in privs if k == "ACCOUNT" and not (r == "PUBLIC" and pv in DEFAULT_PUBLIC)))
     acct = {u: [(pv, p) for pv, p in account_privs(u, True) if not (p[-1] == "PUBLIC" and pv in DEFAULT_PUBLIC)]
-            for u in users}  # Snowflake's defaults on PUBLIC: every user has them
+            if u in some else [] for u in users}  # Snowflake's defaults on PUBLIC: every user has them; walk only who
+    # reaches another account privilege
     return [dict(user=u, roles=sorted({p[-1] for p in ps.get(u, [])}), paths=ps.get(u, []), account=acct[u],
                  service=is_service(u), status=status(u), last_login=(profile.get(u) or {}).get("LAST_SUCCESS_LOGIN"),
                  days=login_days(u))
@@ -2861,36 +3151,44 @@ def losing(e):
     return out
 
 
-def losers(edges, priv, obj):
-    """Users who no longer hold priv on obj once every edge in edges is cut (each of their paths uses one)."""
+def losers(edges, privs, obj):
+    """Users who no longer hold one of privs on obj once every edge in edges is cut (each of their paths uses one):
+    reach without the cut links, per user who reaches a cut."""
     gone = {(e["grantee"], e["to"]) for e in edges}
+    hs = [{r for r, pv, k in on.get(obj, []) if pv == q and (r, obj) not in gone} for q in privs]
     us = set().union(*(users_through(e["grantee"], e.get("user")) for e in edges))
-    return {v for v in us if all(gone & set(zip(p, p[1:] + [obj])) for pv, k, o, p in access_of(v, True)
-                                 if pv == priv and o == obj)}
+    out = set()
+    for v in us:
+        left = reach_without(v, True, gone)
+        if any(not h & left for h in hs):
+            out.add(v)
+    return out
 
 
 def removal(user, priv, obj, is_user=True):
     """Ways to remove priv on obj from user (or a role, is_user=False), fewest users losing it first, then closest to
-    the user: one option per grant edge that every path uses (a choke point); when no single grant to the user cuts
-    every path, one option revoking each granted role on a path (all needed). Option: edges, edge (first), iac, sql,
-    affects (users who lose priv on obj, net of their other paths), users."""
-    ps = [p + [obj] for pv, k, o, p in access_of(user, is_user) if pv == priv and o == obj]
-    if not ps:
+    the user: one option per grant edge that every path uses (a choke point, found by counting paths, not listing
+    them); when no single grant to the user cuts every path, one option revoking each granted role on a path (all
+    needed). Option: edges, edge (first), iac, sql, affects (users who lose priv on obj, net of their other paths),
+    users."""
+    t = tally(fast(user, is_user), holding(obj, lambda pv: pv == priv))
+    if not t["total"]:
         return []
-    pairs = [set(zip(p, p[1:])) for p in ps]
-    out = []
+    first, out = first_path(t, obj), []
 
     def option(edges, order):
         iac, sql = fix_text(edges)
-        us = losers(edges, priv, obj)
+        us = losers(edges, [priv], obj)
         out.append(dict(edges=edges, edge=edges[0], iac=iac, sql=sql, affects=len(us), users=sorted(us), order=order))
 
-    for i, (x, y) in enumerate(zip(ps[0], ps[0][1:])):
-        if y == "PUBLIC" or not all((x, y) in s for s in pairs):  # every user holds PUBLIC: not revocable
-            continue
+    for i, (x, y) in enumerate(zip(first, first[1:])):
+        if y == "PUBLIC" or via_link(t, x, None if y == obj else y, is_user, i == 0 and is_user) != t["total"]:
+            continue  # every user holds PUBLIC: not revocable
         option([holder_edge(x, priv, obj) if y == obj else role_edge(x, y, i == 0 and is_user)], i)
-    firsts = list(dict.fromkeys(p[1] for p in ps if len(p) > 2))  # a role's own grant has no role link
-    if not any(o["order"] == 0 for o in out) and "PUBLIC" not in firsts and all(len(p) > 2 for p in ps):
+    down = t["down"]  # a role's own grant has no role link
+    firsts = list(dict.fromkeys(s[1] for s in t["sts"] if down.get(s[-1]))) if is_user else \
+        [r for r in dict.fromkeys(t["kids"].get(user, [])) if down.get(r)]
+    if not any(o["order"] == 0 for o in out) and "PUBLIC" not in firsts and (is_user or not t["w"].get(user)):
         option([role_edge(user, r, is_user) for r in firsts], -1)
     return sorted(out, key=lambda r: (r["affects"], r["order"]))
 
@@ -2902,27 +3200,50 @@ def reaches_admin(role):
 def ask_for(priv, obj):
     """Functional roles that reach priv on obj, fewest effective privileges first, then the closest to the grant:
     [dict(role, privileges, path)]. Build roles (BUILD) and roles that reach an admin role are never suggested."""
-    out = {}
-    for x, pv, p in who_can(obj):
-        if (pv == priv and not from_user(p) and role_kind(x) == "functional" and (x not in out or len(p) < len(out[x]))
-                and not any(fnmatch.fnmatch(x, b) for b in BUILD) and not reaches_admin(x)):
-            out[x] = p + [obj]
+    out = {x: p + [obj] for x, p in reverse(obj, priv).items() if role_kind(x) == "functional"
+           and not any(fnmatch.fnmatch(x, b) for b in BUILD) and not reaches_admin(x)}
     return sorted((dict(role=r, privileges=sum(len(granted.get(y, [])) for y in bfs([r])), path=p)
                    for r, p in out.items()), key=lambda r: (r["privileges"], len(r["path"]), r["role"]))
 
 
+def closest_up(priv, obj):
+    """Can they? No: the shortest chain grantee->...->holder->obj holding priv on obj, from a user when one reaches it
+    (the first such up() lists), else the first holder; None when nobody holds it. BFS, no path listing."""
+    hs = list(dict.fromkeys(r for r, pv, k in on.get(obj, []) if pv == priv))
+    if not hs:
+        return None
+    dist = {v: 1 for v in list(users_of) + ["PUBLIC"] if users_on(v)}  # hops up to a user
+    todo = list(dist)
+    while todo:
+        nxt = []
+        for v in todo:
+            for c in holds.get(v, []):
+                if c not in dist:
+                    dist[c] = dist[v] + 1
+                    nxt.append(c)
+        todo = nxt
+    near = min((dist[h] for h in hs if h in dist), default=None)
+    if near is None:
+        return [hs[0], obj]
+    p = [next(h for h in hs if dist.get(h) == near)]
+    while dist[p[-1]] > 1:
+        p.append(next(g for g in held_by.get(p[-1], []) if dist.get(g) == dist[p[-1]] - 1))
+    return [uid(users_on(p[-1])[0], True)] + p[::-1] + [obj]
+
+
 def can(user, priv, obj, default_only=False, is_user=True):
     """Can they? page, for a user or a role (is_user=False: its own grants and the roles it inherits). Returns dict:
-    paths: [dict(path user->...->holder->object, depth, holder, how)], shortest first;
-    shortest: depth or None; choke: roles on every path, in shortest-path order; owner: paths to OWNERSHIP when
-    priv is another privilege (OWNERSHIP implies it: "Yes, via ownership"); options: removal(); ask: ask_for() when
-    there is no path; use_role, warehouse: what to run with (a role: itself; a database role: None, USE ROLE can't
-    take one); status: user status (None for a role);
+    paths: [dict(path user->...->holder->object, depth, holder, how)], shortest first, at most MAX_PATHS; count: every
+    path, counted; shortest: depth or None; choke: roles on every path (counted), in shortest-path order; owner: paths
+    to OWNERSHIP (at most MAX_PATHS, owner_count all) when priv is another privilege (OWNERSHIP implies it: "Yes, via
+    ownership"); options: removal(); ask: ask_for() when there is no path; use_role, warehouse: what to run with (a
+    role: itself; a database role: None, USE ROLE can't take one); status: user status (None for a role);
     closest: when no path, the shortest chain grantee->...->holder->object holding priv on obj (from a user if any,
     else from a role), else None. Depth as everywhere: a role start is depth 1 itself."""
     dr = (profile.get(user) or {}).get("DEFAULT_ROLE")
-    acc = access_of(user, is_user, default_only)
-    ps = sorted((p + [obj] for pv, k, o, p in acc if pv == priv and o == obj), key=len)
+    f = fast(user, is_user, default_only)
+    t = tally(f, holding(obj, lambda pv: pv == priv))
+    ps = paths_to(t, obj)
     # in session without secondary roles: what the default role reaches, and PUBLIC's (every session has PUBLIC)
     primary = set(bfs([dr])) | set(bfs(["PUBLIC"])) if is_user and dr else None
     rows = []
@@ -2933,17 +3254,14 @@ def can(user, priv, obj, default_only=False, is_user=True):
         if primary is not None and p[-2] not in primary:
             how += ", via secondary role"
         rows.append(dict(path=p, depth=len(p) - (2 if is_user else 1), holder=p[-2], how=how))
-    owner = [] if priv == "OWNERSHIP" else sorted((p + [obj] for pv, k, o, p in acc if pv == "OWNERSHIP" and o == obj),
-                                                  key=len)
-    choke = [r for r in ps[0][1:-1] if all(r in p for p in ps)] if ps else []
-    closest = None
-    if not ps:
-        ups = sorted((p[::-1] + [obj] for r, pv, k in on.get(obj, []) if pv == priv for p in up([r])), key=len)
-        closest = next((p for p in ups if from_user(p)), ups[0] if ups else None)
-    whs = sorted({o for pv, k, o, p in acc if k == "WAREHOUSE" and pv in ("USAGE", "OWNERSHIP")})
+    ot = None if priv == "OWNERSHIP" else tally(f, holding(obj, lambda pv: pv == "OWNERSHIP"))
+    owner = paths_to(ot, obj) if ot else []
+    choke = [r for r in ps[0][1:-1] if via_role(t, r, is_user) == t["total"]] if ps else []
+    whs = sorted({o for h in f[2] for pv, k, o in granted.get(h, []) if k == "WAREHOUSE" and pv in ("USAGE", "OWNERSHIP")})
     wh = (profile.get(user) or {}).get("DEFAULT_WAREHOUSE") if is_user else None
     best = ps or owner
-    return dict(paths=rows, shortest=rows[0]["depth"] if rows else None, choke=choke, closest=closest, owner=owner,
+    return dict(paths=rows, count=t["total"], shortest=rows[0]["depth"] if rows else None, choke=choke,
+                closest=None if ps else closest_up(priv, obj), owner=owner, owner_count=ot["total"] if ot else 0,
                 options=removal(user, priv, obj, is_user), ask=[] if best else ask_for(priv, obj),
                 use_role=(best[0][1] if is_user else None if role_kind(user) == "database" else user) if best else None,
                 warehouse=wh if wh in whs else (whs[0] if whs else None), status=status(user) if is_user else None)
@@ -2963,27 +3281,24 @@ def lanes(paths):
 
 def cut_points(user, privs, obj, is_user=True):
     """Where to cut (Can they? Yes): one entry per grant link on every path from user (or a role, is_user=False) to
-    any of privs on obj, fewest side effects first. Entry: edges, iac, sql, people (users who lose one of privs on obj,
-    net of their other paths), lost (the subject's other privileges whose every path uses the link). OWNERSHIP held:
-    transfer text, not a revoke."""
-    acc = access_of(user, is_user)
-    ps = [p + [obj] for pv, k, o, p in acc if pv in privs and o == obj]
-    if not ps:
+    any of privs on obj, fewest side effects first (paths counted, not listed). Entry: edges, iac, sql, people (users
+    who lose one of privs on obj, net of their other paths), lost (the subject's other privileges whose every path uses
+    the link). OWNERSHIP held: transfer text, not a revoke."""
+    t = tally(fast(user, is_user), holding(obj, lambda pv: pv in privs))
+    if not t["total"]:
         return []
-    pairs = [set(zip(p, p[1:])) for p in ps]
-    by = {}
-    for pv, k, o, p in acc:
-        if o != obj:
-            by.setdefault((pv, o), []).append(set(zip(p, p[1:])))
-    out = []
-    for i, (x, y) in enumerate(zip(ps[0], ps[0][1:])):
-        if y == "PUBLIC" or x == "PUBLIC" or not all((x, y) in s for s in pairs):  # every user holds PUBLIC
-            continue
+    first, every, out = first_path(t, obj), None, []
+    for i, (x, y) in enumerate(zip(first, first[1:])):
+        if y == "PUBLIC" or x == "PUBLIC" or \
+                via_link(t, x, None if y == obj else y, is_user, i == 0 and is_user) != t["total"]:
+            continue  # every user holds PUBLIC
         es = [holder_edge(x, pv, obj) for pv in privs if any(q == pv and o == obj for q, _, o in granted.get(x, []))] \
             if y == obj else [role_edge(x, y, i == 0 and is_user)]
         iac, sql = fix_text(es)
-        us = set().union(*(losers(es, pv, obj) for pv in privs))
-        lost = 0 if y == obj else sum(all((x, y) in s for s in ss) for ss in by.values())
+        us = losers(es, privs, obj)
+        if y != obj and every is None:
+            every = grant_keys(t["cnt"], obj)
+        lost = 0 if y == obj else len(every - grant_keys(reach_without(user, is_user, {(x, y)}), obj))
         out.append(dict(edges=es, iac=iac, sql=sql, people=sorted(us), lost=lost, order=i))
     return sorted(out, key=lambda r: (len(r["people"]), r["lost"], -r["order"]))
 
@@ -3006,18 +3321,39 @@ def reverse(obj, priv):
 
 def brings(role, obj):
     """What else a role brings besides obj: extra (privilege rows), also [dict(level, count, where)] (other data objects
-    per schema at their highest step, most first)."""
+    per schema at their highest step, most first). From the roles it reaches (bfs), no path listing; the role's
+    objects are summed once and obj taken out."""
     def make():
-        rows = grants(role)
-        os_ = [x for x in access_objects([r for r in rows if r["object"] != obj]) if x["category"] == "data" and x["level"]]
-        g = {}
-        for x in os_:
-            k = (x["level"], f"{x['database']}.{x['schema']}" if x["schema"] else x["database"] or x["object"])
-            g[k] = g.get(k, 0) + 1
-        also = sorted((dict(level=lv, count=n, where=w) for (lv, w), n in g.items()),
+        x = role_objects(role)
+        g = dict(x["where"])
+        if obj in x["data"]:
+            k = x["data"][obj]
+            g[k] -= 1
+        also = sorted((dict(level=lv, count=n, where=w) for (lv, w), n in g.items() if n),
                       key=lambda e: (-e["count"], -LEVELS.index(e["level"]), e["where"]))
-        return dict(extra=sum(r["object"] != obj for r in rows), also=also[:4])
+        return dict(extra=x["rows"] - x["on"].get(obj, 0), also=also[:4])
     return cached(("brings", role, obj), make)
+
+
+def role_objects(role):
+    """What role reaches, for brings(), once per data set: rows (privilege rows), on {object: rows}, data {data object:
+    (level, where)}, where {(level, where): data objects}, as access_objects() of grants(role) gives them."""
+    def make():
+        keys, on_ = {}, {}
+        for h in bfs([role]):
+            for pv, k, o in granted.get(h, []):
+                if (pv, k, o) not in keys:
+                    keys[(pv, k, o)] = set()
+                    on_[o] = on_.get(o, 0) + 1
+                keys[(pv, k, o)].add(h)
+        data, where = {}, {}
+        for x in object_levels(keys, role):
+            if x["category"] == "data" and x["level"]:
+                w = (x["level"], f"{x['database']}.{x['schema']}" if x["schema"] else x["database"] or x["object"])
+                data[x["object"]] = w
+                where[w] = where.get(w, 0) + 1
+        return dict(rows=len(keys), on=on_, data=data, where=where)
+    return cached(("role_objects", role), make)
 
 
 def suggestable(r):
@@ -3037,7 +3373,8 @@ def nearest(user, priv, obj, limit=5, is_user=True):
     rule1 (a technical role on a user or group role), broad (warning or None).
     is_user=False, a role S as subject: grant R to S (1 grant; everyone holding S gets it too: people), never a role
     that already holds S (a loop) and, for a database role S, only a database role of the same database (an account
-    role can't go to one, nor a database role of another database)."""
+    role can't go to one, nor a database role of another database). brings() runs only for the options that can still
+    make the first limit."""
     have = set(best_paths(user, is_user))
     loop = set() if is_user else ups(user)[0]
     rev = {r: p for r, p in reverse(obj, priv).items() if r not in have and r not in loop and suggestable(r)
@@ -3048,8 +3385,8 @@ def nearest(user, priv, obj, limit=5, is_user=True):
     direct = [h for h in roles_of.get(user, []) if h != "PUBLIC" and role_kind(h) != "database"] if is_user else []
     out = []
     for r, p in rev.items():
-        b, k = brings(r, obj), role_kind(r)
-        base = dict(role=r, holders=len(ups(r)[1]), extra=b["extra"], also=b["also"])
+        k = role_kind(r)
+        base = dict(role=r, holders=len(ups(r)[1]), extra=0, also=[])
         if not is_user:
             n = len(ups(user)[1] - already)
             out.append(base | dict(path=[user] + p + [obj], missing=0, to=user, to_user=False, cost=1, people=n,
@@ -3066,6 +3403,13 @@ def nearest(user, priv, obj, limit=5, is_user=True):
             out.append(base | dict(path=[user, h] + p + [obj], missing=1, to=h, to_user=False, cost=1, people=n,
                                    rule1=k == "technical" and role_kind(h) == "group",
                                    broad=f"gives it to all {n} other people holding {h}" if n >= BROAD else None))
+    head = lambda o: (o["cost"], o["people"], o["rule1"])
+    out.sort(key=head)
+    cut = head(out[min(limit, len(out)) - 1]) if limit else None
+    out = [o for o in out if cut is None or head(o) <= cut]  # the rest can't make the first limit
+    for o in out:
+        b = brings(o["role"], obj)
+        o.update(extra=b["extra"], also=b["also"])
     out.sort(key=lambda o: (o["cost"], o["people"], o["rule1"], o["extra"], len(o["path"]), o["role"], o["to"]))
     return out[:limit]
 
@@ -3424,25 +3768,29 @@ def review(db=None):
     """Access review export for one database (None: every database): one row per (user, object) with any privilege,
     then one row per admin user. Row: database, schema, object, type, user, user_type, status, last_login, privileges, classes, sensitive
     (tags), granted (depth-1 roles), path (shortest), reviewer, decision (blank, for sign-off)."""
-    out, adm = [], admin_users()
+    out, adm, who, seen = [], admin_users(), {}, {}
     for o in objects:
         d, sc, nm = split_name(o)
         if not d or db not in (None, d):
             continue
-        got = group(((x, pv), p) for x, pv, p in who_can(o) if from_user(p))
-        per = {}
-        for (x, pv), ps in got.items():
-            per.setdefault(x, []).append((pv, ps))
-        for x, v in sorted(per.items()):
-            ps = sorted((p for _, pp in v for p in pp), key=len)
-            out.append(dict(database=d, schema=sc, object=nm, type=kinds.get(o), user=x,
-                            user_type=(profile.get(x) or {}).get("TYPE") or "PERSON", status=status(x),
-                            last_login=(profile.get(x) or {}).get("LAST_SUCCESS_LOGIN"),
-                            privileges=", ".join(sorted(pv for pv, _ in v)),
-                            classes=", ".join(sorted({priv_class(pv, kinds.get(o)) for pv, _ in v})),
-                            sensitive=", ".join(sorted({tag_label(t, val) for _, t, val, _ in sens.get(o, [])})),
-                            granted=", ".join(sorted({p[1] for p in ps})), path=" > ".join([x] + ps[0][1:] + [o]),
-                            reviewer="", decision=""))
+        k = kinds.get(o)
+        sig = (tuple(on.get(o, [])), k)  # objects with the same grant holders (a schema's tables) share their rows
+        if sig not in seen:
+            per = {}
+            for (x, pv), e in who_users(o).items():
+                per.setdefault(x, []).append((pv, e))
+            seen[sig] = rows = []
+            for x, v in sorted(per.items()):
+                if x not in who:  # per user once, not per object
+                    pr = profile.get(x) or {}
+                    who[x] = dict(user_type=pr.get("TYPE") or "PERSON", status=status(x), last_login=pr.get("LAST_SUCCESS_LOGIN"))
+                pvs = sorted(pv for pv, _ in v)
+                rows.append((x, dict(who[x], privileges=", ".join(pvs), classes=", ".join(sorted({priv_class(pv, k) for pv in pvs}))),
+                             ", ".join(sorted(set().union(*(e["firsts"] for _, e in v)))),
+                             " > ".join([x] + min((e["path"] for _, e in v), key=len)[1:])))
+        tags = ", ".join(sorted({tag_label(t, val) for _, t, val, _ in sens.get(o, [])}))
+        out += [dict(database=d, schema=sc, object=nm, type=k, user=x, **e, sensitive=tags, granted=g, path=f"{p} > {o}",
+                     reviewer="", decision="") for x, e, g, p in seen[sig]]
     for u, rs in sorted(adm.items()):
         out.append(dict(database=db or "(every database)", schema="", object="(every object, through an admin role)",
                         type="", user=u,
@@ -3855,10 +4203,22 @@ def loaded(d):
 def facts():
     """What a diff compares, once per data set: access {(user, object): (step, privileges)} on tables and views, grants
     {(grantee, privilege, granted on, object): granted_by} (role links to admin roles left out, as build() does),
-    user_roles {(role, user): granted_by}, findings {key: finding}, status {user: status}, sensitive objects, run."""
+    user_roles {(role, user): granted_by}, findings {key: finding}, status {user: status}, sensitive objects, run.
+    access merges what each granted role reaches (table_reach), so no path is listed."""
     def make():
-        acc = {(u, x["object"]): (x["level"], x["privileges"]) for u in users for x in access_objects(grants(u, True), True)
-               if x["category"] == "data" and x["level"] and is_data(x["type"])}
+        acc, by = {}, {}  # by: granted roles -> their levels (users with the same roles share the work)
+        for u in users:
+            rs = tuple(sorted({s[-1] for s in starts(u, True)}))
+            if rs not in by:
+                got = {}
+                for r in rs:
+                    c = table_reach(r)
+                    both = [(o, got[o]) for o in got.keys() & c.keys()]
+                    got.update(c)
+                    for o, (pk, adm) in both:  # reached through two granted roles: merged
+                        got[o] = (pk_union(pk, c[o][0]), adm or c[o][1])
+                by[rs] = [(o, v) for o, v in ((o, table_level(*got[o])) for o in sorted(got)) if v[0]]
+            acc.update({(u, o): v for o, v in by[rs]})
         d = source["data"]
         gs = {(g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"]): g.get("GRANTED_BY") for g in d["GRANT"]
               if (source["builtin"] or not builtin_grant(g)) and not (g["GRANTED_ON"] in ROLE_ON and g["GRANTEE_ROLE"] in ADMIN)}
@@ -3867,6 +4227,46 @@ def facts():
                     findings={(f["num"], f["grantee"], f["user"], f["detail"]): f for f in cached("findings", findings)},
                     status={u: status(u) for u in users}, sens=set(sens), run=dict(run))
     return cached("facts", make)
+
+
+def table_reach(r):
+    """Tables and views r reaches, once per data set: {object: (frozenset((privilege, type)), held by an admin role)}."""
+    def make():
+        got = {}
+        for h in bfs([r]):
+            c = own_tables(h)
+            both = [(o, got[o]) for o in got.keys() & c.keys()]
+            got.update(c)
+            for o, (pk, adm) in both:
+                got[o] = (pk_union(pk, c[o][0]), adm or c[o][1])
+        return got
+    return cached(("tables", r), make)
+
+
+def own_tables(h):
+    """h's own grants on tables and views: {object: (frozenset((privilege, type)), h is an admin role)}."""
+    def make():
+        out = {}
+        for pv, k, o in granted.get(h, []):
+            if is_data(k):
+                out.setdefault(o, set()).add((pv, k))
+        return {o: (pk_union(frozenset(pk)), h in ADMIN) for o, pk in out.items()}
+    return cached(("own_tables", h), make)
+
+
+@functools.cache  # one object per distinct privilege set: hashed once, merged once
+def pk_union(pk, other=frozenset()):
+    return pk | other
+
+
+@functools.cache  # pure: a few distinct privilege sets on a whole account
+def table_level(pk, admin):
+    """(level, privileges) of a user's grants pk on a table or view, as access_objects() gives them; level None when
+    no data grant (category data) is in pk. Shared between users: do not change the privilege list."""
+    if not any(category(pv, k) == "data" for pv, k in pk):
+        return None, []
+    top, order = ladder_of(pk, "data", min(pk)[1], admin)
+    return top, list(order)
 
 
 VERB = {"names": "see", "read": "read", "change": "change", "own": "own", "admin": "reach as admin"}
@@ -3956,6 +4356,7 @@ def diff(prev):
     events, told = [], set()
     for gain, xs in ((True, added), (False, removed)):
         side = now if gain else old
+        objs_of = side_objects(side) if xs else set()  # once per side, not per event
         for x in xs:
             told.update(id(f) for f in x["findings"])
             objs, target = sorted({o for _, o in x["pairs"]}), x["edge"][1]
@@ -3964,7 +4365,7 @@ def diff(prev):
                                impact=impact_text(x["pairs"], top, gain, side["sens"]),
                                sensitive=target in side["sens"] or any(o in side["sens"] for o in objs),
                                findings=list({f["num"]: chip(f, gain) for f in x["findings"]}.values()),
-                               link=dict(page="object", params=dict(name=target)) if target in side_objects(side) else
+                               link=dict(page="object", params=dict(name=target)) if target in objs_of else
                                dict(page="access", params=dict(role=target)),
                                subjects=sorted(set(x["subjects"]) | {uid(u, True) for u in x["users"]}
                                                | {uid(u, True) for u, _ in x["pairs"]} | set(objs)),
@@ -4367,12 +4768,9 @@ def rule19():
         if pv != "EXECUTE TASK" or k != "ACCOUNT":
             continue
         best = {}
-        for p in up([h]):
-            q, u = p[::-1], from_user(p[::-1])
-            x = node_name(q[0])
+        for (x, u), (_, p) in up_walk([h])["rows"].items():  # the shortest path per grantee, no listing
             if (u and not is_service(x)) or (not u and role_kind(x) in ("functional", "group") and not is_build(x)):
-                if (x, u) not in best or len(q) < len(best[(x, u)]):
-                    best[(x, u)] = q
+                best[(x, u)] = p[::-1]
         for (x, u), q in sorted(best.items()):
             out.append(find("19", x, "EXECUTE TASK on ACCOUNT " + (f"via {' > '.join(q[1:])}" if len(q) > 1 else
                                                                    "granted directly"), [x] + q[1:] + [o],
@@ -4406,10 +4804,12 @@ def rule22():
         if src not in s:
             continue
         best = {}
-        for x, pv, p in who_can(st):
-            if (pv in READ_PRIVS and not from_user(p) and role_kind(x) in ("functional", "group") and not is_build(x)
-                    and (x not in best or len(p) < len(best[x][1]))):
-                best[x] = (pv, p)
+        for r, pv, k in on.get(st, []):  # the shortest path per role, as who_can() lists them, without listing
+            for (x, u), (_, q) in up_rows(r).items() if pv in READ_PRIVS else ():
+                p = q[::-1]
+                if (not u and role_kind(x) in ("functional", "group") and not is_build(x)
+                        and (x not in best or len(p) < len(best[x][1]))):
+                    best[x] = (pv, p)
         for x, (pv, p) in sorted(best.items()):
             if src not in reads([x]):
                 out.append(find("22", x, f"reads stream {st} on sensitive {src}, but cannot read {src}", p + [st],

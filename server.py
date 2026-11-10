@@ -947,16 +947,20 @@ def row_findings(subject, user, objs, rows):
     """Findings that sit on each access row: the finding is about the subject or a role on the row's paths, and one of
     its grants (edges) is a privilege the row has on the object, or a role link on those paths (data and runnable rows
     only: a link explains a privilege, not a power). One list per entry of objs."""
-    xs = [x for x in S["rows"] if x["kind"] != "user" or (user and x["grantee"] == subject)]
-    by = {}
+    xs = {}  # grantee -> its findings (a finding's chip depends only on its rule number)
+    for x in S["rows"]:
+        if x["kind"] != "user" or (user and x["grantee"] == subject):
+            xs.setdefault(x["grantee"], []).append(x)
+    lists = {}  # rows of one holder and object share their path list: each list once
     for r in rows:
-        by.setdefault(r["object"], set()).update(n for q in r["paths"] for n in q[:-1])
+        lists.setdefault(r["object"], {})[id(r["paths"])] = r["paths"]
+    by = {o: {n for ps in ls.values() for q in ps for n in q[:-1]} for o, ls in lists.items()}
     out = []
     for o in objs:
         on = by.get(o["object"], set())
         hit = {}
-        for x in xs:
-            if x["grantee"] not in on or x["num"] in hit:
+        for x in (x for g in on & xs.keys() for x in xs[g]):
+            if x["num"] in hit:
                 continue
             if any(e["grantee"] in on and ((e["to"] == o["object"] and e["priv"] in (None, *o["privileges"]))
                                            or (e["to"] in on and not e["priv"] and o["category"] in ("data", "runnable")))
@@ -983,13 +987,16 @@ def access_page(p, view):
     objs = a.access_objects(rows, user)
     views = {v["object"]: v for v in a.data_views(name, user)} if not mine or S["sens"] else {}
     chips = row_findings(name, user, objs, rows)
+    first = {}
+    for r in rows:
+        first.setdefault(r["object"], r["paths"])
     for o, f in zip(objs, chips):
         v = views.get(o["object"])
         o["sensitive"] = o["object"] in S["sens"]
         o["columns"] = [dict(column=c["column"], state=c["state"], reason=c["reason"]) for c in v["columns"] if c["sensitive"]] if v else []
         o["findings"] = f
         o["label"] = a.future_label(o["object"], o["type"])
-        o["paths"] = next((r["paths"] for r in rows if r["object"] == o["object"]), [])[:5]
+        o["paths"] = first.get(o["object"], [])[:5]
     rank = lambda o: (min((SEV_RANK.get(f["severity"], 9) for f in o["findings"]), default=9), not o["sensitive"],
                       -a.LEVELS.index(o["level"]) if o["level"] else 0, o["object"])
     objs.sort(key=rank)
@@ -1300,7 +1307,7 @@ def object_page(p, view):
     shared = view == "shared"
     ps = a.policies_of(o)
     if shared and data and (ps["rows"] or ps["columns"] or a.sensitive_cols(o)):
-        rs = sorted({x for x, q_pv, q in a.who_can(o) if q_pv in a.READ_PRIVS and not a.from_user(q)})
+        rs = sorted({x for r, q_pv, _ in a.on.get(o, []) if q_pv in a.READ_PRIVS for x in a.ups(r)[0]})
         vs = [a.data_view(r, o, False) for r in rs]
         sees = dict(cols=[c["column"] for c in vs[0]["columns"]] if vs else [], row_policy=bool(ps["rows"]),
                     rows=[dict(role=v["name"], rows=v["rows"], columns=v["columns"]) for v in vs])
@@ -1392,20 +1399,23 @@ def check_page(p, view):
     mine = view == "mine"
     u, user = asker(p, view)
     tables = [x for x in a.objects if a.is_data(a.kinds[x])]
+    mine_rows = a.grants(u, user)  # once: a big account takes a second per walk
     o = p.get("obj") or (p.get("on") if p.get("on") in a.kinds else next(
-        (r["object"] for r in a.grants(u, user) if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
+        (r["object"] for r in mine_rows if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
     need(o in a.kinds, f"{o} is not in this snapshot")
     opts = a.valid_privs(a.kinds[o])
     do = {"read": a.basic_priv(a.kinds[o]), "change": a.need_privs(a.kinds[o], "change")[0], "own": "OWNERSHIP"}
     pv = p.get("priv") if p.get("priv") in opts else do.get(p.get("do"), ALL)
     if pv == ALL:  # every privilege the user holds on o, each with its own paths
-        held = list(dict.fromkeys(x["privilege"] for x in a.grants(u, user) if x["object"] == o))
+        held = list(dict.fromkeys(x["privilege"] for x in mine_rows if x["object"] == o))
         rs = {x: a.can(u, x, o, is_user=user) for x in held}
         r = (dict(next(iter(rs.values())), choke=[]) if rs else a.can(u, opts[0], o, is_user=user)) | dict(ask=[], options=[], closest=None)
         r["paths"] = [q | dict(privilege=x) for x, v in rs.items() for q in v["paths"]]
         r["owner"] = list({tuple(q): q for v in rs.values() for q in v["owner"]}.values())
         r["choke"] = [c for c in (next(iter(rs.values()))["choke"] if rs else []) if all(c in v["choke"] for v in rs.values())]
         r["shortest"] = min((q["depth"] for q in r["paths"]), default=None)
+        r["count"] = sum(v["count"] for v in rs.values())
+        r["owner_count"] = max((v["owner_count"] for v in rs.values()), default=0)
     else:
         held, r = [pv], a.can(u, pv, o, is_user=user)
         r["paths"] = [q | dict(privilege=pv) for q in r["paths"]]
@@ -1422,7 +1432,7 @@ def check_page(p, view):
     if not ps and r["owner"]:
         ans = dict(yes=True, how="owner", title=yes_text or "Yes, via ownership",
                    text=f"{u} reaches OWNERSHIP of {o}, which implies {pv}.{note}", tone=tone,
-                   stats=[["Paths", len(r["owner"])], ["Shortest depth", a.depth(r["owner"][0][:-1], user)]])
+                   stats=[["Paths", r["owner_count"]], ["Shortest depth", a.depth(r["owner"][0][:-1], user)]])
     elif not ps and admin:
         ans = dict(yes=True, how="admin", title=yes_text or f"Yes, through admin role {', '.join(dict.fromkeys(x[-1] for x in admin))}",
                    text=f"{u} can {pv} {o}: the admin role inherits every role, not through a granted role path.{note}"
@@ -1435,11 +1445,11 @@ def check_page(p, view):
                    stats=[["Paths", 0], ["Shortest depth", "—"]])
     else:
         ends = {x["holder"] for x in ps}
-        ans = dict(yes=True, how="paths", title=yes_text or (f"Yes: {plural(len(held), 'privilege')} through {plural(len(ps), 'path')}"
-                                                             if pv == ALL else f"Yes, through {plural(len(ps), 'path')}"),
+        ans = dict(yes=True, how="paths", title=yes_text or (f"Yes: {plural(len(held), 'privilege')} through {plural(r['count'], 'path')}"
+                                                             if pv == ALL else f"Yes, through {plural(r['count'], 'path')}"),
                    text=(f"{u} has {what} on {o}." if pv == ALL else f"{u} can {pv} {o}.") + (f" Every path ends at {ps[0]['holder']}." if len(ends) == 1 else "")
                    + (" Also through an admin role." if admin else "") + note, tone=tone,
-                   stats=([["Privileges", len(held)]] if pv == ALL else []) + [["Paths", len(ps)], ["Shortest depth", r["shortest"]]])
+                   stats=([["Privileges", len(held)]] if pv == ALL else []) + [["Paths", r["count"]], ["Shortest depth", r["shortest"]]])
     read = None
     if not mine and any(x in a.READ_PRIVS for x in held) and a.is_data(a.kinds[o]) and (ps or r["owner"]):
         v = a.data_view(u, o, user)
@@ -1450,9 +1460,10 @@ def check_page(p, view):
     g = ps and a.down_graph(u, [dict(privilege=x, type=a.kinds[o], object=o, paths=[q["path"] for q in ps if q["privilege"] == x])
                                 for x in held if any(q["privilege"] == x for q in ps)], user=user)
     k = a.kinds[o]
-    got = {x["privilege"] for x in a.grants(u, user) if x["object"] == o}
+    got = {x["privilege"] for x in mine_rows if x["object"] == o}
     has = set(opts) if admin or "OWNERSHIP" in got else got
     ls, cut = a.lanes(ps)
+    cut = [x for x in cut if x in r["choke"]]  # lanes list at most MAX_PATHS paths; choke is counted over all
     ask = pv if pv != ALL else a.basic_priv(k)
     near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o, is_user=user)
     layers = None
@@ -1705,11 +1716,11 @@ def sensitive_page(p, view):
     rank = [r for r in rank if (not db or r["database"] == db) and (not tg or tg in {a.tag_label(t, v) for _, t, v, _ in r["tags"]})]
     who = {}
     for r in rank:
-        for x, pv, q in a.who_can(r["object"]):
-            if pv in a.READ_PRIVS and a.from_user(q):
-                w = who.setdefault(x, dict(objs=set(), roles=set(), path=None))
+        for (x, pv), e in a.who_users(r["object"]).items():  # counted, not every path listed
+            if pv in a.READ_PRIVS:
+                w, q = who.setdefault(x, dict(objs=set(), roles=set(), path=None)), e["path"]
                 w["objs"].add(r["object"])
-                w["roles"].add(q[1])
+                w["roles"] |= e["firsts"]
                 if w["path"] is None or len(q) < len(w["path"]) - 1:
                     w["path"] = q + [r["object"]]
     stale = sorted(u for u in who if not a.is_service(u) and a.status(u) != "active")
@@ -1885,6 +1896,9 @@ def review_page(p, view):
     noise = flag(p, "hideusage", True)
     real = [x for x in rs if x["type"]]
     hide = lambda x: noise and x["type"] in ("DATABASE", "SCHEMA")
+    label = {}  # per object, not per row
+    fl = lambda x: label.setdefault((x["database"], x["schema"], x["object"], x["type"]), a.future_label(
+        f'{x["database"]}.{x["schema"]}.{x["object"]}', x["type"] or ""))
     return dict(
         view="shared",
         filters=dict(db=db, dbs=c["dbs"], schema=c["sc"], schemas=sorted({x["schema"] for x in c["every"]} - {""}),
@@ -1895,7 +1909,7 @@ def review_page(p, view):
                   admin_rows=len(rs) - len(real), hidden_usage=sum(map(hide, rs)),
                   sensitive=len({x["object"] for x in real if x["sensitive"]})),
         rows=[dict(database=x["database"], schema=x["schema"], object=x["object"], type=x["type"] or "",
-                   future_label=a.future_label(f'{x["database"]}.{x["schema"]}.{x["object"]}', x["type"] or ""),
+                   future_label=fl(x),
                    user=x["user"], user_type=str(x["user_type"]), status=x["status"],
                    last_login=str(x["last_login"])[:16] if x["last_login"] else None,
                    privileges=[s for s in x["privileges"].split(", ") if s], classes=[s for s in x["classes"].split(", ") if s],
@@ -2106,19 +2120,20 @@ def mkrefs(out):
     """Kind of every id the answer mentions, which objects are sensitive and which users are disabled."""
     if S["known"] is None:
         S["known"] = a.cached("known", lambda: set(a.roles) | set(a.objects) | set(a.users) | {a.uid(u, True) for u in a.users})
-    seen = set()
-
-    def walk(x):
-        if isinstance(x, str):
+    seen, todo = set(), [out]
+    while todo:  # a loop, not recursion: a review answer has a million values
+        x = todo.pop()
+        t = type(x)
+        if t is str:
+            seen.add(x)
+        elif t is dict:
+            todo.extend(x.values())
+        elif t in (list, tuple, set, frozenset):
+            todo.extend(x)
+        elif isinstance(x, str):
             seen.add(x)
         elif isinstance(x, dict):
-            for v in x.values():
-                walk(v)
-        elif isinstance(x, (list, tuple, set)):
-            for v in x:
-                walk(v)
-
-    walk(out)
+            todo.extend(x.values())
     kinds, types, labels = {}, {}, {}
     for n in seen & S["known"]:
         kinds[n] = nk(n)
@@ -2231,8 +2246,8 @@ def make_app():
         return mine_state(sid_of(request))
 
     def route(name):
-        def h(request: Request):
-            return serve(name, dict(request.query_params), sid_of(request))
+        def h(request: Request):  # already plain JSON: FastAPI's own encoder takes a minute on a 100k row answer
+            return JSONResponse(serve(name, dict(request.query_params), sid_of(request)))
         return h
 
     for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",

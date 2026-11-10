@@ -755,6 +755,72 @@ def test_fast():
     assert r["count"] == 2 and r["paths"] == [["U", "A", "C", "D.S.T"], ["U", "A", "B", "C", "D.S.T"]] and not a.capped
 
 
+def test_counted():
+    """Can they?, Where to cut, Remove, loses, held, grantees, brings and What changed's facts count over the role graph
+    and walk by reach: the same answers as the full listing (access_of, up, access_objects), and with MAX_PATHS=2 the
+    same counts, choke points, cuts and shortest paths."""
+    subs = [(u, True) for u in a.users] + [(r, False) for r in a.roles]
+    cases = [(n, u, r["privilege"], r["object"]) for n, u in subs for r in a.grants(n, u)][::2]
+    pairs = lambda p: set(zip(p, p[1:]))
+    got = {}
+    for n, u, pv, o in cases:
+        ps = sorted((p + [o] for q, k, x, p in a.access_of(n, u) if q == pv and x == o), key=len)
+        c = a.can(n, pv, o, is_user=u)
+        assert [x["path"] for x in c["paths"]] == ps and c["count"] == len(ps), (n, pv, o)
+        assert c["choke"] == [r for r in ps[0][1:-1] if all(r in p for p in ps)], (n, pv, o)
+        cut = a.cut_points(n, [pv], o, u)
+        assert all(all((e["grantee"], e["to"]) in pairs(p) for p in ps for e in x["edges"]) for x in cut), (n, pv, o)
+        got[(n, u, pv, o)] = (c["count"], c["choke"], c["options"], c["paths"][0], cut)
+    for x in a.users:
+        for r in a.roles_of.get(x, []):
+            g = a.group(((pv, o), p) for pv, k, o, p in a.access_of(x, True))
+            assert a.loses(x, x, r) == sorted(k for k, ps in g.items() if all((x, r) in pairs(p) for p in ps)), (x, r)
+    old = {(x, o["object"]): (o["level"], o["privileges"]) for x in a.users for o in a.access_objects(a.grants(x, True), True)
+           if o["category"] == "data" and o["level"] and a.is_data(o["type"])}
+    assert a.facts()["access"] == old
+    for r in a.roles[::5]:
+        for o in a.objects[::7]:
+            rows = a.grants(r)
+            os_ = [x for x in a.access_objects([q for q in rows if q["object"] != o]) if x["category"] == "data" and x["level"]]
+            assert a.brings(r, o)["extra"] == sum(q["object"] != o for q in rows)
+            assert sum(e["count"] for e in a.brings(r, o)["also"]) <= len(os_)
+    ups = {(r, k): [p for p in a.up([r])] for r in a.roles for k in (0,)}
+    held = {r: a.held(r) for r in a.roles}
+    for r, rows in held.items():
+        for x in rows:
+            ps = [p[::-1] for p in ups[(r, 0)][1:] if a.node_name(p[-1]) == x["grantee"] and a.from_user(p[::-1]) == (x["kind"] == "user")]
+            assert x["paths"] == sorted(ps, key=len) and x["count"] == len(ps), (r, x["grantee"])
+    gr = {o: a.grantees(o) for o in a.objects}
+    a.MAX_PATHS = 2  # lists cut: counts, choke points, cuts and the shortest path stay
+    try:
+        for (n, u, pv, o), (count, choke, options, first, cut) in got.items():
+            c = a.can(n, pv, o, is_user=u)
+            assert (c["count"], c["choke"], c["options"], c["paths"][0]) == (count, choke, options, first), (n, pv, o)
+            assert len(c["paths"]) <= 2 and a.cut_points(n, [pv], o, u) == cut, (n, pv, o)
+        for r, rows in held.items():
+            now = {(x["grantee"], x["kind"]): x for x in a.held(r)}
+            assert all((x["count"], x["path"], x["only_via"]) == (now[(x["grantee"], x["kind"])]["count"],
+                       now[(x["grantee"], x["kind"])]["path"], now[(x["grantee"], x["kind"])]["only_via"]) for x in rows), r
+        for o, rows in gr.items():
+            assert [(x["grantee"], x["privilege"], x["count"], x["path"]) for x in a.grantees(o)] == \
+                [(x["grantee"], x["privilege"], x["count"], x["path"]) for x in rows], o
+    finally:
+        a.MAX_PATHS = int(os.environ.get("MAX_PATHS", "200"))
+
+
+def test_built():
+    """build() keeps a few data sets built by key: switching back (shared / My access, builtin=1) rebuilds nothing."""
+    d = a.fake()
+    a.build(d, "one")
+    rows = a.cached("rows", a.rule_rows)
+    a.build(a.only(d, "ANALYST_01"), "two")
+    assert a.users == ["ANALYST_01"] and "rows" not in a.memo
+    a.build(d, "one")
+    assert a.memo["rows"] is rows and len(a.users) == len(set(a.profile) | set(a.roles_of)) > 1
+    a.build(d, "one", True)  # builtin=1 is another data set
+    assert "rows" not in a.memo
+
+
 def test_builtin():
     """Snowflake's built-in grants through PUBLIC: left out by default (one fold box in graphs), never rule 9 or 13;
     the database with 18 database roles held by two group roles."""
@@ -898,11 +964,11 @@ def big():
 PERF_SCALE = float(os.environ.get("PERF_SCALE", "1"))  # a slow machine: PERF_SCALE=2 doubles every budget
 
 
-def timed(f, budget, reset=None):
-    """f() under budget (x PERF_SCALE) seconds, best of up to 5 runs (reset() untimed before a retry, so caches start
-    empty again): a slow run on a busy machine is not a regression, only a best run over budget is."""
+def timed(f, budget, reset=None, runs=5):
+    """f() under budget (x PERF_SCALE) seconds, best of up to runs runs (reset() untimed before a retry, so caches
+    start empty again): a slow run on a busy machine is not a regression, only a best run over budget is."""
     took, budget = [], budget * PERF_SCALE
-    while len(took) < 5 and (not took or min(took) >= budget):
+    while len(took) < runs and (not took or min(took) >= budget):
         if took and reset:
             reset()
         t = time.perf_counter()
@@ -941,6 +1007,36 @@ def test_perf():
                [dict(op="drop_role", role=F + "TEAM_010")]):  # what if: hundreds of users lose or keep access
         timed(lambda: got.update(w=a.what_if(ch)), 5, lambda: a.build(d))  # 1.5 - 3 s on a laptop
         assert got["w"]["counts"]["users"] > 10
+
+    # the pages that listed every path before (review 2026-11-09): counted now, each well under its budget
+    o = "DB0.S0.TBL_00"
+    few = next(u for u in sorted(a.users) if not a.can(u, "INSERT", o)["paths"])  # no INSERT on o: nearest ways in
+    held = list(dict.fromkeys(r["privilege"] for r in rows if r["object"] == o))
+    most = max(rows, key=lambda r: r["count"])  # over MAX_PATHS routes: counted, a capped list
+    rebuild = lambda: (a.build(d), a.cached("findings", a.findings))
+    steps = [  # (name, call, budget in s; best of 3, about a quarter of it on a laptop)
+        ("access_objects", lambda: a.access_objects(rows, True), 1.5),
+        ("can", lambda: got.update(c=a.can("BIG_01", most["privilege"], most["object"])), 1),
+        ("cut_points", lambda: got.update(cut=a.cut_points("BIG_01", held, o)), 1),
+        ("loses", lambda: [a.loses("BIG_01", "BIG_01", r) for r in a.roles_of["BIG_01"]], 1),
+        ("can no", lambda: got.update(no=a.can(few, "INSERT", o)), 1),
+        ("nearest", lambda: got.update(near=a.nearest(few, "INSERT", o)), 5),
+        ("suggest", lambda: a.suggest(["SELECT"], o, few), 5),
+        ("held, grantees", lambda: (a.held(T + "DB0_S0_READ"), a.grantees(o), a.admin_holders()), 1),
+        ("facts", lambda: got.update(f=a.facts()), 8),
+        ("review", lambda: got.update(rv=a.review("DB0")), 4),
+        ("flow, grid", lambda: (a.sens_flow(), a.review_grid(), a.review_grid(obj=o)), 4),
+    ]
+    for name, f, budget in steps:
+        try:
+            timed(f, budget, rebuild, runs=3)
+        except AssertionError as x:
+            raise AssertionError(f"{name}: {x}") from None
+    c = got["c"]
+    assert c["count"] > a.MAX_PATHS >= len(c["paths"])
+    assert not got["no"]["paths"] and got["no"]["closest"] and got["near"]
+    assert len(got["f"]["access"]) > 100000
+    assert len(got["rv"]) > 100000
 
 
 def test_group_graph():
