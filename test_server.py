@@ -188,6 +188,10 @@ def test_request():  # screen 15: suggested role, approver, read / change, alrea
     assert t["asked"] is None or t["asked"]["to"] == m
     assert js(f"/api/request?name={m}&obj=HR.PEOPLE.TBL_EMPLOYEE")["subject"]["user"] is False  # Home's typed question
     get("/api/request?for_role=NOPE", 404)
+    # the grant SQL comes from access.with_sql, with the role kinds: the page writes none
+    assert d["suggestions"][0]["change"]["sql"].startswith(f"GRANT ROLE {a.FUNC}ANALYST TO USER FIN_09;")
+    assert w["asked"]["change"]["sql"].startswith("GRANT DATABASE ROLE HR.SC_R_PEOPLE TO ROLE GRP_EMEA_ALL;") and w["asked"]["change"]["roleDb"]
+    assert r["suggestions"][0]["change"]["sql"].startswith(f"GRANT ROLE {r['suggestions'][0]['role']} TO ROLE {m};")
 
 
 def test_sensitive_rules_review():
@@ -213,9 +217,10 @@ def test_sensitive_rules_review():
 
 def test_load_on_click():
     """SOURCE=direct on Snowflake: no page reads the shared data until "Load shared data" (reload what=load)."""
-    old, reads = (server.MODE, server.DIRECT, server.read_shared), []
+    old, reads = (server.MODE, server.DIRECT, server.read_shared, server.cache.HOURS), []
     server.MODE, server.DIRECT = "snowflake", True
     server.read_shared = lambda: reads.append(1) or a.fake()
+    server.cache.HOURS = 0  # memory only: a .cache/ file from an earlier run would count as loaded
     server.cache.MEM.pop(server.KEY, None)
     try:
         assert js("/api/meta")["error"]["detail"] == "shared_not_loaded" and not reads
@@ -223,7 +228,7 @@ def test_load_on_click():
         assert c.post("/api/reload", json={"what": "load"}).json()["ok"] and reads == [1]
         assert js("/api/meta")["loaded"] and "error" not in js("/api/meta") and reads == [1]  # kept, not read again
     finally:
-        server.MODE, server.DIRECT, server.read_shared = old
+        server.MODE, server.DIRECT, server.read_shared, server.cache.HOURS = old
         server.cache.MEM.pop(server.KEY, None)
 
 
@@ -268,6 +273,7 @@ def test_streamlit_bridge():  # the React app inside Streamlit gets the same ans
     assert ans(f"/api/user?name={name}")[1] == c.get(f"/api/user?name={name}").json()
     assert ans("/api/role?name=PUBLIC")[1]["role"]["name"] == "PUBLIC"
     assert ans("/api/nope")[0] == 404 and ans("/api/user?name=NOBODY_X")[0] == 404
+    assert ans("/api/nope.csv")[0] == 404 == c.get("/api/nope.csv").status_code
     assert ans("/api/review.csv?db=*")[1].startswith(c.get("/api/review.csv?db=*").text[:40])
     assert ans("/api/reload", {"what": "page"})[1]["ok"]
     st, mine, sid = ans("/api/mine/load", {})
@@ -320,25 +326,50 @@ def snowflake(answer, direct=False, where="D.S"):
 
 
 def test_read_only():
-    """Every statement the app sends, recorded at the connection (sf.rows): reads only, plus the snapshot CALL."""
+    """Every statement the app sends, recorded at the connection (sf.rows): reads only, plus the snapshot CALL. The fake
+    answers every read, so each load runs to the end (200) and all its statements are checked."""
     import test_access
-    show, _ = test_access.fake_snowflake(a.fake(), True)
+    d = a.fake()
+    show, _ = test_access.fake_snowflake(d, True)
+    me = d["USER_ROLE"][0]["USER_NAME"]
+    mine = [x["ROLE_NAME"] for x in d["USER_ROLE"] if x["USER_NAME"] == me]
+    table = re.compile(r"SELECT \* FROM D\.S\.TBL_ACCESS_(\w+) WHERE")
 
     def answer(sql):
         if "SP_ACCESS_SNAPSHOT" in sql:
             return [{"R": json.dumps({"status": "OK", "notes": {}})}]
+        if ".TBL_ACCESS_RUN " in sql:
+            return [{"RUN_ID": "r1", "FINISHED_AT": "2026-11-03 10:00", "SOURCES": "{}", "NOTES": "{}"}]
+        if table.match(sql):
+            return [dict(x) for x in d.get(table.match(sql)[1]) or []]
+        if sql.startswith("SELECT CURRENT_USER()"):
+            return [{"U": me}]
+        if sql.startswith("SELECT CURRENT_AVAILABLE_ROLES()"):
+            return [{"R": json.dumps(mine)}]
+        if sql.startswith("SHOW GRANTS TO USER"):
+            return [{"role": x} for x in mine]
         try:
             return show(sql)
-        except AssertionError:  # a snapshot table read the fake does not know: no rows
+        except (AssertionError, RuntimeError):  # a view the fake does not know or refuses: no rows
             return []
-    sent = []
-    for direct in (True, False):
-        with snowflake(answer, direct) as got:
-            c.post("/api/reload", json={"what": "load"})
-            c.post("/api/reload", json={"what": "rebuild"})
-            c.post("/api/mine/load")
-            sent += got
-    assert len(sent) > 20 and any("SP_ACCESS_SNAPSHOT" in s for s in sent)
+    sent, old = [], os.environ.get("MY_ACCESS")
+    os.environ["MY_ACCESS"] = "1"  # a key pair or ALLOWED_HOSTS in .env must not turn My access off here
+    try:
+        for direct in (True, False):
+            with snowflake(answer, direct) as got:
+                for url, body in (("/api/reload", {"what": "load"}), ("/api/reload", {"what": "rebuild"}),
+                                  ("/api/mine/load?fresh=1", None)):
+                    r = c.post(url, json=body)
+                    assert r.status_code == 200, (direct, url, r.text[:300])
+                assert any(s.startswith("SELECT CURRENT_USER()") for s in got)
+                assert direct or any(table.match(s) for s in got)
+                sent += got
+    finally:
+        os.environ.pop("MY_ACCESS") if old is None else os.environ.update(MY_ACCESS=old)
+        for m in server.MINE.values():
+            server.cache.MEM.pop(m["cache_key"], None)
+        server.MINE.clear()
+    assert any("SP_ACCESS_SNAPSHOT" in s for s in sent)
     assert all(READ_ONLY.match(s) for s in sent), [s for s in sent if not READ_ONLY.match(s)][:5]
 
 
@@ -372,7 +403,10 @@ def test_mine_shared_server():
         return old
     for kw, mode, off in ((dict(HOST="0.0.0.0"), "fake", True), (dict(SNOWFLAKE_PRIVATE_KEY_FILE="k.p8"), "snowflake", True),
                           (dict(SNOWFLAKE_PRIVATE_KEY_FILE="k.p8", MY_ACCESS="1"), "snowflake", False),
-                          (dict(MY_ACCESS="0"), "fake", True), (dict(HOST="127.0.0.1"), "fake", False)):
+                          (dict(MY_ACCESS="0"), "fake", True), (dict(HOST="127.0.0.1"), "fake", False),
+                          (dict(ALLOWED_HOSTS="access.team.example"), "fake", True),  # behind a proxy or tunnel
+                          (dict(ALLOWED_HOSTS="access.team.example", MY_ACCESS="1"), "fake", False),
+                          (dict(ALLOWED_HOSTS="localhost, 127.0.0.1"), "fake", False)):
         old, m = env(**kw), server.MODE
         server.MODE = mode
         try:
@@ -520,6 +554,7 @@ def test_graph_see_compare():  # screens 4, 7, 9
     get("/api/see?user=NOPE", 404)
     c = js("/api/compare", ["a", "b", "scope", "rows", "counts", "match", "extras", "old", "dbs"])
     assert c["a"]["name"] == server.DEMO_USER and c["b"]["name"] != c["a"]["name"] and c["scope"] == "sensitive"
+    assert all(ch["sql"] and "roleDb" in ch and "toDb" in ch for ch in c["match"] + c["extras"])  # SQL from access.with_sql
     assert sum(c["counts"].values()) == len(c["rows"]) and c["old"]["rows"]
     x = js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all")
     assert x["counts"]["only_a"] > 0 and x["match"] and x["extras"] and x["a"]["kind"] == "functional"
@@ -574,6 +609,7 @@ def test_usage_changes():  # screens 13, 14
     u = js("/api/usage?user=ENGINEER_01", ["who", "days", "periods", "available", "rows", "weeks", "counts", "changes", "refs"])
     assert u["available"] and u["days"] == 90 and u["periods"] == [30, 90, 180] and u["source"] == "demo values"
     assert u["rows"][0]["suggest"] == "drop" and u["counts"]["changes"] == len(u["changes"]) > 0
+    assert u["sql"].startswith("REVOKE ") and js("/api/usage?user=ENGINEER_01&days=30")["sql"]  # the trim, from access.py
     assert len(js("/api/usage?user=ENGINEER_01&days=180")["weeks"]) == 26
     assert js(f"/api/usage?role={a.FUNC}ANALYST")["who"]["kind"] == "functional"
     get("/api/usage?days=7", 400)
@@ -671,6 +707,50 @@ def test_step4():  # review 2026-11-09 step 4: where the DuckDB SQL copy is, in 
     assert m["inside"] is False and (q["on"] or q["note"])  # demo data: off unless DUCKDB=1, and it says so
     mine = js("/api/meta?view=mine")["sql_copy"]
     assert mine["on"] is False and mine["schema"] is None
+
+
+def test_run_address():
+    """python run.py streamlit listens where HOST says (127.0.0.1 by default), as the web version does."""
+    import run
+    for env, want in (({}, "127.0.0.1"), ({"HOST": "0.0.0.0"}, "0.0.0.0")):
+        cmd, _ = run.command(["streamlit"], env)
+        assert cmd[cmd.index("--server.address") + 1] == want, cmd
+
+
+def test_cache_lock():
+    """A memory hit never waits for another key's read, and a drop during a read of its key wins."""
+    import threading
+    import time
+    cache, go, began = server.cache, threading.Event(), threading.Event()
+
+    def slow():
+        began.set()
+        go.wait(5)
+        return "old"
+    cache.MEM["t_hit"] = ("hit", time.time())
+    try:
+        t = threading.Thread(target=cache.get, args=("t_slow", slow, False))
+        t.start()
+        began.wait(5)
+        t0 = time.time()
+        assert cache.get("t_hit", lambda: "read", False)[0] == "hit" and time.time() - t0 < 1
+        dropper = threading.Thread(target=cache.drop, args=("t_slow",))
+        dropper.start()  # while slow() still reads
+        time.sleep(0.2)
+        go.set()
+        t.join(5)
+        dropper.join(5)
+        assert "t_slow" not in cache.MEM  # the older read is not kept after the drop
+    finally:
+        go.set()
+        cache.MEM.pop("t_hit", None)
+        cache.MEM.pop("t_slow", None)
+
+
+def test_csv_formula():
+    import server
+    t = server.csv_text(["o", "n"], [["=HYPERLINK(1)", "-3"], ["@x", 5], ["T", "+1.5"]])
+    assert t.splitlines()[1:] == ["'=HYPERLINK(1),-3", "'@x,5", "T,+1.5"], t
 
 
 if __name__ == "__main__":

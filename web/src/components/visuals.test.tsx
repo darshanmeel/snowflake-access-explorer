@@ -156,7 +156,7 @@ describe("web fixes", () => {
     const th = screen.getAllByRole("columnheader");
     fireEvent.click(th[1]);
     expect(th[1].getAttribute("aria-sort")).toBeNull();
-    fireEvent.click(th[0]);
+    fireEvent.click(th[0].querySelector("button")!);
     expect(th[0].getAttribute("aria-sort")).toBe("ascending");
   });
 });

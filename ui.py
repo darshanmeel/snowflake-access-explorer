@@ -38,7 +38,7 @@ HELP = {
     "Group / other": "Any other role, e.g. a group role synced from the identity provider, or PUBLIC (every user has it).",
     "Database role": "A role inside one database, named DB.ROLE. Granted to an account role, which then holds it and "
                      "gets everything it holds (e.g. USAGE on a schema, SELECT on its tables). Never granted to users directly.",
-    "Admin": "ACCOUNTADMIN, SECURITYADMIN or SYSADMIN, or an account-level privilege: can change access itself.",
+    "Admin": "ACCOUNTADMIN, SECURITYADMIN, SYSADMIN, USERADMIN or ORGADMIN, or an account-level privilege: can change access itself.",
     "Object": "What a privilege is granted on: database, schema, table, view, warehouse, procedure or function.",
     "Path": "The chain that gives the access: the start, each role granted to the one before, then the object.",
     "Paths": "How many different chains give the same privilege. More than 1: removing one role may not remove access.",

@@ -25,30 +25,30 @@ def wrap(name, where, order):
 # (cell name, title, function call, plain query)
 EXAMPLES = [
     ("roles_of_user", "1. Every role a user holds, direct and inherited",
-     f"SELECT * FROM TABLE({FN}AQ_USER_ROLES($USER_NAME, $MAX_DEPTH)) ORDER BY DEPTH, ROLE_NAME;",
+     f"SELECT * FROM TABLE({FN}AQ_USER_ROLES($USER_NAME, $MAX_DEPTH, $SHOW_BUILTIN)) ORDER BY DEPTH, ROLE_NAME;",
      body("1_user_roles.sql") + ";"),
     ("access_of_user", "2. Everything a user can finally do, and through which role",
-     f"SELECT * FROM TABLE({FN}AQ_USER_ACCESS($USER_NAME, $MAX_DEPTH)) ORDER BY OBJECT_NAME, PRIVILEGE;",
+     f"SELECT * FROM TABLE({FN}AQ_USER_ACCESS($USER_NAME, $MAX_DEPTH, $SHOW_BUILTIN)) ORDER BY OBJECT_NAME, PRIVILEGE;",
      body("2_user_access.sql") + ";"),
     ("user_reaches_object", "3. Does the user reach this object, and how? (the user's access, filtered)",
-     f"SELECT * FROM TABLE({FN}AQ_USER_ACCESS($USER_NAME, $MAX_DEPTH))\nWHERE OBJECT_NAME = $OBJECT_NAME ORDER BY PRIVILEGE;",
+     f"SELECT * FROM TABLE({FN}AQ_USER_ACCESS($USER_NAME, $MAX_DEPTH, $SHOW_BUILTIN))\nWHERE OBJECT_NAME = $OBJECT_NAME ORDER BY PRIVILEGE;",
      wrap("2_user_access.sql", "OBJECT_NAME = $OBJECT_NAME", "PRIVILEGE")),
     ("access_of_role", "4. Everything a role grants, its own and that of every role below it",
-     f"SELECT * FROM TABLE({FN}AQ_ROLE_ACCESS($ROLE_NAME, $MAX_DEPTH)) ORDER BY OBJECT_NAME, PRIVILEGE;",
+     f"SELECT * FROM TABLE({FN}AQ_ROLE_ACCESS($ROLE_NAME, $MAX_DEPTH, $SHOW_BUILTIN)) ORDER BY OBJECT_NAME, PRIVILEGE;",
      body("3_role_access.sql") + ";"),
     ("holders_of_role", "5. Who holds a role, upwards: the roles above it and the users at the end",
-     f"SELECT * FROM TABLE({FN}AQ_ROLE_HOLDERS($ROLE_NAME, $MAX_DEPTH)) ORDER BY HOLDER_KIND DESC, DEPTH, HOLDER;",
+     f"SELECT * FROM TABLE({FN}AQ_ROLE_HOLDERS($ROLE_NAME, $MAX_DEPTH, $SHOW_BUILTIN)) ORDER BY HOLDER_KIND DESC, DEPTH, HOLDER;",
      body("4_role_holders.sql") + ";"),
     ("users_of_object", "6. Which users can use this object with this privilege (set PRIVILEGE to '' for any)",
-     f"SELECT * FROM TABLE({FN}AQ_OBJECT_USERS($OBJECT_NAME, $PRIVILEGE, $MAX_DEPTH))\n"
+     f"SELECT * FROM TABLE({FN}AQ_OBJECT_USERS($OBJECT_NAME, $PRIVILEGE, $MAX_DEPTH, $SHOW_BUILTIN))\n"
      "WHERE GRANTEE_KIND = 'USER' ORDER BY GRANTEE;",
      wrap("5_object_users.sql", "GRANTEE_KIND = 'USER'", "GRANTEE")),
     ("deep_users", "7. Users that reach the object through more than MIN_DEPTH roles",
-     f"SELECT * FROM TABLE({FN}AQ_OBJECT_USERS($OBJECT_NAME, $PRIVILEGE, $MAX_DEPTH))\n"
+     f"SELECT * FROM TABLE({FN}AQ_OBJECT_USERS($OBJECT_NAME, $PRIVILEGE, $MAX_DEPTH, $SHOW_BUILTIN))\n"
      "WHERE GRANTEE_KIND = 'USER' AND DEPTH > $MIN_DEPTH ORDER BY DEPTH DESC, GRANTEE;",
      wrap("5_object_users.sql", "GRANTEE_KIND = 'USER' AND DEPTH > $MIN_DEPTH", "DEPTH DESC, GRANTEE")),
-    ("access_summary", "8. A user's access summarized: objects per role and privilege",
-     f"SELECT VIA_ROLE, PRIVILEGE, COUNT(*) AS OBJECTS\nFROM TABLE({FN}AQ_USER_ACCESS($USER_NAME, $MAX_DEPTH))\n"
+    ("access_summary", "8. A user's access summarized: objects per privilege, by the closest role holding it",
+     f"SELECT VIA_ROLE, PRIVILEGE, COUNT(*) AS OBJECTS\nFROM TABLE({FN}AQ_USER_ACCESS($USER_NAME, $MAX_DEPTH, $SHOW_BUILTIN))\n"
      "GROUP BY VIA_ROLE, PRIVILEGE ORDER BY VIA_ROLE, PRIVILEGE;",
      f"SELECT VIA_ROLE, PRIVILEGE, COUNT(*) AS OBJECTS\nFROM (\n{bare('2_user_access.sql')}\n)\n"
      "GROUP BY VIA_ROLE, PRIVILEGE ORDER BY VIA_ROLE, PRIVILEGE;"),
@@ -75,7 +75,7 @@ SET OBJECT_NAME = 'SALES.CORE.TBL_CUSTOMER';   -- DB, DB.SCHEMA or DB.SCHEMA.OBJ
 SET PRIVILEGE = 'SELECT';                       -- '' = any
 SET MAX_DEPTH = 50;
 SET MIN_DEPTH = 2;                              -- example 7: more than this many roles
-SET SHOW_BUILTIN = FALSE;                       -- path B only"""
+SET SHOW_BUILTIN = FALSE;"""
 
 A_NOTE = """## Path A: create the functions
 

@@ -15,11 +15,12 @@ flowchart TD
 ## run.py
 - Usage text: run.py:1-10.
 - Imports `access` first so `.env` values (WEB_PORT, ...) apply — run.py:16.
-- Args: `app` = `web|streamlit`, default `APP` env or `web` — run.py:19; `--fake` — run.py:20; `--port` — run.py:21; `--direct` / `--objects` set `SOURCE` — run.py:22-23.
-- `--fake` sets `FAKE=1` in the child env — run.py:27-28; source flag sets `SOURCE` — run.py:29-30.
-- Streamlit: `streamlit run app.py`, port `--port` or `STREAMLIT_PORT` (8501), headless, usage stats off — run.py:31-34.
-- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:35-37; server listens on `HOST` (default 127.0.0.1) — server.py:2344.
-- Child runs in the repo folder; exit code passed through — run.py:38.
+- Args: `app` = `web|streamlit`, default `APP` env or `web` — run.py:22; `--fake` — run.py:23; `--port` — run.py:24; `--direct` / `--objects` set `SOURCE` — run.py:25-26.
+- `--fake` sets `FAKE=1` in the child env — run.py:29-30; source flag sets `SOURCE` — run.py:31-32.
+- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:19-42; `__main__` runs it — run.py:45-47; `test_run_address` — test_server.py:712.
+- Streamlit: `streamlit run app.py`, port `--port` or `STREAMLIT_PORT` (8501), `--server.address` = `HOST` (default 127.0.0.1, so Streamlit no longer listens on every address and `mine_off()` sees the same `HOST`), headless, usage stats off — run.py:33-38; a plain `streamlit run app.py` also binds 127.0.0.1 via `.streamlit/config.toml:4-5`.
+- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:39-41; server listens on `HOST` (default 127.0.0.1) — server.py:2351.
+- Child runs in the repo folder; exit code passed through — run.py:47.
 
 ## Modes (README "Run each mode")
 | Mode | Command | Open | Evidence |
@@ -46,8 +47,8 @@ flowchart TD
 - Direct mode reads on "Load shared data"; `SHOW_THREADS` (16) when ACCOUNT_USAGE is not readable — README.md:115-118.
 
 ## Gates on a local run
-- My access off on non-loopback `HOST`, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:126-140.
-- Local API answers only its host names (`allowed_hosts()`) — server.py:2214-2218, README.md:218.
+- My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:126-144.
+- Local API answers only its host names (`allowed_hosts()`) — server.py:2221-2225, README.md:218.
 - First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:215.
 
 ## Dev mode (inferred)

@@ -1,6 +1,6 @@
 # Snowflake access explorer: knowledge graph index
 
-Read-only app that explains who has what in Snowflake and through which path; this graph maps its code, data, flows, rules and processes (built 2026-11-10, commit 990331e plus the uncommitted `access_queries/`).
+Read-only app that explains who has what in Snowflake and through which path; this graph maps its code, data, flows, rules and processes (built 2026-11-10, commit fe263bc plus the uncommitted fixes of the 2026-11-10 review; 1787 nodes, 5166 edges, 185 files).
 
 ## Big picture
 
@@ -14,13 +14,13 @@ flowchart LR
   SQL[sql/: setup, snapshot, streamlit deploy] --> SF
 ```
 
-- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:401` snapshot, `access.py:560` live, `access.py:4475` checks), cache (`cache.py`), server (`server.py:2231` make_app), two front ends (`web/src/App.tsx:249` VIEWS, `app.py:18` st_react.app).
+- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:401` snapshot, `access.py:560` live, `access.py:4503` checks), cache (`cache.py`), server (`server.py:2238` make_app), two front ends (`web/src/App.tsx:253` VIEWS, `app.py:18` st_react.app).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
 ## Entry points
 
-- `run.py`: starts the local web app or Streamlit (`processes/run-local.md`).
-- `server.py:2231` `make_app()`: FastAPI app, 30 endpoints (`modules/server.md`).
+- `run.py`: `command()` (`run.py:19-42`) starts the local web app or Streamlit, both on `HOST` (default 127.0.0.1) (`processes/run-local.md`).
+- `server.py:2238` `make_app()`: FastAPI app, 30 endpoints (`modules/server.md`).
 - `app.py:18`: Streamlit in Snowflake page, runs the same React app (`flows/streamlit-in-snowflake.md`).
 - `sql/1_setup.sql`: tables, `SP_ACCESS_SNAPSHOT`, table functions (`data/model.md`, `modules/sql.md`).
 - `web/src/App.tsx`: React router and page map (`modules/web.md`).

@@ -1,5 +1,8 @@
 # Local runs only (sql/4_streamlit.sql does not upload it). Colours come from ui.py (light/dark toggle); no [theme]
 # here, it would fight the toggle.
+[server]
+address = "127.0.0.1"  # also for a plain `streamlit run app.py`: only this machine (HOST via run.py)
+
 [browser]
 gatherUsageStats = false
 

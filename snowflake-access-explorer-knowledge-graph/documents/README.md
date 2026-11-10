@@ -23,6 +23,7 @@ flowchart LR
 | [web-api-md.md](web-api-md.md) | web/API.md | JSON API contract of server.py |
 | [web-st-md.md](web-st-md.md) | web/ST.md | React app as a Streamlit component, SiS packaging |
 | [review-2026-11-09.md](review-2026-11-09.md) | docs/review-2026-11-09.md | Whole-app review findings |
+| (no page) | reviews/review-2026-11-10-2027.html | Local HTML whole-repo review 2026-11-10 (Must fix / Should fix / Other / Questions / Unused files); untracked; its fixes: admin paths per role, cache lock, run.py HOST, snapshot busy check, findings last run only, CSV formula cells, server-written SQL |
 | [redesign-notes.md](redesign-notes.md) | docs/redesign-notes.md | UI redesign notes and phases |
 | [make-readme-py.md](make-readme-py.md) | docs/make_readme.py | Generator for README.html diagrams and rule table |
 | [env-example.md](env-example.md) | .env.example | Local settings template (names only) |

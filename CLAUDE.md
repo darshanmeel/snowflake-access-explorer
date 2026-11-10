@@ -26,7 +26,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 
 ## Two versions, one logic
 - **Local (recommended, default):** `server.py` (FastAPI, JSON API over `access.py`) + `web/` (React). Runs on your machine.
-  `python run.py` (web), `run.py streamlit`, `--fake`, `--direct` / `--objects`, `--port N`; env `APP`, `WEB_PORT` (8000),
+  `python run.py` (web), `run.py streamlit` (listens on `HOST` too), `--fake`, `--direct` / `--objects`, `--port N`; env `APP`, `WEB_PORT` (8000),
   `STREAMLIT_PORT` (8501) so both run side by side.
 - **Streamlit in Snowflake:** `app.py` runs the same React app (`web/src/App.tsx`) as one Streamlit component
   (`st_react.app`): its API calls come back to Python and are answered by `server.py` functions, so both versions show
@@ -38,7 +38,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   settings from the required `sis/.env`, `INSIDE=1`, `SOURCE=objects`, or `SOURCE=direct`: no snapshot objects,
   `live()` with the owner role, where USE SECONDARY ROLES and SHOW may be refused and land in the notes); there (`a.INSIDE`: an active Snowpark session or
   `INSIDE=1`, never "no `SNOWFLAKE_ACCOUNT`") `sf.connect()` uses the app's session, never closed (`sf.owned()`), and
-  My access is hidden (owner's rights, not the viewer's). My access is also off on a shared server (`HOST` not loopback)
+  My access is hidden (owner's rights, not the viewer's). My access is also off on a shared server (`HOST` not loopback, or `ALLOWED_HOSTS` naming another host)
   and with a key-pair login (`server.mine_off()`, `MY_ACCESS=1|0` decides). Container Services: optional, only to give everyone the local version.
 - The local API answers only its own host names (`server.allowed_hosts()`, `ALLOWED_HOSTS`; with `HOST=0.0.0.0` also the
   machine's names and IPs), refuses a POST whose Origin is not one of them and any `/api/` call another page starts

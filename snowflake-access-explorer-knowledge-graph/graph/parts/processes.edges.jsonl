@@ -23,7 +23,7 @@
 {"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup_verify.sql", "type": "calls", "evidence": "sql/3_cleanup_verify.sql:1", "status": "verified"}
 {"from": "file:sql/2_snapshot.sql", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "calls", "evidence": "sql/2_snapshot.sql:12", "status": "verified"}
 {"from": "file:sql/1_setup.sql", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "deploys", "evidence": "sql/1_setup.sql:122", "status": "verified"}
-{"from": "file:sql/1_setup.sql", "to": "role:APP_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:747-799", "status": "verified"}
+{"from": "file:sql/1_setup.sql", "to": "role:APP_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:767-819", "status": "verified"}
 {"from": "file:sql/4_streamlit.sql", "to": "stage:STG_ACCESS_APP", "type": "deploys", "evidence": "sql/4_streamlit.sql:20", "status": "verified"}
 {"from": "file:sql/4_streamlit.sql", "to": "streamlit:ST_ACCESS_EXPLORER", "type": "deploys", "evidence": "sql/4_streamlit.sql:62", "status": "verified"}
 {"from": "file:sql/4_streamlit.sql", "to": "role:APP_ROLE", "type": "grants", "evidence": "sql/4_streamlit.sql:69-80", "status": "verified"}
@@ -43,12 +43,12 @@
 {"from": "process:build_web", "to": "dir:web/dist-st", "type": "writes", "evidence": "web/vite.config.ts:27", "status": "verified"}
 {"from": "process:test", "to": "config:requirements-dev.txt", "type": "depends_on", "evidence": "CLAUDE.md:111", "status": "verified"}
 {"from": "process:test", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:11", "status": "verified"}
-{"from": "process:test", "to": "dir:web/dist", "type": "reads", "evidence": "test_server.py:429-441", "status": "verified"}
-{"from": "process:test", "to": "dir:web/dist-st", "type": "reads", "evidence": "test_server.py:429-441", "status": "verified"}
-{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:1688-1698", "status": "verified"}
+{"from": "process:test", "to": "dir:web/dist", "type": "reads", "evidence": "test_server.py:463-475", "status": "verified"}
+{"from": "process:test", "to": "dir:web/dist-st", "type": "reads", "evidence": "test_server.py:463-475", "status": "verified"}
+{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:1716-1726", "status": "verified"}
 {"from": "process:test", "to": "file:sql/4_streamlit.sql", "type": "reads", "evidence": "test_access.py:679-686", "status": "verified"}
 {"from": "process:access_requests", "to": "role:APP_ROLE", "type": "grants", "evidence": "README.html:638", "status": "verified"}
-{"from": "process:access_requests", "to": "role:DEV_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:801-805", "status": "verified"}
+{"from": "process:access_requests", "to": "role:DEV_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:821-825", "status": "verified"}
 {"from": "process:container_services", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:323", "status": "verified"}
 {"from": "process:container_services", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:324-325", "status": "verified"}
 {"from": "config:.env.example", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "configures", "evidence": ".env.example:28", "status": "verified"}
@@ -96,7 +96,8 @@
 {"from": "document:THIRD_PARTY.md", "to": "dir:web/dist-st", "type": "documents", "evidence": "THIRD_PARTY.md:3", "status": "verified"}
 {"from": "config:.env.example", "to": "module:sf.py", "type": "configures", "evidence": "sf.py:27-35", "status": "verified"}
 {"from": "config:.env.example", "to": "module:cache.py", "type": "configures", "evidence": "cache.py:27-32", "status": "verified"}
-{"from": "config:.env.example", "to": "script:run.py", "type": "configures", "evidence": "run.py:19", "status": "verified"}
+{"from": "config:.env.example", "to": "script:run.py", "type": "configures", "evidence": "run.py:22", "status": "verified"}
 {"from": "config:sis.env.example", "to": "streamlit:ST_ACCESS_EXPLORER", "type": "configures", "evidence": "sql/4_streamlit.sql:58-59", "status": "verified"}
 {"from": "config:environment.yml", "to": "streamlit:ST_ACCESS_EXPLORER", "type": "configures", "evidence": "sql/4_streamlit.sql:45-46", "status": "verified"}
 {"from": "process:run_local", "to": "script:run.py", "type": "calls", "evidence": "README.md:135", "status": "verified"}
+{"from": "document:reviews/review-2026-11-10-2027.html", "to": "file:access.py", "type": "documents", "evidence": "reviews/review-2026-11-10-2027.html:1", "status": "inferred"}

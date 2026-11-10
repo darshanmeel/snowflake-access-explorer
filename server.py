@@ -126,14 +126,16 @@ LOOPBACK = ("127.0.0.1", "localhost", "::1")
 def mine_off():
     """Why My access is off here, else None. It reads with the server's own login, so it is the viewer's access only
     on their own machine with their own SSO login: not inside Snowflake (the owner's rights), not on a server others
-    reach (HOST not loopback), not with a key pair (a service user). MY_ACCESS=1 / 0 decides outside Snowflake."""
+    reach (HOST not loopback, or ALLOWED_HOSTS names another host: a proxy or tunnel), not with a key pair (a service
+    user). MY_ACCESS=1 / 0 decides outside Snowflake."""
     if a.INSIDE:
         return ("My access is not available inside Snowflake: the app runs with its owner's rights, not yours. "
                 "Use the local version for your own access.")
     v = os.environ.get("MY_ACCESS")
     if v in ("0", "1"):
         return None if v == "1" else "My access is turned off here (MY_ACCESS=0)."
-    if os.environ.get("HOST", "127.0.0.1") not in LOOPBACK:
+    extra = {h.strip().lower() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()} - set(LOOPBACK)
+    if os.environ.get("HOST", "127.0.0.1") not in LOOPBACK or extra:
         return ("My access is off on a shared server: it would read with the server's login, not yours. "
                 "Run the local version on your own machine for your own access.")
     if MODE == "snowflake" and os.environ.get("SNOWFLAKE_PRIVATE_KEY_FILE"):
@@ -275,11 +277,13 @@ def depth_of(p):
 
 
 def csv_text(cols, rows, head=()):
+    # a cell starting with = + - @ tab or CR runs as a formula in Excel; object names are metadata anyone may set
+    safe = lambda v: f"'{v}" if isinstance(v, str) and re.match(r"[=+\-@\t\r]", v) and not re.fullmatch(r"[+-]?\d+(\.\d+)?", v) else v
     f = io.StringIO()
     w = csv.writer(f)
     w.writerows(list(head) + ([[]] if head else []))
     w.writerow(cols)
-    w.writerows(rows)
+    w.writerows([[safe(v) for v in r] for r in rows])
     return f.getvalue()
 
 
@@ -1526,7 +1530,10 @@ def request_page(p, view):
                       people=n, broad=bool(asked["to"]) and n >= a.BROAD + (not user))
     sug = [] if held else a.suggest(pvs, o, u, is_user=user)
     for x in sug:
-        x |= dict(people=0 if user else who["people"], broad=not user and who["people"] > a.BROAD)
+        x |= dict(people=0 if user else who["people"], broad=not user and who["people"] > a.BROAD,
+                  change=a.with_sql(dict(op="grant", role=x["role"], to=u, toUser=user)))
+    if asked:
+        asked["change"] = a.with_sql(dict(op="grant", role=r, to=asked["to"] or u, toUser=not asked["to"]))
     return dict(view=view, user=u, subject=who, object=o, type=k, database=a.split_name(o, k)[0], need=nd,
                 privileges=pvs, level=now, has=held, asked=asked, suggestions=sug, approver=a.approver(o), owners=a.object_stats(o, k)["owners"])
 
@@ -1632,7 +1639,7 @@ def usage_page(p, view):
     out = dict(view=view, who=who, days=days, periods=list(a.PERIODS), available=ok, reason=why, enable=ENABLE_USE,
                source=(a.run.get("SOURCES") or {}).get("object_use") or ("demo values" if MODE == "fake" else None))
     if not ok:
-        return out | dict(rows=[], weeks=[], counts=None, changes=[], people=0)
+        return out | dict(rows=[], weeks=[], counts=None, changes=[], sql="", people=0)
     return out | a.granted_used(name, user, days)
 
 

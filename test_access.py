@@ -930,6 +930,30 @@ def test_built():
     assert a.memo["rows"] is rows and len(a.users) == len(set(a.profile) | set(a.roles_of)) > 1
     a.build(d, "one", True)  # builtin=1 is another data set
     assert "rows" not in a.memo
+    kept = list(a.built)  # a build without a key (What changed, What if) keeps no copy and evicts no kept set
+    with a.loaded(d):
+        pass
+    a.what_if([dict(op="revoke_role_from_user", user="ANALYST_01", role=a.roles_of["ANALYST_01"][0])])
+    assert list(a.built) == kept and a.memo["key"] == ("one", True)
+
+
+def test_admin_paths():
+    """Rule 5 and the admin paths: 512 paths to SYSADMIN do not hide ACCOUNTADMIN, shortest first per admin role."""
+    links = [("L1A", "A"), ("L1B", "A"), ("SYSADMIN", "L9A"), ("SYSADMIN", "L9B"), ("GX", "B"), ("ACCOUNTADMIN", "GX")]
+    links += [(f"L{i + 1}{y}", f"L{i}{x}") for i in range(1, 9) for x in "AB" for y in "AB"]
+    a.build(tiny(links, [("A", "BOB"), ("B", "BOB")]))
+    ps = a.admin_paths("BOB", True)
+    assert {p[-1] for p in ps} == {"ACCOUNTADMIN", "SYSADMIN"} and ["BOB", "B", "GX", "ACCOUNTADMIN"] in ps
+    assert sorted((c[2], c[3]) for c in a.checks() if c[0] == "5") == [("BOB", "ACCOUNTADMIN"), ("BOB", "SYSADMIN")]
+
+
+def test_shortest_default():
+    """Default role only: the default role's 3-hop start does not beat a shorter route through PUBLIC."""
+    d = tiny([("X1", "GALL"), ("DR", "X1"), ("TR", "DR"), ("GP", "PUBLIC"), ("TR", "GP")], [("GALL", "BOB")])
+    d["USER"][0]["DEFAULT_ROLE"] = "DR"
+    a.build(d)
+    sts, kids, _, hops = a.fast("BOB", True, True)
+    assert a.shortest(sts, kids, hops)["TR"] == ["BOB", "PUBLIC", "GP", "TR"]
 
 
 def test_builtin():
@@ -1258,6 +1282,9 @@ def test_namespaces():
     a.build(tiny([("Z", "R9"), ("R2", "X")], [("R9", "Z"), ("R2", "X")],
                  [("Z", "SELECT", "TABLE", "D.S.Z"), ("R2", "SELECT", "TABLE", "D.S.T")]))
     assert ["Z", "R9", "Z"] in a.walk("Z", True)  # down() does not block role Z under user Z
+    c = a.can("Z", "SELECT", "D.S.Z")  # listed() neither: Can they? and Where to cut walked an empty list
+    assert [p["path"] for p in c["paths"]] == [["Z", "R9", "Z", "D.S.Z"]] and c["count"] == 1
+    assert a.cut_points("Z", {"SELECT"}, "D.S.Z")
     g = a.grants("Z", True)
     assert [(r["object"], r["path"], r["depth"]) for r in g] == [("D.S.Z", ["Z", "R9", "Z", "D.S.Z"], 2)]
     assert {r["role"]: r["kind"] for r in a.reach("Z", True)}["Z"] == "group"  # the role, not the user
@@ -1553,8 +1580,9 @@ def test_graph_see_compare():  # screens 4, 7, 9: access graph, what they see, c
     d = a.compare("ENGINEER_01", True, "ANALYST_01", True)
     assert d["counts"] == dict(only_a=0, only_b=0, different=2, same=1), d["counts"]
     assert [r["diff"] for r in d["rows"]] == ["different", "different", "same"]
-    assert d["match"] == [dict(op="grant", role=F + "ENGINEER", to="ANALYST_01", toUser=True)]
-    assert dict(op="revoke", role=F + "ENGINEER", to="ENGINEER_01", toUser=True) in d["extras"]
+    core = lambda cs: [{k: c[k] for k in c if k not in ("sql", "roleDb", "toDb")} for c in cs]
+    assert core(d["match"]) == [dict(op="grant", role=F + "ENGINEER", to="ANALYST_01", toUser=True)]
+    assert dict(op="revoke", role=F + "ENGINEER", to="ENGINEER_01", toUser=True) in core(d["extras"])
     x = a.compare(F + "DEPLOY", False, F + "MARKETING", False)
     assert x["counts"]["only_a"] == 2 and all(c["op"] == "grant" and not c["toUser"] for c in x["match"])
     assert a.compare("ENGINEER_01", True, "ADMIN_01", True)["counts"]["only_a"] == 0  # an admin reaches everything
@@ -1696,6 +1724,24 @@ def test_readme_rules():  # docs/make_readme.py fills README.html's rule table f
     for name, body in (("rules", t), ("overview", m.canvas("overview", 1080, 440, m.OVERVIEW, m.OVERVIEW_ARROWS)),
                        ("flow", m.canvas("flow", 1080, 640, m.FLOW, m.FLOW_ARROWS, m.LANES))):
         assert m.inject(html, name, body) == html, f"README.html {name} is out of date: python docs/make_readme.py"
+
+
+def test_with_sql():  # Compare / Request / Granted vs used SQL comes from access.py, role kinds from the grant data
+    g = lambda **c: a.with_sql(dict(op="grant", toUser=False) | c)
+    odd = a.FUNC + ".SPECIAL"  # an account role with a dot: not a database role
+    x = g(role=odd, to=a.FUNC + "X")
+    assert x["sql"].startswith(f'GRANT ROLE "{odd}" TO ROLE {a.FUNC}X;') and not x["roleDb"] and not x["toDb"], x
+    y = g(role="DW.SC_C_CORE", to="DW.SC_C_MART")
+    assert y["sql"] == ("GRANT DATABASE ROLE DW.SC_C_CORE TO DATABASE ROLE DW.SC_C_MART;\n"
+                        "-- undo: REVOKE DATABASE ROLE DW.SC_C_CORE FROM DATABASE ROLE DW.SC_C_MART;") and y["roleDb"] and y["toDb"]
+    assert g(role="F_X", to="JOHN.DOE", toUser=True)["sql"].startswith('GRANT ROLE F_X TO USER "JOHN.DOE";')
+    assert g(privilege="SELECT", objectType="TABLE", object="DB.S.a.b", to="F_X")["sql"] == 'GRANT SELECT ON TABLE DB.S."a.b" TO ROLE F_X;'
+    r = a.with_sql(dict(op="revoke", privilege="OWNERSHIP", objectType="TABLE", object="SALES.RAW.T", to="F_X", toUser=False))
+    assert "COPY CURRENT GRANTS" in r["sql"] and "REVOKE OWNERSHIP" not in r["sql"]
+    c = a.compare("ENGINEER_01", True, "ANALYST_01", True, "all")
+    assert c["match"] and c["extras"] and all(ch["sql"].endswith(";") or "-- undo" in ch["sql"] for ch in c["match"] + c["extras"])
+    u = a.granted_used("ENGINEER_01", True, 90)
+    assert u["sql"] and u["sql"] == a.what_if(u["changes"])["sql"]  # the trim reads as What if writes it
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ Presentation constants only, mostly sent to the React app in `/api/meta`; no dat
 
 ```mermaid
 flowchart LR
-  UI[ui.py] -->|tokens, help, type_icon, pclass| M[server.meta<br/>server.py:2086-2087]
+  UI[ui.py] -->|tokens, help, type_icon, pclass| M[server.meta<br/>server.py:2093-2094]
   M --> W[web/src/components/theme.ts<br/>copy of TOKENS]
   UI -->|psort| S[server.py privilege order]
 ```
@@ -17,7 +17,7 @@ flowchart LR
 | `TOKENS` | light and dark colour tokens + node kind styles | ui.py:16-21 |
 | `PCLASS` | privilege class labels (read, write, own, use, manage, admin, inherit, also) | ui.py:22-23 |
 | `TYPE_ICON` | object type -> (text glyph, label) | ui.py:25-30 |
-| `HELP` | plain-language definitions for tooltips | ui.py:33-64 |
+| `HELP` | plain-language definitions for tooltips; "Admin" names all five admin roles (ACCOUNTADMIN, SECURITYADMIN, SYSADMIN, USERADMIN, ORGADMIN), as `access.ADMIN` (ui.py:41) | ui.py:33-64 |
 | `PRIVS` / `psort` | fixed privilege order; `'SELECT ×120'` sorts as SELECT | ui.py:65-72 |
 
 - Node colour scheme matches CLAUDE.md: functional blue, technical coffee, group dashed amber, database dashed grey-blue, admin red (ui.py:18).

@@ -4,13 +4,13 @@
    "name": "TBL_ACCESS_RUN",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per CALL of SP_ACCESS_SNAPSHOT (kept)",
+   "grain": "one row per CALL of SP_ACCESS_SNAPSHOT that ran (kept; a SKIPPED call deletes its own row, sql/1_setup.sql:522)",
    "columns": [
     {
      "name": "RUN_ID",
      "type": "VARCHAR(36)",
      "nullable": true,
-     "key": "PK (logical, uuid4 at 1_setup.sql:505)",
+     "key": "PK (logical, uuid4 at 1_setup.sql:514)",
      "desc": "run id",
      "pii": false,
      "evidence": "sql/1_setup.sql:14"
@@ -357,7 +357,7 @@
    "name": "TBL_ACCESS_USAGE",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x user x kind x name (GROUP BY at 1_setup.sql:312-320)",
+   "grain": "one row per run x user x kind x name (GROUP BY at 1_setup.sql:321-329)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -664,7 +664,7 @@
    "name": "TBL_ACCESS_OBJECT_USE",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x user x object x ISO week x action (GROUP BY at 1_setup.sql:478)",
+   "grain": "one row per run x user x object x ISO week x action (GROUP BY at 1_setup.sql:491)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -747,7 +747,7 @@
    "name": "TBL_ACCESS_FINDING",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x rule finding (inferred)",
+   "grain": "one row per rule finding of the last SP_ACCESS_FINDINGS run (the call deletes every row first, sql/1_setup.sql:752)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -1228,7 +1228,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",
@@ -1241,7 +1241,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_USER",
@@ -1254,7 +1254,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_USAGE",
@@ -1267,7 +1267,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_TAG",
@@ -1280,7 +1280,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_POLICY",
@@ -1293,7 +1293,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1306,7 +1306,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1319,7 +1319,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:566,579"
+   "evidence": "access.py:410 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_FINDING",
@@ -1332,7 +1332,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:726-736"
+   "evidence": "sql/1_setup.sql:746-748"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",

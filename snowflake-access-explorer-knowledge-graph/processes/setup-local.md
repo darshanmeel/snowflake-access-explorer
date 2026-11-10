@@ -53,5 +53,5 @@ flowchart LR
 
 ## Local-only files
 - `.cache/` (git-ignored) holds the pickled data and `access.duckdb` — .gitignore:7, CLAUDE.md:9-15.
-- `.streamlit/config.toml`: local runs only, not uploaded to SiS — .streamlit/config.toml:1-7, sql/4_streamlit.sql:44.
+- `.streamlit/config.toml`: local runs only, not uploaded to SiS — .streamlit/config.toml:1-10, sql/4_streamlit.sql:44.
 - `local.ps1` is git-ignored — .gitignore:5; its purpose is unclear (no tracked file describes it).

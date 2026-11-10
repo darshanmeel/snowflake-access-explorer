@@ -20,11 +20,12 @@ describe("access graph, what they see, compare", () => {
     expect(seeSentence({ ...counts, clear: 0, unprotected: 0 }).cols).toBe("every sensitive column masked");
   });
   it("turns A's extras into What if revokes, grants left out", () => {
+    const txt = { sql: "", roleDb: false, toDb: false };
     expect(whatIfOf([
-      { op: "revoke", role: "F_X", to: "U1", toUser: true },
-      { op: "revoke", role: "T_X", to: "F_A", toUser: false },
-      { op: "revoke", privilege: "SELECT", objectType: "TABLE", object: "DB.S.T", to: "F_A", toUser: false },
-      { op: "grant", role: "T_X", to: "F_B", toUser: false },
+      { op: "revoke", role: "F_X", to: "U1", toUser: true, ...txt },
+      { op: "revoke", role: "T_X", to: "F_A", toUser: false, ...txt },
+      { op: "revoke", privilege: "SELECT", objectType: "TABLE", object: "DB.S.T", to: "F_A", toUser: false, ...txt },
+      { op: "grant", role: "T_X", to: "F_B", toUser: false, ...txt },
     ])).toEqual([
       { op: "revoke_role_from_user", role: "F_X", user: "U1" },
       { op: "revoke_role_from_role", role: "T_X", grantee: "F_A" },

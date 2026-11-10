@@ -10,6 +10,7 @@
 --   SYSADMIN, USERADMIN, ORGADMIN) are left out, holding an admin role is kept; DEPTH = roles from the start to the
 --   role, that role included (a user is not a role); every user holds PUBLIC; names compare exactly as stored
 --   (unquoted names are upper case). No future grants (not in ACCOUNT_USAGE).
+-- Links between admin roles are left out too: for SECURITYADMIN or SYSADMIN also check ROLE_NAME = 'ACCOUNTADMIN'.
 -- One row per answer with its shortest PATH ('A > B > C') and WAYS = how many role paths lead there. Every path
 --   instead: remove the QUALIFY line. Role cycles stop by themselves.
 -- MAX_DEPTH (NULL = 50, the app's limit) cuts longer chains: roles past it are left out and WAYS counts only the

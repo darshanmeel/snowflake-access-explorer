@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { redirect } from "../App";
 import type { CheckPage, Nearest } from "../api/types";
-import { expiryOf, newRoleOf, sqlOf } from "../components/codegen";
+import { expiryOf, newRoleOf } from "../components/codegen";
 import { parseQuestion } from "./Home";
-import { cutChanges, cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
+import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 
 const roleEdge = { grantee: "F_ENGINEER", to: "HR.SC_W_PEOPLE", priv: null, user: false };
 const userEdge = { grantee: "ENGINEER_01", to: "F_ENGINEER", priv: null, user: true };
@@ -16,12 +16,10 @@ const base = { user: "FIN_09", object: "DB.S.T", roles_count: 11, lanes_total: 0
   answer: { yes: false, how: "none", title: "No, not through any role", text: "", tone: null, stats: [] } } as const;
 
 describe("Can they? helpers", () => {
-  it("labels cuts and turns them into revokes and What if changes", () => {
+  it("labels cuts and turns them into What if changes", () => {
     expect(cutLabel([roleEdge])).toBe("Revoke HR.SC_W_PEOPLE from F_ENGINEER");
     expect(cutLabel([userEdge])).toBe("Revoke F_ENGINEER from user ENGINEER_01");
     expect(cutLabel([privEdge])).toBe("Revoke SELECT on DB.S.T from T_X_READ");
-    expect(sqlOf(cutChanges([roleEdge], "TABLE"))).toContain("REVOKE DATABASE ROLE HR.SC_W_PEOPLE FROM ROLE F_ENGINEER;");
-    expect(sqlOf(cutChanges([privEdge], "TABLE"))).toContain("REVOKE SELECT ON TABLE DB.S.T FROM ROLE T_X_READ;");
     expect(cutWhatIf([userEdge, roleEdge, privEdge])).toEqual([
       { op: "revoke_role_from_user", role: "F_ENGINEER", user: "ENGINEER_01" },
       { op: "revoke_role_from_role", role: "HR.SC_W_PEOPLE", grantee: "F_ENGINEER" },
@@ -117,7 +115,5 @@ describe("Request access text", () => {
     const other = newRoleOf("DW.X", ["SELECT"], "TABLE", "HR.S.T", {}, undefined, true, { db: "DW", objDb: "HR" });
     expect(other.sql).toContain("can only hold privileges on objects in DW");
     expect(other.sql.split("\n").every((l) => !l || l.startsWith("--"))).toBe(true);
-    expect(sqlOf([{ op: "grant", role: "DW.A", to: "DW.X", toUser: false }])).toContain("GRANT DATABASE ROLE DW.A TO DATABASE ROLE DW.X;");
-    expect(sqlOf([{ op: "grant", role: "F_ENGINEER", to: "F_ANALYST", toUser: false }])).toContain("GRANT ROLE F_ENGINEER TO ROLE F_ANALYST;");
   });
 });

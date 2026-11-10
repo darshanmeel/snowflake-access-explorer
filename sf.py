@@ -64,7 +64,7 @@ def run(sql, conn=None):
 
 
 if __name__ == "__main__":
-    sql = open(sys.argv[2]).read() if sys.argv[1] == "-f" else sys.argv[1]
+    sql = open(sys.argv[2], encoding="utf-8").read() if sys.argv[1] == "-f" else sys.argv[1]
     cols, got = run(sql)
     print("\t".join(cols))
     for r in got:

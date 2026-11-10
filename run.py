@@ -15,24 +15,33 @@ import sys
 
 import access  # noqa: F401  (loads .env, so WEB_PORT and the rest can live there)
 
-p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-p.add_argument("app", nargs="?", choices=["web", "streamlit"], default=os.environ.get("APP", "web"))
-p.add_argument("--fake", action="store_true")
-p.add_argument("--port", type=int)
-p.add_argument("--direct", dest="source", action="store_const", const="direct")
-p.add_argument("--objects", dest="source", action="store_const", const="objects")
-args = p.parse_args()
 
-env = dict(os.environ)
-if args.fake:
-    env["FAKE"] = "1"
-if args.source:
-    env["SOURCE"] = args.source
-if args.app == "streamlit":
-    port = args.port or int(env.get("STREAMLIT_PORT", "8501"))
-    cmd = [sys.executable, "-m", "streamlit", "run", "app.py", "--server.port", str(port), "--server.headless", "true",
-           "--browser.gatherUsageStats", "false"]  # no first-run email prompt
-else:
-    env["WEB_PORT"] = str(args.port or int(env.get("WEB_PORT", "8000")))
-    cmd = [sys.executable, "server.py"]
-sys.exit(subprocess.call(cmd, env=env, cwd=os.path.dirname(os.path.abspath(__file__))))
+def command(argv=None, env=os.environ):
+    """(cmd, env) to start the app run.py is asked for."""
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("app", nargs="?", choices=["web", "streamlit"], default=env.get("APP", "web"))
+    p.add_argument("--fake", action="store_true")
+    p.add_argument("--port", type=int)
+    p.add_argument("--direct", dest="source", action="store_const", const="direct")
+    p.add_argument("--objects", dest="source", action="store_const", const="objects")
+    args = p.parse_args(argv)
+    env = dict(env)
+    if args.fake:
+        env["FAKE"] = "1"
+    if args.source:
+        env["SOURCE"] = args.source
+    if args.app == "streamlit":
+        port = args.port or int(env.get("STREAMLIT_PORT", "8501"))
+        # HOST as for the web version: Streamlit itself would listen on every address, and mine_off() reads HOST
+        cmd = [sys.executable, "-m", "streamlit", "run", "app.py", "--server.port", str(port),
+               "--server.address", env.get("HOST", "127.0.0.1"), "--server.headless", "true",
+               "--browser.gatherUsageStats", "false"]  # no first-run email prompt
+    else:
+        env["WEB_PORT"] = str(args.port or int(env.get("WEB_PORT", "8000")))
+        cmd = [sys.executable, "server.py"]
+    return cmd, env
+
+
+if __name__ == "__main__":
+    cmd, env = command()
+    sys.exit(subprocess.call(cmd, env=env, cwd=os.path.dirname(os.path.abspath(__file__))))

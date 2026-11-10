@@ -205,11 +205,16 @@ def test_edges():
     assert n == 1 and con.execute("SELECT COUNT(*) FROM TF_ACCESS_OF('R1', NULL)").fetchone()[0] == 1
 
 
+class Row(dict):  # a Snowpark Row: row["N"] and row.as_dict()
+    def as_dict(self):
+        return dict(self)
+
+
 def fake_session(con):
     """The parts of a Snowpark session SP_ACCESS_FINDINGS uses, on DuckDB."""
     def sql(text, params=None):
         found = query(con, text, params)
-        return SimpleNamespace(collect=lambda: [SimpleNamespace(as_dict=lambda r=r: r) for r in found])
+        return SimpleNamespace(collect=lambda: [Row(r) for r in found])
 
     def create_dataframe(data, schema):
         def save(table, mode, column_order):
@@ -232,7 +237,8 @@ def test_findings():
                             "snowflake.snowpark.types": types})
     exec(body.replace("&DB.&SCHEMA", "main"), ns)
     session = fake_session(con)
-    for _ in range(2):  # the second CALL replaces the run's rows
+    con.execute("INSERT INTO TBL_ACCESS_FINDING (RUN_ID, RULE_NUM) VALUES ('run-1', '1')")  # an older run's finding
+    for _ in range(2):  # the second CALL replaces the run's rows; only the last run's findings stay
         out = ns["run"](session, None)
         want = Counter(f"{n} {t}" for n, t, *_ in a.checks())  # on the data the procedure just built
         assert out["run_id"] == "run-2" and out["per_rule"] == dict(want) and out["findings"] == sum(want.values())
@@ -294,10 +300,14 @@ def test_show_fallback():
     import test_access
     d = a.fake()
     bad = next(g["GRANTEE_ROLE"] for g in d["GRANT"] if "." in g["GRANTEE_ROLE"])  # one database role
+    half = next(x["ROLE_NAME"] for x in d["USER_ROLE"]  # a role with grants and users: its SHOW GRANTS OF is refused
+                if any(g["GRANTEE_ROLE"] == x["ROLE_NAME"] and not g["IS_FUTURE"] for g in d["GRANT"]))
     show, _ = test_access.fake_snowflake(d, au=False)
+    refuse = {"SHOW GRANTS TO DATABASE ROLE " + a.db_ident(bad), f'SHOW GRANTS OF ROLE "{half}"',
+              'SHOW FUTURE GRANTS IN DATABASE "SALES"'}  # the database place before SALES.CORE, which has future grants
 
     def answer(sql):
-        if " ".join(sql.split()) == "SHOW GRANTS TO DATABASE ROLE " + a.db_ident(bad):
+        if " ".join(sql.split()) in refuse:
             raise RuntimeError("Insufficient privileges")
         return show(sql)
 
@@ -328,6 +338,14 @@ def test_show_fallback():
     same(proc_users, Counter((x["USER_NAME"], x["ROLE_NAME"]) for x in live["USER_ROLE"]), "SHOW user roles")
     assert not any(k[0] == bad for k in proc) and any("." in k[0] for k in proc)  # the other database roles are read
     assert f"{bad}: " in str(live["run"].get("NOTES"))
+    assert f"{half}: Insufficient privileges" in out["grants"][1] and not any(k[0] == half for k in proc)
+    assert not any(r == half for _, r in proc_users)
+    src, why = ns["future"](session, "run-10")  # one refused place skips only itself, as in live()
+    fut = Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
+                  for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-10'"))
+    same(fut, Counter((g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"])
+                      for g in live["GRANT"] if g["IS_FUTURE"]), "SHOW future grants")
+    assert src == "SHOW" and why.startswith("1 database") and "SALES: " in why and sum(fut.values()) == 2
 
     def refused(text, params=None):  # SOURCE=direct inside Snowflake when even SHOW DATABASES is refused
         if text.lstrip().upper().startswith("SHOW DATABASES"):
@@ -339,7 +357,100 @@ def test_show_fallback():
     assert src == "UNAVAILABLE" and "not allowed" in why  # the run goes on, as access.live() does
 
 
+def snapshot_proc():
+    body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
+    ns = {}
+    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    return ns
+
+
+def test_run_overlap():
+    """SP_ACCESS_SNAPSHOT's run(): a CALL while another started in the last hour steps back, also when both insert their
+    RUNNING row at once; an OK run keeps the rows of a run still running (started over an hour ago)."""
+    con = load(a.fake(), build=False)
+    con.execute("CREATE MACRO PARSE_JSON(x) AS x")
+    ns = snapshot_proc()
+    session = fake_session(con)
+    duck_sql = session.sql
+    race = []
+
+    def sql(text, params=None):  # Snowflake's DATEADD / CURRENT_TIMESTAMP() in DuckDB
+        text = re.sub(r"DATEADD\((\w+), (-?\d+), CURRENT_TIMESTAMP\(\)\)", r"(current_timestamp + INTERVAL (\2) \1)", text)
+        if text.startswith("INSERT INTO main.TBL_ACCESS_RUN") and race:  # another CALL's row lands first
+            con.execute(f"INSERT INTO TBL_ACCESS_RUN (RUN_ID, STARTED_AT, STATUS) VALUES ('{race.pop()}', "
+                        "current_timestamp - INTERVAL 1 SECOND, 'RUNNING')")
+        return duck_sql(text.replace("CURRENT_TIMESTAMP()", "current_timestamp"), params)
+
+    session.sql = sql
+    step = lambda *x: ("SHOW", None)  # noqa: E731
+    ns.update({k: step for k in ("future", "users", "usage", "tags", "policies", "streams", "object_use")})
+
+    def grants(session, run_id, mode):
+        con.execute(f"INSERT INTO TBL_ACCESS_GRANT (RUN_ID, GRANTEE_ROLE) VALUES ('{run_id}', 'R')")
+        return {"grants": ("SHOW", None), "user_roles": ("SHOW", None)}
+
+    ns["grants"] = grants
+    con.execute("INSERT INTO TBL_ACCESS_RUN (RUN_ID, STARTED_AT, STATUS) VALUES ('run-a', current_timestamp - INTERVAL 2 HOUR, 'RUNNING')")
+    con.execute("INSERT INTO TBL_ACCESS_GRANT (RUN_ID, GRANTEE_ROLE) VALUES ('run-a', 'R')")
+    out = ns["run"](session, "SHOW")
+    left = dict(con.execute("SELECT RUN_ID, COUNT(*) FROM TBL_ACCESS_GRANT GROUP BY 1").fetchall())
+    assert out["status"] == "OK" and left == {out["run_id"]: 1, "run-a": 1}, left  # run-2's rows gone, run-a's kept
+    runs = con.execute("SELECT COUNT(*) FROM TBL_ACCESS_RUN").fetchone()[0]
+    con.execute("INSERT INTO TBL_ACCESS_RUN (RUN_ID, STARTED_AT, STATUS) VALUES ('run-b', current_timestamp, 'RUNNING')")
+    out = ns["run"](session, "SHOW")
+    assert out == {"status": "SKIPPED", "notes": {"error": "run run-b is still running"}}
+    assert con.execute("SELECT COUNT(*) FROM TBL_ACCESS_RUN").fetchone()[0] == runs + 1  # no row left by the skipped CALL
+    con.execute("DELETE FROM TBL_ACCESS_RUN WHERE RUN_ID = 'run-b'")
+    race.append("run-c")
+    out = ns["run"](session, "SHOW")
+    assert out == {"status": "SKIPPED", "notes": {"error": "run run-c is still running"}}, out
+
+
+def test_usage_extra():
+    """ACCOUNT_USAGE.QUERY_HISTORY readable but the usage read fails (a timeout): usage UNAVAILABLE, the run goes on,
+    as in access.live()."""
+    con = load(a.fake(), build=False)
+    ns = snapshot_proc()
+    session = fake_session(con)
+    duck_sql = session.sql
+
+    def sql(text, params=None):
+        if "ACCOUNT_USAGE.QUERY_HISTORY LIMIT 1" in text:
+            return SimpleNamespace(collect=lambda: [])
+        if "ACCOUNT_USAGE.QUERY_HISTORY" in text:
+            raise RuntimeError("Statement reached its statement or warehouse timeout")
+        return duck_sql(text, params)
+
+    session.sql = sql
+    assert ns["usage"](session, "run-9", "AUTO") == ("UNAVAILABLE", "Statement reached its statement or warehouse timeout")
+    assert not con.execute("SELECT * FROM TBL_ACCESS_USAGE WHERE RUN_ID = 'run-9'").fetchall()
+
+
+def test_same_queries():
+    """Each ACCOUNT_USAGE SELECT of access.live() has the same text in SP_ACCESS_SNAPSHOT, apart from the column
+    aliases, the RUN_ID column and the INSERT around it."""
+    import inspect
+
+    def queries(src):
+        out = {}
+        for q in re.findall(r'f"""(.*?)"""', src, re.S):
+            view = re.search(r"\{AU\}\.(\w+)", q)
+            if view and "LIMIT 1" not in q:
+                q = " ".join(q.split()).replace("-{DAYS}", "-30").replace("'{run_id}', ", "")
+                q = re.sub(r"^INSERT INTO .*? SELECT ", "SELECT ", q)
+                out[view.group(1)] = re.sub(r" AS [A-Z_]+\b", "", q)
+        return out
+
+    live = queries(inspect.getsource(a.live))
+    proc = queries(re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1))
+    views = {"GRANTS_TO_ROLES", "GRANTS_TO_USERS", "USERS", "QUERY_HISTORY", "TAG_REFERENCES", "POLICY_REFERENCES"}
+    assert views <= set(live) & set(proc), (sorted(live), sorted(proc))
+    for v in views:
+        assert live[v] == proc[v], f"{v}:\n live {live[v]}\n proc {proc[v]}"
+
+
 if __name__ == "__main__":
-    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_show_fallback):
+    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_show_fallback,
+              test_run_overlap, test_usage_extra, test_same_queries):
         t()
         print("ok", t.__name__)

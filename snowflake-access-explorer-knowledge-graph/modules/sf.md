@@ -20,5 +20,5 @@ flowchart LR
 
 - Env vars: SNOWFLAKE_ACCOUNT / USER / ROLE / WAREHOUSE / DATABASE / SCHEMA (sf.py:27-34), SNOWFLAKE_PRIVATE_KEY_FILE / _PWD (sf.py:35-38).
 - SSO uses the token cache (`client_store_temporary_credential`) (sf.py:39-40).
-- `test_read_only` records statements at this layer (test_server.py:322-344).
+- `test_read_only` records statements at this layer (test_server.py:328-375).
 - Used by: server.with_query (server.py:73-77), run_sql.py (run_sql.py:14).

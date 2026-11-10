@@ -10,6 +10,7 @@ export interface StTheme { base?: "light" | "dark" }
 
 export function onRender(cb: (args: Record<string, unknown>, theme: StTheme | undefined) => void) {
   window.addEventListener("message", (e) => {
-    if (e.data?.type === "streamlit:render") cb(e.data.args ?? {}, e.data.theme);
+    // only Streamlit (the parent frame) answers; another frame could otherwise resolve open API calls with forged data
+    if (e.source === window.parent && e.data?.type === "streamlit:render") cb(e.data.args ?? {}, e.data.theme);
   });
 }

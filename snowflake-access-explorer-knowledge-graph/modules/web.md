@@ -21,14 +21,15 @@ flowchart LR
 
 | Piece | Does | path:line |
 |---|---|---|
-| `PAGES`, `LABEL`, `GROUPS` | 17 page keys, labels, nav groups (answers / admin / detail) | web/src/App.tsx:27-34 |
-| `redirect(page, params)` | Old links to new screens; unknown page -> home | web/src/App.tsx:37-91 |
-| `read()` / `url()` / `useLoc()` | URL `?page=&data=mine&...` <-> location; pushState / popstate | web/src/App.tsx:103-126 |
-| `useTheme()` | light / dark, saved in localStorage | web/src/App.tsx:128-136 |
-| `Find` | Top-bar search -> `GET /api/find` | web/src/App.tsx:138-147 |
-| `Side`, `DataInfo`, `DataTime` | Side nav, "Data from" box (SQL copy), refresh | web/src/App.tsx:162-247 |
-| `VIEWS` | page key -> page component | web/src/App.tsx:249-254 |
-| `App` | `GET /api/meta` (web/src/App.tsx:264), `POST mine/load` (web/src/App.tsx:285), `POST reload` page / load (web/src/App.tsx:286-287), rebuild (web/src/App.tsx:289) | web/src/App.tsx:257 |
+| `SHARED_ONLY`, `viewPage(page, mine)` | Pages about everyone (review, flow, changes; `server.SHARED_ONLY`): switching to My access on one of them opens access; home stays (used by `setView`, web/src/App.tsx:277) | web/src/App.tsx:27-30 |
+| `PAGES`, `LABEL`, `GROUPS` | 17 page keys, labels, nav groups (answers / admin / detail) | web/src/App.tsx:31-38 |
+| `redirect(page, params)` | Old links to new screens; unknown page -> home | web/src/App.tsx:41-95 |
+| `read()` / `url()` / `useLoc()` | URL `?page=&data=mine&...` <-> location; pushState / popstate | web/src/App.tsx:107-130 |
+| `useTheme()` | light / dark, saved in localStorage | web/src/App.tsx:132-140 |
+| `Find` | Top-bar search -> `GET /api/find` | web/src/App.tsx:142-151 |
+| `Side`, `DataInfo`, `DataTime` | Side nav, "Data from" box (SQL copy), refresh | web/src/App.tsx:166-251 |
+| `VIEWS` | page key -> page component | web/src/App.tsx:253-258 |
+| `App` | `GET /api/meta` (web/src/App.tsx:268), `POST mine/load` (web/src/App.tsx:289), `POST reload` page / load (web/src/App.tsx:290-291), rebuild (web/src/App.tsx:293) | web/src/App.tsx:261 |
 
 ## API client (web/src/api/client.ts)
 
@@ -41,7 +42,7 @@ flowchart LR
 
 | Page key | File | Shows | Endpoints (path:line) |
 |---|---|---|---|
-| home | pages/Home.tsx | Search, "can X read Y" to Can they?, my access, risks, data protection, recent | home (Home.tsx:66), find (Home.tsx:77) |
+| home | pages/Home.tsx | Search, "can X read Y" to Can they?, my access, risks, data protection, recent | home (Home.tsx:66), find (Home.tsx:79); hits keep the text they answer, a slow older answer never replaces a newer one, Enter opens only hits for the text now in the box (Home.tsx:68-69, 77-80, 87) |
 | access | pages/Access.tsx | One row per object at highest ladder level; embeds User / Role / ChangeFeed | access (Access.tsx:32) |
 | user | pages/User.tsx | User paths | user (User.tsx:14) |
 | role | pages/Role.tsx | Role paths | role (Role.tsx:77) |
@@ -59,7 +60,7 @@ flowchart LR
 | usage | pages/Usage.tsx | Granted vs used (ACCESS_HISTORY) | usage (Usage.tsx:25) |
 | changes | pages/Changes.tsx | Gained / lost access, new / fixed findings, watched questions | changes (Changes.tsx:32), list (Changes.tsx:115), check / who (Changes.tsx:156) |
 
-- Pickers search the server: `Pick` -> `GET /api/list?q=&limit=50` (web/src/pages/common.tsx:54-70).
+- Pickers search the server: `Pick` -> `GET /api/list?q=&limit=50` (web/src/pages/common.tsx:54-71).
 - Page helpers without UI: changeplan.ts, history.ts, signoff.ts, verdict.ts, who.ts, screens.ts (imports at web/src/pages/Plan.tsx:9, web/src/pages/Changes.tsx:11, web/src/pages/Catalog.tsx:7, web/src/pages/Check.tsx:10, web/src/pages/Object.tsx:14, web/src/pages/Map.tsx:9).
 - The change plan is saved in this browser (`useSaved`, web/src/pages/Risks.tsx:9) (inferred from name; see changeplan.ts).
 
@@ -72,13 +73,13 @@ flowchart LR
 | graphs.ts / tabgraph.ts | Pure lane-graph helpers / tab diagram |
 | Legend.tsx | Legend next to each graph |
 | PathStrip.tsx / PathText.tsx | A path as node-styled chips |
-| DataTable.tsx / table.ts | Sortable, filterable table; CSV |
+| DataTable.tsx / table.ts | Sortable, filterable table; CSV. Headers sort through a `<button>` (keyboard, `.ae-th-btn`); rows re-sort only when the column keys change, not on each new `columns` array (DataTable.tsx:36-41, 64-71); one shared `Intl.Collator` (table.ts:12); `toCsv` prefixes `'` to a cell starting with `= + - @` tab / CR (not a number), as `server.csv_text` (table.ts:34-37) |
 | Findings.tsx | Rule findings with Fix panel (text only) |
 | Grantees.tsx | Who can reach an object, grouped by chain |
 | PrivilegeTabs.tsx / tabs.ts | Privileges split in tabs |
 | kit.tsx / visuals.tsx / parts.tsx | Small SVG / CSS pieces on `--ae-*` tokens |
-| Combo.tsx | Search box for Find and pickers |
-| codegen.ts | SQL / Terraform / ticket text |
+| Combo.tsx | Search box for Find and pickers; `close(keep)` sets the text kept after a pick or blur (Combo.tsx:39, 50, 60) |
+| codegen.ts | SQL / Terraform / ticket text. `sqlOf()` only joins the server's `sql` of each change (`access.with_sql` / `revoke`) under the note's comments: the server is the one SQL writer (codegen.ts:68-71); Terraform uses `roleDb` / `toDb` from the server, never a dot in the name; names quoted as `access.sql_name` / `sql_obj` (`name`, `obj`), HCL strings escaped (`h`), every line of a multi-line note commented (codegen.ts:18-26) |
 | theme.ts | Copy of ui.py TOKENS |
 
 ## Build outputs
@@ -86,9 +87,9 @@ flowchart LR
 | | `npm run build` -> web/dist | `npm run build:st` -> web/dist-st |
 |---|---|---|
 | Entry | web/index.html -> src/main.tsx | web/st/index.html -> src/st/main.tsx (web/st/index.html:10) |
-| Served by | server.py `spa` (server.py:26, server.py:2319-2329) | st_react.py component (st_react.py:12-13) |
+| Served by | server.py `spa` (server.py:26, server.py:2326-2336) | st_react.py component (st_react.py:12-13) |
 | Assets | inline limit 4096, ELK own chunk | no inlined assets, one JS (inlineDynamicImports) + one CSS (web/vite.config.ts:37-39) |
-| Stamp | src-hash.txt of web/src (web/vite.config.ts:10-20), checked by `test_bundles_fresh` (test_server.py:429) | same |
+| Stamp | src-hash.txt of web/src (web/vite.config.ts:10-20), checked by `test_bundles_fresh` (test_server.py:463) | same |
 
 - Both bundles are committed; rebuild both after any web/src change (CLAUDE.md "Two versions, one logic").
 - Streamlit protocol: componentReady / setComponentValue / setFrameHeight (web/src/st/protocol.ts:5-7); requests sent as the component value (web/src/st/main.tsx:22).

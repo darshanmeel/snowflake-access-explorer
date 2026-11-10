@@ -34,41 +34,46 @@ flowchart LR
 |---|---|---|
 | TABLE_RUN ... TABLE_OBJECT_USE | `TBL_ACCESS_RUN`, `_GRANT`, `_USER_ROLE`, `_USER`, `_USAGE`, `_TAG`, `_POLICY`, `_STREAM`, `_OBJECT_USE` | sql/1_setup.sql:12, 23, 35, 43, 56, 66, 77, 89, 97 |
 | TABLE_FINDING | findings table for SP_ACCESS_FINDINGS | sql/1_setup.sql:108 |
-| PROCEDURE | `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, EXECUTE AS OWNER | sql/1_setup.sql:121-541 |
-| FUNCTION_ACCESS_OF (may fail) | `TF_ACCESS_OF(NAME, MAX_DEPTH)` | sql/1_setup.sql:557-616 |
-| FUNCTION_WHO_CAN (may fail) | `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` | sql/1_setup.sql:618-659 |
-| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` | sql/1_setup.sql:661-673 |
-| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:676, 680 |
-| PROCEDURE_FINDINGS | `SP_ACCESS_FINDINGS(P_SETTINGS)` runs access.py | sql/1_setup.sql:683-745 |
-| GRANT_*_APP (may fail) | USAGE on db / schema / warehouse, SELECT on each table, USAGE on TFs and procedure to `&APP_ROLE` | sql/1_setup.sql:748-798 |
+| PROCEDURE | `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, EXECUTE AS OWNER | sql/1_setup.sql:121-561 |
+| FUNCTION_ACCESS_OF (may fail) | `TF_ACCESS_OF(NAME, MAX_DEPTH)` | sql/1_setup.sql:577-636 |
+| FUNCTION_WHO_CAN (may fail) | `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` | sql/1_setup.sql:638-679 |
+| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` | sql/1_setup.sql:681-693 |
+| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:696, 680 |
+| PROCEDURE_FINDINGS | `SP_ACCESS_FINDINGS(P_SETTINGS)` runs access.py | sql/1_setup.sql:703-765 |
+| GRANT_*_APP (may fail) | USAGE on db / schema / warehouse, SELECT on each table, USAGE on TFs and procedure to `&APP_ROLE` | sql/1_setup.sql:768-818 |
 
 ### SP_ACCESS_SNAPSHOT internals
 
 ```mermaid
 flowchart TD
-  RUN[run session, p_source<br/>sql/1_setup.sql:497] --> G[grants 204]
+  RUN[run session, p_source<br/>sql/1_setup.sql:510] --> G[grants 204]
   RUN --> FU[future 261]
-  RUN --> U[users 289]
-  RUN --> US[usage 306]
-  RUN --> TG[tags 360]
-  RUN --> PO[policies 401]
-  RUN --> STR[streams 450]
-  RUN --> OU[object_use 481<br/>ACCESS_HISTORY, may fail]
+  RUN --> U[users 298]
+  RUN --> US[usage 315]
+  RUN --> TG[tags 373]
+  RUN --> PO[policies 414]
+  RUN --> STR[streams 463]
+  RUN --> OU[object_use 494<br/>ACCESS_HISTORY, may fail]
   G & U & US & TG & PO -->|ACCOUNT_USAGE not readable| FB[fallback 181 -> SHOW]
   RUN --> SV[save 194 -> TBL_ACCESS_* with RUN_ID]
 ```
 
 - Rows carry `RUN_ID`; the app reads only the last OK run (sql/1_setup.sql:133, access.py:403-406).
-- Helpers: `rows` 156, `ident` 161, `clean` 165, `count` 200, `data_objects` 336, `use_sql` 464 (all sql/1_setup.sql).
+- `grants()` SHOW path: per role both `SHOW GRANTS TO ROLE` and `SHOW GRANTS OF ROLE` are read before either is kept, so a role refused half-way is skipped whole (listed in NOTES), never kept without its holders (sql/1_setup.sql:226-235).
+- `future()` SHOW path: each place (database or schema) is tried on its own; a refused place skips only itself, one note per database, as `access.live` does (sql/1_setup.sql:279-293).
+- `usage()`: the ACCOUNT_USAGE `QUERY_HISTORY` insert is extra; when it fails its rows are deleted and the dataset is `UNAVAILABLE` with the reason, the run stays OK (sql/1_setup.sql:334-341); test `test_usage_extra` (test_sql.py:409).
+- `run()`: busy guard after the insert (earliest RUNNING run of the last hour goes on, others SKIPPED, sql/1_setup.sql:515-523); an OK run keeps the rows of a run RUNNING for under a day (sql/1_setup.sql:554-559). `test_run_overlap` (test_sql.py:367).
+- `SP_ACCESS_FINDINGS` keeps only the last run: `DELETE FROM` the findings table inside the transaction (sql/1_setup.sql:752).
+- Helpers: `rows` 156, `ident` 161, `clean` 165, `count` 200, `data_objects` 349, `use_sql` 477 (all sql/1_setup.sql).
 
 ## sql/2_snapshot.sql
 
 - `SNAPSHOT`: `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')` (sql/2_snapshot.sql:11-12). P_SOURCE AUTO / ACCOUNT_USAGE / SHOW (sql/2_snapshot.sql:2-3).
-- The app's "rebuild" sends the same CALL (server.py:2134).
+- The app's "rebuild" sends the same CALL (server.py:2141).
 
 ## sql/3_cleanup.sql
 
-- All `(may fail)`: DROP_STREAMLIT, DROP_STAGE_APP, DROP_TASK, DROP_PROCEDURE, DROP_PROCEDURE_FINDINGS, DROP_FUNCTION_CAN / WHO_CAN / ACCESS_OF, DROP_STAGE_CODE, DROP_TABLE_* (10) (sql/3_cleanup.sql:11-65). Schema stays (sql/3_cleanup.sql:2).
+- All `(may fail)`: DROP_STREAMLIT, DROP_STAGE_APP, DROP_TASK, DROP_PROCEDURE, DROP_PROCEDURE_FINDINGS, DROP_FUNCTION_CAN / WHO_CAN / ACCESS_OF, DROP_STAGE_CODE, DROP_TABLE_* (10; header comment says 10 TBL_ACCESS_ tables, sql/3_cleanup.sql:1) (sql/3_cleanup.sql:11-65). Schema stays (sql/3_cleanup.sql:2).
 
 ## sql/4_streamlit.sql
 

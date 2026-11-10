@@ -28,27 +28,27 @@ sequenceDiagram
 
 ## Steps
 
-1. UI: "My access" button shown unless `meta.mine_available === false`; click -> `post("mine/load")` (Reload: `?fresh=1`) then switch view; switching to My access from `review`, `flow`, `changes` (SHARED_ONLY) and also from `home` lands on `access` — web/src/App.tsx:313-315, web/src/App.tsx:285, web/src/App.tsx:273.
-2. Endpoint: new random sid, `load_mine(sid, fresh)`, drop old sid, set cookie `ae_sid` (`max_age=TTL`, httponly, samesite strict, path `/api`) — server.py:2287-2295. Streamlit bridge does the same without cookie — st_react.py:35-39.
-3. `mine_off()` order: inside Snowflake -> off (owner's rights); `MY_ACCESS=1|0` decides; `HOST` not loopback -> off (shared server); Snowflake mode with `SNOWFLAKE_PRIVATE_KEY_FILE` -> off (service user); else on — server.py:126-142.
-4. `load_mine`: refused -> 409 `mine_unavailable`; expired entries dropped; Snowflake: cache key `cache.name("mine", SNOWFLAKE_USER or sid, WHERE)`, `fresh` drops it, reads `a.mine(q, WHERE db or None)`; errors -> 503 `mine_unreadable`; fake: `a.only(load_shared(), DEMO_USER)` — server.py:145-165.
-5. Build under a random key so sessions never share lookups; store `MINE[sid]` with data, key, user, time, cache key — server.py:166-171.
+1. UI: "My access" button shown unless `meta.mine_available === false`; click -> `post("mine/load")` (Reload: `?fresh=1`) then switch view; switching to My access from `review`, `flow`, `changes` (SHARED_ONLY, same set as `server.SHARED_ONLY`, server.py:37) lands on `access`; `home` stays home (`viewPage`) — web/src/App.tsx:317-319, web/src/App.tsx:289, web/src/App.tsx:277, web/src/App.tsx:27-30.
+2. Endpoint: new random sid, `load_mine(sid, fresh)`, drop old sid, set cookie `ae_sid` (`max_age=TTL`, httponly, samesite strict, path `/api`) — server.py:2294-2302. Streamlit bridge does the same without cookie — st_react.py:35-39.
+3. `mine_off()` order: inside Snowflake -> off (owner's rights); `MY_ACCESS=1|0` decides; `HOST` not loopback, or `ALLOWED_HOSTS` naming any host besides loopback (a proxy or tunnel) -> off (shared server) — server.py:138-139; Snowflake mode with `SNOWFLAKE_PRIVATE_KEY_FILE` -> off (service user); else on — server.py:126-144.
+4. `load_mine`: refused -> 409 `mine_unavailable`; expired entries dropped; Snowflake: cache key `cache.name("mine", SNOWFLAKE_USER or sid, WHERE)`, `fresh` drops it, reads `a.mine(q, WHERE db or None)`; errors -> 503 `mine_unreadable`; fake: `a.only(load_shared(), DEMO_USER)` — server.py:147-167.
+5. Build under a random key so sessions never share lookups; store `MINE[sid]` with data, key, user, time, cache key — server.py:168-173.
 6. `a.mine(query, db)`: writes nothing; `CURRENT_USER`, `CURRENT_DATABASE` if no db, `USE SECONDARY ROLES ALL`, `CURRENT_AVAILABLE_ROLES` — access.py:470-477.
 7. Grants per available role via `SHOW GRANTS TO ROLE` (parallel `each`), unreadable roles noted; database roles via `SHOW GRANTS TO DATABASE ROLE`, wave by wave — access.py:478-501.
 8. `APPLICABLE_ROLES` from the first database whose INFORMATION_SCHEMA works (fills links of unreadable roles) — access.py:502-513, access.py:459-467.
 9. Directly granted roles: `SHOW GRANTS TO USER`, else APPLICABLE_ROLES, else available roles no other role holds — access.py:514-523.
 10. Profile `DESC USER` (last login unknown, `LOGIN_UNKNOWN=True`); usage from ACCOUNT_USAGE 30 days, else INFORMATION_SCHEMA 7 days; tags / policies `UNAVAILABLE` — access.py:524-553.
 11. Fake demo: `a.only(d, user)` = one user's slice of the fake data, `RUN_ID="live"` — access.py:856-865; `DEMO_USER` default `ENGINEER_01` — server.py:24.
-12. Pages with `view=mine`: `session()` takes `MINE[sid]`, else 409 `mine_not_loaded` — server.py:183-187; `mine_entry` expires after `TTL` — server.py:108-113; `meta` drops `SHARED_ONLY` pages — server.py:2075-2076.
-13. Home in mine view: no `risks`, `per_rule`, `protection` — server.py:1059-1065. What changed refuses — server.py:1643-1644.
-14. Tests: `test_mine` — test_server.py:230; `test_mine_shared_server` — test_server.py:364.
+12. Pages with `view=mine`: `session()` takes `MINE[sid]`, else 409 `mine_not_loaded` — server.py:185-189; `mine_entry` expires after `TTL` — server.py:108-113; `meta` drops `SHARED_ONLY` pages — server.py:2082-2083.
+13. Home in mine view: no `risks`, `per_rule`, `protection` — server.py:1063-1069. What changed refuses — server.py:1650-1651.
+14. Tests: `test_mine` — test_server.py:235; `test_mine_shared_server` — test_server.py:395.
 
 ## Example (FAKE=1)
 
 - `server.mine_off()` -> `None` (local, loopback, fake).
 - With `HOST=0.0.0.0`: `"My access is off on a shared server: it would read with the server's login, not yours. ..."`; with `MY_ACCESS=0`: `"My access is turned off here (MY_ACCESS=0)."`.
 - `load_mine("sid1")` -> `loaded=True, user="ENGINEER_01"`; `GET /api/home?view=mine` -> `me.counts = {read:6, change:5, own:2, admin:0, usage:8, runnable:4, account:3}`, `risks = None`.
-- `POST /api/mine/load` -> 200, `Set-Cookie: ae_sid=<32 hex>; HttpOnly; Max-Age=86400; Path=/api; SameSite=strict` (attributes from server.py:2294).
+- `POST /api/mine/load` -> 200, `Set-Cookie: ae_sid=<32 hex>; HttpOnly; Max-Age=86400; Path=/api; SameSite=strict` (attributes from server.py:2301).
 - Statements `a.mine(q, "DB1")` sends with a mock (roles `F_ENGINEER`, `PUBLIC`; values are mock data):
   `SELECT CURRENT_USER()`, `USE SECONDARY ROLES ALL`, `SELECT CURRENT_AVAILABLE_ROLES()`, `SHOW GRANTS TO ROLE "F_ENGINEER"`, `SHOW GRANTS TO ROLE "PUBLIC"`, `SELECT GRANTEE, ROLE_NAME FROM "DB1".INFORMATION_SCHEMA.APPLICABLE_ROLES`, `SHOW GRANTS TO USER "ENGINEER_01"`, `DESC USER "ENGINEER_01"`, `WITH Q AS (... ACCOUNT_USAGE.QUERY_HISTORY ...)`.
   Result `run.SOURCES = {grants: "SHOW GRANTS TO ROLE", user_roles: "SHOW GRANTS TO USER", usage: "ACCOUNT_USAGE", tags: "UNAVAILABLE", policies: "UNAVAILABLE"}`.

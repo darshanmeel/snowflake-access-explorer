@@ -83,6 +83,8 @@ button.ae-chip { cursor: pointer; }
 .ae-nowrap { white-space: nowrap; }
 .ae-truncate { max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ae-sort { font-size: 9px; margin-left: 4px; }
+.ae-th-btn { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; white-space: nowrap; }
+.ae-th-btn:focus-visible { outline: 2px solid var(--ae-accent); outline-offset: 2px; }
 .ae-link { font: inherit; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; text-align: left;
   text-decoration: underline; text-decoration-color: var(--ae-line); text-underline-offset: 3px; max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; }

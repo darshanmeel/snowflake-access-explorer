@@ -24,6 +24,10 @@ import { UsagePageView } from "./pages/Usage";
 import { WhatIfPageView } from "./pages/Whatif";
 import { UserPage } from "./pages/User";
 
+// server.SHARED_ONLY: pages about everyone, not in My access (home is in both)
+const SHARED_ONLY: Page[] = ["review", "flow", "changes"];
+/** The page to show after switching to the shared view or My access. */
+export const viewPage = (page: Page, mine: boolean): Page => (mine && SHARED_ONLY.includes(page) ? "access" : page);
 const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif", "usage", "changes"];
 const LABEL: Record<Page, string> = {
   home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "Object", check: "Can they?", graph: "Access graph",
@@ -270,7 +274,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
     for (const [k, v] of Object.entries(patch)) { if (v) params[k] = v; else delete params[k]; }
     go({ ...loc, params }, true);
   }, [go, loc]);
-  const setView = (mine: boolean) => go({ page: mine && ["review", "flow", "changes", "home"].includes(loc.page) ? "access" : loc.page, params: {}, mine }); // shared-only pages are not in My access
+  const setView = (mine: boolean) => go({ page: viewPage(loc.page, mine), params: {}, mine });
 
   // one at a time: a second click while Snowflake is being read does nothing (the buttons are disabled too)
   const running = useRef(false);

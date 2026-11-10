@@ -51,9 +51,10 @@ const KIND_SHORT: Record<string, string> = { user: "user", functional: "function
 /** Pick one value from a long list: the server searches as you type (what= users / roles / objects or a comma list,
  * 50 hits a keystroke, never the whole account), or `options` when the list is already small (holders on What if).
  * onPick gets the item too: its kind tells a user from a role of the same name. */
-export function Pick({ label, value, what, params, options, onPick, width = 240 }: {
+export function Pick({ label, value, what, params, options, onPick, width = 240, user }: {
   label: string; value: string; what?: string; params?: Record<string, string | undefined>; options?: string[];
   onPick: (v: string, item: ListItem) => void; width?: number;
+  user?: boolean; // the shown value is a user (true) or a role: users and roles share names, so the same id can be a new pick
 }) {
   const c = useApp();
   const search = (q: string): Promise<ListItem[]> => options
@@ -63,7 +64,7 @@ export function Pick({ label, value, what, params, options, onPick, width = 240 
     <label className="ae-field">
       <span>{label}</span>
       <Combo<ListItem> label={label} value={value} width={width} placeholder="type to search" search={search} keyOf={(i) => i.id}
-        onPick={(i) => { if (i.id !== value) onPick(i.id, i); }}
+        onPick={(i) => { if (i.id !== value || (user !== undefined && (i.kind === "user") !== user)) onPick(i.id, i); }}
         render={(i) => <><span className="ae-mono">{i.id}</span>{(i.kind || i.type) && <span className="ae-muted">{i.kind && i.kind !== "object" ? KIND_SHORT[i.kind] ?? i.kind : (i.type ?? "").toLowerCase()}</span>}</>} />
     </label>
   );

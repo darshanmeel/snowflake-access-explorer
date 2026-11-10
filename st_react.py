@@ -37,7 +37,7 @@ def answer(method, url, body, sid):
             out = server.clean(server.load_mine(new, p.get("fresh") == "1"))
             server.MINE.pop(sid, None)  # as the local server's mine_load: the previous data set is not kept
             return 200, out, new
-        if name.endswith(".csv"):
+        if name.endswith(".csv") and name[:-4] in server.CSV:
             return 200, server.serve_csv(name[:-4], p, sid)[1], sid
         if name in server.ROUTES:
             return 200, server.serve(name, p, sid), sid

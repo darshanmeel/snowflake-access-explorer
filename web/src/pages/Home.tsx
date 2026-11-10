@@ -65,7 +65,8 @@ export function HomePageView() {
   const c = useApp();
   const s = useApi<HomePage>("home", { view: c.view });
   const [q, setQ] = useState("");
-  const [items, setItems] = useState<FindItem[]>([]);
+  const [hits, setHits] = useState<{ q: string; items: FindItem[] }>({ q: "", items: [] });
+  const items = hits.items;
   const box = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const f = (e: KeyboardEvent) => { if (e.key === "/" && document.activeElement?.tagName !== "INPUT") { e.preventDefault(); box.current?.focus(); } };
@@ -73,16 +74,17 @@ export function HomePageView() {
     return () => removeEventListener("keydown", f);
   }, []);
   useEffect(() => {
-    if (q.trim().length < 2 || parseQuestion(q)) { setItems([]); return; }
-    const t = setTimeout(() => { get<{ items: FindItem[] }>("find", { q, view: c.view, limit: "24" }).then((r) => setItems(r.items), () => setItems([])); }, 160);
-    return () => clearTimeout(t);
+    if (q.trim().length < 2 || parseQuestion(q)) { setHits({ q, items: [] }); return; }
+    let live = true; // a slow answer for older text must not replace the newer one
+    const t = setTimeout(() => { get<{ items: FindItem[] }>("find", { q, view: c.view, limit: "24" }).then((r) => live && setHits({ q, items: r.items }), () => live && setHits({ q, items: [] })); }, 160);
+    return () => { live = false; clearTimeout(t); };
   }, [q, c.view]);
   const openItem = (i: FindItem) => openFound(i, c.nav);
   const ask = parseQuestion(q);
   const screens = ask ? [] : screensFor(q, c.meta.pages);
   const go = () => {
     if (ask) c.nav("check", { name: ask.who, obj: ask.what, priv: ask.priv });
-    else if (items[0]) openItem(items[0]);
+    else if (hits.q === q && items[0]) openItem(items[0]); // Enter waits for the hits of the text now in the box
   };
   const rec = recent();
   const [rows, setRows] = useState(false);

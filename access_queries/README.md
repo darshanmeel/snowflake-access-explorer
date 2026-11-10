@@ -78,7 +78,7 @@ names), then one path:
 - **Path B:** the same eight examples as plain queries, nothing created.
 - The eight: a user's roles; a user's access; does a user reach an object and how; everything a role grants; who holds a
   role (upwards, users included); which users can use an object; users that reach it through more than `MIN_DEPTH` roles;
-  a user's access summed up as objects per role and privilege.
+  a user's access summed up as objects per privilege, by the closest role holding it.
 - The cells are generated, not typed: `python access_queries/make_notebook.py` rewrites the file, `test_queries.py`
   fails when it is out of date or a cell differs from its file.
 
@@ -99,7 +99,9 @@ names), then one path:
   Compared exactly as stored: unquoted names are upper case.
 - **Admin roles** (`ACCOUNTADMIN`, `SECURITYADMIN`, `SYSADMIN`, `USERADMIN`, `ORGADMIN`): links granted *to* them are
   left out, since every custom role sits under `SYSADMIN` and every user would seem to reach everything through it.
-  *Holding* an admin role is kept: `4_role_holders.sql` with `SECURITYADMIN` lists who has it.
+  *Holding* an admin role is kept: `4_role_holders.sql` with `SECURITYADMIN` lists who holds it directly or
+  through a custom role. Links *between* admin roles are left out too (as in the app), so a user who holds only
+  `ACCOUNTADMIN` is not listed under `SECURITYADMIN` or `SYSADMIN`: check `ROLE_NAME = 'ACCOUNTADMIN'` as well.
 - **PUBLIC**: every user holds it, granted or not (users from `USERS` and `GRANTS_TO_USERS`). An unknown user name
   returns no rows.
 - **Snowflake's own grants** through PUBLIC (`SNOWFLAKE.*` database roles, `SYSTEM_COMPUTE_POOL_*`, `SYSTEM$*`,

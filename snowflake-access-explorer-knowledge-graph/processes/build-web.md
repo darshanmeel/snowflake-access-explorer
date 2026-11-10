@@ -22,7 +22,7 @@ flowchart LR
 - `build` -> `dist/` (local SPA served by server.py); `build:st` -> `dist-st/` (relative paths, no CDN, no worker, no data: URLs, one JS + one CSS) — web/vite.config.ts:22-24.
 - st mode: root `web/st`, `assetsInlineLimit 0`, `inlineDynamicImports`, strips `crossorigin` — web/vite.config.ts:26-39.
 - Each build writes `src-hash.txt` (sha256 of non-test `.ts/.tsx/.css` in web/src) — web/vite.config.ts:8-20.
-- `test_bundles_fresh` compares `src-hash.txt` of both bundles with web/src — test_server.py:429-441.
+- `test_bundles_fresh` compares `src-hash.txt` of both bundles with web/src — test_server.py:463-475.
 - Streamlit entry: `web/st/index.html` -> `web/src/st/main.tsx`; protocol hand-written in `web/src/st/protocol.ts` — web/ST.md:15-17. `web/dist-st/` committed because SiS cannot run npm — web/ST.md:19.
 - Deploy expects exactly 4 assets (one JS, one CSS, two fonts) — web/ST.md:12, sql/4_streamlit_verify.sql:10-12.
 

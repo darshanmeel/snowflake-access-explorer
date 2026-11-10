@@ -42,14 +42,14 @@ flowchart LR
 | `only(d, user)` | `"live"` | `access.py:856-865` | demo of mine() |
 
 - Shared data chosen by `server.read_shared` `server.py:87-88` (fake / live / snapshot by MODE and SOURCE from `cache.config()` `cache.py:27-40`, `server.py:21`), cached via `load_shared` `server.py:91-100`.
-- My access: `server.py:155-159` (`cache.get(cache.name("mine", ...), a.mine)`).
-- SP_ACCESS_FINDINGS also builds it inside Snowflake: `sql/1_setup.sql:723-724`.
+- My access: `server.py:157-161` (`cache.get(cache.name("mine", ...), a.mine)`).
+- SP_ACCESS_FINDINGS also builds it inside Snowflake: `sql/1_setup.sql:743-744`.
 
 ## Kept where
 
 - Memory `cache.MEM`, 24 h (`TTL`): `cache.py:22-23,95-98`.
 - `.cache/<key>.pkl` for `CACHE_HOURS` (24, 0 = memory only), not inside Snowflake: `cache.py:21,51-57,99-114`.
-- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:67-81`; read by `cache.prev` `cache.py:84-90` for What changed `server.py:1648`.
-- `drop` sets the file aside as `.old.pkl` (Read again): `cache.py:129-135`.
+- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:67-81`; read by `cache.prev` `cache.py:84-90` for What changed `server.py:1655`.
+- `drop` sets the file aside as `.old.pkl` (Read again): `cache.py:132-140`.
 - Cache key = account, source/what, snapshot location, user, role: `cache.py:43-48`; server `KEY` `server.py:23`.
 - `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:883-884,903-909`.

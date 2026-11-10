@@ -201,7 +201,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <ul>
 <li>What if is a simulation only: nothing is revoked; the text goes to the change team.</li>
 <li>My access reads with the person's own login and writes nothing.</li>
-<li>My access is off inside Snowflake, on a shared server and with a key-pair login.</li>
+<li>My access is off inside Snowflake, on a shared server (also behind a proxy or tunnel named in ALLOWED_HOSTS) and with a key-pair login.</li>
 <li>MY_ACCESS=1 turns it on when the key pair is your own user.</li>
 </ul>
 <p class="src">CLAUDE.md:63 · README.md:20, 216-217 · access.py:3920-4096 (restore in finally) · server.py:126-143</p>
@@ -243,6 +243,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>My access only with your own SSO login (or MY_ACCESS=1).</li>
 <li>Shows What changed.</li>
 <li>Keeps a copy of what it read for 24 hours on your computer.</li>
+<li>Only your own computer can open it (web and Streamlit listen on 127.0.0.1 by default).</li>
 <li>Needs Python 3.10+ and git; no Node or npm.</li>
 </ul></div>
 <div class="card"><h3>Inside Snowflake</h3>
@@ -330,6 +331,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>An automated test records every statement the app sends and allows reads only.</li>
 <li>The only exception it allows: running the snapshot procedure.</li>
 <li>Inside Snowflake it keeps nothing on disk, memory only.</li>
+<li>CSV downloads cannot run spreadsheet formulas: a cell starting with = + - @ is marked as text.</li>
 <li>The queries without the app also only read Snowflake's account history.</li>
 </ul>
 <p class="src">test_server.py:322-342 test_read_only · README.md:22, 328 · CLAUDE.md:6, 9-13, 15, 24, 63 · access_queries/README.md:4, 90</p></section>

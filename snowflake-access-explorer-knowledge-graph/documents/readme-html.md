@@ -19,5 +19,5 @@ flowchart LR
 - Streamlit in Snowflake: two options — README.html:648; Query with SQL (DuckDB) — README.html:662; Role model — README.html:679; SQL without the app — README.html:687; Data sources — README.html:700-703; Settings (env vars) — README.html:708-710; Limits — README.html:711.
 
 ## Relates to
-- Generated parts: docs/make_readme.py — docs/make_readme.py:148-155; checked by test_readme_rules — test_access.py:1688-1698.
+- Generated parts: docs/make_readme.py — docs/make_readme.py:148-155; checked by test_readme_rules — test_access.py:1716-1726.
 - Only place the daily task SQL is written — README.html:638-640.

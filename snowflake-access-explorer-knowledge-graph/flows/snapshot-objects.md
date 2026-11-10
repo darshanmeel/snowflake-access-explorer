@@ -39,16 +39,16 @@ sequenceDiagram
 1. Settings resolve once at import: `MODE, SOURCE, WHERE = cache.config()` — server.py:21; objects chosen when `SOURCE=objects` or only `ACCESS_SNAPSHOT` is set; location = `ACCESS_SNAPSHOT` or `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA`, else ValueError — cache.py:27-40.
 2. Cache key per account + source + location + user + role: `KEY = cache.name(SOURCE, where=WHERE)` — server.py:23, cache.py:43-48.
 3. React fetches the page JSON with `get()` (memoised per URL) — web/src/api/client.ts:35-44; Home: `useApi("home", {view})` — web/src/pages/Home.tsx:66.
-4. `serve(name, params, sid)` opens `session(view, ...)`, calls `ROUTES[name]`, adds `refs` for pages in `WITH_REFS` — server.py:2196-2203, server.py:2187-2192.
-5. `session("shared")` calls `load_shared(ask=True)` and builds the lookups under `LOCK` with the run as key — server.py:175-195.
+4. `serve(name, params, sid)` opens `session(view, ...)`, calls `ROUTES[name]`, adds `refs` for pages in `WITH_REFS` — server.py:2203-2210, server.py:2194-2199.
+5. `session("shared")` calls `load_shared(ask=True)` and builds the lookups under `LOCK` with the run as key — server.py:177-197.
 6. `load_shared` takes `LOAD` (one Snowflake read at a time) and calls `cache.get(KEY, read_shared, disk=MODE=="snowflake")`; errors become `503 shared_unreadable` — server.py:91-100.
-7. `cache.get`: memory if younger than `TTL` (24 h), else the `.cache/<key>.pkl` file if younger than `CACHE_HOURS`, else `fn()` — cache.py:93-116. Memory TTL — cache.py:22; `CACHE_HOURS` — cache.py:21.
+7. `cache.get`: memory if younger than `TTL` (24 h), else the `.cache/<key>.pkl` file if younger than `CACHE_HOURS`, else `fn()` — cache.py:93-119. Memory TTL — cache.py:22; `CACHE_HOURS` — cache.py:21.
 8. `read_shared()` -> `with_query(lambda q: a.snapshot(q, WHERE))` — server.py:87-88; `with_query` opens one connection, runs every statement via `sf.rows`, closes only if `sf.owned()` — server.py:71-84.
 9. `sf.connect()`: inside Snowflake the app's own session (`a.INSIDE`) — sf.py:20-22; else key pair if `SNOWFLAKE_PRIVATE_KEY_FILE`, else SSO `externalbrowser` — sf.py:23-41; `sf.rows` is the only read path — sf.py:49-53.
 10. `a.snapshot(query, where)`: last OK run from `TBL_ACCESS_RUN`, error if none; then `SELECT *` per table in `TABLES` filtered by `RUN_ID`; `OPTIONAL` (`OBJECT_USE`) may be missing -> `None` — access.py:401-416, access.py:58-59.
-11. On a fresh read: DuckDB SQL copy if wanted — cache.py:107-108, cache.py:171-176, cache.py:183-240; previous file kept as `<key>.prev.pkl` (for What changed) — cache.py:72-81; atomic write via `.tmp` — cache.py:109-114.
+11. On a fresh read: DuckDB SQL copy if wanted — cache.py:110-111, cache.py:176-181, cache.py:188-245; previous file kept as `<key>.prev.pkl` (for What changed) — cache.py:72-81; atomic write via `.tmp` — cache.py:112-117.
 12. `a.build(d, key, builtin)` fills module lookups; same key skips work; keeps up to `KEEP_BUILT` data sets — access.py:896-960, access.py:883.
-13. Page handler (e.g. `home_page`) reads only lookups / `S["rows"]` — server.py:1044-1065; `clean()` makes JSON-safe output — server.py:200.
+13. Page handler (e.g. `home_page`) reads only lookups / `S["rows"]` — server.py:1048-1069; `clean()` makes JSON-safe output — server.py:202.
 
 ## Sequence: refresh and rebuild
 
@@ -73,12 +73,12 @@ sequenceDiagram
     end
 ```
 
-14. Buttons: "Rebuild snapshot" (not in fake mode) — web/src/App.tsx:316 -> `post("reload", {what:"rebuild"})` — web/src/App.tsx:288-291; side "Read Snowflake again" -> `{what:"page"}` — web/src/App.tsx:244, web/src/App.tsx:286. After any action `clearCache()` — web/src/App.tsx:283.
-15. `reload("rebuild")`: fake -> "Demo: the CALL runs only on Snowflake"; objects -> `CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')` through `with_query`; non-OK status returns `ok=False` and keeps the copy; OK -> `cache.drop(KEY)` — server.py:2126-2145.
-16. `reload("page")`: `cache.drop(KEY)` only (objects: next page reads again) — server.py:2149-2152.
-17. `cache.drop`: out of memory, local file set aside as `.old.pkl` so it becomes `.prev.pkl` on the next read — cache.py:129-135, cache.py:72-81.
-18. Procedure (owner's rights): skips if a run is `RUNNING` within 1 h; inserts RUNNING row, fills each table, FAILED deletes this run's rows, OK deletes older runs' rows — sql/1_setup.sql:122-128, sql/1_setup.sql:497-540.
-19. Read-only guard: `test_read_only` records every statement and allows only reads plus the `SP_ACCESS_SNAPSHOT` CALL — test_server.py:322.
+14. Buttons: "Rebuild snapshot" (not in fake mode) — web/src/App.tsx:320 -> `post("reload", {what:"rebuild"})` — web/src/App.tsx:292-295; side "Read Snowflake again" -> `{what:"page"}` — web/src/App.tsx:248, web/src/App.tsx:290. After any action `clearCache()` — web/src/App.tsx:287.
+15. `reload("rebuild")`: fake -> "Demo: the CALL runs only on Snowflake"; objects -> `CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')` through `with_query`; non-OK status returns `ok=False` and keeps the copy; OK -> `cache.drop(KEY)` — server.py:2133-2152.
+16. `reload("page")`: `cache.drop(KEY)` only (objects: next page reads again) — server.py:2156-2159.
+17. `cache.drop`: out of memory, local file set aside as `.old.pkl` so it becomes `.prev.pkl` on the next read — cache.py:132-140, cache.py:72-81.
+18. Procedure (owner's rights): inserts its RUNNING row, then steps back (deletes its row, `SKIPPED`) unless it is the earliest RUNNING run of the last hour (sql/1_setup.sql:515-523); fills each table, FAILED deletes this run's rows, OK deletes older runs' rows except those of a run RUNNING for under a day (sql/1_setup.sql:554-559) — sql/1_setup.sql:122-128, sql/1_setup.sql:510-560.
+19. Read-only guard: `test_read_only` records every statement and allows only reads plus the `SP_ACCESS_SNAPSHOT` CALL — test_server.py:328.
 
 ## Example (FAKE=1, mock query; no Snowflake)
 

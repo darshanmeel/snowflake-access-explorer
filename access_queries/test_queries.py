@@ -27,8 +27,8 @@ def account_usage(d):
         if g["IS_FUTURE"]:
             continue
         on, o, r = g["GRANTED_ON"], g["OBJECT_NAME"], g["GRANTEE_ROLE"]
-        if on == "DATABASE":
-            cat, sch, name = o, None, o
+        if on == "DATABASE":  # TABLE_CATALOG left NULL, so the grantee of a database role comes from NAME
+            cat, sch, name = None, None, o
         elif on == "SCHEMA":
             (cat, name), sch = o.split(".", 1), None
         else:
@@ -37,7 +37,7 @@ def account_usage(d):
         to, grantee = "ROLE", r
         if "." in r:  # a database role: ACCOUNT_USAGE has its bare name, the database is the granted object's
             to, (db, grantee) = "DATABASE_ROLE", r.split(".", 1)
-            assert db == cat, g
+            assert db == (o if on == "DATABASE" else cat), g
         roles.append((g["PRIVILEGE"], on, name, cat, sch, to, grantee, False, None))
     roles.append(("SELECT", "TABLE", "TBL_CUSTOMER", "SALES", "CORE", "ROLE", "GRP_ANALYSTS", False, GONE))
     roles.append(("USAGE", "ROLE", "SYSADMIN", None, None, "ROLE", f"{F}ANALYST", False, GONE))
@@ -103,8 +103,10 @@ def expect(items, top):
 FAILS = []
 
 
-def same(what, got, want):
-    """got: {key: (fields, depth, ways, path)} from SQL against expect()."""
+def same(what, got, want, rows):
+    """got: {key: (fields, depth, ways, path)} from SQL against expect(); rows: the SQL rows, one per key."""
+    if len(rows) != len(got):
+        FAILS.append(f"{what}: {len(rows)} rows for {len(got)} answers")
     for k in sorted(set(got) | set(want), key=str):
         if k not in want:
             FAILS.append(f"{what}: SQL only {k} {got[k]}")
@@ -119,7 +121,7 @@ def user_roles(con, user, top=20, builtin=False):
     got = {r["ROLE_NAME"]: ((r["ROLE_KIND"],), r["DEPTH"], r["WAYS"], r["PATH"]) for r in rows}
     want = expect([(p[-1], (kind(p[-1]),), a.depth(p, True), " > ".join(p)) for p in a.walk(user, True)
                    if user in a.users], top)  # an unknown name gets no PUBLIC here, unlike access.py
-    same(f"1_user_roles {user} {top}", got, want)
+    same(f"1_user_roles {user} {top}", got, want, rows)
     return got
 
 
@@ -131,7 +133,7 @@ def access(con, name, user, top=20, builtin=False):
     want = expect([((pv, k, o), (), a.depth(p, user), (" > ".join(p), p[-1])) for pv, k, o, p in a.access_of(name, user)
                    if not user or name in a.users],
                   top)
-    same(f"{file} {name} {top}", got, want)
+    same(f"{file} {name} {top}", got, want, rows)
     return got
 
 
@@ -148,7 +150,7 @@ def holders(con, role, top=20, builtin=False):
     rows = run(con, "4_role_holders.sql", ROLE_NAME=role, MAX_DEPTH=top, SHOW_BUILTIN=builtin)
     got = {(r["HOLDER"], r["HOLDER_KIND"]): ((), r["DEPTH"], r["WAYS"], r["PATH"]) for r in rows}
     want = expect([((x, k), (), d, p) for x, k, d, p in up_items(role)], top)
-    same(f"4_role_holders {role} {top}", got, want)
+    same(f"4_role_holders {role} {top}", got, want, rows)
     return got
 
 
@@ -161,7 +163,7 @@ def object_users(con, obj, priv="", top=20, builtin=False):
         if priv in ("", pv):
             items += [((x, kd, pv, k), (), d, (p, r)) for x, kd, d, p in up_items(r)]
             items.append(((r, kind(r), pv, k), (), 1, (r, r)))
-    same(f"5_object_users {obj} {priv!r} {top}", got, expect(items, top))
+    same(f"5_object_users {obj} {priv!r} {top}", got, expect(items, top), rows)
     return got
 
 
@@ -212,6 +214,8 @@ def notebook():
         plain = re.sub(r"\nORDER BY [^\n]*$", "", body((HERE / f).read_text(encoding="utf-8")))
         if plain not in code.get(f"b_{n}", ""):
             FAILS.append(f"notebook: b_{n} does not hold the query of {f}")
+    for n in [n for n in code if n.startswith("a_") and "$SHOW_BUILTIN" not in code[n]]:
+        FAILS.append(f"notebook: {n} does not pass $SHOW_BUILTIN, so path A and B can differ")
     if len(code) != 1 + len(fns) + 2 * len(m.EXAMPLES):
         FAILS.append(f"notebook: {len(code)} code cells")
 

@@ -21,19 +21,19 @@ flowchart LR
 
 ## test_access.py
 - Forces `FAKE=1` — test_access.py:12.
-- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:1701-1720.
-- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1075-1093.
-- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:463, CLAUDE.md:22; `test_pages` — test_access.py:646; `test_sis_upload` — test_access.py:679; `test_counted` — test_access.py:869; `test_readme_rules` (README.html generated parts up to date) — test_access.py:1688-1698.
+- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:1747-1766.
+- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1099-1117.
+- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:463, CLAUDE.md:22; `test_pages` — test_access.py:646; `test_sis_upload` — test_access.py:679; `test_counted` — test_access.py:869; `test_readme_rules` (README.html generated parts up to date) — test_access.py:1716-1726.
 
 ## test_sql.py
 - Forces `FAKE=1`, imports `duckdb` (so requirements-web.txt / dev needed) — test_sql.py:12-14, requirements-dev.txt:3.
 - Loads a data set into DuckDB as the `TBL_ACCESS_` tables — test_sql.py:31, test_sql.py:71.
-- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:342-345.
-- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:544.
+- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:452-456.
+- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:564.
 
 ## test_server.py
-- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:676-681.
-- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:322, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:262; `test_same_site` — test_server.py:389; `test_bundles_fresh` — test_server.py:429.
+- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:756-761.
+- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:328, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:267; `test_same_site` — test_server.py:423; `test_bundles_fresh` — test_server.py:463.
 - Uses FastAPI TestClient via httpx — requirements-dev.txt:4.
 
 ## Web (vitest)

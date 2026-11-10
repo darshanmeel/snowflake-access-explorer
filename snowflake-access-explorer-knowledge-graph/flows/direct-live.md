@@ -36,9 +36,9 @@ sequenceDiagram
 ## Steps
 
 1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:31-36; `DIRECT = SOURCE == "direct"` — server.py:22.
-2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` — server.py:91-95, cache.py:119-126.
-3. `meta()` catches it and sends `error` so the UI shows the load card — server.py:2088-2104; React: `needShared` and the "Load shared data" button — web/src/App.tsx:301, web/src/App.tsx:344, `post("reload", {what:"load"})` — web/src/App.tsx:287.
-4. `reload({"what":"load"})` -> `load_shared()` — server.py:2146-2148; refresh `{what:"page"}` / `rebuild` drop the cache and read again at once in direct mode — server.py:2142-2152.
+2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` — server.py:91-95, cache.py:122-129.
+3. `meta()` catches it and sends `error` so the UI shows the load card — server.py:2095-2111; React: `needShared` and the "Load shared data" button — web/src/App.tsx:305, web/src/App.tsx:348, `post("reload", {what:"load"})` — web/src/App.tsx:291.
+4. `reload({"what":"load"})` -> `load_shared()` — server.py:2153-2155; refresh `{what:"page"}` / `rebuild` drop the cache and read again at once in direct mode — server.py:2149-2159.
 5. `read_shared()` -> `with_query(a.live)` — server.py:87-88, server.py:71-84.
 6. `live(query)` setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` (may be refused -> `None`) — access.py:583-592.
 7. Grants: ACCOUNT_USAGE `GRANTS_TO_ROLES` / `GRANTS_TO_USERS` if both readable (database role grantee qualified as `DB.ROLE`), else `SHOW ROLES` + `SHOW GRANTS TO/OF ROLE` per role and database roles per database; skipped roles land in notes — access.py:599-644.
@@ -48,7 +48,7 @@ sequenceDiagram
 11. Object use: ACCESS_HISTORY only (`use_sql`), else empty + note — access.py:819-827, access.py:839-853. Streams: `SHOW STREAMS IN ACCOUNT` — access.py:829-835.
 12. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)` — access.py:836.
 13. Parallel SHOW statements: `each()` runs `SHOW_THREADS` (16) at a time, returning exceptions instead of failing — access.py:437-451.
-14. Kept with `cache.get` (memory + file); SQL copy gets run id `direct-<timestamp>` — cache.py:195-196.
+14. Kept with `cache.get` (memory + file); SQL copy gets run id `direct-<timestamp>` — cache.py:200-201.
 15. Must stay in step with `SP_ACCESS_SNAPSHOT` (rule in docstring) — access.py:560-563; checked by `test_live` — test_access.py:463 and `test_live_inside` (SHOW, USE SECONDARY ROLES, CURRENT_DATABASE refused) — test_access.py:499.
 
 ## Example (mock query that answers everything empty; no Snowflake)

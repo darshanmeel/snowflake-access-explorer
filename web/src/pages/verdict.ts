@@ -3,7 +3,6 @@
 import type { CheckPage, Nearest, Subject, WhatIfChange } from "../api/types";
 
 type Patch = Record<string, string | null>;
-import type { Change } from "../components/codegen";
 
 type Edge = CheckPage["cuts"][number]["edges"][number];
 
@@ -27,13 +26,6 @@ export function cutTexts(cut: { iac: string; sql: string }, user: string): { sql
       "Reason: (fill in)", "Approver: (owner of the object)",
       "Apply through infrastructure as code; manual grants are removed by reconciliation."].join("\n") + "\n",
   };
-}
-
-/** The revokes of one cut as CodeOutput changes (text only). */
-export function cutChanges(es: Edge[], objectType: string): Change[] {
-  return es.map((e) => e.priv
-    ? { op: "revoke", privilege: e.priv, objectType, object: e.to, to: e.grantee }
-    : { op: "revoke", role: e.to, to: e.grantee, toUser: e.user });
 }
 
 /** The same cut for the What if page. */

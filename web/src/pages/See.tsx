@@ -22,7 +22,7 @@ export function SeePageView() {
     <>
       <div className="ae-headrow">
         {mine ? <h2 className="ae-h1">What I see</h2> : (
-          <div className="ae-h1 ae-h1-pick">What <Pick label="Person or role" value={id} what={subjects(mine)} width={260}
+          <div className="ae-h1 ae-h1-pick">What <Pick label="Person or role" value={id} user={!role} what={subjects(mine)} width={260}
             onPick={(v, i) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null })} /> sees</div>
         )}
       </div>

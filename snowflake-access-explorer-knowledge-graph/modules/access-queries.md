@@ -23,15 +23,15 @@ flowchart LR
 | File | Answers | Mirrors in the app | path:line |
 |---|---|---|---|
 | `1_user_roles.sql` | Every role a user holds, shortest PATH, WAYS | `access.walk()` (access.py:1426) | access_queries/1_user_roles.sql:1-74 |
-| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:1894) | access_queries/2_user_access.sql:1-83 |
-| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:1894) | access_queries/3_role_access.sql:1-70 |
-| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:1358) | access_queries/4_role_holders.sql:1-76 |
-| `5_object_users.sql` | Who reaches one exact object (and privilege) | `access.on` + `up()` | access_queries/5_object_users.sql:1-88 |
-| `functions.sql` | The five as table functions `AQ_USER_ROLES` ... `AQ_OBJECT_USERS` in `AQ_DB.AQ_SCHEMA` | | access_queries/functions.sql:1-333 |
-| `access_examples.ipynb` | Snowflake Notebook: inputs cell, 5 `create_N` cells, 8 examples twice (`a_*` call the functions, `b_*` plain queries) | | access_queries/access_examples.ipynb:1-1290 |
+| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:1897) | access_queries/2_user_access.sql:1-83 |
+| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:1897) | access_queries/3_role_access.sql:1-70 |
+| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:1358) | access_queries/4_role_holders.sql:1-77 |
+| `5_object_users.sql` | Who reaches one exact object (and privilege) | `access.on` + `up()` | access_queries/5_object_users.sql:1-92 |
+| `functions.sql` | The five as table functions `AQ_USER_ROLES` ... `AQ_OBJECT_USERS` in `AQ_DB.AQ_SCHEMA` | | access_queries/functions.sql:1-337 |
+| `access_examples.ipynb` | Snowflake Notebook: inputs cell, 5 `create_N` cells, 8 examples twice (`a_*` call the functions, `b_*` plain queries) | | access_queries/access_examples.ipynb:1-1302 |
 | `make_notebook.py` | Builds `access_examples.ipynb` from the files and `functions.sql` | | access_queries/make_notebook.py:1-121 |
-| `test_queries.py` | Files vs `access.py` on DuckDB; function bodies vs files; notebook current | | access_queries/test_queries.py:1-275 |
-| `README.md` | How to run, privileges, rules, limits, example output, test | | access_queries/README.md:1-160 |
+| `test_queries.py` | Files vs `access.py` on DuckDB; function bodies vs files; notebook current | | access_queries/test_queries.py:1-279 |
+| `README.md` | How to run, privileges, rules, limits, example output, test | | access_queries/README.md:1-162 |
 
 Graph ids: each query file is `task:access_queries/<file>:<stem>` (the query from the first `SET` line to the end), each function `function:sql:AQ_*`, each notebook code cell `task:access_queries/<notebook>:<cell>`, each check in test_queries.py a `test_case`.
 
@@ -42,36 +42,38 @@ Graph ids: each query file is `task:access_queries/<file>:<stem>` (the query fro
 - `GR`: hides Snowflake built-ins via PUBLIC unless `SHOW_BUILTIN`, the `BUILTIN` patterns of access.py:50 (access_queries/2_user_access.sql:36-42).
 - `EDGE`: role links = USAGE on ROLE / DATABASE_ROLE; links granted to `ADMIN` roles (access.py:43) left out (access_queries/2_user_access.sql:43-47).
 - `PRIV` (2, 3, 5): every other grant, OWNERSHIP of a role too (access_queries/2_user_access.sql:48-51).
-- `UR`, `ALL_USERS`, `ME`, `STARTS` (1, 2) or `MEMBER` (4, 5): every user holds PUBLIC, granted or not, never twice (access_queries/2_user_access.sql:52-65, access_queries/4_role_holders.sql:49-59).
-- `WALK` (down) / `UP` (up): recursive, every simple path; `SEEN` stops cycles, `MAX_DEPTH` stops depth (access_queries/2_user_access.sql:66-74, access_queries/4_role_holders.sql:60-68).
+- `UR`, `ALL_USERS`, `ME`, `STARTS` (1, 2) or `MEMBER` (4, 5): every user holds PUBLIC, granted or not, never twice (access_queries/2_user_access.sql:52-65, access_queries/4_role_holders.sql:50-60).
+- `WALK` (down) / `UP` (up): recursive, every simple path; `SEEN` stops cycles, `MAX_DEPTH` stops depth (access_queries/2_user_access.sql:66-74, access_queries/4_role_holders.sql:61-69).
 - `ROLES` (2, 3): one row per role (shortest DEPTH / PATH, `ROLE_WAYS`) before the join to `PRIV`, so rows never grow as paths x privileges; per object `WAYS = SUM(ROLE_WAYS)` (access_queries/2_user_access.sql:75-82).
-- `H` (4, 5): holder roles above (depth > 1) plus users through `MEMBER` (access_queries/4_role_holders.sql:69-72, access_queries/5_object_users.sql:78-82).
+- `HELD` (5): the grants on the object; `UP` walks once per holder (`DISTINCT` grantee, kind), not once per privilege, and `H` joins each privilege of the holder back, so the walk never grows as paths x privileges (access_queries/5_object_users.sql:67-86).
+- `H` (4, 5): holder roles above (depth > 1) plus users through `MEMBER` (access_queries/4_role_holders.sql:70-73, access_queries/5_object_users.sql:80-86).
+- `4_role_holders.sql` leaves links between admin roles out (as the app): for `SECURITYADMIN` / `SYSADMIN` also check `ROLE_NAME = 'ACCOUNTADMIN'` (access_queries/4_role_holders.sql:13; access_queries/README.md:102-104).
 - Last step: `QUALIFY ROW_NUMBER() ... ORDER BY DEPTH, PATH = 1` keeps the shortest path; `WAYS` counts the paths (access_queries/1_user_roles.sql:70-74).
 
-Example (test data of test_queries.py): `1_user_roles.sql` for `ANALYST_01` gives 6 rows, among them `F_ANALYST`, depth 2, `ANALYST_01 > GRP_ANALYSTS > F_ANALYST`, WAYS 2 (the second way runs through PUBLIC -> T_SALES_MART_READ -> F_ANALYST, a link added at access_queries/test_queries.py:220-223).
+Example (test data of test_queries.py): `1_user_roles.sql` for `ANALYST_01` gives 6 rows, among them `F_ANALYST`, depth 2, `ANALYST_01 > GRP_ANALYSTS > F_ANALYST`, WAYS 2 (the second way runs through PUBLIC -> T_SALES_MART_READ -> F_ANALYST, a link added at access_queries/test_queries.py:224-227).
 
 ## functions.sql
 
-- Each body = its file's query with `$NAME` -> `NAME`, without the last `ORDER BY` (a function keeps no row order); arguments = the file's `SET` names; checked by `functions()` (access_queries/functions.sql:12-13, access_queries/test_queries.py:168-192).
+- Each body = its file's query with `$NAME` -> `NAME`, without the last `ORDER BY` (a function keeps no row order); arguments = the file's `SET` names; checked by `functions()` (access_queries/functions.sql:12-13, access_queries/test_queries.py:170-194).
 - Optional arguments: `PRIVILEGE DEFAULT ''`, `MAX_DEPTH DEFAULT 50`, `SHOW_BUILTIN DEFAULT FALSE` (access_queries/functions.sql:16, access_queries/functions.sql:258).
-- Owner's rights read of ACCOUNT_USAGE: grant USAGE only to roles that may see every grant (access_queries/functions.sql:10-11). `DROP FUNCTION` lines to remove them (access_queries/functions.sql:328-333).
+- Owner's rights read of ACCOUNT_USAGE: grant USAGE only to roles that may see every grant (access_queries/functions.sql:10-11). `DROP FUNCTION` lines to remove them (access_queries/functions.sql:332-337).
 
 ## Snowflake Notebook (access_examples.ipynb, built by make_notebook.py)
 
-- `EXAMPLES`: 8 (cell name, title, function call, plain query); B queries are the file bodies, or wrapped with a `WHERE` / `GROUP BY` (access_queries/make_notebook.py:26-53, `wrap` access_queries/make_notebook.py:21-22).
+- `EXAMPLES`: 8 (cell name, title, function call, plain query); every path A call passes `$SHOW_BUILTIN`, so path A and B answer the same (access_queries/make_notebook.py:27-53); example 8 sums objects per privilege by the closest role holding it; B queries are the file bodies, or wrapped with a `WHERE` / `GROUP BY` (access_queries/make_notebook.py:26-53, `wrap` access_queries/make_notebook.py:21-22).
 - Cells: intro, `inputs` (`SET USER_NAME`, `ROLE_NAME`, `OBJECT_NAME`, `PRIVILEGE`, `MAX_DEPTH`, `MIN_DEPTH`, `SHOW_BUILTIN`), `create_1`..`create_5` cut from functions.sql, `a_*`, then `b_*` (access_queries/make_notebook.py:100-112; cells access_queries/access_examples.ipynb:25-44, 59-421, 432-610, 634-1280).
-- Rewrite it after changing a file: `python access_queries/make_notebook.py` (access_queries/make_notebook.py:119-121); `notebook()` fails when the file on disk differs (access_queries/test_queries.py:195-216).
+- Rewrite it after changing a file: `python access_queries/make_notebook.py` (access_queries/make_notebook.py:119-121); `notebook()` fails when the file on disk differs (access_queries/test_queries.py:197-220).
 
 ## Test (test_queries.py)
 
 - `account_usage()` builds the three ACCOUNT_USAGE views as DuckDB tables from `access.fake()` plus deleted rows; its `writes` edges are to these fakes, never Snowflake (access_queries/test_queries.py:23-61).
-- Extra cases: a role cycle, OWNERSHIP on a role, PUBLIC holding a custom role, a user named like a role, users with no grants (one disabled), an explicit PUBLIC grant (access_queries/test_queries.py:219-228).
-- Checks (test_case nodes): `user_roles`, `access`, `holders`, `object_users` compare rows with `access.py` (access_queries/test_queries.py:117-165); runs for many users, roles, objects, `MAX_DEPTH` 0, 1, 3, 9 and `SHOW_BUILTIN` on (access_queries/test_queries.py:233-267); `functions` and `notebook` (access_queries/test_queries.py:168-216).
-- Exit 1 with the differences, else one `ok:` line (access_queries/test_queries.py:272-275).
+- Extra cases: a role cycle, OWNERSHIP on a role, PUBLIC holding a custom role, a user named like a role, users with no grants (one disabled), an explicit PUBLIC grant (access_queries/test_queries.py:223-232).
+- Checks (test_case nodes): `user_roles`, `access`, `holders`, `object_users` compare rows with `access.py` (access_queries/test_queries.py:119-167); runs for many users, roles, objects, `MAX_DEPTH` 0, 1, 3, 9 and `SHOW_BUILTIN` on (access_queries/test_queries.py:237-271); `functions` and `notebook` (access_queries/test_queries.py:170-220). `same()` also fails when the SQL returns more rows than answers (a duplicate row per key) (access_queries/test_queries.py:106-110); `notebook()` fails when an `a_*` cell does not pass `$SHOW_BUILTIN` (access_queries/test_queries.py:217-218). `account_usage()` leaves `TABLE_CATALOG` NULL for a DATABASE grant, as ACCOUNT_USAGE does, so a database role grantee comes from `NAME` (access_queries/test_queries.py:30-31).
+- Exit 1 with the differences, else one `ok:` line (access_queries/test_queries.py:276-279).
 
 ## Relation to the app's table functions
 
-- `sql/1_setup.sql` has the same walks as `TF_ACCESS_OF` (sql/1_setup.sql:558) and `TF_WHO_CAN` (sql/1_setup.sql:619), but over the `TBL_ACCESS_` snapshot tables (edges marked inferred).
+- `sql/1_setup.sql` has the same walks as `TF_ACCESS_OF` (sql/1_setup.sql:578) and `TF_WHO_CAN` (sql/1_setup.sql:639), but over the `TBL_ACCESS_` snapshot tables (edges marked inferred).
 - `access_queries/` reads ACCOUNT_USAGE directly: no future grants, up to about 2 hours behind (access_queries/README.md:85-91, 124-131).
 
 ## Unclear

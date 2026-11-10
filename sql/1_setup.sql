@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE (   -- objects used
 );
 
 -- name: TABLE_FINDING
-CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings per run, filled by SP_ACCESS_FINDINGS
+CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings of the last run, filled by SP_ACCESS_FINDINGS
     RUN_ID VARCHAR(36),
     RULE_NUM VARCHAR(10),
     TITLE VARCHAR(500),
@@ -224,16 +224,16 @@ def grants(session, run_id, mode):
         return out
     g, u, skipped = [], [], []
     for role in [r["name"] for r in rows(session, "SHOW ROLES")]:
-        try:
-            for x in rows(session, f"SHOW GRANTS TO ROLE {ident(role)}"):
-                if x.get("granted_to") in ("ROLE", None):
-                    g.append([run_id, role, x["privilege"], x["granted_on"], clean(x["name"]), False,
-                              str(x.get("grant_option")).lower() == "true", x.get("granted_by")])
-            for x in rows(session, f"SHOW GRANTS OF ROLE {ident(role)}"):
-                if x.get("granted_to") == "USER":
-                    u.append([run_id, x["grantee_name"], role, x.get("granted_by")])
+        try:  # both SHOWs before keeping either: a half-read role would look like it has no holders
+            to = rows(session, f"SHOW GRANTS TO ROLE {ident(role)}")
+            of = rows(session, f"SHOW GRANTS OF ROLE {ident(role)}")
         except Exception as e:  # a role the owner may not inspect: keep going, list it in NOTES
             skipped.append(f"{role}: {first_line(e)}")
+            continue
+        g += [[run_id, role, x["privilege"], x["granted_on"], clean(x["name"]), False,
+               str(x.get("grant_option")).lower() == "true", x.get("granted_by")]
+              for x in to if x.get("granted_to") in ("ROLE", None)]
+        u += [[run_id, x["grantee_name"], role, x.get("granted_by")] for x in of if x.get("granted_to") == "USER"]
     for d in rows(session, "SHOW DATABASES"):  # database roles: per database, their grants under DB.ROLE
         if d.get("kind", "STANDARD") != "STANDARD":
             continue
@@ -273,15 +273,24 @@ def future(session, run_id):
             places = [f"DATABASE {ident(db)}"] + [f"SCHEMA {ident(db)}.{ident(s['name'])}"
                                                   for s in rows(session, f"SHOW SCHEMAS IN DATABASE {ident(db)}")
                                                   if s["name"] != "INFORMATION_SCHEMA"]
-            for p in places:  # to a database role of this database: DB.ROLE
-                for x in rows(session, f"SHOW FUTURE GRANTS IN {p}"):
-                    if x.get("grant_to") in ("ROLE", "DATABASE_ROLE"):
-                        who = x["grantee_name"] if x["grant_to"] == "ROLE" else clean(x["grantee_name"])
-                        who = who if x["grant_to"] == "ROLE" or who.startswith(db + ".") else f"{db}.{who}"
-                        out.append([run_id, who, x["privilege"], x["grant_on"], clean(x["name"]), True,
-                                    str(x.get("grant_option")).lower() == "true", None])
         except Exception as e:
             skipped.append(f"{db}: {first_line(e)}")
+            continue
+        bad = None
+        for p in places:  # one refused place skips only itself, one note per database (as access.live does)
+            try:
+                got = rows(session, f"SHOW FUTURE GRANTS IN {p}")
+            except Exception as e:
+                bad = bad or f"{db}: {first_line(e)}"
+                continue
+            for x in got:  # to a database role of this database: DB.ROLE
+                if x.get("grant_to") in ("ROLE", "DATABASE_ROLE"):
+                    who = x["grantee_name"] if x["grant_to"] == "ROLE" else clean(x["grantee_name"])
+                    who = who if x["grant_to"] == "ROLE" or who.startswith(db + ".") else f"{db}.{who}"
+                    out.append([run_id, who, x["privilege"], x["grant_on"], clean(x["name"]), True,
+                                str(x.get("grant_option")).lower() == "true", None])
+        if bad:
+            skipped.append(bad)
     save(session, GRANT, GRANT_COLS, out)
     return "SHOW", (f"{len(skipped)} database{'s' if len(skipped) != 1 else ''} skipped — " + " | ".join(skipped[:20]) if skipped else None)
 
@@ -322,9 +331,13 @@ def usage(session, run_id, mode):
 
     why = fallback(session, "QUERY_HISTORY", mode)
     if why is None:
-        insert(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME FROM {AU}.QUERY_HISTORY
-                   WHERE START_TIME >= DATEADD(DAY, -{DAYS}, CURRENT_TIMESTAMP())""", True)
-        return "ACCOUNT_USAGE", None
+        try:  # usage is extra (and the heaviest read): without it the run stays OK, as in access.live
+            insert(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME FROM {AU}.QUERY_HISTORY
+                       WHERE START_TIME >= DATEADD(DAY, -{DAYS}, CURRENT_TIMESTAMP())""", True)
+            return "ACCOUNT_USAGE", None
+        except Exception as e:
+            session.sql(f"DELETE FROM {USAGE} WHERE RUN_ID = '{run_id}'").collect()
+            return "UNAVAILABLE", first_line(e)
     try:
         insert("""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE(&DB.INFORMATION_SCHEMA.QUERY_HISTORY(
                   END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000))""", False)
@@ -498,12 +511,16 @@ def run(session, p_source):
     mode = (p_source or "AUTO").upper()
     if mode not in ("AUTO", "ACCOUNT_USAGE", "SHOW"):
         raise ValueError("P_SOURCE must be AUTO, ACCOUNT_USAGE or SHOW")
-    busy = session.sql(f"""SELECT RUN_ID FROM {RUN} WHERE STATUS = 'RUNNING'
-                           AND STARTED_AT > DATEADD(HOUR, -1, CURRENT_TIMESTAMP())""").collect()
-    if busy:  # the app has a Refresh button: two CALLs at once would delete each other's rows
-        return {"status": "SKIPPED", "notes": {"error": f"run {busy[0]['RUN_ID']} is still running"}}
     run_id = str(uuid.uuid4())
+    # insert first, then look (the app has a Refresh button): with a look first, two CALLs a moment apart both start;
+    # with both rows in, the earliest RUNNING of the last hour goes on and the other steps back
     session.sql(f"INSERT INTO {RUN} (RUN_ID, STARTED_AT, STATUS) SELECT '{run_id}', CURRENT_TIMESTAMP(), 'RUNNING'").collect()
+    first = session.sql(f"""SELECT RUN_ID FROM {RUN} WHERE STATUS = 'RUNNING'
+                            AND STARTED_AT > DATEADD(HOUR, -1, CURRENT_TIMESTAMP())
+                            ORDER BY STARTED_AT, RUN_ID LIMIT 1""").collect()[0]["RUN_ID"]
+    if first != run_id:
+        session.sql(f"DELETE FROM {RUN} WHERE RUN_ID = '{run_id}'").collect()
+        return {"status": "SKIPPED", "notes": {"error": f"run {first} is still running"}}
     result = {"run_id": run_id, "sources": {}, "row_counts": {}, "notes": {}}
 
     def keep(name, source, note):
@@ -534,9 +551,12 @@ def run(session, p_source):
                     ROW_COUNTS = PARSE_JSON(?), NOTES = PARSE_JSON(?) WHERE RUN_ID = ?""",
                 params=[result["status"], json.dumps(result["sources"]), json.dumps(result["row_counts"]),
                         json.dumps(result["notes"]), run_id]).collect()
-    if result["status"] == "OK":  # only now, so the app always finds the rows of the last OK run
+    if result["status"] == "OK":  # only now, so the app always finds the rows of the last OK run; a run still
+        # running (started over an hour ago, so not refused above) keeps its rows, one a day old is taken as dead
         for t in DATA:
-            session.sql(f"DELETE FROM {t} WHERE RUN_ID <> '{run_id}'").collect()
+            session.sql(f"""DELETE FROM {t} WHERE RUN_ID <> '{run_id}' AND RUN_ID NOT IN (SELECT RUN_ID FROM {RUN}
+                            WHERE STATUS = 'RUNNING' AND STARTED_AT > DATEADD(DAY, -1, CURRENT_TIMESTAMP())
+                            AND RUN_ID IS NOT NULL)""").collect()
     return result
 $$;
 
@@ -729,7 +749,7 @@ def run(session, p_settings):
             for f in found]
     session.sql("BEGIN TRANSACTION").collect()  # each statement commits on its own: keep the old rows if the insert fails
     try:
-        session.sql(f"DELETE FROM {FINDING} WHERE RUN_ID = ?", params=[run_id]).collect()
+        session.sql(f"DELETE FROM {FINDING}").collect()  # the last run only, as the snapshot tables
         # to verify: append with column_order="name" fills the omitted CREATED_AT from its default, and stays inside the
         # transaction (Snowpark may upload many rows through a temporary table, and DDL would commit)
         if data:

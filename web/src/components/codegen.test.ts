@@ -8,16 +8,11 @@ const priv: Change = { op: "revoke", privilege: "INSERT", objectType: "TABLE", o
 const note = { reason: "payroll close", approver: "HR_OWNER", expiry: "2026-12-31" };
 
 describe("code output", () => {
-  it("writes SQL with comments and an undo line", () => {
-    const s = sqlOf([role, priv], note);
+  it("writes the server's SQL under the note, never its own", () => {
+    const s = sqlOf([{ ...role, sql: "GRANT ROLE F_HR TO USER FIN_09;" }, priv], note);
     expect(s).toContain("-- Reason: payroll close");
     expect(s).toContain("GRANT ROLE F_HR TO USER FIN_09;");
-    expect(s).toContain("-- undo: REVOKE ROLE F_HR FROM USER FIN_09;");
-    expect(s).toContain("REVOKE INSERT ON TABLE SHARED.LOGGING.TBL_LOGGING FROM ROLE T_SHARED_LOGGING_READ;");
-  });
-  it("quotes names that need it and handles database roles and account privileges", () => {
-    expect(sqlOf([{ op: "grant", role: "HR.SC_R_PEOPLE", to: "F_HR" }])).toContain("GRANT DATABASE ROLE HR.SC_R_PEOPLE TO ROLE F_HR;");
-    expect(sqlOf([{ op: "revoke", privilege: "EXECUTE TASK", objectType: "ACCOUNT", object: "ACCOUNT", to: "my role" }])).toContain('ON ACCOUNT FROM ROLE "my role";');
+    expect(s).not.toContain("INSERT"); // no sql from the server: nothing written for it
   });
   it("writes Terraform resources of the Snowflake provider", () => {
     const t = terraformOf([role, { op: "grant", privilege: "SELECT", objectType: "VIEW", object: "SALES.MART.VW_CUSTOMER", to: "F_ANALYST" }], note);
@@ -28,22 +23,19 @@ describe("code output", () => {
     expect(t).toContain("# Expires: 2026-12-31");
     expect(terraformOf([priv])).toContain("delete the resource");
   });
-  it("writes valid text for ownership, future grants and account objects", () => {
-    const own: Change = { op: "revoke", privilege: "OWNERSHIP", objectType: "TABLE", object: "SALES.RAW.TBL_ORDER_RAW", to: "T_SALES_RAW_OWNER" };
-    expect(sqlOf([own])).toContain("GRANT OWNERSHIP ON TABLE SALES.RAW.TBL_ORDER_RAW TO ROLE <new owner role> COPY CURRENT GRANTS;");
-    expect(sqlOf([own])).not.toContain("REVOKE OWNERSHIP");
-    const fut: Change = { op: "revoke", privilege: "SELECT", objectType: "FUTURE TABLE", object: "SALES.CORE.<TABLE>", to: "T_SALES_CORE_READ" };
-    expect(sqlOf([fut])).toContain("REVOKE SELECT ON FUTURE TABLES IN SCHEMA SALES.CORE FROM ROLE T_SALES_CORE_READ;");
-    expect(sqlOf([{ ...fut, object: "SALES.<TABLE>" }])).toContain("ON FUTURE TABLES IN DATABASE SALES FROM");
+  it("writes valid Terraform for future grants, account objects and database roles", () => {
     const grant = (objectType: string, object: string) => terraformOf([{ op: "grant", privilege: "USAGE", objectType, object, to: "F_X" }]);
     expect(grant("WAREHOUSE", "WH_SALES_XS")).toContain('on_account_object {\n    object_type = "WAREHOUSE"\n    object_name = "WH_SALES_XS"');
     expect(grant("DATABASE", "SALES")).toContain('object_type = "DATABASE"');
     expect(grant("DATABASE", "SALES")).not.toContain("on_database");
     expect(grant("SCHEMA", "SALES.CORE")).toContain('on_schema {\n    schema_name = "SALES.CORE"');
     expect(grant("FUTURE TABLE", "SALES.CORE.<TABLE>")).toContain('object_type_plural = "TABLES"\n      in_schema   = "SALES.CORE"');
-    const db = terraformOf([{ op: "grant", privilege: "USAGE", objectType: "DATABASE", object: "HR", to: "HR.SC_R" }]);
+    const db = terraformOf([{ op: "grant", privilege: "USAGE", objectType: "DATABASE", object: "HR", to: "HR.SC_R", toDb: true }]);
     expect(db).toContain('resource "snowflake_grant_privileges_to_database_role"');
     expect(db).toContain('on_database = "HR"');
+    // the kind comes from the server, not from a dot: an account role named F.SPECIAL stays an account role
+    expect(terraformOf([{ op: "grant", role: "F.SPECIAL", to: "F_X" }])).toContain('resource "snowflake_grant_account_role"');
+    expect(terraformOf([{ op: "grant", role: "HR.R", to: "F_X", roleDb: true }])).toContain('resource "snowflake_grant_database_role"');
   });
   it("writes ticket text", () => {
     const t = ticketOf([role, priv], note);

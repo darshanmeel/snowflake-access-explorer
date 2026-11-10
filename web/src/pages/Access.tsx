@@ -36,14 +36,14 @@ export function AccessPageView() {
       <div className="ae-headrow">
         <div>
           {mine ? <h2 className="ae-h1">My access</h2> : (
-            <div className="ae-h1 ae-h1-pick">Access for <Pick label="Person or role" value={role || user} what="users,roles" onPick={pick} width={260} />
+            <div className="ae-h1 ae-h1-pick">Access for <Pick label="Person or role" value={role || user} user={!role} what="users,roles" onPick={pick} width={260} />
               {recent().filter((r) => (r.page === "user" || r.page === "role") && r.id !== (role || user)).slice(0, 4).map((r) => (
                 <button type="button" key={r.id} className="ae-pchip" title="Recently viewed" onClick={() => c.set(r.page === "role" ? { role: r.id, user: null } : { user: r.label, role: null })}>{r.label}</button>))}
             </div>
           )}
         </div>
       </div>
-      <Load s={s}>{(d) => <Body d={d} />}</Load>
+      <Load s={s}>{(d) => <Body key={`${d.who.kind}:${d.who.id}`} d={d} />}</Load>
     </>
   );
 }

@@ -17,11 +17,12 @@ flowchart LR
 |---|---|
 | Usage: web / `--fake` / `streamlit` / `--port` / `--direct` / `--objects`; `APP` env sets the default | run.py:1-10 |
 | `import access` loads `.env` (so ports can live there) | run.py:16 |
-| Args: `app` (web / streamlit, default `APP` or web), `--fake`, `--port`, `--direct`, `--objects` | run.py:18-24 |
-| `--fake` -> `FAKE=1`; source -> `SOURCE` | run.py:26-30 |
-| streamlit: `python -m streamlit run app.py --server.port N --server.headless true` | run.py:31-34 |
-| web: `WEB_PORT` then `python server.py` | run.py:35-37 |
-| Runs as a subprocess in the repo folder | run.py:38 |
+| Args: `app` (web / streamlit, default `APP` or web), `--fake`, `--port`, `--direct`, `--objects` | run.py:21-27 |
+| `--fake` -> `FAKE=1`; source -> `SOURCE` | run.py:28-32 |
+| `command(argv, env)` builds `(cmd, env)` (testable; `test_run_address`, test_server.py:712) | run.py:19-42 |
+| streamlit: `python -m streamlit run app.py --server.port N --server.address $HOST --server.headless true` (HOST default 127.0.0.1) | run.py:33-38 |
+| web: `WEB_PORT` then `python server.py` | run.py:39-41 |
+| `__main__`: runs the command as a subprocess in the repo folder | run.py:45-47 |
 
 ## run_sql.py
 
@@ -46,7 +47,7 @@ flowchart LR
 
 - Fills README.html between `<!--map:NAME-->` markers: overview, flow, rules (docs/make_readme.py:1-4).
 - Imports access.py for rule titles and severities (docs/make_readme.py:12); areas from `server.RULE_INFO` (docs/make_readme.py:4).
-- `rules()` (docs/make_readme.py:125), `inject()` (docs/make_readme.py:142); checked by `test_readme_rules` (test_access.py:1688).
+- `rules()` (docs/make_readme.py:125), `inject()` (docs/make_readme.py:142); checked by `test_readme_rules` (test_access.py:1716).
 
 ## Other root files (not scripts)
 

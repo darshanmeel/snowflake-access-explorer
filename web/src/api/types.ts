@@ -669,8 +669,8 @@ export interface RequestPage {
   privileges: string[];
   level: string | null; // the user's step on the object today
   has: boolean;
-  asked: { role: string; kind: NodeKind; to: string | null; rule1: boolean; people: number; broad: boolean } | null; // picked on Can they?
-  suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[]; people: number; broad: boolean }[];
+  asked: { role: string; kind: NodeKind; to: string | null; rule1: boolean; people: number; broad: boolean; change: CompareChange } | null; // picked on Can they?
+  suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[]; people: number; broad: boolean; change: CompareChange }[];
   approver: string | null;
   owners: string[];
   refs: Refs;
@@ -1057,7 +1057,9 @@ export interface CompareRow {
   extra_b: string[];
 }
 
-export interface CompareChange { op: "grant" | "revoke"; role?: string; privilege?: string; objectType?: string; object?: string; to: string; toUser: boolean }
+/** A grant or revoke as text only; sql, roleDb and toDb from access.with_sql. */
+export interface CompareChange { op: "grant" | "revoke"; role?: string; privilege?: string; objectType?: string; object?: string; to: string; toUser: boolean;
+  sql: string; roleDb: boolean; toDb: boolean }
 
 export interface ComparePage {
   view: View;
@@ -1168,6 +1170,7 @@ export interface UsagePage {
   weeks: string[]; // Monday of each week
   counts: { objects: number; used: number; drop: number; trim: number; keep: number; write_unused: number; changes: number } | null;
   changes: WhatIfChange[];
+  sql: string; // the trim as What if writes it
   people: number;
   refs: Refs;
 }

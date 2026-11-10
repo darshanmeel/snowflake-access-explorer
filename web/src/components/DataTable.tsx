@@ -33,11 +33,12 @@ export function DataTable<R>({
   const [q, setQ] = useState("");
   const [by, setBy] = useState<{ key: string; dir: 1 | -1 } | null>(sort ? { key: sort.key, dir: sort.dir ?? 1 } : null);
   const [all, setAll] = useState(false);
+  const keys = columns.map((c) => c.key).join("\u0001");
   const view = useMemo(() => {
     const f = filterRows(rows, q, columns.map((c) => (r: R) => cellText(c.get(r))));
     const col = by && columns.find((c) => c.key === by.key);
     return col ? sortRows(f, col.get, by!.dir) : f;
-  }, [rows, q, by, columns]);
+  }, [rows, q, by, keys]); // keys, not columns: pages pass a new columns array each render, which re-sorted every time
   const shown = all ? view : view.slice(0, limit);
   const tools = filter && rows.length >= 10; // a filter box and row count only where there is something to filter
 
@@ -60,10 +61,14 @@ export function DataTable<R>({
             <tr>
               {columns.map((c) => (
                 <th key={c.key} title={c.help} style={{ width: c.width }} className={c.num ? "num" : undefined}
-                  aria-sort={c.label && by?.key === c.key ? (by.dir === 1 ? "ascending" : "descending") : undefined}
-                  onClick={c.label ? () => setBy(by?.key === c.key ? { key: c.key, dir: by.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 }) : undefined}>
-                  {c.label}
-                  <span className="ae-sort">{by?.key === c.key ? (by.dir === 1 ? "▲" : "▼") : ""}</span>
+                  aria-sort={c.label && by?.key === c.key ? (by.dir === 1 ? "ascending" : "descending") : undefined}>
+                  {c.label && (
+                    <button type="button" className="ae-th-btn"
+                      onClick={() => setBy(by?.key === c.key ? { key: c.key, dir: by.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 })}>
+                      {c.label}
+                      <span className="ae-sort">{by?.key === c.key ? (by.dir === 1 ? "▲" : "▼") : ""}</span>
+                    </button>
+                  )}
                 </th>
               ))}
             </tr>

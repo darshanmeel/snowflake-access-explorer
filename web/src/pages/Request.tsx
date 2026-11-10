@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, RequestPage } from "../api/types";
-import { Card, CodeOutput, EmptyState, expiryOf, FilterChips, LEVEL_WORD, newRoleOf, type Change } from "../components";
+import { Card, CodeOutput, EmptyState, expiryOf, FilterChips, LEVEL_WORD, newRoleOf } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Load, Pick } from "./common";
 import { pickSubject, subjectIn, subjectLink } from "./verdict";
@@ -28,7 +28,7 @@ export function RequestPageView() {
         </div>
       </div>
       <div className="ae-forstrip">
-        {!mine && <Pick label="For (person or role)" value={name} what="users,roles"
+        {!mine && <Pick label="For (person or role)" value={name} user={!subjectIn(p, "request").role} what="users,roles"
           onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v], "request"), role: null, to: null })} />}
         <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, role: null, to: null })} />
       </div>
@@ -43,16 +43,16 @@ function Body({ d }: { d: RequestPage }) {
   const a = d.asked;
   const viaNew = a && a.kind === "database_role" && !a.to ? a.role : undefined; // a database role can't go to a user
   const asked = viaNew ? undefined : a?.role;
-  const extra = a && asked && !d.suggestions.some((x) => x.role === asked) ? [{ role: asked, to: a.to ?? undefined }] : [];
+  const extra = a && asked && !d.suggestions.some((x) => x.role === asked) ? [{ role: asked, to: a.to ?? undefined, change: a.change }] : [];
   const forRole = !d.subject.user; // GRANT ROLE x TO ROLE <the role>: everyone holding it gets it too
-  const choices = [...extra, ...d.suggestions.map((x) => ({ role: x.role, to: forRole ? d.user : undefined as string | undefined }))];
+  const choices = [...extra, ...d.suggestions.map((x) => ({ role: x.role, change: x.change }))];
   const [pick, setPick] = useState(viaNew ? "" : asked ?? choices[0]?.role ?? "");
   const [days, setDays] = useState(30);
   const [approver, setApprover] = useState(d.approver ?? "");
   const [reason, setReason] = useState("");
   const ch = choices.find((x) => x.role === pick);
   const note = { by: forRole ? undefined : d.user, reason, approver, expiry: expiryOf(days) || "until revoked" };
-  const changes: Change[] = ch ? [{ op: "grant", role: ch.role, to: ch.to ?? d.user, toUser: !ch.to }] : [];
+  const changes = ch ? [ch.change] : [];
   const inDb = d.subject.database ? { db: d.subject.database, objDb: d.database } : undefined; // a database role subject
   const text = ch ? undefined : newRoleOf(d.user, d.privileges, d.type, d.object, note, viaNew, forRole, inDb);
   const now = d.level ? (LEVEL_WORD[d.level] ?? d.level).toLowerCase() : null;

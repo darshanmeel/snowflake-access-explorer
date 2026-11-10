@@ -6,15 +6,17 @@ import type { ListItem, UsagePage, UsageRow } from "../api/types";
 import { AccessPill, Card, CodeOutput, EmptyState, FilterChips, ListToolbar, Tabs } from "../components";
 import { download } from "../components/table";
 import { useApp, useOpen } from "../ctx";
-import type { Change } from "../components";
-import { addTo, changeText, inPlan, plan, useSaved } from "./changeplan";
+import { addTo, changeText, inPlan, plan, planTexts, useSaved } from "./changeplan";
 import { Load, Pick } from "./common";
 import { bars, trimText, usageCsv, usageRows, type UsageFilter } from "./history";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-/** The trim as CodeOutput revokes, with each object's type for the SQL. */
-const revokes = (rows: UsageRow[]): Change[] => rows.flatMap((r) => r.changes.flatMap((ch) =>
-  ch.op === "revoke_priv" ? [{ op: "revoke" as const, privilege: ch.privilege, object: r.object, objectType: r.type, to: ch.role }] : []));
+/** The trim's SQL as the server writes it (What if's text), with the reason. */
+const trimTexts = (d: UsagePage) => {
+  const t = planTexts(d.changes, d.sql);
+  const why = `not used in the last ${d.days} days (ACCESS_HISTORY)`;
+  return { sql: `-- Reason: ${why}\n${t.sql}`, tf: `# Reason: ${why}\n${t.tf}`, ticket: t.ticket.replace("Reason: (fill in)", `Reason: ${why}`) };
+};
 const SUGGEST = { keep: "ae-sg-keep", trim: "ae-sg-trim", drop: "ae-sg-drop" } as const;
 
 export function UsagePageView() {
@@ -28,7 +30,7 @@ export function UsagePageView() {
     <>
       <div className="ae-headrow">
         {mine ? <h2 className="ae-h1">Granted vs used</h2> : (
-          <div className="ae-h1 ae-h1-pick">Granted vs used for <Pick label="Person or role" value={role || user} what="users,roles" onPick={pick} width={260} /></div>
+          <div className="ae-h1 ae-h1-pick">Granted vs used for <Pick label="Person or role" value={role || user} user={!role} what="users,roles" onPick={pick} width={260} /></div>
         )}
       </div>
       <Load s={s}>{(d) => <Body d={d} />}</Load>
@@ -112,7 +114,7 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
               <button type="button" className="ae-btn ae-btn-primary" disabled={added} onClick={() => plan.set(addTo(plan.get(), d.changes))}>{added ? "In the change plan ✓" : "Add to change plan"}</button>
               <button type="button" className="ae-btn" onClick={() => c.nav("whatif", { show: "plan" })}>Open the change plan</button>
             </div>
-            <CodeOutput changes={revokes(d.rows)} name="trim_unused" note={{ reason: `not used in the last ${d.days} days (ACCESS_HISTORY)` }} />
+            <CodeOutput changes={[]} name="trim_unused" texts={trimTexts(d)} />
           </>}
         </Card>
       )}

@@ -92,8 +92,11 @@ def prev(key):
 
 def get(key, fn, disk=True):
     """(data, fetched_at): from memory, else the local file, else fn() (stored in both)."""
+    m = MEM.get(key)  # before the lock: a page whose data is in memory never waits for another key's read
+    if m and time.time() - m[1] < TTL:
+        return m
     with LOCK:
-        m = MEM.get(key)
+        m = MEM.get(key)  # another thread may have read it while this one waited
         if m and time.time() - m[1] < TTL:
             return m
         f = file(key)
@@ -127,12 +130,14 @@ def ready(key, disk=True):
 
 
 def drop(key):
-    """Read again next time: out of memory, and the local file set aside (the previous snapshot once a new one is read)."""
-    MEM.pop(key, None)
-    f = file(key)
-    if f.is_file() and HOURS > 0:
-        f.replace(f.with_suffix(".old.pkl"))
-    f.unlink(missing_ok=True)
+    """Read again next time: out of memory, and the local file set aside (the previous snapshot once a new one is read).
+    Under LOCK: a read still running would otherwise store its older data after the drop."""
+    with LOCK:
+        MEM.pop(key, None)
+        f = file(key)
+        if f.is_file() and HOURS > 0:
+            f.replace(f.with_suffix(".old.pkl"))
+        f.unlink(missing_ok=True)
 
 # ---------- SQL copy (DuckDB) ----------
 

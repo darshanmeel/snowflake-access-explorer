@@ -36,7 +36,7 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
     return () => { live = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, open, min]);
-  const close = () => { setOpen(false); setActive(-1); typed.current = false; setQ(clear ? q : value); };
+  const close = (keep = clear ? q : value) => { setOpen(false); setActive(-1); typed.current = false; setQ(keep); };
   const pick = (x: T) => { typed.current = false; setOpen(false); setActive(-1); setItems([]); setQ(clear ? "" : keyOf(x)); onPick(x); };
   const shown = open ? items : [];
   const opt = (i: number) => `${id}-o${i}`;
@@ -47,7 +47,7 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
         autoComplete="off" placeholder={placeholder} value={q} style={width ? { width } : undefined}
         onChange={(e) => { typed.current = true; setQ(e.target.value); setOpen(true); }}
         onFocus={(e) => { e.target.select(); setOpen(true); }}
-        onBlur={close}
+        onBlur={() => close()}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
@@ -57,8 +57,7 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
             const x = got.current === (typed.current ? q.trim() : "") ? shown[active] ?? shown[0] : undefined;
             if (x) { e.preventDefault(); pick(x); }
           } else if (e.key === "Escape") {
-            if (clear) setQ("");
-            close();
+            close(clear ? "" : value);
           }
         }} />
       {shown.length > 0 && (

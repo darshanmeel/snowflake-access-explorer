@@ -1549,8 +1549,11 @@ def counts(sts, kids, hops):
 def shortest(sts, kids, hops):
     """Shortest path to every role (BFS over the same links as counts()): {role: path}."""
     best, top = {}, top_hop(hops)
-    todo = sorted(sts, key=len)
-    while todo:
+    wait, todo = sorted(sts, key=len), []
+    while todo or wait:
+        n = len(todo[0]) if todo else len(wait[0])
+        i = next((i for i, s in enumerate(wait) if len(s) > n), len(wait))
+        todo, wait = wait[:i] + todo, wait[i:]  # a longer start (a default role's route) joins at its own hop
         nxt = []
         for p in todo:
             if p[-1] not in best:
@@ -1576,19 +1579,19 @@ def listed(sts, kids, hops, targets, cap=None):
                 todo.append(v)
     out = []
 
-    def go(p, block):
+    def go(p, i):
         if len(out) >= cap:
             return
         if p[-1] in targets:
             out.append(p)
         if len(p) - 1 < top:
             for r in kids[p[-1]]:
-                if r in keep and r not in block and r not in p:
-                    go(p + [r], block)
+                if r in keep and r not in p[i:]:
+                    go(p + [r], i)
 
     for s in sts:
         if s[-1] in keep:
-            go(s, set(s[1:-1]))
+            go(s, int(len(s) > 1))  # a user's start [user, role, ...]: a role named like the user is not on the path
     return out
 
 
@@ -1897,9 +1900,12 @@ def access_of(name, user=False, default_only=False, limit=None):
 
 
 def admin_paths(name, user=False, default_only=False, limit=None):
-    """Paths from a user or role to an admin role it holds (at most MAX_PATHS)."""
+    """Paths from a user or role to the admin roles it holds: per admin role at most MAX_PATHS, shortest first (one
+    shared cap would let 200 paths to SYSADMIN hide ACCOUNTADMIN)."""
     sts, kids, cnt, hops = fast(name, user, default_only, limit)
-    return listed(sts, kids, hops, {r for r in cnt if r in ADMIN and r != name})
+    best = shortest(sts, kids, hops)
+    return [p for r in sorted(ADMIN & cnt.keys() - {name})
+            for p in capped_paths(listed(sts, kids, hops, {r}), cnt[r], best[r])]
 
 
 def account_privs(name, user=False, default_only=False, limit=None):
@@ -3142,6 +3148,22 @@ def fix_text(edges):
     return "; ".join(t[0] for t in ts), " ".join(t[1] for t in ts)
 
 
+def with_sql(c):
+    """A Compare / Request change (op grant | revoke, role | privilege + objectType + object, to, toUser) plus its SQL
+    and roleDb / toDb (database roles, from the grant data), so no page writes SQL or guesses a role's kind."""
+    to = f"USER {sql_name(c['to'])}" if c["toUser"] else role_sql(c["to"])
+    r = c.get("role")
+    if c["op"] == "revoke":
+        e = role_edge(c["to"], r, c["toUser"]) if r else priv_edge(c["to"], c["privilege"], c["objectType"], c["object"])
+        sql = revoke(e)[1]
+    elif r:
+        sql = f"GRANT {role_sql(r)} TO {to};\n-- undo: REVOKE {role_sql(r)} FROM {to};"
+    else:
+        sql = f"GRANT {c['privilege']} ON {c['objectType'].replace('_', ' ')} {sql_obj(c['object'])} TO {to};"
+    return c | dict(sql=sql, roleDb=bool(r) and role_kind(r) == "database",
+                    toDb=not c["toUser"] and role_kind(c["to"]) == "database")
+
+
 def lose(e):
     """Users who lose something when grant edge e goes, net of their other paths: a role edge -> users who no longer
     reach the role; a privilege edge -> users who no longer hold that privilege on the object. Once per edge."""
@@ -3772,7 +3794,8 @@ def compare(x, xu, y, yu, scope="sensitive", db=None):
                 if len(p) == 2 and not xu else dict(op="revoke", role=p[1], to=x, toUser=xu)
             if c not in extras and c.get("role") != "PUBLIC":
                 extras.append(c)
-    return dict(rows=out, counts={d: sum(r["diff"] == d for r in out) for d in DIFF}, match=match, extras=extras)
+    return dict(rows=out, counts={d: sum(r["diff"] == d for r in out) for d in DIFF},
+                match=[with_sql(c) for c in match], extras=[with_sql(c) for c in extras])
 
 
 def review(db=None):
@@ -3972,7 +3995,7 @@ def what_if(changes, cap=MAX_PATHS):
     cands = {r for _, r in cut["user"]} | {r for r, _ in cut["link"]} | set(pub)  # may lose their last holder
     cands |= {x for r in cut["drop"] for x in holds.get(r, [])}
     b_role = {r: bool(users_of.get(r) or held_by.get(r)) for r in cands}
-    saved = state()
+    saved, was = state(), dict(built)  # the build below stores the loaded set in built: put built back too
     old = saved["granted"]
     try:
         build(without_cuts(source["data"], cut), builtin=source["builtin"])
@@ -4018,6 +4041,8 @@ def what_if(changes, cap=MAX_PATHS):
         fa = [f for f in findings(only) if f["num"] not in SCOPED or f["grantee"] in only[f["num"]]]
     finally:
         restore(saved)
+        built.clear()
+        built.update(was)
 
     def rows(got, b_reach):  # one row per object, at most cap
         keep = set(sorted({o for _, o in got})[:cap])
@@ -4176,7 +4201,8 @@ def granted_used(name, user=True, days=90):
                   write_unused=sum(r["used"] == "read" and any(p in WRITE_PRIVS for p in r["unused"]) for r in out),
                   changes=len(changes))
     return dict(days=days, weeks=[(w0 - timedelta(weeks=n - 1 - i)).isoformat() for i in range(n)], rows=out,
-                counts=counts, changes=changes, people=len(who))
+                counts=counts, changes=changes, people=len(who),
+                sql="\n".join(s["sql"] for s in changes_of(changes)[1] if s["sql"]))  # as What if writes it
 
 
 # ---------- what changed (two snapshots) ----------
@@ -4203,12 +4229,14 @@ def restore(saved):
 @contextmanager
 def loaded(d):
     """The lookups of data set d inside the block; the loaded ones, with their cached results, are put back after."""
-    saved = state()
+    saved, was = state(), dict(built)  # the build below stores the loaded set in built: put built back too
     try:
         build(d, builtin=source.get("builtin", False))
         yield
     finally:
         restore(saved)
+        built.clear()
+        built.update(was)
 
 
 def facts():
