@@ -1,0 +1,30 @@
+Index of non-code documents in the repo: one summary page each, with what it relates to.
+
+```mermaid
+flowchart LR
+  RM[README.md] -->|full guide| RH[README.html]
+  MK[docs/make_readme.py] -->|fills map parts| RH
+  RM -->|templates| ENV[.env.example]
+  RM -->|templates| SIS[sis.env.example]
+  CM[CLAUDE.md] -->|rules for| CODE[access.py server.py app.py web/src sql/]
+  API[web/API.md] -->|contract| CODE
+  ST[web/ST.md] -->|SiS packaging| SQL4[sql/4_streamlit.sql]
+  REV[docs/review-2026-11-09.md] -->|findings fixed in commits| CODE
+  RD[docs/redesign-notes.md] -->|UI redesign plan| CODE
+  TP[THIRD_PARTY.md] -->|licences of| DIST[web/dist, web/dist-st]
+```
+
+| Page | Source | One line |
+|---|---|---|
+| [readme-md.md](readme-md.md) | README.md | Quick start, run modes, settings, deploy options |
+| [readme-html.md](readme-html.md) | README.html | Full guide: every screen, 23 rules, run modes, settings, limits |
+| [claude-md.md](claude-md.md) | CLAUDE.md | Project standards and hard rules |
+| [web-api-md.md](web-api-md.md) | web/API.md | JSON API contract of server.py |
+| [web-st-md.md](web-st-md.md) | web/ST.md | React app as a Streamlit component, SiS packaging |
+| [review-2026-11-09.md](review-2026-11-09.md) | docs/review-2026-11-09.md | Whole-app review findings |
+| [redesign-notes.md](redesign-notes.md) | docs/redesign-notes.md | UI redesign notes and phases |
+| [make-readme-py.md](make-readme-py.md) | docs/make_readme.py | Generator for README.html diagrams and rule table |
+| [env-example.md](env-example.md) | .env.example | Local settings template (names only) |
+| [sis-env-example.md](sis-env-example.md) | sis.env.example | Streamlit-in-Snowflake settings template |
+| [third-party-md.md](third-party-md.md) | THIRD_PARTY.md | Third-party licences |
+| [settings-sql.md](settings-sql.md) | settings.sql | SQL names template for run_sql.py / SnowSQL |

@@ -211,7 +211,6 @@ stays, what changes, and the order of the work.
   tab away.
 - Nearest ways in has no grant simulation: What if simulates removals only; the row shows who holds the role today and
   what else it brings, and What it brings opens the role.
-- The company-term pre-commit hook could not run: `~/.company-terms.txt` is missing on this machine.
 
 ## Phases
 

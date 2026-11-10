@@ -1,0 +1,57 @@
+# Flow: one web API request (local FastAPI server)
+
+One-line summary: the browser's `fetch('/api/<page>')` passes the `same_site` middleware (Host allowed, POST Origin allowed, `Sec-Fetch-Site` same-origin/none), is routed to `serve(name)`, which builds the view's lookups and runs the `ROUTES` handler over `access.py`; the answer is plain JSON (errors too).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser (web/dist)
+    participant M as same_site middleware
+    participant R as route(name) handler
+    participant S as serve()
+    participant X as session(view)
+    participant P as ROUTES[name] page fn
+    participant A as access.py
+    B->>M: GET /api/check?view=shared&... (cookie ae_sid)
+    M->>M: served(Host)? else 400 bad_host
+    M->>M: POST and Origin not served? or /api/ with Sec-Fetch-Site not same-origin/none? -> 403 cross_site
+    M->>R: call_next
+    R->>S: serve(name, query_params, sid)
+    S->>X: session(view, sid, builtin)
+    X->>A: load_shared / MINE[sid] -> a.build(d, key, builtin)
+    X->>A: cached sensitive, rule_rows, readonly_writes
+    S->>P: page(p, view)
+    P->>A: walks (can, who_users, access_objects, ...)
+    S->>S: refs = mkrefs(out), clean(out)
+    R-->>B: JSONResponse (gzip > 2000 bytes)
+    Note over R,B: ApiError -> {detail, message} with its status; any other exception -> 500 {detail:"error"}
+```
+
+## Steps
+
+1. Server start: `uvicorn.run(make_app(), host=HOST or 127.0.0.1, port=WEB_PORT or 8000)` — server.py:2342-2344; `uvicorn server:app` builds lazily — server.py:2334-2339.
+2. `make_app()` adds gzip (`minimum_size=2000`) and computes `hosts = allowed_hosts()` once — server.py:2231-2239.
+3. `allowed_hosts()`: loopback + `ALLOWED_HOSTS` (comma list, `*` = any); `HOST=0.0.0.0`/`::` adds hostname, FQDN and IPs; other HOST adds itself — server.py:2214-2228, `LOOPBACK` — server.py:123.
+4. `served(host)` strips the port / IPv6 brackets — server.py:2241-2244.
+5. Middleware `same_site`: Host not served -> 400 `bad_host` (DNS rebinding) — server.py:2246-2254.
+6. Cross-site refusal -> 403 `cross_site`: a non-GET/HEAD whose `Origin` host is not served, or any `/api/` call with `Sec-Fetch-Site` not `same-origin`/`none` (default same-origin when absent) — server.py:2255-2261.
+7. Exception handlers: `ApiError` -> its status + `{detail, message}`; anything else -> 500 `{detail:"error", message:"Type: text"}` — server.py:2264-2270, `ApiError` — server.py:58-61.
+8. Session id from cookie `ae_sid` — server.py:2272-2273.
+9. Routes: `/api/meta`, `POST /api/reload`, `POST /api/mine/load`, `/api/mine`, one GET per page name, `/api/<rules|review|whatif>.csv`, SPA fallback serving `web/dist` (path kept inside DIST) — server.py:2275-2329.
+10. `route(name)` returns `JSONResponse(serve(...))` (FastAPI encoder skipped for speed) — server.py:2301-2308.
+11. `serve()`: params to str, `session()`, `ROUTES[name](p, view)`, `refs` for `WITH_REFS`, `clean()` — server.py:2196-2203; tables — server.py:2187-2193.
+12. `session()`: view must be `shared|mine` (else 400 `bad_param`); shared -> `load_shared(ask=True)`; mine -> `mine_entry(sid)` or 409 `mine_not_loaded`; then under `LOCK` `a.build`, clears `a.capped`, caches `sens`, `rows` (rule rows), `breaks` — server.py:175-195.
+13. Page names / labels `PAGES`, nav groups `GROUP`, shared-only `SHARED_ONLY = {review, flow, changes}` — server.py:28-37.
+14. Client side: `get()` memoises per URL, `check()` turns non-2xx into `ApiFail(status, detail, message)` — web/src/api/client.ts:28-44; `post()` sends JSON with `credentials: "same-origin"` — web/src/api/client.ts:46-53.
+15. Tests: `test_same_site` — test_server.py:389; `test_server.py` checks each page's content.
+
+## Example (FAKE=1, FastAPI TestClient, base_url http://localhost)
+
+| Request | Status | Body |
+|---|---|---|
+| `GET /api/home?view=shared` | 200 | home JSON |
+| `GET /api/home` with `Host: evil.example` | 400 | `{"detail":"bad_host","message":"Host evil.example is not served here: add it to ALLOWED_HOSTS (comma-separated)."}` |
+| `GET /api/home` with `Sec-Fetch-Site: cross-site` | 403 | `{"detail":"cross_site","message":"Requests from another site are refused."}` |
+| `POST /api/reload` with `Origin: http://evil.example` | 403 | `cross_site` |
+| `POST /api/reload {"what":"page"}` with `Origin: http://localhost:8000` | 200 | `{"ok":true,"result":null,"message":"Reloaded."}` |
+| `GET /api/home?view=mine` (no My access loaded) | 409 | `{"detail":"mine_not_loaded","message":"Load My access first."}` |

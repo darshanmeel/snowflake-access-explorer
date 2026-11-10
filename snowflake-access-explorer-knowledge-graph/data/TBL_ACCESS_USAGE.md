@@ -1,0 +1,25 @@
+Roles, secondary roles and warehouses each user actually used, aggregated from query history.
+
+```mermaid
+flowchart LR
+  A[ACCOUNT_USAGE.QUERY_HISTORY 30 days] -->|AUTO| T[(TBL_ACCESS_USAGE)]
+  B[INFORMATION_SCHEMA.QUERY_HISTORY 7 days, 10000 rows] -->|fallback| T
+  T --> U[access.build: used] --> R[used_roles]
+```
+
+DDL: `sql/1_setup.sql:57-64`. Grain: run x user x kind x name (`GROUP BY 2, 4`, `sql/1_setup.sql:312-320`).
+
+| Column | Type | Meaning | Line |
+|---|---|---|---|
+| RUN_ID | VARCHAR(36) | run | 58 |
+| USER_NAME | VARCHAR(255) | user | 59 |
+| KIND | VARCHAR(20) | ROLE, SECONDARY ROLE, WAREHOUSE | 60 |
+| NAME | VARCHAR(255) | role or warehouse | 61 |
+| QUERIES | NUMBER | query count | 62 |
+| LAST_USED | TIMESTAMP_LTZ | last query | 63 |
+
+- Aggregation SQL: `sql/1_setup.sql:309-321`; SECONDARY ROLE from `SECONDARY_ROLE_STATS:roleNames`, ACCOUNT_USAGE only (`:315-320`).
+- Window: 30 days (`DAYS`, `sql/1_setup.sql:151,325-326`); fallback 7 days / 10000 queries (`:329-331`); else UNAVAILABLE (`:332-333`).
+- Read: `access.py:945-946` -> `used_roles` `access.py:2062-2065`.
+- NAME -> role when KIND is ROLE / SECONDARY ROLE: inferred link to `TBL_ACCESS_GRANT.GRANTEE_ROLE`.
+- My access: per-user aggregation, 30 days ACCOUNT_USAGE else `QUERY_HISTORY_BY_USER` 7 days (`access.py:532-547`).

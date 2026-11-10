@@ -1,0 +1,327 @@
+{"from": "model:data", "to": "table:TBL_ACCESS_RUN", "type": "contains", "evidence": "sql/1_setup.sql:13", "status": "verified"}
+{"from": "table:TBL_ACCESS_RUN", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:14", "status": "verified"}
+{"from": "table:TBL_ACCESS_RUN", "to": "column:TBL_ACCESS_RUN.STARTED_AT", "type": "contains", "evidence": "sql/1_setup.sql:15", "status": "verified"}
+{"from": "table:TBL_ACCESS_RUN", "to": "column:TBL_ACCESS_RUN.FINISHED_AT", "type": "contains", "evidence": "sql/1_setup.sql:16", "status": "verified"}
+{"from": "table:TBL_ACCESS_RUN", "to": "column:TBL_ACCESS_RUN.STATUS", "type": "contains", "evidence": "sql/1_setup.sql:17", "status": "verified"}
+{"from": "table:TBL_ACCESS_RUN", "to": "column:TBL_ACCESS_RUN.SOURCES", "type": "contains", "evidence": "sql/1_setup.sql:18", "status": "verified"}
+{"from": "table:TBL_ACCESS_RUN", "to": "column:TBL_ACCESS_RUN.ROW_COUNTS", "type": "contains", "evidence": "sql/1_setup.sql:19", "status": "verified"}
+{"from": "table:TBL_ACCESS_RUN", "to": "column:TBL_ACCESS_RUN.NOTES", "type": "contains", "evidence": "sql/1_setup.sql:20", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "table:TBL_ACCESS_RUN", "type": "writes", "evidence": "sql/1_setup.sql:506", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_RUN", "type": "reads", "evidence": "access.py:403-404", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_GRANT", "type": "contains", "evidence": "sql/1_setup.sql:24", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:25", "status": "verified"}
+{"from": "column:TBL_ACCESS_GRANT.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "contains", "evidence": "sql/1_setup.sql:26", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.PRIVILEGE", "type": "contains", "evidence": "sql/1_setup.sql:27", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.GRANTED_ON", "type": "contains", "evidence": "sql/1_setup.sql:28", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "contains", "evidence": "sql/1_setup.sql:29", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.IS_FUTURE", "type": "contains", "evidence": "sql/1_setup.sql:30", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.GRANT_OPTION", "type": "contains", "evidence": "sql/1_setup.sql:31", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "column:TBL_ACCESS_GRANT.GRANTED_BY", "type": "contains", "evidence": "sql/1_setup.sql:32", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "table:TBL_ACCESS_GRANT", "type": "writes", "evidence": "sql/1_setup.sql:212-220", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:au:GRANTS_TO_ROLES", "type": "derived_from", "evidence": "sql/1_setup.sql:220", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "sql/1_setup.sql:220", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:show:SHOW ROLES", "type": "derived_from", "evidence": "sql/1_setup.sql:226", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW ROLES", "type": "reads", "evidence": "sql/1_setup.sql:226", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:show:SHOW GRANTS TO ROLE", "type": "derived_from", "evidence": "sql/1_setup.sql:228", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW GRANTS TO ROLE", "type": "reads", "evidence": "sql/1_setup.sql:228", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:show:SHOW DATABASES", "type": "derived_from", "evidence": "sql/1_setup.sql:237", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW DATABASES", "type": "reads", "evidence": "sql/1_setup.sql:237", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:show:SHOW DATABASE ROLES", "type": "derived_from", "evidence": "sql/1_setup.sql:241", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW DATABASE ROLES", "type": "reads", "evidence": "sql/1_setup.sql:241", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:show:SHOW GRANTS TO DATABASE ROLE", "type": "derived_from", "evidence": "sql/1_setup.sql:248", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW GRANTS TO DATABASE ROLE", "type": "reads", "evidence": "sql/1_setup.sql:248", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:show:SHOW SCHEMAS", "type": "derived_from", "evidence": "sql/1_setup.sql:274", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW SCHEMAS", "type": "reads", "evidence": "sql/1_setup.sql:274", "status": "verified"}
+{"from": "table:TBL_ACCESS_GRANT", "to": "external_system:show:SHOW FUTURE GRANTS", "type": "derived_from", "evidence": "sql/1_setup.sql:277", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW FUTURE GRANTS", "type": "reads", "evidence": "sql/1_setup.sql:277", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_GRANT", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_USER_ROLE", "type": "contains", "evidence": "sql/1_setup.sql:36", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER_ROLE", "to": "column:TBL_ACCESS_USER_ROLE.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:37", "status": "verified"}
+{"from": "column:TBL_ACCESS_USER_ROLE.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER_ROLE", "to": "column:TBL_ACCESS_USER_ROLE.USER_NAME", "type": "contains", "evidence": "sql/1_setup.sql:38", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER_ROLE", "to": "column:TBL_ACCESS_USER_ROLE.ROLE_NAME", "type": "contains", "evidence": "sql/1_setup.sql:39", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER_ROLE", "to": "column:TBL_ACCESS_USER_ROLE.GRANTED_BY", "type": "contains", "evidence": "sql/1_setup.sql:40", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "table:TBL_ACCESS_USER_ROLE", "type": "writes", "evidence": "sql/1_setup.sql:221-222", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER_ROLE", "to": "external_system:au:GRANTS_TO_USERS", "type": "derived_from", "evidence": "sql/1_setup.sql:222", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:au:GRANTS_TO_USERS", "type": "reads", "evidence": "sql/1_setup.sql:222", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER_ROLE", "to": "external_system:show:SHOW GRANTS OF ROLE", "type": "derived_from", "evidence": "sql/1_setup.sql:232", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW GRANTS OF ROLE", "type": "reads", "evidence": "sql/1_setup.sql:232", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_USER_ROLE", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_USER", "type": "contains", "evidence": "sql/1_setup.sql:44", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:45", "status": "verified"}
+{"from": "column:TBL_ACCESS_USER.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "contains", "evidence": "sql/1_setup.sql:46", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.TYPE", "type": "contains", "evidence": "sql/1_setup.sql:47", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.DISABLED", "type": "contains", "evidence": "sql/1_setup.sql:48", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.DEFAULT_ROLE", "type": "contains", "evidence": "sql/1_setup.sql:49", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.DEFAULT_SECONDARY_ROLES", "type": "contains", "evidence": "sql/1_setup.sql:50", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.DEFAULT_WAREHOUSE", "type": "contains", "evidence": "sql/1_setup.sql:51", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.DEFAULT_NAMESPACE", "type": "contains", "evidence": "sql/1_setup.sql:52", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "column:TBL_ACCESS_USER.LAST_SUCCESS_LOGIN", "type": "contains", "evidence": "sql/1_setup.sql:53", "status": "verified"}
+{"from": "function:sql/1_setup.sql:users", "to": "table:TBL_ACCESS_USER", "type": "writes", "evidence": "sql/1_setup.sql:293-296", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "external_system:au:USERS", "type": "derived_from", "evidence": "sql/1_setup.sql:296", "status": "verified"}
+{"from": "function:sql/1_setup.sql:users", "to": "external_system:au:USERS", "type": "reads", "evidence": "sql/1_setup.sql:296", "status": "verified"}
+{"from": "table:TBL_ACCESS_USER", "to": "external_system:show:SHOW USERS", "type": "derived_from", "evidence": "sql/1_setup.sql:300", "status": "verified"}
+{"from": "function:sql/1_setup.sql:users", "to": "external_system:show:SHOW USERS", "type": "reads", "evidence": "sql/1_setup.sql:300", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_USER", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_USAGE", "type": "contains", "evidence": "sql/1_setup.sql:57", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "column:TBL_ACCESS_USAGE.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:58", "status": "verified"}
+{"from": "column:TBL_ACCESS_USAGE.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "column:TBL_ACCESS_USAGE.USER_NAME", "type": "contains", "evidence": "sql/1_setup.sql:59", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "column:TBL_ACCESS_USAGE.KIND", "type": "contains", "evidence": "sql/1_setup.sql:60", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "column:TBL_ACCESS_USAGE.NAME", "type": "contains", "evidence": "sql/1_setup.sql:61", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "column:TBL_ACCESS_USAGE.QUERIES", "type": "contains", "evidence": "sql/1_setup.sql:62", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "column:TBL_ACCESS_USAGE.LAST_USED", "type": "contains", "evidence": "sql/1_setup.sql:63", "status": "verified"}
+{"from": "function:sql/1_setup.sql:usage", "to": "table:TBL_ACCESS_USAGE", "type": "writes", "evidence": "sql/1_setup.sql:310-321", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "external_system:au:QUERY_HISTORY", "type": "derived_from", "evidence": "sql/1_setup.sql:325", "status": "verified"}
+{"from": "function:sql/1_setup.sql:usage", "to": "external_system:au:QUERY_HISTORY", "type": "reads", "evidence": "sql/1_setup.sql:325", "status": "verified"}
+{"from": "table:TBL_ACCESS_USAGE", "to": "external_system:is:QUERY_HISTORY", "type": "derived_from", "evidence": "sql/1_setup.sql:329", "status": "verified"}
+{"from": "function:sql/1_setup.sql:usage", "to": "external_system:is:QUERY_HISTORY", "type": "reads", "evidence": "sql/1_setup.sql:329", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_USAGE", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_TAG", "type": "contains", "evidence": "sql/1_setup.sql:67", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "column:TBL_ACCESS_TAG.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:68", "status": "verified"}
+{"from": "column:TBL_ACCESS_TAG.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "column:TBL_ACCESS_TAG.OBJECT_NAME", "type": "contains", "evidence": "sql/1_setup.sql:69", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "column:TBL_ACCESS_TAG.DOMAIN", "type": "contains", "evidence": "sql/1_setup.sql:70", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "column:TBL_ACCESS_TAG.COLUMN_NAME", "type": "contains", "evidence": "sql/1_setup.sql:71", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "column:TBL_ACCESS_TAG.TAG_NAME", "type": "contains", "evidence": "sql/1_setup.sql:72", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "column:TBL_ACCESS_TAG.TAG_VALUE", "type": "contains", "evidence": "sql/1_setup.sql:73", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "column:TBL_ACCESS_TAG.APPLY_METHOD", "type": "contains", "evidence": "sql/1_setup.sql:74", "status": "verified"}
+{"from": "function:sql/1_setup.sql:tags", "to": "table:TBL_ACCESS_TAG", "type": "writes", "evidence": "sql/1_setup.sql:369-376", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "external_system:au:TAG_REFERENCES", "type": "derived_from", "evidence": "sql/1_setup.sql:375", "status": "verified"}
+{"from": "function:sql/1_setup.sql:tags", "to": "external_system:au:TAG_REFERENCES", "type": "reads", "evidence": "sql/1_setup.sql:375", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "external_system:is:TAG_REFERENCES", "type": "derived_from", "evidence": "sql/1_setup.sql:384", "status": "verified"}
+{"from": "function:sql/1_setup.sql:tags", "to": "external_system:is:TAG_REFERENCES", "type": "reads", "evidence": "sql/1_setup.sql:384", "status": "verified"}
+{"from": "table:TBL_ACCESS_TAG", "to": "external_system:is:TAG_REFERENCES_ALL_COLUMNS", "type": "derived_from", "evidence": "sql/1_setup.sql:387", "status": "verified"}
+{"from": "function:sql/1_setup.sql:tags", "to": "external_system:is:TAG_REFERENCES_ALL_COLUMNS", "type": "reads", "evidence": "sql/1_setup.sql:387", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_TAG", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_POLICY", "type": "contains", "evidence": "sql/1_setup.sql:78", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:79", "status": "verified"}
+{"from": "column:TBL_ACCESS_POLICY.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.POLICY_NAME", "type": "contains", "evidence": "sql/1_setup.sql:80", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.POLICY_KIND", "type": "contains", "evidence": "sql/1_setup.sql:81", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.OBJECT_NAME", "type": "contains", "evidence": "sql/1_setup.sql:82", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.COLUMN_NAME", "type": "contains", "evidence": "sql/1_setup.sql:83", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.ARG_COLUMNS", "type": "contains", "evidence": "sql/1_setup.sql:84", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.TAG_NAME", "type": "contains", "evidence": "sql/1_setup.sql:85", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "column:TBL_ACCESS_POLICY.POLICY_BODY", "type": "contains", "evidence": "sql/1_setup.sql:86", "status": "verified"}
+{"from": "function:sql/1_setup.sql:policies", "to": "table:TBL_ACCESS_POLICY", "type": "writes", "evidence": "sql/1_setup.sql:410-421", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "external_system:au:POLICY_REFERENCES", "type": "derived_from", "evidence": "sql/1_setup.sql:418", "status": "verified"}
+{"from": "function:sql/1_setup.sql:policies", "to": "external_system:au:POLICY_REFERENCES", "type": "reads", "evidence": "sql/1_setup.sql:418", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "external_system:au:MASKING_POLICIES", "type": "derived_from", "evidence": "sql/1_setup.sql:419", "status": "verified"}
+{"from": "function:sql/1_setup.sql:policies", "to": "external_system:au:MASKING_POLICIES", "type": "reads", "evidence": "sql/1_setup.sql:419", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "external_system:au:ROW_ACCESS_POLICIES", "type": "derived_from", "evidence": "sql/1_setup.sql:420", "status": "verified"}
+{"from": "function:sql/1_setup.sql:policies", "to": "external_system:au:ROW_ACCESS_POLICIES", "type": "reads", "evidence": "sql/1_setup.sql:420", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "external_system:is:POLICY_REFERENCES", "type": "derived_from", "evidence": "sql/1_setup.sql:427", "status": "verified"}
+{"from": "function:sql/1_setup.sql:policies", "to": "external_system:is:POLICY_REFERENCES", "type": "reads", "evidence": "sql/1_setup.sql:427", "status": "verified"}
+{"from": "table:TBL_ACCESS_POLICY", "to": "external_system:show:DESCRIBE POLICY", "type": "derived_from", "evidence": "sql/1_setup.sql:435", "status": "verified"}
+{"from": "function:sql/1_setup.sql:policies", "to": "external_system:show:DESCRIBE POLICY", "type": "reads", "evidence": "sql/1_setup.sql:435", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_POLICY", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_STREAM", "type": "contains", "evidence": "sql/1_setup.sql:90", "status": "verified"}
+{"from": "table:TBL_ACCESS_STREAM", "to": "column:TBL_ACCESS_STREAM.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:91", "status": "verified"}
+{"from": "column:TBL_ACCESS_STREAM.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_STREAM", "to": "column:TBL_ACCESS_STREAM.STREAM_NAME", "type": "contains", "evidence": "sql/1_setup.sql:92", "status": "verified"}
+{"from": "table:TBL_ACCESS_STREAM", "to": "column:TBL_ACCESS_STREAM.SOURCE_NAME", "type": "contains", "evidence": "sql/1_setup.sql:93", "status": "verified"}
+{"from": "table:TBL_ACCESS_STREAM", "to": "column:TBL_ACCESS_STREAM.SOURCE_TYPE", "type": "contains", "evidence": "sql/1_setup.sql:94", "status": "verified"}
+{"from": "function:sql/1_setup.sql:streams", "to": "table:TBL_ACCESS_STREAM", "type": "writes", "evidence": "sql/1_setup.sql:455-457", "status": "verified"}
+{"from": "table:TBL_ACCESS_STREAM", "to": "external_system:show:SHOW STREAMS IN ACCOUNT", "type": "derived_from", "evidence": "sql/1_setup.sql:456", "status": "verified"}
+{"from": "function:sql/1_setup.sql:streams", "to": "external_system:show:SHOW STREAMS IN ACCOUNT", "type": "reads", "evidence": "sql/1_setup.sql:456", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_STREAM", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_OBJECT_USE", "type": "contains", "evidence": "sql/1_setup.sql:98", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "column:TBL_ACCESS_OBJECT_USE.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:99", "status": "verified"}
+{"from": "column:TBL_ACCESS_OBJECT_USE.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:410", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "column:TBL_ACCESS_OBJECT_USE.USER_NAME", "type": "contains", "evidence": "sql/1_setup.sql:100", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "column:TBL_ACCESS_OBJECT_USE.OBJECT_NAME", "type": "contains", "evidence": "sql/1_setup.sql:101", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "column:TBL_ACCESS_OBJECT_USE.WEEK", "type": "contains", "evidence": "sql/1_setup.sql:102", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "column:TBL_ACCESS_OBJECT_USE.ACTION", "type": "contains", "evidence": "sql/1_setup.sql:103", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "column:TBL_ACCESS_OBJECT_USE.QUERIES", "type": "contains", "evidence": "sql/1_setup.sql:104", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "column:TBL_ACCESS_OBJECT_USE.LAST_USED", "type": "contains", "evidence": "sql/1_setup.sql:105", "status": "verified"}
+{"from": "function:sql/1_setup.sql:object_use", "to": "table:TBL_ACCESS_OBJECT_USE", "type": "writes", "evidence": "sql/1_setup.sql:489-490", "status": "verified"}
+{"from": "table:TBL_ACCESS_OBJECT_USE", "to": "external_system:au:ACCESS_HISTORY", "type": "derived_from", "evidence": "sql/1_setup.sql:470,474", "status": "verified"}
+{"from": "function:sql/1_setup.sql:object_use", "to": "external_system:au:ACCESS_HISTORY", "type": "reads", "evidence": "sql/1_setup.sql:470,474", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "table:TBL_ACCESS_OBJECT_USE", "type": "reads", "evidence": "access.py:410", "status": "verified"}
+{"from": "model:data", "to": "table:TBL_ACCESS_FINDING", "type": "contains", "evidence": "sql/1_setup.sql:109", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.RUN_ID", "type": "contains", "evidence": "sql/1_setup.sql:110", "status": "verified"}
+{"from": "column:TBL_ACCESS_FINDING.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "sql/1_setup.sql:726-732", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.RULE_NUM", "type": "contains", "evidence": "sql/1_setup.sql:111", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.TITLE", "type": "contains", "evidence": "sql/1_setup.sql:112", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.SEVERITY", "type": "contains", "evidence": "sql/1_setup.sql:113", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.GRANTEE", "type": "contains", "evidence": "sql/1_setup.sql:114", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.KIND", "type": "contains", "evidence": "sql/1_setup.sql:115", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.DETAIL", "type": "contains", "evidence": "sql/1_setup.sql:116", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.PATH", "type": "contains", "evidence": "sql/1_setup.sql:117", "status": "verified"}
+{"from": "table:TBL_ACCESS_FINDING", "to": "column:TBL_ACCESS_FINDING.CREATED_AT", "type": "contains", "evidence": "sql/1_setup.sql:118", "status": "verified"}
+{"from": "column:TBL_ACCESS_USER_ROLE.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "sql/1_setup.sql:570-573; access.py:938-948", "status": "verified"}
+{"from": "column:TBL_ACCESS_USER_ROLE.ROLE_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "sql/1_setup.sql:583-584,595; access.py:947", "status": "verified"}
+{"from": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "sql/1_setup.sql:577-581; access.py:920-924", "status": "verified"}
+{"from": "column:TBL_ACCESS_USAGE.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:945-946", "status": "verified"}
+{"from": "column:TBL_ACCESS_USAGE.NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "access.py:2062-2065", "status": "inferred"}
+{"from": "column:TBL_ACCESS_TAG.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2084-2100", "status": "verified"}
+{"from": "column:TBL_ACCESS_POLICY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2145-2153", "status": "verified"}
+{"from": "column:TBL_ACCESS_POLICY.TAG_NAME", "to": "column:TBL_ACCESS_TAG.TAG_NAME", "type": "fk", "evidence": "access.py:2154-2157", "status": "verified"}
+{"from": "column:TBL_ACCESS_STREAM.STREAM_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:4825", "status": "verified"}
+{"from": "column:TBL_ACCESS_STREAM.SOURCE_NAME", "to": "column:TBL_ACCESS_TAG.OBJECT_NAME", "type": "fk", "evidence": "access.py:4821-4822", "status": "verified"}
+{"from": "column:TBL_ACCESS_OBJECT_USE.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:954-955", "status": "verified"}
+{"from": "column:TBL_ACCESS_OBJECT_USE.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:4124-4128", "status": "inferred"}
+{"from": "column:TBL_ACCESS_FINDING.GRANTEE", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "sql/1_setup.sql:114-115", "status": "inferred"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:run", "type": "contains", "evidence": "sql/1_setup.sql:497", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:grants", "type": "contains", "evidence": "sql/1_setup.sql:204", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:future", "type": "contains", "evidence": "sql/1_setup.sql:261", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:users", "type": "contains", "evidence": "sql/1_setup.sql:289", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:usage", "type": "contains", "evidence": "sql/1_setup.sql:306", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:tags", "type": "contains", "evidence": "sql/1_setup.sql:360", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:policies", "type": "contains", "evidence": "sql/1_setup.sql:401", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:streams", "type": "contains", "evidence": "sql/1_setup.sql:450", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:object_use", "type": "contains", "evidence": "sql/1_setup.sql:481", "status": "verified"}
+{"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:data_objects", "type": "contains", "evidence": "sql/1_setup.sql:336", "status": "verified"}
+{"from": "function:sql/1_setup.sql:future", "to": "table:TBL_ACCESS_GRANT", "type": "writes", "evidence": "sql/1_setup.sql:285", "status": "verified"}
+{"from": "function:sql/1_setup.sql:future", "to": "external_system:show:SHOW FUTURE GRANTS", "type": "reads", "evidence": "sql/1_setup.sql:277", "status": "verified"}
+{"from": "function:sql/1_setup.sql:data_objects", "to": "table:TBL_ACCESS_GRANT", "type": "reads", "evidence": "sql/1_setup.sql:338-340", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "table:TBL_ACCESS_RUN", "type": "writes", "evidence": "sql/1_setup.sql:506", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:grants", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:future", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:users", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:usage", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:tags", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:policies", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:streams", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:run", "to": "function:sql/1_setup.sql:object_use", "type": "calls", "evidence": "sql/1_setup.sql:515-523", "status": "verified"}
+{"from": "function:sql/1_setup.sql:tags", "to": "function:sql/1_setup.sql:data_objects", "type": "calls", "evidence": "sql/1_setup.sql:378", "status": "verified"}
+{"from": "function:sql/1_setup.sql:policies", "to": "function:sql/1_setup.sql:data_objects", "type": "calls", "evidence": "sql/1_setup.sql:423", "status": "verified"}
+{"from": "procedure:SP_ACCESS_FINDINGS", "to": "table:TBL_ACCESS_FINDING", "type": "writes", "evidence": "sql/1_setup.sql:732-736", "status": "verified"}
+{"from": "procedure:SP_ACCESS_FINDINGS", "to": "function:access.py:snapshot", "type": "calls", "evidence": "sql/1_setup.sql:723", "status": "verified"}
+{"from": "udtf:TF_ACCESS_OF", "to": "table:TBL_ACCESS_RUN", "type": "reads", "evidence": "sql/1_setup.sql:557-616", "status": "verified"}
+{"from": "udtf:TF_ACCESS_OF", "to": "table:TBL_ACCESS_USER_ROLE", "type": "reads", "evidence": "sql/1_setup.sql:557-616", "status": "verified"}
+{"from": "udtf:TF_ACCESS_OF", "to": "table:TBL_ACCESS_USER", "type": "reads", "evidence": "sql/1_setup.sql:557-616", "status": "verified"}
+{"from": "udtf:TF_ACCESS_OF", "to": "table:TBL_ACCESS_GRANT", "type": "reads", "evidence": "sql/1_setup.sql:557-616", "status": "verified"}
+{"from": "udtf:TF_WHO_CAN", "to": "table:TBL_ACCESS_RUN", "type": "reads", "evidence": "sql/1_setup.sql:618-659", "status": "verified"}
+{"from": "udtf:TF_WHO_CAN", "to": "table:TBL_ACCESS_USER_ROLE", "type": "reads", "evidence": "sql/1_setup.sql:618-659", "status": "verified"}
+{"from": "udtf:TF_WHO_CAN", "to": "table:TBL_ACCESS_USER", "type": "reads", "evidence": "sql/1_setup.sql:618-659", "status": "verified"}
+{"from": "udtf:TF_WHO_CAN", "to": "table:TBL_ACCESS_GRANT", "type": "reads", "evidence": "sql/1_setup.sql:618-659", "status": "verified"}
+{"from": "udtf:TF_CAN", "to": "udtf:TF_ACCESS_OF", "type": "calls", "evidence": "sql/1_setup.sql:671", "status": "verified"}
+{"from": "external_system:au:GRANTS_TO_ROLES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:220", "status": "verified"}
+{"from": "external_system:au:GRANTS_TO_USERS", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:222", "status": "verified"}
+{"from": "external_system:au:USERS", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:296", "status": "verified"}
+{"from": "external_system:au:QUERY_HISTORY", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:325", "status": "verified"}
+{"from": "external_system:au:TAG_REFERENCES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:375", "status": "verified"}
+{"from": "external_system:au:POLICY_REFERENCES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:418", "status": "verified"}
+{"from": "external_system:au:MASKING_POLICIES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:419", "status": "verified"}
+{"from": "external_system:au:ROW_ACCESS_POLICIES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:420", "status": "verified"}
+{"from": "external_system:au:ACCESS_HISTORY", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:470", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:416", "status": "verified"}
+{"from": "function:access.py:live", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:836", "status": "verified"}
+{"from": "function:access.py:mine", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:551-553", "status": "verified"}
+{"from": "function:access.py:fake", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:344-345", "status": "verified"}
+{"from": "function:access.py:fake_previous", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:397", "status": "verified"}
+{"from": "function:access.py:only", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:864-865", "status": "verified"}
+{"from": "function:access.py:build", "to": "data_structure:snapshot_dict", "type": "reads", "evidence": "access.py:916-955", "status": "verified"}
+{"from": "function:access.py:snapshot", "to": "config:access.py:TABLES", "type": "depends_on", "evidence": "access.py:410-411", "status": "verified"}
+{"from": "function:access.py:live", "to": "function:access.py:use_sql", "type": "calls", "evidence": "access.py:823", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access.py:609", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:GRANTS_TO_USERS", "type": "reads", "evidence": "access.py:611", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW ROLES", "type": "reads", "evidence": "access.py:615", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW GRANTS TO ROLE", "type": "reads", "evidence": "access.py:616", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW GRANTS OF ROLE", "type": "reads", "evidence": "access.py:616", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW DATABASES", "type": "reads", "evidence": "access.py:628", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW DATABASE ROLES", "type": "reads", "evidence": "access.py:630", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW GRANTS TO DATABASE ROLE", "type": "reads", "evidence": "access.py:635", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW SCHEMAS", "type": "reads", "evidence": "access.py:654", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW FUTURE GRANTS", "type": "reads", "evidence": "access.py:660", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:USERS", "type": "reads", "evidence": "access.py:683", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW USERS", "type": "reads", "evidence": "access.py:691", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:QUERY_HISTORY", "type": "reads", "evidence": "access.py:712", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:is:QUERY_HISTORY", "type": "reads", "evidence": "access.py:718", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:TAG_REFERENCES", "type": "reads", "evidence": "access.py:752", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:is:TAG_REFERENCES", "type": "reads", "evidence": "access.py:759", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:is:TAG_REFERENCES_ALL_COLUMNS", "type": "reads", "evidence": "access.py:764", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:POLICY_REFERENCES", "type": "reads", "evidence": "access.py:786", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:MASKING_POLICIES", "type": "reads", "evidence": "access.py:787", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:au:ROW_ACCESS_POLICIES", "type": "reads", "evidence": "access.py:788", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:is:POLICY_REFERENCES", "type": "reads", "evidence": "access.py:796", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:DESCRIBE POLICY", "type": "reads", "evidence": "access.py:804", "status": "verified"}
+{"from": "function:access.py:live", "to": "external_system:show:SHOW STREAMS IN ACCOUNT", "type": "reads", "evidence": "access.py:832", "status": "verified"}
+{"from": "function:access.py:use_sql", "to": "external_system:au:ACCESS_HISTORY", "type": "reads", "evidence": "access.py:845,849", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:show:CURRENT_AVAILABLE_ROLES", "type": "reads", "evidence": "access.py:477", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:show:SHOW GRANTS TO ROLE", "type": "reads", "evidence": "access.py:479", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:show:SHOW GRANTS TO DATABASE ROLE", "type": "reads", "evidence": "access.py:490", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:is:APPLICABLE_ROLES", "type": "reads", "evidence": "access.py:506", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:show:SHOW GRANTS TO USER", "type": "reads", "evidence": "access.py:515", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:show:DESC USER", "type": "reads", "evidence": "access.py:525", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:au:QUERY_HISTORY", "type": "reads", "evidence": "access.py:537", "status": "verified"}
+{"from": "function:access.py:mine", "to": "external_system:is:QUERY_HISTORY_BY_USER", "type": "reads", "evidence": "access.py:542", "status": "verified"}
+{"from": "function:server.py:read_shared", "to": "function:access.py:fake", "type": "calls", "evidence": "server.py:88", "status": "verified"}
+{"from": "function:server.py:read_shared", "to": "function:access.py:live", "type": "calls", "evidence": "server.py:88", "status": "verified"}
+{"from": "function:server.py:read_shared", "to": "function:access.py:snapshot", "type": "calls", "evidence": "server.py:88", "status": "verified"}
+{"from": "function:server.py:reload", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "triggers", "evidence": "server.py:2134", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:COPIES", "type": "contains", "evidence": "cache.py:210", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:COPIES", "type": "writes", "evidence": "cache.py:230-232", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_RUN", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_RUN", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_RUN_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_RUN_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_RUN", "to": "table:TBL_ACCESS_RUN", "type": "derived_from", "evidence": "cache.py:140-141,142", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_RUN_PREV", "to": "table:duckdb:TBL_ACCESS_RUN", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_GRANT", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_GRANT", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_GRANT_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_GRANT_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_GRANT", "to": "table:TBL_ACCESS_GRANT", "type": "derived_from", "evidence": "cache.py:140-141,144", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_GRANT_PREV", "to": "table:duckdb:TBL_ACCESS_GRANT", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_USER_ROLE", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_USER_ROLE", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_USER_ROLE_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_USER_ROLE_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_USER_ROLE", "to": "table:TBL_ACCESS_USER_ROLE", "type": "derived_from", "evidence": "cache.py:140-141,146", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_USER_ROLE_PREV", "to": "table:duckdb:TBL_ACCESS_USER_ROLE", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_USER", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_USER", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_USER_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_USER_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_USER", "to": "table:TBL_ACCESS_USER", "type": "derived_from", "evidence": "cache.py:140-141,147", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_USER_PREV", "to": "table:duckdb:TBL_ACCESS_USER", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_USAGE", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_USAGE", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_USAGE_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_USAGE_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_USAGE", "to": "table:TBL_ACCESS_USAGE", "type": "derived_from", "evidence": "cache.py:140-141,150", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_USAGE_PREV", "to": "table:duckdb:TBL_ACCESS_USAGE", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_TAG", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_TAG", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_TAG_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_TAG_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_TAG", "to": "table:TBL_ACCESS_TAG", "type": "derived_from", "evidence": "cache.py:140-141,151", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_TAG_PREV", "to": "table:duckdb:TBL_ACCESS_TAG", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_POLICY", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_POLICY", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_POLICY_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_POLICY_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_POLICY", "to": "table:TBL_ACCESS_POLICY", "type": "derived_from", "evidence": "cache.py:140-141,153", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_POLICY_PREV", "to": "table:duckdb:TBL_ACCESS_POLICY", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_STREAM", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_STREAM", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_STREAM_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_STREAM_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_STREAM", "to": "table:TBL_ACCESS_STREAM", "type": "derived_from", "evidence": "cache.py:140-141,155", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_STREAM_PREV", "to": "table:duckdb:TBL_ACCESS_STREAM", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_OBJECT_USE", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_OBJECT_USE", "type": "writes", "evidence": "cache.py:221-229", "status": "verified"}
+{"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_OBJECT_USE_PREV", "type": "contains", "evidence": "cache.py:215-221", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "table:duckdb:TBL_ACCESS_OBJECT_USE_PREV", "type": "writes", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_OBJECT_USE", "to": "table:TBL_ACCESS_OBJECT_USE", "type": "derived_from", "evidence": "cache.py:140-141,156", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_OBJECT_USE_PREV", "to": "table:duckdb:TBL_ACCESS_OBJECT_USE", "type": "derived_from", "evidence": "cache.py:217-219", "status": "verified"}
+{"from": "table:duckdb:TBL_ACCESS_RUN", "to": "data_structure:snapshot_dict", "type": "derived_from", "evidence": "cache.py:193-202", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "data_structure:snapshot_dict", "type": "reads", "evidence": "cache.py:193-198", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "config:cache.py:COLUMNS", "type": "depends_on", "evidence": "cache.py:215", "status": "verified"}
+{"from": "function:cache.py:sql_copy", "to": "function:cache.py:schema", "type": "calls", "evidence": "cache.py:203", "status": "verified"}
+{"from": "function:cache.py:get", "to": "function:cache.py:sql_copy", "type": "calls", "evidence": "cache.py:107-108", "status": "verified"}
+{"from": "function:cache.py:get", "to": "function:cache.py:sql_wanted", "type": "calls", "evidence": "cache.py:107", "status": "verified"}
+{"from": "function:cache.py:get", "to": "function:cache.py:keep_prev", "type": "calls", "evidence": "cache.py:111", "status": "verified"}
+{"from": "function:cache.py:get", "to": "file:.cache/<key>.pkl", "type": "writes", "evidence": "cache.py:112-114", "status": "verified"}
+{"from": "function:cache.py:get", "to": "file:.cache/<key>.pkl", "type": "reads", "evidence": "cache.py:102-104", "status": "verified"}
+{"from": "function:cache.py:keep_prev", "to": "file:.cache/<key>.prev.pkl", "type": "writes", "evidence": "cache.py:79", "status": "verified"}
+{"from": "function:cache.py:prev", "to": "file:.cache/<key>.prev.pkl", "type": "reads", "evidence": "cache.py:86-90", "status": "verified"}
+{"from": "function:cache.py:drop", "to": "file:.cache/<key>.pkl", "type": "writes", "evidence": "cache.py:133-135", "status": "verified"}
+{"from": "file:.cache/<key>.pkl", "to": "data_structure:snapshot_dict", "type": "derived_from", "evidence": "cache.py:113", "status": "verified"}
+{"from": "config:CACHE_HOURS", "to": "function:cache.py:get", "type": "configures", "evidence": "cache.py:21,102", "status": "verified"}
+{"from": "config:DUCKDB", "to": "function:cache.py:sql_wanted", "type": "configures", "evidence": "cache.py:139,174-176", "status": "verified"}

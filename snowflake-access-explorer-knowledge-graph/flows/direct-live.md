@@ -1,0 +1,72 @@
+# Flow: shared data read directly (SOURCE=direct, access.live)
+
+One-line summary: no snapshot tables; on a click ("Load shared data") the server runs `access.live()` with the login's role — ACCOUNT_USAGE where readable, else SHOW / INFORMATION_SCHEMA — and keeps the same dict as `snapshot()` in memory and `.cache/`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant W as React App.tsx
+    participant S as server.py
+    participant C as cache.py
+    participant A as access.live()
+    participant F as sf.rows
+    participant SF as Snowflake (ACCOUNT_USAGE / SHOW)
+    W->>S: GET /api/meta?view=shared
+    S->>S: session -> load_shared(ask=True)
+    S-->>W: meta.error = shared_not_loaded (409, no copy yet)
+    U->>W: click "Load shared data"
+    W->>S: POST /api/reload {what:"load"}
+    S->>C: get(KEY, read_shared)
+    C->>A: with_query(a.live)
+    A->>F: USE SECONDARY ROLES ALL (may fail), CURRENT_TIMESTAMP, CURRENT_DATABASE
+    loop per data set
+        A->>F: SELECT 1 FROM ACCOUNT_USAGE.<view> LIMIT 1
+        alt readable
+            A->>SF: ACCOUNT_USAGE query
+        else refused
+            A->>SF: SHOW ... / INFORMATION_SCHEMA fallback (SHOW_THREADS parallel)
+        end
+    end
+    A-->>C: dict(run RUN_ID="direct", GRANT, USER_ROLE, USER, USAGE, TAG, POLICY, STREAM, OBJECT_USE)
+    C-->>S: stored in memory + .cache/<key>.pkl
+    S-->>W: {ok:true, message:"Loaded."} -> clearCache -> pages refetch
+```
+
+## Steps
+
+1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:31-36; `DIRECT = SOURCE == "direct"` — server.py:22.
+2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` — server.py:91-95, cache.py:119-126.
+3. `meta()` catches it and sends `error` so the UI shows the load card — server.py:2088-2104; React: `needShared` and the "Load shared data" button — web/src/App.tsx:301, web/src/App.tsx:344, `post("reload", {what:"load"})` — web/src/App.tsx:287.
+4. `reload({"what":"load"})` -> `load_shared()` — server.py:2146-2148; refresh `{what:"page"}` / `rebuild` drop the cache and read again at once in direct mode — server.py:2142-2152.
+5. `read_shared()` -> `with_query(a.live)` — server.py:87-88, server.py:71-84.
+6. `live(query)` setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` (may be refused -> `None`) — access.py:583-592.
+7. Grants: ACCOUNT_USAGE `GRANTS_TO_ROLES` / `GRANTS_TO_USERS` if both readable (database role grantee qualified as `DB.ROLE`), else `SHOW ROLES` + `SHOW GRANTS TO/OF ROLE` per role and database roles per database; skipped roles land in notes — access.py:599-644.
+8. Future grants: SHOW only; `SHOW DATABASES` refused -> `future_grants=UNAVAILABLE` — access.py:646-674.
+9. Users: ACCOUNT_USAGE.USERS else `SHOW USERS` — access.py:676-692. Usage: QUERY_HISTORY 30 days else INFORMATION_SCHEMA 7 days — access.py:694-724.
+10. Tags / policies: ACCOUNT_USAGE else per-object INFORMATION_SCHEMA up to `TAG_FALLBACK_MAX` (300) — access.py:744-817, access.py:557.
+11. Object use: ACCESS_HISTORY only (`use_sql`), else empty + note — access.py:819-827, access.py:839-853. Streams: `SHOW STREAMS IN ACCOUNT` — access.py:829-835.
+12. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)` — access.py:836.
+13. Parallel SHOW statements: `each()` runs `SHOW_THREADS` (16) at a time, returning exceptions instead of failing — access.py:437-451.
+14. Kept with `cache.get` (memory + file); SQL copy gets run id `direct-<timestamp>` — cache.py:195-196.
+15. Must stay in step with `SP_ACCESS_SNAPSHOT` (rule in docstring) — access.py:560-563; checked by `test_live` — test_access.py:463 and `test_live_inside` (SHOW, USE SECONDARY ROLES, CURRENT_DATABASE refused) — test_access.py:499.
+
+## Example (mock query that answers everything empty; no Snowflake)
+
+Statements `a.live(q)` sends when every ACCOUNT_USAGE view is readable:
+
+```
+USE SECONDARY ROLES ALL
+SELECT CURRENT_TIMESTAMP() AS T
+SELECT CURRENT_DATABASE() AS D
+SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES LIMIT 1
+SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS LIMIT 1
+SELECT IFF(GRANTED_TO = 'DATABASE_ROLE', ...) ... FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES ...
+SELECT GRANTEE_NAME AS USER_NAME, ROLE AS ROLE_NAME, GRANTED_BY FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS ...
+SHOW DATABASES
+SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.USERS LIMIT 1   ... (USERS, QUERY_HISTORY, TAG_REFERENCES, POLICY_REFERENCES, ACCESS_HISTORY)
+SHOW STREAMS IN ACCOUNT
+```
+
+- Resulting `SOURCES`: `grants/user_roles/users/usage/tags/policies/object_use = ACCOUNT_USAGE`, `future_grants = SHOW`, `streams = SHOW`; `RUN_ID = "direct"`.
+- `cache.config({"SOURCE": "direct"})` -> `('snowflake', 'direct', '')`.

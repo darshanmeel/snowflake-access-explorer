@@ -1,0 +1,75 @@
+Deploy the Snowflake side: `sql/1_setup.sql` (objects), `2_snapshot.sql` (fill), `4_streamlit.sql` (Streamlit in Snowflake), each checked by its `_verify.sql`, run with `run_sql.py` or SnowSQL; `3_cleanup.sql` removes everything.
+
+```mermaid
+flowchart TD
+  P[settings.local.sql filled + .env login] --> R[run_sql.py file]
+  R --> U[USE ROLE DEV_ROLE / SECONDARY ROLES NONE / WAREHOUSE / DATABASE]
+  U --> X{SOURCE for SiS}
+  X -->|objects| S1[1_setup.sql: 10 tables, SP_ACCESS_SNAPSHOT, TF_*, STG_ACCESS_CODE, SP_ACCESS_FINDINGS, grants to APP_ROLE]
+  S1 --> V1[1_setup_verify.sql]
+  V1 --> S2[2_snapshot.sql: CALL SP_ACCESS_SNAPSHOT AUTO]
+  S2 --> V2[2_snapshot_verify.sql]
+  V2 --> T[optional daily task TSK_ACCESS_SNAPSHOT, README.html]
+  V2 --> S4
+  X -->|direct| S4[4_streamlit.sql: stage, PUT files + sis/.env, CREATE STREAMLIT, grants]
+  S4 --> V4[4_streamlit_verify.sql]
+  V4 --> O[Snowsight > Projects > Streamlit > ST_ACCESS_EXPLORER]
+  C[3_cleanup.sql: drop all] --> V3[3_cleanup_verify.sql]
+```
+
+## Runner: run_sql.py
+- Runs each `-- name:` statement in order; `(may fail)` skipped on error; `_verify.sql` prints OK / MISSING / WRONG / SKIPPED then VERIFIED or NOT VERIFIED — run_sql.py:1-7, run_sql.py:60-78.
+- Settings: `settings.local.sql`, else template `settings.sql` — run_sql.py:17; `!define` names parsed — run_sql.py:18; `HERE` = repo folder for PUT — run_sql.py:19.
+- Stops on unfilled `<placeholders>` — run_sql.py:22-27; on unknown `&NAME` — run_sql.py:30-35; on missing PUT files (hint for `sis/.env`) before any statement — run_sql.py:38-40, run_sql.py:52-55.
+- Session setup: `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, `USE WAREHOUSE &WH`, `USE DATABASE &DB` — run_sql.py:58-59.
+- `(expect N)` row-count check — run_sql.py:62, run_sql.py:72.
+- SnowSQL alternative: `!source sql/<file>` from the repo folder; each file starts with `!source settings.local.sql` — sql/1_setup.sql:5-6, README.md:232. SnowSQL needs `HERE` filled by hand — settings.sql:13-14.
+
+## Step 1: sql/1_setup.sql (SOURCE=objects only)
+- Purpose: 9 snapshot tables + findings table, snapshot procedure, findings stage/procedure, table functions, app-role read access; safe to rerun — sql/1_setup.sql:1-5.
+- Tables `TBL_ACCESS_RUN|GRANT|USER_ROLE|USER|USAGE|TAG|POLICY|STREAM|OBJECT_USE|FINDING` — sql/1_setup.sql:12-120.
+- `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, `EXECUTE AS OWNER` — sql/1_setup.sql:121-131.
+- `TF_ACCESS_OF` / `TF_WHO_CAN` / `TF_CAN` `(may fail)` — sql/1_setup.sql:557-667.
+- `STG_ACCESS_CODE` + `PUT access.py` + `SP_ACCESS_FINDINGS` importing it — sql/1_setup.sql:675-692.
+- Grants to `APP_ROLE` (all `may fail`) — sql/1_setup.sql:747-799.
+- Verify: `python run_sql.py sql/1_setup_verify.sql` — TABLES expect 10, procedures, functions, stage, function calls, ACCOUNT_USAGE readability probes, SHOW STREAMS, DEV_ROLE grants — sql/1_setup_verify.sql:4-65.
+
+## Step 2: sql/2_snapshot.sql
+- `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')`; `AUTO` / `ACCOUNT_USAGE` / `SHOW`; ACCOUNT_USAGE lags ~2 h — sql/2_snapshot.sql:1-12.
+- Verify: last run OK, one run in data, counts per table — sql/2_snapshot_verify.sql:4-36.
+- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:638-640; not in any sql/ file (only dropped in 3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:230.
+
+## Step 3 (numbered 4): sql/4_streamlit.sql
+- Two options: `SOURCE=objects` (run 1 + 2 first) or `SOURCE=direct` (this file only; owner role needs IMPORTED PRIVILEGES) — sql/4_streamlit.sql:2-7.
+- Prereq `sis/.env` (required, git-ignored, template `sis.env.example`): `mkdir sis; copy sis.env.example sis\.env` — README.md:282-291, sql/4_streamlit.sql:9-10, .gitignore:8.
+- Stage `STG_ACCESS_APP` — sql/4_streamlit.sql:19-20.
+- PUT `app.py`, `access.py`, `cache.py`, `server.py`, `sf.py`, `st_react.py`, `ui.py` — sql/4_streamlit.sql:22-41.
+- PUT `environment.yml` — sql/4_streamlit.sql:45-46; `.streamlit/config.toml` not uploaded — sql/4_streamlit.sql:44.
+- PUT `web/dist-st/index.html`, `REMOVE` old assets `(may fail)`, PUT assets — sql/4_streamlit.sql:48-56.
+- PUT `sis/.env` as the app's `.env` — sql/4_streamlit.sql:58-59.
+- `CREATE OR REPLACE STREAMLIT ST_ACCESS_EXPLORER ... MAIN_FILE='app.py' QUERY_WAREHOUSE=&WH` — sql/4_streamlit.sql:61-67.
+- Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:69-80.
+- Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:300.
+- Verify: Streamlit exists (expect 1), stage files, exactly 4 assets, grants on the app — sql/4_streamlit_verify.sql:3-15.
+- Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:679-686, web/ST.md:54-55.
+- Manual check in Snowsight: hint disappears, Home shows data, no CSP errors — web/ST.md:45-50.
+
+## Roles and grants needed
+| Role | Needs | Evidence |
+|---|---|---|
+| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:229, README.html:642 |
+| `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:801-805 |
+| `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:290-291, sql/4_streamlit.sql:5-7 |
+| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:747-799, README.html:642 |
+| `APP_ROLE`, SiS | USAGE on `ST_ACCESS_EXPLORER` (+ DB/schema/WH) | sql/4_streamlit.sql:69-80 |
+- How these grants are given in practice: see access-requests.md.
+
+## Rollback / removal
+- No step-wise rollback is defined. Only full removal: `python run_sql.py sql/3_cleanup.sql` drops Streamlit, app stage, task, both procedures, 3 functions, code stage and the `TBL_ACCESS_` tables with data; schema stays; "Cannot be undone" — sql/3_cleanup.sql:1-66.
+- Verify removal: `sql/3_cleanup_verify.sql` (every check expect 0) — sql/3_cleanup_verify.sql:3-25.
+- Redeploy of the app = rerun 4_streamlit.sql (replaces app) — sql/4_streamlit.sql:11. Previous app version is not kept (inferred from `CREATE OR REPLACE`, sql/4_streamlit.sql:62).
+
+## Unclear / inconsistent
+- 3_cleanup.sql header says "the 9 TBL_ACCESS_ tables" but drops 10 (incl. `TBL_ACCESS_FINDING`) — sql/3_cleanup.sql:1, sql/3_cleanup.sql:38-66.
+- Grants created by 1_setup.sql / 4_streamlit.sql are not revoked by 3_cleanup.sql (inferred: dropping the objects removes their grants; DB/schema/WH USAGE grants remain) — sql/3_cleanup.sql:11-66.
+- Grants are applied by these scripts as `(may fail)` statements, while the project rule says real roles and grants go through IaC — sql/1_setup.sql:4, CLAUDE.md:6-7. Which wins in a given account is unclear.

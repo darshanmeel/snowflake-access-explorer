@@ -1,0 +1,23 @@
+docs/make_readme.py (155 lines): a small generator that fills the generated parts of README.html between `<!--map:NAME-->` markers — the overview diagram, the snapshot flow diagram and the 23-rule table.
+
+```mermaid
+flowchart LR
+  A[access.py rule titles, severities] --> R[rules]
+  S[server.RULE_INFO areas] --> R
+  O[OVERVIEW boxes + arrows] --> C1[canvas overview 1080x440]
+  F[FLOW boxes + lanes] --> C2[canvas flow 1080x640]
+  C1 --> I[inject into README.html]
+  C2 --> I
+  R --> I
+  I --> H[README.html written, LF]
+```
+
+## Content
+- Purpose and usage `python docs/make_readme.py` — docs/make_readme.py:1-4.
+- Imports access and server from the repo root — docs/make_readme.py:10-13.
+- Overview canvas spec — docs/make_readme.py:15-25; helpers `mid`, `side`, `crosses`, `box_html`, `canvas` — docs/make_readme.py:43-99; `rules()` — docs/make_readme.py:125; `inject()` — docs/make_readme.py:142.
+- Main: injects overview, flow, rules; writes README.html — docs/make_readme.py:148-155.
+
+## Relates to
+- README.html (markers README.html:136, 159, 419); access.py; server.py RULE_INFO; test_readme_rules checks the output is current — test_access.py:1688-1698.
+- Code, not a doc; listed here because it only serves documentation.

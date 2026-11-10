@@ -1,0 +1,93 @@
+# Flow: shared data from the snapshot tables (SOURCE=objects)
+
+One-line summary: a page asks `/api/<page>`; the server loads the last OK run of the `TBL_ACCESS_` tables once (memory + `.cache/`) through `cache.get` -> `sf.rows`, builds the lookups and answers from `access.py`; "Rebuild snapshot" CALLs `SP_ACCESS_SNAPSHOT` and drops the cache.
+
+## Sequence: first page load
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant W as React (web/src)
+    participant S as server.py
+    participant C as cache.py
+    participant A as access.py
+    participant F as sf.py
+    participant SF as Snowflake TBL_ACCESS_*
+    U->>W: open page (e.g. Home)
+    W->>S: GET /api/home?view=shared
+    S->>S: serve() -> session("shared")
+    S->>S: load_shared(ask=True)
+    S->>C: get(KEY, read_shared, disk=True)
+    alt in memory (<24 h) or .cache file (<CACHE_HOURS)
+        C-->>S: (data, fetched_at)
+    else read Snowflake
+        C->>S: read_shared() -> with_query(snapshot)
+        S->>F: connect() + rows(conn, sql)
+        F->>SF: SELECT ... TBL_ACCESS_RUN WHERE STATUS='OK'
+        F->>SF: SELECT * FROM TBL_ACCESS_<t> WHERE RUN_ID=...
+        SF-->>A: rows -> snapshot() dict
+        C->>C: sql_copy (DuckDB), keep_prev, write .pkl
+    end
+    S->>A: build(d, key=("shared", RUN_ID, FINISHED_AT))
+    S->>A: home_page -> ladder_counts, governance_kpis, rule_rows
+    S-->>W: JSON (clean)
+```
+
+## Steps
+
+1. Settings resolve once at import: `MODE, SOURCE, WHERE = cache.config()` — server.py:21; objects chosen when `SOURCE=objects` or only `ACCESS_SNAPSHOT` is set; location = `ACCESS_SNAPSHOT` or `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA`, else ValueError — cache.py:27-40.
+2. Cache key per account + source + location + user + role: `KEY = cache.name(SOURCE, where=WHERE)` — server.py:23, cache.py:43-48.
+3. React fetches the page JSON with `get()` (memoised per URL) — web/src/api/client.ts:35-44; Home: `useApi("home", {view})` — web/src/pages/Home.tsx:66.
+4. `serve(name, params, sid)` opens `session(view, ...)`, calls `ROUTES[name]`, adds `refs` for pages in `WITH_REFS` — server.py:2196-2203, server.py:2187-2192.
+5. `session("shared")` calls `load_shared(ask=True)` and builds the lookups under `LOCK` with the run as key — server.py:175-195.
+6. `load_shared` takes `LOAD` (one Snowflake read at a time) and calls `cache.get(KEY, read_shared, disk=MODE=="snowflake")`; errors become `503 shared_unreadable` — server.py:91-100.
+7. `cache.get`: memory if younger than `TTL` (24 h), else the `.cache/<key>.pkl` file if younger than `CACHE_HOURS`, else `fn()` — cache.py:93-116. Memory TTL — cache.py:22; `CACHE_HOURS` — cache.py:21.
+8. `read_shared()` -> `with_query(lambda q: a.snapshot(q, WHERE))` — server.py:87-88; `with_query` opens one connection, runs every statement via `sf.rows`, closes only if `sf.owned()` — server.py:71-84.
+9. `sf.connect()`: inside Snowflake the app's own session (`a.INSIDE`) — sf.py:20-22; else key pair if `SNOWFLAKE_PRIVATE_KEY_FILE`, else SSO `externalbrowser` — sf.py:23-41; `sf.rows` is the only read path — sf.py:49-53.
+10. `a.snapshot(query, where)`: last OK run from `TBL_ACCESS_RUN`, error if none; then `SELECT *` per table in `TABLES` filtered by `RUN_ID`; `OPTIONAL` (`OBJECT_USE`) may be missing -> `None` — access.py:401-416, access.py:58-59.
+11. On a fresh read: DuckDB SQL copy if wanted — cache.py:107-108, cache.py:171-176, cache.py:183-240; previous file kept as `<key>.prev.pkl` (for What changed) — cache.py:72-81; atomic write via `.tmp` — cache.py:109-114.
+12. `a.build(d, key, builtin)` fills module lookups; same key skips work; keeps up to `KEEP_BUILT` data sets — access.py:896-960, access.py:883.
+13. Page handler (e.g. `home_page`) reads only lookups / `S["rows"]` — server.py:1044-1065; `clean()` makes JSON-safe output — server.py:200.
+
+## Sequence: refresh and rebuild
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant W as React App.tsx
+    participant S as server.py reload()
+    participant SF as Snowflake
+    participant C as cache.py
+    U->>W: click "Rebuild snapshot"
+    W->>S: POST /api/reload {what:"rebuild"}
+    S->>SF: CALL <WHERE>.SP_ACCESS_SNAPSHOT('AUTO')
+    SF-->>S: {status: OK|SKIPPED|FAILED, ...}
+    alt status != OK
+        S-->>W: ok=false, message "Snapshot skipped: ..." (cache kept)
+    else OK
+        S->>C: drop(KEY) (.pkl -> .old.pkl)
+        S-->>W: ok=true "Snapshot rebuilt."
+        W->>W: clearCache() -> pages refetch -> cache.get reads new run
+    end
+```
+
+14. Buttons: "Rebuild snapshot" (not in fake mode) — web/src/App.tsx:316 -> `post("reload", {what:"rebuild"})` — web/src/App.tsx:288-291; side "Read Snowflake again" -> `{what:"page"}` — web/src/App.tsx:244, web/src/App.tsx:286. After any action `clearCache()` — web/src/App.tsx:283.
+15. `reload("rebuild")`: fake -> "Demo: the CALL runs only on Snowflake"; objects -> `CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')` through `with_query`; non-OK status returns `ok=False` and keeps the copy; OK -> `cache.drop(KEY)` — server.py:2126-2145.
+16. `reload("page")`: `cache.drop(KEY)` only (objects: next page reads again) — server.py:2149-2152.
+17. `cache.drop`: out of memory, local file set aside as `.old.pkl` so it becomes `.prev.pkl` on the next read — cache.py:129-135, cache.py:72-81.
+18. Procedure (owner's rights): skips if a run is `RUNNING` within 1 h; inserts RUNNING row, fills each table, FAILED deletes this run's rows, OK deletes older runs' rows — sql/1_setup.sql:122-128, sql/1_setup.sql:497-540.
+19. Read-only guard: `test_read_only` records every statement and allows only reads plus the `SP_ACCESS_SNAPSHOT` CALL — test_server.py:322.
+
+## Example (FAKE=1, mock query; no Snowflake)
+
+- `cache.config({"ACCESS_SNAPSHOT": "DB1.SNAP"})` -> `('snowflake', 'objects', 'DB1.SNAP')`; `cache.name("objects", where="DB1.SNAP")` -> `local_objects_DB1.SNAP` (no `SNOWFLAKE_ACCOUNT` -> `local`).
+- `cache.config({"SOURCE": "objects"})` -> `ValueError: SOURCE=objects needs ACCESS_SNAPSHOT=<DB>.<SCHEMA> ...`.
+- `a.snapshot(q, "DB1.SNAP")` with a recording mock serving `a.fake()` sends, in order:
+  - `SELECT RUN_ID, FINISHED_AT, SOURCES, NOTES FROM DB1.SNAP.TBL_ACCESS_RUN WHERE STATUS = 'OK' ORDER BY FINISHED_AT DESC LIMIT 1`
+  - `SELECT * FROM DB1.SNAP.TBL_ACCESS_GRANT WHERE RUN_ID = 'fake'` … then USER_ROLE, USER, USAGE, TAG, POLICY, STREAM, OBJECT_USE.
+  - Rows: GRANT 805, USER_ROLE 30, USER 27, USAGE 9, TAG 12, POLICY 6, STREAM 1, OBJECT_USE 341.
+- `GET /api/home?view=shared` (fake): `counts={users:27, roles:85, objects:75, sensitive:5}`, `risks={Critical:0, High:20, Medium:31, Low:11}`, `me.user=ENGINEER_01`.
+- `reload({"what":"rebuild"})` (fake): `{ok: False, message: "Demo: the CALL runs only on Snowflake (not FAKE=1)."}`.
+- Names `DB1.SNAP` are made up for the example.

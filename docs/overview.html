@@ -1,0 +1,330 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snowflake access explorer</title><style>
+:root { --ground:#F6F6F3; --card:#FFFFFF; --line:#D9DBDF; --ink:#17191D; --muted:#5B6068; --soft:#EEEFEC;
+        --teal:#DDF0EE; --teal-ink:#1C5C57; --amber:#FCEBC8; --amber-ink:#8A5A00; --green:#1E6B43; --blue:#1F5FA8;
+        --blue-bg:#E3EEF9; --coffee:#EADFD3; --coffee-ink:#6B4A2B; --red:#A12D2D; --red-bg:#F6E3E3; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font:15px/1.55 "IBM Plex Sans","Segoe UI",Arial,sans-serif; }
+main { max-width:1100px; margin:0 auto; padding:32px 16px 56px; }
+section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:20px 24px; margin:18px 0; }
+h1 { font-size:28px; font-weight:600; margin:4px 0 6px; } h2 { font-size:20px; font-weight:600; margin:0 0 8px; }
+h3 { font-size:15px; font-weight:600; margin:14px 0 4px; }
+ul, ol { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+code, pre, .mono, .key, .cap, th, .eyebrow, .src { font-family:"IBM Plex Mono",Consolas,monospace; }
+code { font-size:13px; background:var(--soft); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+pre { margin:8px 0; padding:8px 12px; background:var(--soft); border:1px solid var(--line); border-radius:6px; font-size:12.5px; overflow-x:auto; }
+.eyebrow { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.key, .cap { font-size:12px; color:var(--muted); margin:8px 0 0; } .cap { color:var(--ink); }
+.src { font-size:11px; color:var(--muted); margin:6px 0 0; overflow-wrap:anywhere; }
+a { color:var(--blue); }
+nav.toc { font-family:"IBM Plex Mono",Consolas,monospace; font-size:12px; margin:10px 0 0; line-height:1.9; }
+nav.toc a { text-decoration:none; border:1px solid var(--line); background:var(--card); border-radius:4px; padding:2px 7px; margin-right:4px; white-space:nowrap; display:inline-block; line-height:1.5; color:var(--ink); }
+table { width:100%; border-collapse:collapse; margin:10px 0; font-size:14px; }
+th, td { text-align:left; vertical-align:top; padding:7px 10px; border:1px solid var(--line); }
+th { font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); background:var(--soft); }
+td.v { font-family:"IBM Plex Mono",Consolas,monospace; font-size:12.5px; }
+details { margin:10px 0; border:1px solid var(--line); border-radius:8px; padding:6px 12px; background:var(--card); }
+summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
+.tblwrap { overflow-x:auto; }
+.tblwrap td.v.w { white-space:nowrap; }
+
+/* map */
+.map-wrap { overflow-x:auto; margin-top:10px; }
+.map { position:relative; margin:0 auto; font-size:13px; line-height:1.35; }
+.map svg { position:absolute; left:0; top:0; overflow:visible; }
+.map .b { position:absolute; background:var(--card); border:1px solid var(--ink); border-radius:8px; padding:8px 10px; }
+.map .b.data { background:var(--soft); border-color:#B9BCC2; }
+.map .b.c { display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
+.map .b .t { display:block; font-weight:600; } .map .b .sub { font-size:12px; color:var(--muted); }
+.map .b .tag { font-family:"IBM Plex Mono",Consolas,monospace; font-size:10px; letter-spacing:.08em; color:var(--muted); }
+.map .b.actor { border-radius:50px; } .map .b.entry { border-width:2px; }
+.map .b.ext { border:1px dashed #7A8089; border-radius:14px; } .map .b.actor.ext { border-radius:50px; }
+.map .num { position:absolute; width:20px; height:20px; border-radius:50%; background:var(--ink); color:#fff; font:600 11px/20px "IBM Plex Mono",Consolas,monospace; text-align:center; transform:translate(-50%,-50%); }
+.map .lbl { position:absolute; font-family:"IBM Plex Mono",Consolas,monospace; font-size:11px; color:var(--muted); white-space:nowrap; transform:translate(-50%,-50%); background:var(--card); padding:0 4px; }
+.map .lbl.chip { color:var(--ink); border:1px solid var(--line); border-radius:4px; padding:1px 6px; }
+
+/* access path */
+.path { display:grid; grid-template-columns:1fr 56px 1fr 56px 1fr 56px 1fr 56px 1.35fr; align-items:center; margin-top:14px; }
+.pc { position:relative; border:1px solid var(--ink); border-radius:8px; padding:8px 8px; min-width:0; background:var(--card); text-align:center; }
+.pc b { display:block; font-family:"IBM Plex Mono",Consolas,monospace; font-size:11px; }
+.pc small { display:block; font-size:11.5px; color:var(--muted); margin-top:2px; }
+.pc.actor { border-radius:999px; } .pc.grp { border:1px dashed var(--amber-ink); background:var(--amber); }
+.pc.fn { background:var(--blue-bg); border-color:var(--blue); } .pc.tech { background:var(--coffee); border-color:var(--coffee-ink); }
+.pc.obj { background:var(--soft); border-color:#B9BCC2; }
+.pc .depth { position:absolute; top:-11px; left:50%; transform:translateX(-50%); font:11px "IBM Plex Mono",Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:4px; padding:0 6px; white-space:nowrap; }
+.pa { display:flex; flex-direction:column; align-items:center; font:10.5px "IBM Plex Mono",Consolas,monospace; color:var(--muted); text-align:center; }
+.pa svg { width:40px; height:16px; }
+
+/* examples */
+.exset { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-top:10px; }
+.ex { border:1px solid var(--line); border-radius:8px; overflow:hidden; display:flex; flex-direction:column; background:var(--card); }
+.ex .h { padding:6px 10px; background:var(--soft); border-bottom:1px solid var(--line); }
+.ex .h b { display:block; font-size:13px; }
+.ex .verdict { font-family:"IBM Plex Mono",Consolas,monospace; font-size:10px; font-weight:600; letter-spacing:.06em; }
+.ex.ok .verdict { color:var(--green); } .ex.edge .verdict { color:var(--amber-ink); } .ex.bad .verdict { color:var(--red); }
+.ex.ok { border-top:3px solid var(--green); } .ex.edge { border-top:3px solid var(--amber-ink); } .ex.bad { border-top:3px solid var(--red); }
+.ex .lbl2 { font-family:"IBM Plex Mono",Consolas,monospace; font-size:10px; font-weight:600; letter-spacing:.06em; color:var(--muted); padding:6px 10px 0; }
+.ex .res { padding:2px 10px 8px; font-size:12.5px; overflow-wrap:anywhere; }
+.ex .res code { white-space:normal; overflow-wrap:anywhere; font-size:12px; }
+.ex table { margin:2px 0 0; font-size:12px; } .ex td { border:0; border-bottom:1px solid var(--line); padding:3px 10px; font-family:"IBM Plex Mono",Consolas,monospace; }
+.ex td:first-child { color:var(--muted); font-size:11px; }
+.ex .src { padding:0 10px 8px; margin-top:auto; }
+
+/* bars */
+.bars { margin-top:12px; }
+.bar { display:grid; grid-template-columns:260px 1fr 36px; gap:10px; align-items:center; margin:6px 0; font-size:13px; }
+.bt { display:block; height:16px; background:var(--soft); border-radius:3px; }
+.bf { display:block; height:16px; background:var(--blue); border-radius:3px; }
+.bv { font:600 13px "IBM Plex Mono",Consolas,monospace; }
+.chips { margin:10px 0 0; display:flex; flex-wrap:wrap; gap:8px; font:12px "IBM Plex Mono",Consolas,monospace; }
+.chips span { border:1px solid var(--line); border-radius:4px; padding:1px 8px; background:var(--card); }
+.sev { font:600 11px "IBM Plex Mono",Consolas,monospace; border-radius:3px; padding:1px 6px; border:1px solid var(--line); }
+.sev.high { color:var(--red); border-color:var(--red); } .sev.medium { color:var(--amber-ink); border-color:var(--amber-ink); } .sev.low { color:var(--muted); }
+
+/* run + promise */
+.two { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; margin-top:10px; }
+.card { border:1px solid var(--line); border-radius:8px; padding:10px 14px; background:var(--card); }
+.card h3 { margin-top:0; }
+.strip { display:flex; align-items:center; gap:6px; margin:6px 0 8px; font-size:12px; }
+.strip .s { border:1px solid var(--ink); border-radius:6px; padding:5px 8px; text-align:center; flex:1; background:var(--card); }
+.strip .s.d { background:var(--soft); border-color:#B9BCC2; }
+.strip .s.e { border-width:2px; }
+.strip svg { width:26px; height:14px; flex:none; }
+.does h3 { color:var(--green); } .never h3 { color:var(--red); }
+.never { border-color:var(--red); } .does { border-color:var(--green); }
+.mini { margin:0; padding-left:0; list-style:none; } .mini li { padding-left:0; }
+@media (max-width:1050px) { .path { grid-template-columns:1fr; gap:4px; } .pa { flex-direction:row; gap:8px; } .pa svg { transform:rotate(90deg); } }
+@media screen and (max-width:1040px) { .map-wrap { overflow:visible; } .map { width:auto !important; height:auto !important; display:flex; flex-direction:column; gap:8px; }
+  .map svg, .map .num, .map .lbl { display:none; } .map .b { position:static; width:auto !important; height:auto !important; } }
+@media (max-width:820px) { .bar { grid-template-columns:1fr 36px; } .bar .bt { grid-column:1 / -1; grid-row:2; } .strip { flex-direction:column; } .strip svg { transform:rotate(90deg); } }
+@media print { body { background:#fff; } main { padding:0; max-width:none; } section { border:0; padding:0; break-inside:avoid-page; } details { border:0; } nav.toc a { border:0; }
+  .map-wrap { overflow:visible; } .map { zoom:.68; } }
+</style></head><body><main>
+<div class="eyebrow">Overview · for business and newcomers</div><h1>Snowflake access explorer</h1>
+<nav class="toc" aria-label="Contents"><a href="#big-picture">Big picture</a><a href="#what">What it is</a><a href="#scenario">Example: who can read customer data</a><a href="#examples">More examples</a><a href="#checks">What the 23 checks look for</a><a href="#run">Two ways to run</a><a href="#read-only">Read-only promise</a><a href="#risks">Costs and risks</a><a href="#decision">Decision needed</a></nav>
+
+<section id="big-picture"><h2>Big picture</h2>
+<div class="map-wrap"><div class="map" style="width:1000px;height:310px"><svg width="1000" height="310" aria-hidden="true"><defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#17191D"/></marker></defs><polyline points="150,80 370,80" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#h)"/><polyline points="790,80 540,80" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="420,120 420,150 270,150 270,210" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="490,120 490,150 570,150 570,210" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="655,245 790,245" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="895,200 895,130" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#h)"/></svg><div class="b c actor" style="left:0px;top:25px;width:150px;height:110px"><span class="tag">PEOPLE</span><span class="t">People with a question</span><span class="sub">who has what, and how</span></div><div class="b c entry" style="left:370px;top:40px;width:170px;height:80px"><span class="tag">ENTRY</span><span class="t">Access explorer</span><span class="sub">read-only</span></div><div class="b c data" style="left:790px;top:25px;width:210px;height:105px"><span class="tag">DATA</span><span class="t">Snowflake account</span><span class="sub">people · roles · permissions · data labels · hiding rules</span></div><div class="b c " style="left:170px;top:210px;width:200px;height:70px"><span class="t">Answers with the full path</span></div><div class="b c " style="left:485px;top:210px;width:170px;height:70px"><span class="t">Risk checks with written fixes</span></div><div class="b c actor ext" style="left:790px;top:200px;width:210px;height:90px"><span class="tag">OUTSIDE THE APP</span><span class="t">Change team</span><span class="sub">reviewed change scripts</span></div><span class="num" style="left:260px;top:80px">1</span><span class="lbl" style="left:260px;top:62px">asks</span><span class="lbl chip" style="left:260px;top:102px">Who can read customer data?</span><span class="num" style="left:665px;top:80px">2</span><span class="lbl" style="left:665px;top:62px">permissions and labels</span><span class="lbl chip" style="left:665px;top:102px">metadata only</span><span class="num" style="left:345px;top:150px">3</span><span class="lbl" style="left:345px;top:132px">answer</span><span class="lbl chip" style="left:150px;top:180px">5 people · each with its path</span><span class="num" style="left:530px;top:150px">4</span><span class="lbl" style="left:530px;top:132px">findings</span><span class="lbl chip" style="left:478px;top:180px">62 findings · 20 High</span><span class="num" style="left:722px;top:245px">5</span><span class="lbl" style="left:722px;top:226px">fix text</span><span class="num" style="left:895px;top:175px">6</span><span class="lbl" style="left:748px;top:165px">applies approved changes (not the app)</span></div></div>
+<p class="key">Key: pill = people · grey = data · solid = action · dashed = information moves · numbers = order · dashed outline = outside the app</p>
+<p class="cap">The app only reads; every change still goes through the change team's reviewed process.</p>
+<div class="tblwrap"><table>
+<tr><th>#</th><th>What moves</th><th>Example (fake data)</th></tr>
+<tr><td class="v">1</td><td>A person asks a question</td><td class="v">Who can read customer data?</td></tr>
+<tr><td class="v">2</td><td>The app reads permissions and labels</td><td class="v">metadata only</td></tr>
+<tr><td class="v">3</td><td>Answer with the full path</td><td class="v">5 people · each with its path</td></tr>
+<tr><td class="v">4</td><td>Risk check findings</td><td class="v">62 findings · 20 High</td></tr>
+<tr><td class="v">5</td><td>Fix text for the change team</td><td class="v">stop PUBLIC (everyone) using warehouse WH_SALES_XS</td></tr>
+<tr><td class="v">6</td><td>Change team applies approved changes</td><td class="v">not the app</td></tr>
+</table></div>
+<ul>
+<li>Reads only descriptions of access (metadata), never the business data itself.</li>
+<li>Hand-made permission changes are removed again by the change process.</li>
+</ul>
+<p class="src">README.md:9-14, 328 · CLAUDE.md:6-7 · example values: fake data run, see the example sections below</p></section>
+
+<section id="what"><h2>What it is</h2>
+<div class="strip"><div class="s">Person</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Group role</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Job role</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Data access role</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Table</div></div>
+<p class="key">Key: arrow = holds the next role, or may use the data · grey = data</p>
+<p class="cap">Access is a chain of roles; the app shows the whole chain.</p>
+<ul>
+<li>Shows who can reach which data in Snowflake, and through which roles.</li>
+<li>Snowflake: the company's cloud data warehouse.</li>
+<li>A role is a named bundle of permissions; a grant gives one permission.</li>
+<li>Depth = roles between person and data, the last one included.</li>
+<li>Answers at any depth: access ten roles deep shows next to direct grants.</li>
+<li>Only reads; never gives or removes a permission.</li>
+<li>Why: access is inherited role by role, hard to trace by hand.</li>
+<li>My access: your own access, local version with your own sign-in only.</li>
+<li>Who uses which screen: Not defined in source — confirm with owner.</li>
+<li>Named owners or approvers of the tool: Not defined in source — confirm with owner.</li>
+</ul>
+<h3>Value</h3>
+<ul>
+<li>Full path for every answer, e.g. person &gt; group &gt; job role &gt; data role &gt; table.</li>
+<li>23 automatic checks, each with fix text for the change team.</li>
+<li>"What if" shows who would lose access before anything is changed.</li>
+<li>Sensitive data view: who reads labelled columns, and which are hidden (masked).</li>
+</ul>
+<p class="src">README.md:3, 17-23, 32-41 · CLAUDE.md:3, 6, 57, 86 · server.py:126-143</p></section>
+
+<section id="scenario"><h2>Example: an auditor asks who can read customer data</h2>
+<ul><li>Question: who can read the customer table <code>SALES.CORE.TBL_CUSTOMER</code>, and how? (fake data)</li></ul>
+<div class="path"><div class="pc actor"><b>ANALYST_01</b><small>person</small></div><div class="pa"><svg viewBox="0 0 40 16" aria-hidden="true"><line x1="2" y1="8" x2="32" y2="8" stroke="#17191D" stroke-width="1.5"/><path d="M31,4 L38,8 L31,12 z" fill="#17191D"/></svg><span>holds</span></div><div class="pc grp"><b>GRP_ANALYSTS</b><small>group role (team membership)</small></div><div class="pa"><svg viewBox="0 0 40 16" aria-hidden="true"><line x1="2" y1="8" x2="32" y2="8" stroke="#17191D" stroke-width="1.5"/><path d="M31,4 L38,8 L31,12 z" fill="#17191D"/></svg><span>holds</span></div><div class="pc fn"><b>F_ANALYST</b><small>job role (functional)</small></div><div class="pa"><svg viewBox="0 0 40 16" aria-hidden="true"><line x1="2" y1="8" x2="32" y2="8" stroke="#17191D" stroke-width="1.5"/><path d="M31,4 L38,8 L31,12 z" fill="#17191D"/></svg><span>holds</span></div><div class="pc tech"><span class="depth">depth 3</span><b>T_SALES_CORE_READ</b><small>data access role (technical)</small></div><div class="pa"><svg viewBox="0 0 40 16" aria-hidden="true"><line x1="2" y1="8" x2="32" y2="8" stroke="#17191D" stroke-width="1.5"/><path d="M31,4 L38,8 L31,12 z" fill="#17191D"/></svg><span>may read</span></div><div class="pc obj"><b>SALES.CORE.TBL_CUSTOMER</b><small>table · sensitive</small></div></div>
+<p class="key">Key: pill = person · dashed amber = group role · blue = job role · brown = data access role · grey = data</p>
+<p class="cap">One question gives every person and the exact chain that lets them in.</p>
+<h3>Who can read SALES.CORE.TBL_CUSTOMER</h3>
+<div class="tblwrap"><table>
+<tr><th>Person</th><th>Shortest path</th><th>Number of paths</th></tr>
+<tr><td class="v">ENGINEER_01</td><td class="v">ENGINEER_01 &gt; F_ANALYST &gt; T_SALES_CORE_READ</td><td class="v">3</td></tr>
+<tr><td class="v">REPORT_01</td><td class="v">REPORT_01 &gt; F_REPORTING_RO &gt; T_SALES_CORE_READ</td><td class="v">1</td></tr>
+<tr><td class="v">MARKETING_01</td><td class="v">MARKETING_01 &gt; F_MARKETING &gt; T_SALES_CORE_READ</td><td class="v">1</td></tr>
+<tr><td class="v">ANALYST_01</td><td class="v">ANALYST_01 &gt; GRP_ANALYSTS &gt; F_ANALYST &gt; T_SALES_CORE_READ</td><td class="v">1</td></tr>
+<tr><td class="v">ANALYST_02</td><td class="v">ANALYST_02 &gt; GRP_ANALYSTS &gt; F_ANALYST &gt; T_SALES_CORE_READ</td><td class="v">1</td></tr>
+</table></div>
+<p class="src">access.who_users("SALES.CORE.TBL_CUSTOMER"), SELECT rows, on a.fake() — access.py:1955-1976, fake data access.py:130</p>
+<h3>What the auditor also learns</h3>
+<ul>
+<li>Columns BIRTH_DATE and PHONE are labelled sensitive but not hidden (check 6).</li>
+<li>ANALYST_02 last logged in 109 days ago and can still read it (check 7).</li>
+<li>ENGINEER_01 can also add, edit, delete or empty its rows (check 10).</li>
+<li>ENGINEER_01 has 3 paths: via F_ANALYST, via F_ENGINEER, and F_ENGINEER &gt; T_SALES_CORE_WRITE.</li>
+<li>"Can they?" for ANALYST_01: Yes, 1 path.</li>
+<li>Places to cut that path: GRP_ANALYSTS, F_ANALYST or T_SALES_CORE_READ.</li>
+</ul>
+<p class="src">fake data, a.fake() access.py:130 · a.checks() access.py:4475, rules 6/7/10 access.py:4648-4681 · a.can("ANALYST_01","SELECT","SALES.CORE.TBL_CUSTOMER") access.py:3245 · a.who_can("SALES.CORE.TBL_CUSTOMER") for ENGINEER_01 paths · run 2026-11-10 with FAKE=1</p></section>
+
+<section id="examples"><h2>More examples</h2>
+<div class="exset">
+<div class="ex edge"><div class="h"><span class="verdict">WHAT IF</span><b>Who loses access if a role is removed</b></div>
+<div class="lbl2">IN</div><div class="res"><code>Remove group role GRP_ANALYSTS from ANALYST_01</code></div>
+<div class="lbl2">OUT</div>
+<table><tr><td>loses</td><td>ANALYST_01: 9 objects</td></tr><tr><td>keeps</td><td>ANALYST_01 still uses warehouse WH_SALES_XS, via PUBLIC</td></tr><tr><td>findings</td><td>1 fixed · 0 new</td></tr></table>
+<div class="lbl2">TEXT FOR THE CHANGE TEAM</div><div class="res"><code>REVOKE ROLE GRP_ANALYSTS FROM USER ANALYST_01;</code><br>Remove in the infrastructure-as-code repo: role GRP_ANALYSTS granted to user ANALYST_01</div>
+<p class="src">a.what_if([...]) on a.fake() — access.py:3920; test_access.py:999</p></div>
+<div class="ex edge"><div class="h"><span class="verdict">WHAT IF · WIDER CUT</span><b>A data role removed from a job role</b></div>
+<div class="lbl2">IN</div><div class="res"><code>Remove T_SALES_CORE_READ from job role F_ANALYST</code></div>
+<div class="lbl2">OUT</div>
+<table><tr><td>loses</td><td>2 users: 3 objects</td></tr><tr><td>keeps</td><td>3 users, another path (most via T_SALES_MART_READ)</td></tr><tr><td>findings</td><td>0 fixed · 0 new · 2 changed</td></tr></table>
+<p class="src">a.what_if([...]) on a.fake() — access.py:3920; test_access.py:994</p></div>
+<div class="ex bad"><div class="h"><span class="verdict">HIGH RISK</span><b>Permission given to everyone (PUBLIC)</b></div>
+<div class="lbl2">IN</div><div class="res"><code>PUBLIC holds USAGE on WAREHOUSE WH_SALES_XS</code><br>Plain: every user can use this compute.</div>
+<div class="lbl2">OUT</div><div class="res">Check 9 "Privilege granted to PUBLIC", severity High. Why: "Every user, present and future, gets it."</div>
+<div class="lbl2">FIX TEXT</div><div class="res"><code>REVOKE USAGE ON WAREHOUSE WH_SALES_XS FROM ROLE PUBLIC;</code><br>Remove in the infrastructure-as-code repo: USAGE on warehouse WH_SALES_XS granted to role PUBLIC</div>
+<p class="src">a.rule_rows() rule 9 on a.fake() — RULES access.py:87, check access.py:4630-4635</p></div>
+<div class="ex ok"><div class="h"><span class="verdict">MY ACCESS</span><b>An employee checks their own access</b></div>
+<div class="lbl2">IN</div><div class="res">My access, logged in as ENGINEER_01 (fake demo user)</div>
+<div class="lbl2">OUT</div>
+<table><tr><td>read</td><td>6</td></tr><tr><td>change</td><td>5</td></tr><tr><td>own</td><td>2</td></tr><tr><td>admin</td><td>0</td></tr><tr><td>use</td><td>8</td></tr><tr><td>can run</td><td>4</td></tr><tr><td>account-level</td><td>3</td></tr></table>
+<p class="src">server.home_page(view="mine") after load_mine — server.py:1044-1065, DEMO_USER server.py:23</p></div>
+</div>
+<ul>
+<li>What if is a simulation only: nothing is revoked; the text goes to the change team.</li>
+<li>My access reads with the person's own login and writes nothing.</li>
+<li>My access is off inside Snowflake, on a shared server and with a key-pair login.</li>
+<li>MY_ACCESS=1 turns it on when the key pair is your own user.</li>
+</ul>
+<p class="src">CLAUDE.md:63 · README.md:20, 216-217 · access.py:3920-4096 (restore in finally) · server.py:126-143</p>
+<details><summary>One more check example: admin role as someone's starting role</summary>
+<div class="exset"><div class="ex bad"><div class="h"><span class="verdict">ADMIN</span><b>Admin role as default role</b></div>
+<div class="lbl2">IN</div><div class="res"><code>OPS_01 default role SYSADMIN</code></div>
+<div class="lbl2">OUT</div><div class="res">Check 12, High: "Every session starts with admin rights."</div>
+<div class="lbl2">FIX TEXT</div><div class="res"><code>ALTER USER OPS_01 SET DEFAULT_ROLE = &lt;functional role&gt;;</code></div>
+<p class="src">a.rule_rows() rule 12 — access.py:4636-4641</p></div></div></details></section>
+
+<section id="checks"><h2>What the 23 checks look for</h2>
+<div class="bars"><div class="bar"><span class="bl">Sensitive data exposure</span><span class="bt"><span class="bf" style="width:100.0%"></span></span><span class="bv">28</span></div><div class="bar"><span class="bl">Role design that is hard to review</span><span class="bt"><span class="bf" style="width:67.9%"></span></span><span class="bv">19</span></div><div class="bar"><span class="bl">Too much power in a person&#x27;s hands</span><span class="bt"><span class="bf" style="width:32.1%"></span></span><span class="bv">9</span></div><div class="bar"><span class="bl">Leftover and shared access</span><span class="bt"><span class="bf" style="width:21.4%"></span></span><span class="bv">6</span></div></div>
+<p class="key">Key: bar = number of findings on the fake account (62 in total)</p>
+<p class="cap">Most findings on the fake account concern sensitive data.</p>
+<div class="chips"><span>High 20 findings · 9 checks</span><span>Medium 31 findings · 8 checks</span><span>Low 11 findings · 6 checks</span></div>
+<div class="tblwrap"><table>
+<tr><th>Group</th><th>What it looks for</th><th>Checks</th><th>Example from fake data</th></tr>
+<tr><td>Too much power in a person&#x27;s hands</td><td>Admin roles on people or as start role; owner rights outside the build; control of scheduled jobs or compute</td><td class="v">4, 5, 12, 19, 20, 21</td><td>ADMIN_01 reaches SYSADMIN via F_SECURITY (5)</td></tr><tr><td>Sensitive data exposure</td><td>Unhidden sensitive columns; inactive readers; people writing; group access; unlabelled new tables; change feeds</td><td class="v">6, 7, 10, 11, 15, 22</td><td>F_SUPPORT reads stream SALES.PIPELINE.STR_CUSTOMER but not the table (22)</td></tr><tr><td>Leftover and shared access</td><td>Grants to everyone; disabled or 90-day inactive users with roles; unused roles</td><td class="v">8, 9, 13, 16</td><td>FIN_14 disabled, still holds GRP_EMEA_ALL (8)</td></tr><tr><td>Role design that is hard to review</td><td>Roles out of their layer; duplicate access; chains over 5 roles; read-only roles that write; odd permission sets</td><td class="v">1, 2, 3, 14, 17, 18, 23</td><td>GRP_EMEA_ALL is 10 roles deep to FINANCE.REPORT.TBL_REVENUE (14)</td></tr>
+</table></div>
+<p class="src">RULES access.py:78-107, SEVERITY access.py:108-111 · counts from a.checks() on a.fake(), per check: 1:2 2:2 3:3 4:1 5:3 6:3 7:4 8:1 9:1 10:17 11:2 12:1 13:1 14:1 15:1 16:3 17:4 18:3 19:2 20:1 21:1 22:1 23:4 · grouping is for this overview; the app lists checks by its own areas</p>
+<ul>
+<li>Each finding comes with fix text for the change team and, where one fits, the SQL.</li>
+<li>Snowflake's own built-in permissions given to everyone are not reported.</li>
+<li>"Read-only role can write" (17) is a best guess from names or usage: review before acting.</li>
+</ul>
+<p class="src">README.md:19 · access.py:4451-4472 · CLAUDE.md:60-61 · README.html:712</p>
+<details><summary>All 23 checks</summary>
+<div class="tblwrap"><table>
+<tr><th>#</th><th>Check</th><th>Severity</th><th>Why it matters</th></tr>
+<tr><td class="v">1</td><td>Technical role granted to a user or group role</td><td><span class="sev medium">Medium</span></td><td>Technical roles belong under functional roles only.</td></tr><tr><td class="v">2</td><td>Direct privilege on a functional role</td><td><span class="sev medium">Medium</span></td><td>Privileges sit on technical roles, so the role model stays reviewable.</td></tr><tr><td class="v">3</td><td>READ held directly and through another role</td><td><span class="sev low">Low</span></td><td>The direct grant is redundant and survives when the other one is removed.</td></tr><tr><td class="v">4</td><td>OWNER role held by a consumer</td><td><span class="sev high">High</span></td><td>Owners can drop and re-grant objects; only the build identity should own.</td></tr><tr><td class="v">5</td><td>Admin role held by a person</td><td><span class="sev high">High</span></td><td>Admin roles bypass the role model; use them for emergencies only (break-glass).</td></tr><tr><td class="v">6</td><td>Sensitive column without a masking policy</td><td><span class="sev medium">Medium</span></td><td>Everyone who can read the object sees the value in clear.</td></tr><tr><td class="v">7</td><td>Dormant or disabled person can read sensitive data</td><td><span class="sev high">High</span></td><td>Unused access to sensitive data is pure risk.</td></tr><tr><td class="v">8</td><td>Disabled user still holds roles</td><td><span class="sev low">Low</span></td><td>Re-enabling the user brings all access back at once.</td></tr><tr><td class="v">9</td><td>Privilege granted to PUBLIC</td><td><span class="sev high">High</span></td><td>Every user, present and future, gets it.</td></tr><tr><td class="v">10</td><td>Person can write to a sensitive object</td><td><span class="sev medium">Medium</span></td><td>Writes to sensitive data should come from the build or a service user.</td></tr><tr><td class="v">11</td><td>Sensitive object reachable through a group role</td><td><span class="sev low">Low</span></td><td>Group membership is managed outside Snowflake, so reviews miss it.</td></tr><tr><td class="v">12</td><td>Admin role is a user&#x27;s default role</td><td><span class="sev high">High</span></td><td>Every session starts with admin rights.</td></tr><tr><td class="v">13</td><td>Orphan role: no users and no parent roles</td><td><span class="sev low">Low</span></td><td>Unused roles hide access that nobody reviews.</td></tr><tr><td class="v">14</td><td>Chain deeper than 5 roles</td><td><span class="sev low">Low</span></td><td>Long chains are hard to review and hide where access comes from.</td></tr><tr><td class="v">15</td><td>Future grant in a schema that holds sensitive data</td><td><span class="sev medium">Medium</span></td><td>New tables there are readable before anyone classifies them.</td></tr><tr><td class="v">16</td><td>Dormant user (no login for 90 days) still holds roles</td><td><span class="sev medium">Medium</span></td><td>Unused accounts are an easy way in.</td></tr><tr><td class="v">17</td><td>Read-only role can write</td><td><span class="sev high">High</span></td><td>The role name or its use says read-only, but it can change data.</td></tr><tr><td class="v">18</td><td>Unusual privilege set</td><td><span class="sev low">Low</span></td><td>Its privileges don't match its READ / WRITE label, so the name misleads.</td></tr><tr><td class="v">19</td><td>EXECUTE TASK held by a person or consumer role</td><td><span class="sev medium">Medium</span></td><td>Running tasks belongs to the build or a service user.</td></tr><tr><td class="v">20</td><td>OPERATE on a task outside owner/build roles</td><td><span class="sev high">High</span></td><td>Whoever starts the task borrows its owner&#x27;s privileges.</td></tr><tr><td class="v">21</td><td>Warehouse MODIFY or OPERATE outside owner/build roles</td><td><span class="sev medium">Medium</span></td><td>Resizing or stopping compute changes cost and availability for everyone.</td></tr><tr><td class="v">22</td><td>Stream on sensitive table readable without the table</td><td><span class="sev high">High</span></td><td>A stream returns the table&#x27;s changed rows, so it leaks the table.</td></tr><tr><td class="v">23</td><td>CREATE privilege on a schema held by a read-only role</td><td><span class="sev high">High</span></td><td>A read-only role that can create objects can copy data or change the schema.</td></tr>
+</table></div></details></section>
+
+<section id="run"><h2>Two ways to run</h2>
+<div class="two">
+<div class="card"><h3>On your laptop (recommended)</h3>
+<div class="strip"><div class="s">You (browser)</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s e">Explorer on your computer</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Snowflake (your login)</div></div>
+<ul>
+<li>Logs in with your own sign-in (SSO) or a key pair.</li>
+<li>My access only with your own SSO login (or MY_ACCESS=1).</li>
+<li>Shows What changed.</li>
+<li>Keeps a copy of what it read for 24 hours on your computer.</li>
+<li>Needs Python 3.10+ and git; no Node or npm.</li>
+</ul></div>
+<div class="card"><h3>Inside Snowflake</h3>
+<div class="strip"><div class="s">You (Snowflake web page)</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s e">Explorer inside Snowflake</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Snowflake (app owner's rights)</div></div>
+<ul>
+<li>Nobody installs anything; it opens in Snowflake's web page.</li>
+<li>Same screens except My access and What changed.</li>
+<li>Owner's rights, so no My access.</li>
+<li>Memory only (24 hours), so no What changed: it needs the previous copy on disk.</li>
+</ul></div>
+</div>
+<p class="key">Key: arrows = who reads with whose login</p>
+<p class="cap">Same screens either way, except My access and What changed inside Snowflake.</p>
+<h3>Where the data comes from</h3>
+<div class="tblwrap"><table>
+<tr><th></th><th>Read directly (default)</th><th>Shared copy (snapshot)</th></tr>
+<tr><td>Creates in Snowflake</td><td>Nothing</td><td>Snapshot tables, 2 procedures, 3 table functions; you schedule the daily CALL yourself (no task in the repo)</td></tr>
+<tr><td>Reads with</td><td>Your role (or app owner's role inside Snowflake)</td><td>A procedure with its owner's rights</td></tr>
+<tr><td>Best when</td><td>Trying it, or objects can't be created</td><td>A team wants one shared, scheduled copy and low-rights viewers</td></tr>
+</table></div>
+<ul><li>With only a warehouse role you see only your own access.</li>
+<li>With read rights on the whole account you see everyone.</li></ul>
+<p class="src">README.md:11-12, 72, 107-112, 120, 156, 207-212, 217, 230, 268-277 · sql/2_snapshot.sql:1 · CLAUDE.md:9, 33-36 · server.py:126-143 · README.html:528</p></section>
+
+<section id="read-only"><h2>Read-only promise</h2>
+<div class="two">
+<div class="card does"><h3>Does</h3><ul>
+<li>Reads permissions, users, labels, hiding (masking) rules, query history.</li>
+<li>May run the snapshot procedure that fills its own copy tables (shared-copy mode).</li>
+<li>Keeps a local copy for a day.</li>
+</ul></div>
+<div class="card never"><h3>Never</h3><ul>
+<li>Runs GRANT, REVOKE, CREATE, ALTER or DROP.</li>
+<li>Reads business data.</li>
+<li>Stores passwords.</li>
+<li>Applies a "what if" or a fix.</li>
+</ul></div>
+</div>
+<p class="key">Key: left = allowed · right = never</p>
+<p class="cap">Changes stay with the change team.</p>
+<ul>
+<li>An automated test records every statement the app sends and allows reads only.</li>
+<li>The only exception it allows: running the snapshot procedure.</li>
+<li>Inside Snowflake it keeps nothing on disk, memory only.</li>
+</ul>
+<p class="src">test_server.py:322-342 test_read_only · README.md:22, 328 · CLAUDE.md:6, 9-13, 15, 24, 63</p></section>
+
+<section id="risks"><h2>Costs and risks</h2>
+<h3>Top 3 risks</h3>
+<ol>
+<li><b>Answers can be a few hours old.</b><ul>
+<li>What: data as of the last read, plus up to ~2 h Snowflake delay; kept 24 h.</li>
+<li>Impact: a just-removed permission may still show.</li>
+<li>Fix: Read Snowflake again (direct), or Rebuild snapshot (shared copy).</li>
+<li>Snowflake's own delay of up to ~2 h remains either way.</li></ul></li>
+<li><b>Answers can be incomplete.</b><ul>
+<li>What: the reading role may lack rights.</li>
+<li>Sensitive labels need Snowflake's Enterprise edition (a paid tier).</li>
+<li>Impact: an audit answer may miss access.</li>
+<li>Fix: the "Incomplete" box lists what is missing and the grant that fixes it.</li></ul></li>
+<li><b>Some results are estimates.</b><ul>
+<li>What: hiding rules are read from their text, not tested.</li>
+<li>"Read-only role can write" (check 17) is a guess.</li>
+<li>Impact: a wrong finding gets acted on.</li>
+<li>Fix: review before acting; unclear hiding rules show "unknown".</li></ul></li>
+</ol>
+<p class="src">README.html:165, 712 · README.md:118, 120, 214, 230</p>
+<details><summary>Costs</summary>
+<div class="tblwrap"><table>
+<tr><th>Item</th><th>What it is</th><th>Source</th></tr>
+<tr><td>Snowflake compute</td><td>Reads run on a warehouse (Snowflake compute, SNOWFLAKE_WAREHOUSE); amount: Not defined in source — confirm with owner</td><td class="v">README.md:153</td></tr>
+<tr><td>Setup in Snowflake</td><td>Read directly: nothing created. Shared copy: snapshot tables, 2 procedures, 3 table functions; you schedule the daily CALL (no task in the repo)</td><td class="v">README.md:109, 230 · sql/2_snapshot.sql:1</td></tr>
+<tr><td>Install effort</td><td>Laptop: Python 3.10+ and git; no Node or npm. Inside Snowflake: none for viewers</td><td class="v">README.md:72, 122, 268</td></tr>
+<tr><td>Licence</td><td>MIT or Apache-2.0</td><td class="v">README.md:349-352</td></tr>
+</table></div></details></section>
+
+<section id="decision"><h2>Decision needed</h2>
+<ul>
+<li>Choose how the team runs it: laptops (default) or inside Snowflake.</li>
+<li>Choose the data source: read directly (nothing created) or a shared copy.</li>
+<li>A shared copy needs a daily refresh you schedule; the repo has none.</li>
+<li>Choose the reading role: wider read rights show the whole account, faster.</li>
+<li>Who approves these choices: Not defined in source — confirm with owner.</li>
+</ul>
+<p class="src">README.md:107-112, 207-212, 230, 268 · sql/2_snapshot.sql:1</p></section>
+</main></body></html>

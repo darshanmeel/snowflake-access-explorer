@@ -22,7 +22,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - No credentials, account names or company names in code or the repo. Real values live in git-ignored
   `settings.local.sql` and `.env` (env vars, template `.env.example`). Connection via `sf.py` (`connect()`), all files at the repo root.
 - The procedure uses only the read sources in README > "Data sources". No queries on business data.
-- Don't commit or push unless asked. Commits pass `.githooks/pre-commit` (company-term check, `git config core.hooksPath .githooks`); never bypass it with `--no-verify`.
+- Don't commit or push unless asked.
 
 ## Two versions, one logic
 - **Local (recommended, default):** `server.py` (FastAPI, JSON API over `access.py`) + `web/` (React). Runs on your machine.
