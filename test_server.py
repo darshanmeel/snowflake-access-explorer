@@ -627,9 +627,31 @@ def test_review_fixes():  # search answers, row policy list, defaults that exist
     assert all(bool(x["suggest"]) == a.stale(n) for n, x in g.items())
 
 
+def test_step3():  # review 2026-11-09 step 3: server-side search for pickers, area bars, What changed edges, gzip
+    full = js("/api/list?what=users,roles")
+    assert full["total"] == len(full["items"]) == len(a.users) + len(a.roles)
+    assert {i["kind"] for i in full["items"]} >= {"user", "functional"}
+    hit = js(f"/api/list?what=roles&q={a.FUNC.lower()}&limit=3", ["items", "total"])
+    assert len(hit["items"]) == 3 < hit["total"] and all(i["id"].startswith(a.FUNC) for i in hit["items"])
+    assert js("/api/list?what=users&q=zzz_nobody")["total"] == 0
+    h = js("/api/home", ["per_rule"])["per_rule"]
+    assert sum(h.values()) == len(a.checks()) and set(h) <= {r["num"] for r in js("/api/meta")["rules"]}
+    assert c.post("/api/mine/load").status_code == 200 and js("/api/home?view=mine").get("per_rule") is None
+    assert js("/api/meta")["cache_hours"] == (server.cache.HOURS if server.cache.local() else 0)
+    ch = js("/api/changes", ["severity"])
+    assert sum(ch["severity"]["new"].values()) > 0 and set(ch["severity"]) == {"new", "fixed"}
+    edges = [e["edge"] for e in ch["events"] if e.get("edge")]
+    assert edges and all(set(e) == {"source", "source_kind", "target", "target_kind", "privilege", "added"} for e in edges)
+    assert {e["added"] for e in edges} == {True, False} and {e["target_kind"] for e in edges} & {"object", "technical"}
+    assert js("/api/changes?subject=SALES.CORE.TBL_CUSTOMER")["severity"] is None
+    r = c.get("/api/list?what=objects", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200 and r.headers.get("content-encoding") == "gzip"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
             fn()
             print("ok", name)
     print("test_server green")
+

@@ -4,12 +4,14 @@ import { EDGE, KIND_LABEL, PCLASS, TOKENS, edgeColor, kindStyle, type ThemeName 
 import { GROUP_KINDS } from "./graphs";
 
 const MARK_LABEL: Record<string, string> = { sensitive: "Sensitive", disabled: "Disabled user", bad: "Admin / finding", stack: "Stacked: same path" };
+export const SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"] as const;
 
-export function Legend({ legend, theme = "light" }: { legend: Graph["legend"]; theme?: ThemeName }) {
+/** Only what this drawing has: its box kinds, line styles, marks and the severities of its rule badges. */
+export function Legend({ legend, theme = "light", severities }: { legend: Graph["legend"]; theme?: ThemeName; severities?: readonly string[] }) {
   const t = TOKENS[theme];
-  // database roles are new to most readers: their box and line are in every legend
-  const kinds = [...new Set([...legend.kinds, "database_role"])];
-  const edges = [...new Set([...legend.edges, "inherit", "inherit_db"])];
+  const kinds = [...new Set(legend.kinds)];
+  const edges = [...new Set(legend.edges)];
+  const sevs = severities ?? (legend.rules ? SEVERITY_ORDER : []);
   return (
     <div className="ae-legend" style={{ color: t.muted }}>
       {kinds.map((k) => {
@@ -35,9 +37,15 @@ export function Legend({ legend, theme = "light" }: { legend: Graph["legend"]; t
         );
       })}
       {edges.map((c) => <EdgeSample key={c} cls={c} label={PCLASS[c] ?? c} theme={theme} />)}
-      <EdgeSample cls="back" label={PCLASS.back} theme={theme} />
-      {legend.marks.map((m) => <span key={m} className="ae-legend-item">{MARK_LABEL[m] ?? m}</span>)}
-      {legend.rules && <span className="ae-legend-item">{["Critical", "High", "Medium", "Low"].map((v) => <span key={v} className={`ae-sevpill ae-sev-${v}`}>{v}</span>)} rules broken (click opens them)</span>}
+      {legend.back && <EdgeSample cls="back" label={PCLASS.back} theme={theme} />}
+      {legend.marks.map((m) => (
+        <span key={m} className="ae-legend-item">
+          {m === "sensitive" && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.bad_ink} strokeWidth="2.4" aria-hidden><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>}
+          {m === "disabled" && <span style={{ textDecoration: "line-through", opacity: 0.6 }} aria-hidden>abc</span>}
+          {MARK_LABEL[m] ?? m}
+        </span>
+      ))}
+      {sevs.length > 0 && <span className="ae-legend-item">{sevs.map((v) => <span key={v} className={`ae-sevpill ae-sev-${v}`}>{v}</span>)} rules broken (click opens them)</span>}
     </div>
   );
 }

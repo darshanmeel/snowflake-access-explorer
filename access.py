@@ -4298,6 +4298,7 @@ def grant_events(keys, links, gain, pairs, fs, by):
             us, objs = {u}, {x for r in bfs([role]) for _, _, x in granted.get(r, [])}
             text = f"{u} was granted role {role}" if gain else f"Role {role} was revoked from {u}"
             edge, subj, who = (u, role, None), [role], [u]
+            ends = ("user", role_kind(role))
         else:
             r, pv, on_, o = key
             link = on_ in ROLE_ON and pv == "USAGE"
@@ -4306,8 +4307,9 @@ def grant_events(keys, links, gain, pairs, fs, by):
             text = (f"{r} was granted role {o}" if link else f"{r} was granted {pv} on {o}") if gain else \
                 (f"Role {o} was revoked from {r}" if link else f"{pv} on {o} was revoked from {r}")
             edge, subj, who = (r, o, None if link else pv), [r, o], []
+            ends = (role_kind(r), role_kind(o) if link else "object")
         fx = [f for f in fs if f["edge"] == edge or any((e["grantee"], e["to"], e["priv"]) == edge for e in f["edges"])]
-        out.append(dict(edge=edge, pairs=[(u, o) for u, o in pairs if u in us and o in objs], subjects=subj, users=who,
+        out.append(dict(edge=edge, ends=ends, pairs=[(u, o) for u, o in pairs if u in us and o in objs], subjects=subj, users=who,
                         by=by.get(key), findings=fx, text=text))
     return out
 
@@ -4328,10 +4330,11 @@ def side_objects(side):
 
 def diff(prev):
     """Screen 14: what changed from data set prev to the loaded one. events [dict(id, kind gain | lose | user | risk |
-    fixed, text, impact, by (GRANTED_BY, when known), sensitive, findings [dict(num, severity, title, fixed)], link
+    fixed, text, impact, by (GRANTED_BY, when known), edge (gain / lose: the grant as source, target, their kinds,
+    privilege None for a role link, added), sensitive, findings [dict(num, severity, title, fixed)], link
     (page, params), subjects (every node it is about: uid() for users, so a user and a same-named role never match),
     people, objects)], counts per filter, new / fixed / high
-    findings, gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times."""
+    findings, severity (new and fixed findings per severity), gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times."""
     now = facts()
     rank = LEVELS.index
     with loaded(prev):
@@ -4361,7 +4364,9 @@ def diff(prev):
             told.update(id(f) for f in x["findings"])
             objs, target = sorted({o for _, o in x["pairs"]}), x["edge"][1]
             top = max((side["access"][p][0] for p in x["pairs"]), key=rank, default="read")
+            (src, tgt, pv), (sk, tk) = x["edge"], x["ends"]
             events.append(dict(kind="gain" if gain else "lose", text=x["text"], by=x["by"],
+                               edge=dict(source=src, source_kind=sk, target=tgt, target_kind=tk, privilege=pv, added=gain),
                                impact=impact_text(x["pairs"], top, gain, side["sens"]),
                                sensitive=target in side["sens"] or any(o in side["sens"] for o in objs),
                                findings=list({f["num"]: chip(f, gain) for f in x["findings"]}.values()),
@@ -4400,7 +4405,9 @@ def diff(prev):
     events.sort(key=lambda e: (order.index(e["kind"]), not e["findings"], -len(e["people"]), e["text"]))
     for i, e in enumerate(events):
         e["id"] = str(i)
+    sev = lambda fs: {v: sum(SEVERITY.get(f["num"], "Low") == v for f in fs) for v in ("Critical", "High", "Medium", "Low")}
     return dict(events=events, counts=event_counts(events), new=len(new), fixed=len(fixed),
+                severity=dict(new=sev(new), fixed=sev(fixed)),
                 high=sum(SEVERITY.get(f["num"]) in ("Critical", "High") for f in new), gained=gained, lost=lost,
                 sens_gained=sorted({u for u, o in gained if o in now["sens"]}),
                 runs=dict(before=str(old["run"].get("FINISHED_AT"))[:16], now=str(now["run"].get("FINISHED_AT"))[:16]))

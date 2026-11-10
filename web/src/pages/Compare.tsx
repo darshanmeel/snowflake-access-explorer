@@ -4,11 +4,11 @@
 import { useState } from "react";
 import { useApi } from "../api/client";
 import type { CompareRow, CompareSide, ComparePage } from "../api/types";
-import { AccessPill, Banner, Card, CodeOutput, DataTable, EmptyState, Tabs, type Change } from "../components";
+import { AccessPill, Banner, Card, CodeOutput, DataTable, EmptyState, Overlap, Tabs, type Change } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, Load, Pick, Sel } from "./common";
 import { whatIfOf } from "./screens";
-import { useSubjects } from "./See";
+import { subjects } from "./See";
 import { whatIf } from "./Whatif";
 
 const PILL: Record<string, string> = { only_a: "Only A", only_b: "Only B", different: "Different", same: "Same" };
@@ -16,16 +16,15 @@ const PILL: Record<string, string> = { only_a: "Only A", only_b: "Only B", diffe
 export function ComparePageView() {
   const c = useApp();
   const s = useApi<ComparePage>("compare", { ...apiParams(c), show: null, plan: null });
-  const subj = useSubjects();
   const d = s.data;
-  const opts = (v: string) => (subj.options.length ? subj.options : [v]);
+  const what = subjects(c.view === "mine");
   return (
     <>
       <div className="ae-h1 ae-h1-pick ae-cmp-head">
         Compare
-        <span className="ae-cmp-a"><Pick label="A" value={d?.a.id ?? c.params.a ?? ""} options={opts(d?.a.id ?? "")} onPick={(v) => c.set({ a: v })} width={200} /></span>
+        <span className="ae-cmp-a"><Pick label="A" value={d?.a.id ?? c.params.a ?? ""} what={what} onPick={(v) => c.set({ a: v })} width={200} /></span>
         with
-        <span className="ae-cmp-b"><Pick label="B" value={d?.b.id ?? c.params.b ?? ""} options={opts(d?.b.id ?? "")} onPick={(v) => c.set({ b: v })} width={200} /></span>
+        <span className="ae-cmp-b"><Pick label="B" value={d?.b.id ?? c.params.b ?? ""} what={what} onPick={(v) => c.set({ b: v })} width={200} /></span>
         on
         <Sel label="Scope" value={d?.scope ?? "sensitive"} onPick={(v) => c.set({ scope: v })}
           options={[["sensitive", "sensitive data"], ["all", "everything"], ["db", "one database"]]} />
@@ -42,11 +41,13 @@ function Body({ d }: { d: ComparePage }) {
   const n = d.counts;
   return (
     <>
-      <div className="ae-tiles">
-        <div className="ae-tile"><span className="ae-tile-l">Only A has</span><span className="ae-tile-v ae-cmp-av">{n.only_a}</span></div>
-        <div className="ae-tile"><span className="ae-tile-l">Only B has</span><span className="ae-tile-v ae-cmp-bv">{n.only_b}</span></div>
-        <div className="ae-tile"><span className="ae-tile-l">Both, but different</span><span className="ae-tile-v">{n.different}</span></div>
-        <div className="ae-tile"><span className="ae-tile-l">The same</span><span className="ae-tile-v ae-muted">{n.same}</span></div>
+      <div className="ae-cmp-sum">
+        <Overlap a={d.a.name} b={d.b.name} onlyA={n.only_a} onlyB={n.only_b} different={n.different} same={n.same} onPick={() => c.set({ show: "diff" })} />
+        <p className="ae-answer">
+          Of {n.only_a + n.only_b + n.different + n.same} objects {d.scope === "sensitive" ? "with sensitive data" : d.scope === "db" ? `in ${d.db}` : ""} that either reaches,{" "}
+          <b className="ae-cmp-a">{n.only_a} only A</b> reaches, <b className="ae-cmp-b">{n.only_b} only B</b>, {n.different} both reach with different access and {n.same} the same.{" "}
+          <button type="button" className="ae-link" onClick={() => c.set({ show: "diff" })}>See the differences</button>
+        </p>
       </div>
       {d.scope === "sensitive" && !d.sensitive && <Banner tone="info" title="No sensitive objects known" lines={["Pick everything or one database as the scope."]} />}
       <Tabs active={tab} onChange={(k) => c.set({ show: k === "old" ? null : k })} tabs={[
@@ -63,7 +64,7 @@ type OR = NonNullable<ComparePage["old"]>["rows"][number];
 
 /** The old Sensitive data tab "Compare two roles", for any two people or roles. */
 function Old({ d }: { d: ComparePage }) {
-  if (!d.old) return <EmptyState title="No sensitive objects">This table compares what each sees of the sensitive objects.</EmptyState>;
+  if (!d.old) return <EmptyState title="No sensitive objects" art="search">This table compares what each sees of the sensitive objects.</EmptyState>;
   return (
     <Card title="Compare two roles" sub="What each sees in the sensitive objects">
       {d.old.diff.length > 0 && <Banner tone="warn" title="They differ" lines={d.old.diff} />}
@@ -96,7 +97,7 @@ function Diffs({ d }: { d: ComparePage }) {
     <>
       <Card title={<>Differences · <span className="ae-cmp-a ae-mono">A {d.a.name}</span> and <span className="ae-cmp-b ae-mono">B {d.b.name}</span></>}
         sub="Differences first; the same ones are folded.">
-        {!d.rows.length ? <EmptyState title="Nothing in scope">Neither reaches an object here.</EmptyState> : (
+        {!d.rows.length ? <EmptyState title="Nothing in scope" art="search">Neither reaches an object here.</EmptyState> : (
           <div className="ae-cmp" role="table">
             <div className="ae-cmp-row ae-cmp-row-h" role="row"><span>Object</span><span>Difference</span><span className="ae-cmp-a">A · {d.a.name}</span><span className="ae-cmp-b">B · {d.b.name}</span></div>
             {rows.map((r: CompareRow) => (

@@ -1,6 +1,6 @@
 // Node sizes and ELK layout. elk.bundled.js without a workerUrl runs on the main thread: no Worker, no eval
-// (Streamlit in Snowflake's CSP blocks both).
-import ELK from "elkjs/lib/elk.bundled.js";
+// (Streamlit in Snowflake's CSP blocks both). It is loaded on the first graph: the local build keeps ELK (1.6 MB) in
+// its own file, so pages without a graph never fetch it; the Streamlit build inlines it (one JS file).
 import type { ElkNode } from "elkjs/lib/elk-api";
 import type { Graph, GraphNode } from "../api/types";
 
@@ -30,16 +30,28 @@ export function wrap(s: string, cap = 26, n = 3): string[] {
 /** Badge lines: "D1 · also D2, D3 · also grant holder" puts each part after the first "·" group on its own line. */
 export const badgeLines = (b: string) => (b ? b.split(" · also grant holder").concat(b.includes("also grant holder") ? ["also grant holder"] : []).filter(Boolean) : []);
 
-export function nodeSize(n: GraphNode): { w: number; h: number; lines: string[] } {
-  const lines = wrap(n.label);
-  const bl = badgeLines(n.badge);
-  const longest = Math.max(...lines.map((l) => l.length), (n.sub ?? "").length * 0.85, ...bl.map((l) => l.length * 0.85));
-  const w = Math.min(MAX_W, Math.max(n.kind === "user" ? 120 : 140, longest * CH + PAD + (n.marks.includes("sensitive") ? 18 : 0)));
-  const h = 20 + lines.length * 16 + (n.sub ? 15 : 0) + bl.length * 14;
-  return { w, h, lines };
+/** A subtitle ("table · SALES.CORE") on up to 2 lines that fit a box, broken after " · " or ".", never mid-word. */
+export function subLines(s: string, cap = 34): string[] {
+  if (s.length <= cap) return s ? [s] : [];
+  const cut = Math.max(s.lastIndexOf(" · ", cap), s.lastIndexOf(".", cap));
+  if (cut <= 0) return [s];
+  const head = s.slice(0, s[cut] === "." ? cut + 1 : cut), tail = s.slice(s[cut] === "." ? cut + 1 : cut + 3);
+  return [head, tail.length > cap ? tail.slice(0, cap - 1) + "…" : tail];
 }
 
-const elk = new ELK();
+export function nodeSize(n: GraphNode): { w: number; h: number; lines: string[]; subs: string[] } {
+  const lines = wrap(n.label);
+  const subs = subLines(n.sub ?? "");
+  const bl = badgeLines(n.badge);
+  const longest = Math.max(...lines.map((l) => l.length), ...subs.map((l) => l.length * 0.85), ...bl.map((l) => l.length * 0.85));
+  const w = Math.min(MAX_W, Math.max(n.kind === "user" ? 120 : 140, longest * CH + PAD + (n.marks.includes("sensitive") ? 18 : 0)));
+  const h = 20 + lines.length * 16 + subs.length * 14 + (subs.length ? 1 : 0) + bl.length * 14;
+  return { w, h, lines, subs };
+}
+
+type Elk = { layout: (g: ElkNode) => Promise<ElkNode> };
+let elk: Promise<Elk> | null = null;
+const getElk = () => (elk ??= import("elkjs/lib/elk.bundled.js").then((m) => new m.default() as unknown as Elk));
 
 export interface Pt { x: number; y: number }
 export interface Placed { id: string; x: number; y: number; w: number; h: number }
@@ -75,7 +87,8 @@ export async function layout(g: Graph): Promise<Layout> {
       "elk.spacing.nodeNode": String(ROW_GAP), "elk.layered.spacing.nodeNodeBetweenLayers": String(LANE_GAP),
       "elk.spacing.edgeEdge": "5", "elk.spacing.edgeNode": "12", "elk.layered.spacing.edgeNodeBetweenLayers": "18",
       "elk.layered.spacing.edgeEdgeBetweenLayers": "5", "elk.layered.mergeEdges": "true",
-      "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP", "elk.layered.thoroughness": "20",
+      // big drawings (an opened fold box, ?full=1) get fewer crossing-minimisation passes: seconds, not a frozen tab
+      "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP", "elk.layered.thoroughness": g.nodes.length > 150 ? "7" : "20",
       "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF", "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
     },
@@ -83,7 +96,7 @@ export async function layout(g: Graph): Promise<Layout> {
     edges: forward.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
   };
   try {
-    const res = await elk.layout(root);
+    const res = await (await getElk()).layout(root);
     const nodes = new Map<string, Placed>();
     for (const c of res.children ?? []) {
       const s = size.get(c.id)!;
@@ -143,14 +156,16 @@ export function labelSpots(routes: Map<string, Pt[]>): Map<string, Pt> {
   const flat = (pts: Pt[]) => pts.slice(1).map((b, i) => [pts[i], b] as const).filter(([a, b]) => Math.abs(a.y - b.y) < 0.5 && a.x !== b.x)
     .map(([a, b]) => ({ y: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) }));
   const segs = new Map([...routes].map(([id, pts]) => [id, flat(pts)]));
+  const atY = new Map<number, { id: string; y: number; lo: number; hi: number }[]>(); // segments by row: no all-pairs scan
+  for (const [id, ss] of segs) for (const s of ss) { const k = Math.round(s.y); atY.set(k, [...(atY.get(k) ?? []), { id, ...s }]); }
+  const near = (y: number, id: string) => [-1, 0, 1].flatMap((d) => atY.get(Math.round(y) + d) ?? []).filter((o) => o.id !== id);
   const out = new Map<string, Pt>();
   for (const [id, pts] of routes) {
-    const others = [...segs].filter(([k]) => k !== id).flatMap(([, s]) => s);
     let best: { y: number; lo: number; hi: number } | null = null;
     for (const s of segs.get(id)!) {
       // free stretches of s: s minus every other route's overlapping segment on the same y
       let free = [[s.lo, s.hi]];
-      for (const o of others) {
+      for (const o of near(s.y, id)) {
         if (Math.abs(o.y - s.y) >= 0.5) continue;
         free = free.flatMap(([a, b]) => [[a, Math.min(b, o.lo)], [Math.max(a, o.hi), b]].filter(([x, y]) => y - x > 0));
       }

@@ -33,18 +33,22 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 | Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. For a database role: ways in only from database roles of its own database, and no USE ROLE line (a database role can't be activated). |
 | Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
-| Compare (`compare`) | Two people or roles side by side, the differences, and the text to make them match. |
+| Compare (`compare`) | Two people or roles side by side as two overlapping circles (only A, only B, both but different, the same), the differences, and the text to make them match. |
 | Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text: `GRANT ROLE x TO USER u` for a person, `GRANT ROLE x TO ROLE r` for a role (with a too broad warning). For a database role: a skeleton for a new database role in its own database (`GRANT DATABASE ROLE ... TO DATABASE ROLE ...`), or why it can't be done when the object is in another database. |
-| Risks & fixes (`rules`) | Rule checks with findings and admin holders; risks by rule, person or object with a change plan built from the fixes; the Rules list (`show=list`): the 23 rules by area, with On/Off. |
-| What if (`whatif`) | If we revoke this, who loses what, who keeps it another way, and which findings go or appear. Simulation only. |
+| Risks & fixes (`rules`) | Rule checks with findings and admin holders; risks by rule, person, object or as a heat grid (grantee x rule, `by=grid`) with a change plan built from the fixes; the Rules list (`show=list`): the 23 rules by area with a severity bar per area (Home's findings-by-area bars open it at `area=`), with On/Off. |
+| What if (`whatif`) | If we revoke this, who loses what (people who lose the same thing are one row, the removed link crossed out, a lose-vs-keep bar), who keeps it another way, and which findings go or appear. Simulation only. |
 | Review & sign-off (`review`) | The access review (CSV) and a people x objects grid with Keep / Revoke and a signed CSV. |
 | Sensitive data (`sensitive`) | Sensitive objects, who reads them, a catalog of how well each one is protected. |
 | Sensitive data flow (`flow`) | People -> roles -> sensitive objects, with the dormant and disabled people first. |
 | Granted vs used (`usage`) | Which granted tables and views were actually used (ACCESS_HISTORY), and what could be trimmed. |
-| What changed (`changes`) | This snapshot against the previous one: gained and lost access, new and fixed findings, and watched questions asked again. |
+| What changed (`changes`) | This snapshot against the previous one: a strip of new against fixed findings per severity, each gained or lost grant drawn as two boxes and a + or crossed-out link, and watched questions asked again. |
 | User paths, Role paths (`user`, `role`) | The detailed pages of the earlier version, also shown inside A person or role. |
 
-Find (top bar) opens any user, role or object. Every view is a link (`?page=role&name=F_ANALYST`), so you can share it;
+Find (top bar) opens any user, role or object; it and every picker search on the server as you type (arrow keys and
+Enter pick, Escape or a click elsewhere closes the list). The graph opens fitted when it has 6 lanes or fewer, else
+centred on the selected box (the person, role or object it starts from); Tab reaches each box, Enter opens it, and on a
+touch screen the first tap shows the box's tip and the second opens it. The layout code (elkjs) loads on the first
+graph; the local server answers gzip. Every view is a link (`?page=role&name=F_ANALYST`), so you can share it;
 older links (`?page=user&part=sees`, `?page=catalog`, ...) are sent to the screen that now shows that part.
 Streamlit runs the same React app as one component, so it has every screen (My access and What changed only in the local version).
 
@@ -55,6 +59,9 @@ Streamlit runs the same React app as one component, so it has every screen (My a
 ![Can they? for a role: Partly, the row policy returns no rows](docs/img/redesign/check_role.png)
 ![Request access for a role: GRANT ROLE ... TO ROLE](docs/img/redesign/request_role.png)
 ![Risks & fixes with the change plan](docs/img/redesign/risks.png)
+![Risks & fixes as a heat grid](docs/img/redesign/risks_grid.png)
+![What if: people grouped by what they lose](docs/img/redesign/whatif.png)
+![Compare: two overlapping circles](docs/img/redesign/compare_diff.png)
 ![Sensitive data flow](docs/img/redesign/flow.png)
 ![Granted vs used](docs/img/redesign/usage.png)
 ![What changed](docs/img/redesign/changes.png)

@@ -61,7 +61,7 @@ function HeldBy({ d }: { d: RolePage }) {
           col("d", "Depth", (r: HeldRow) => r.depth, { num: true }), col("n", "Paths", (r: HeldRow) => r.count, { num: true }),
           col("l", "If revoked", revokeText, { wrap: "nowrap", help: "Direct holder: what removing its own grant does. Others: the roles every path goes through." }),
           pathCol<HeldRow>(d.refs),
-          col("w", "", () => "", { wrap: "nowrap", render: (r: HeldRow) => {
+          col("act", "", () => "", { wrap: "nowrap", render: (r: HeldRow) => {
             const ch = r.direct ? (r.kind === "user" ? { op: "revoke_role_from_user" as const, role: d.role.name, user: r.id.replace(/ \(user\)$/, "") }
               : { op: "revoke_role_from_role" as const, role: d.role.name, grantee: r.id }) : changeOfPath(r.path, d.refs.kinds);
             return ch && <WhatIfButton ch={[ch]} label="What if?" />;
@@ -74,16 +74,14 @@ function HeldBy({ d }: { d: RolePage }) {
 export function RolePageView() {
   const c = useApp();
   const name = c.params.name ?? "";
-  const roles = useApi<{ items: ListItem[] }>("list", { what: "roles", view: c.view });
   const s = useApi<RolePage>(name ? "role" : null, { ...apiParams(c), name });
   const o = useOpen(s.data?.refs);
-  const names = roles.data?.items.map((i) => i.id) ?? [];
   const [part, setPart] = useState(c.params.part ?? "privs");
   return (
     <>
       <Head title="Role" sub="Who holds this role, what it holds, and what it can reach." right={name && <WhatIfButton ch={[{ op: "drop_role", role: name }]} label="What if dropped?" />} />
       <Controls>
-        <Pick label="Role" value={name} options={names} onPick={(v) => c.nav("role", { name: v })} />
+        <Pick label="Role" value={name} what="roles" onPick={(v) => c.nav("role", { name: v })} />
         <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />
         <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} help="Hide roles that no user holds" />
         <Tog label="Sensitive only" on={c.params.sensitive === "1"} onPick={(v) => c.set({ sensitive: v ? "1" : null })} />

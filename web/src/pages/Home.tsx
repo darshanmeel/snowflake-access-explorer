@@ -3,11 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomePage, Page } from "../api/types";
-import { Card } from "../components";
+import { Card, StackBar, type BarPart } from "../components";
 import { useApp } from "../ctx";
 import { Load } from "./common";
 
 const RECENT = "ae-recent";
+
+/** A search hit (top bar or Home): a person or role opens on Access, an object on Who has access. */
+export function openFound(i: FindItem, nav: (p: Page, params: Record<string, string>) => void) {
+  remember({ page: i.page, id: i.id, label: i.name });
+  if (i.kind === "user") nav("access", { user: i.name });
+  else if (i.kind === "object") nav("object", { name: i.id });
+  else nav("access", { role: i.id });
+}
 type Recent = { page: Page; id: string; label: string };
 
 export function recent(): Recent[] {
@@ -69,12 +77,7 @@ export function HomePageView() {
     const t = setTimeout(() => { get<{ items: FindItem[] }>("find", { q, view: c.view, limit: "24" }).then((r) => setItems(r.items), () => setItems([])); }, 160);
     return () => clearTimeout(t);
   }, [q, c.view]);
-  const openItem = (i: FindItem) => {
-    remember({ page: i.page, id: i.id, label: i.name });
-    if (i.kind === "user") c.nav("access", { user: i.name });
-    else if (i.kind === "object") c.nav("object", { name: i.id });
-    else c.nav("access", { role: i.id });
-  };
+  const openItem = (i: FindItem) => openFound(i, c.nav);
   const ask = parseQuestion(q);
   const screens = ask ? [] : screensFor(q, c.meta.pages);
   const go = () => {
@@ -142,8 +145,9 @@ export function HomePageView() {
             )}
             {d.risks && (
               <Card title="Account risks" right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", {})}>Risks & fixes</button>}>
-                <Bar parts={[["High", d.risks.High + d.risks.Critical, "high"], ["Medium", d.risks.Medium, "medium"], ["Low", d.risks.Low, "low"]]} />
+                <StackBar parts={sevParts(d.risks)} />
                 <p className="ae-muted">{d.counts.users} users · {d.counts.roles} roles · {d.counts.objects} objects</p>
+                {d.per_rule && <Areas perRule={d.per_rule} />}
               </Card>
             )}
           </div>
@@ -195,17 +199,49 @@ export function HomePageView() {
   );
 }
 
+/** Read only / read + change / owns: the access ladder as one bar (Home, and the Access screen where it filters). */
+export const ladderParts = (counts: { read: number; change: number; own: number }): BarPart[] => [
+  { key: "read", label: "Read only", value: counts.read - counts.change, cls: "lvl-read" },
+  { key: "change", label: "Read + change", value: counts.change - counts.own, cls: "lvl-change" },
+  { key: "own", label: "Owns", value: counts.own, cls: "lvl-own" }];
+
 function Ladder({ counts }: { counts: { read: number; change: number; own: number } }) {
-  const ro = counts.read - counts.change, ch = counts.change - counts.own;
-  return <Bar parts={[["Read only", ro, "lvl-read"], ["Read + change", ch, "lvl-change"], ["Owns", counts.own, "lvl-own"]]} />;
+  return <StackBar parts={ladderParts(counts)} />;
 }
 
-function Bar({ parts }: { parts: [string, number, string][] }) {
-  const total = parts.reduce((s, p) => s + p[1], 0) || 1;
+export const sevParts = (n: Record<string, number>): BarPart[] => [
+  { key: "High", label: "High", value: (n.High ?? 0) + (n.Critical ?? 0), cls: "high" },
+  { key: "Medium", label: "Medium", value: n.Medium ?? 0, cls: "medium" }, { key: "Low", label: "Low", value: n.Low ?? 0, cls: "low" }];
+
+/** Findings per rule area: per severity, from the findings per rule and each rule's area and severity. */
+export function areaCounts(rules: { num: string; area: string; severity: string }[], perRule: Record<string, number>) {
+  const out = new Map<string, Record<string, number>>();
+  for (const r of rules) {
+    const m = out.get(r.area) ?? { Critical: 0, High: 0, Medium: 0, Low: 0 };
+    m[r.severity] = (m[r.severity] ?? 0) + (perRule[r.num] ?? 0);
+    out.set(r.area, m);
+  }
+  return [...out].map(([area, n]) => ({ area, n, total: Object.values(n).reduce((a, b) => a + b, 0) }));
+}
+
+/** One small bar per rule area, longest first; a click opens that area on the Rules list. */
+function Areas({ perRule }: { perRule: Record<string, number> }) {
+  const c = useApp();
+  const rows = areaCounts(c.meta.rules, perRule).filter((r) => r.total).sort((x, y) => y.total - x.total);
+  const max = Math.max(1, ...rows.map((r) => r.total));
+  if (!rows.length) return null;
   return (
-    <div>
-      <div className="ae-bar" aria-hidden>{parts.map(([l, v, k]) => v > 0 && <span key={l} className={`ae-bar-${k}`} style={{ width: `${(100 * v) / total}%` }} />)}</div>
-      <div className="ae-bar-legend">{parts.map(([l, v, k]) => <span key={l}><span className={`ae-dot2 ae-bar-${k}`} />{l} <b>{v}</b></span>)}</div>
+    <div className="ae-areas" aria-label="Findings by area">
+      <div className="ae-muted ae-areas-h">Findings by area</div>
+      {rows.map((r) => (
+        <button type="button" key={r.area} className="ae-area" onClick={() => c.nav("rules", { show: "list", area: r.area })} title={`Open ${r.area} on the Rules list`}>
+          <span className="ae-area-name">{r.area}</span>
+          <span className="ae-area-track" style={{ width: `${(100 * r.total) / max}%` }}>
+            {sevParts(r.n).map((p) => p.value > 0 && <span key={p.key} className={`ae-bar-${p.cls}`} style={{ flex: p.value }} />)}
+          </span>
+          <b className="ae-area-n">{r.total}</b>
+        </button>
+      ))}
     </div>
   );
 }

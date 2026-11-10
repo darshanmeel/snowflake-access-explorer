@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
-import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, PathChips, Tabs, Toggle, toCsv } from "../components";
+import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, toCsv } from "../components";
 import { download } from "../components/table";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
@@ -24,13 +24,12 @@ export function ObjectPageView() {
   const c = useApp();
   const admin = c.params.preset === "admin";
   const s = useApi<WhoPage>("who", { view: c.view, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }) });
-  const list = useApi<{ items: ListItem[] }>(admin ? null : "list", { what: "objects", view: c.view });
   const id = s.data?.object.id ?? c.params.name ?? "";
   return (
     <>
       <div className="ae-headrow">
         <div className="ae-h1 ae-h1-pick">
-          {admin ? "Who holds an admin role" : <>Who has access to <Pick label="Object" value={id} width={360} options={list.data?.items.map((i) => i.id) ?? [id]} onPick={(v) => c.nav("object", { name: v })} /></>}
+          {admin ? "Who holds an admin role" : <>Who has access to <Pick label="Object" value={id} width={360} what="objects" onPick={(v) => c.nav("object", { name: v })} /></>}
         </div>
       </div>
       <Load s={s}>{(d) => <Who d={d} />}</Load>
@@ -80,14 +79,13 @@ function Who({ d }: { d: WhoPage }) {
 /** "Access for [person]": defaults to the signed-in user (the demo user on shared data). */
 function For({ d }: { d: WhoPage }) {
   const c = useApp();
-  const users = useApi<{ items: ListItem[] }>("list", { what: "users", view: c.view });
   const who = c.params.as ?? d.default_user ?? "";
   const x = d.people.find((p) => p.name === who);
   const clear = x?.columns.filter((k) => k.state !== "masked").map((k) => k.column) ?? [];
   const masked = x?.columns.filter((k) => k.state === "masked").map((k) => k.column) ?? [];
   return (
     <section className="ae-forstrip" aria-label="Access for one person">
-      <Pick label="Access for" value={who} width={200} options={users.data?.items.map((i) => i.id) ?? [who]} onPick={(v) => c.set({ as: v })} />
+      <Pick label="Access for" value={who} width={200} what="users" onPick={(v) => c.set({ as: v })} />
       {!x ? <span className="ae-muted">{who ? `${who} has no access here.` : ""}</span> : <>
         <span className={`ae-lvl ae-lvl-${x.level}`}>{TITLE[x.level]}</span>
         <span className="ae-privs">{x.privileges.join(" · ") || `through ${x.admin.join(", ")}`}</span>
@@ -182,7 +180,8 @@ function List({ d }: { d: WhoPage }) {
                 <li key={k.column}>
                   <div><div className="ae-mono">{k.column}</div><div className="ae-muted">{k.tags.map(tagWord).filter(Boolean).join(", ") || (k.sensitive ? "sensitive" : "")}</div></div>
                   <div className="ae-whocols-r">
-                    <div className={k.clear.length ? "ae-sens-word" : ""} title={k.clear.join(", ")}>{k.clear.length} of {k.clear.length + k.masked.length + k.unknown.length} people</div>
+                    <MiniBar of={Math.max(1, k.clear.length + k.masked.length + k.unknown.length)} text={<span className={k.clear.length ? "ae-sens-word" : ""} title={k.clear.join(", ")}>{k.clear.length} of {k.clear.length + k.masked.length + k.unknown.length} see it</span>}
+                      parts={[{ key: "c", label: "See it in the clear", value: k.clear.length, cls: "high" }, { key: "m", label: "Masked", value: k.masked.length, cls: "keep" }, { key: "u", label: "Unknown", value: k.unknown.length, cls: "low" }]} />
                     <div className="ae-muted">{k.policies.length ? `${k.policies.map((x) => x.split(".").pop()).join(", ")}${k.masked.length ? ` · masked for ${k.masked.length}` : ""}` : "No masking policy"}</div>
                   </div>
                 </li>
@@ -249,7 +248,6 @@ export function ObjectDetail() {
   const name = c.params.name ?? "";
   const [tab, setTab] = useState("all");
   const [part, setPart] = useState(c.params.part ?? "who");
-  const list = useApi<{ items: ListItem[] }>("list", { what: "objects", view: c.view, type: c.params.type });
   const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
   // no name: the server picks the first object of the type (as app.py)
   const s = useApi<ObjectPage>("object", { ...apiParams(c), name });
@@ -260,7 +258,7 @@ export function ObjectDetail() {
       <Controls>
         <Sel label="Type" value={c.params.type ?? ""} onPick={(v) => c.nav("object", v ? { type: v } : {})}
           options={[["", "Any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id])]} />
-        <Pick label="Object" value={name || s.data?.object.id || ""} width={360} options={list.data?.items.map((i) => i.id) ?? []}
+        <Pick label="Object" value={name || s.data?.object.id || ""} width={360} what="objects" params={{ type: c.params.type }}
           onPick={(v) => c.nav("object", c.params.type ? { name: v, type: c.params.type } : { name: v })} />
         <Tog label="Active users only" on={c.params.active === "1"} onPick={(v) => c.set({ active: v ? "1" : null })} />
         <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} />

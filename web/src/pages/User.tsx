@@ -12,14 +12,13 @@ export function UserPage() {
   const mine = c.view === "mine";
   const name = c.params.name ?? c.meta.default_user;
   const s = useApi<UserPage>("user", { ...apiParams(c), name });
-  const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
   const o = useOpen(s.data?.refs);
   const [part, setPart] = useState(c.params.part ?? "privs");
   return (
     <>
       <Head title={mine ? "My access" : "User"} sub="What this user can reach, and through which roles." />
       <Controls>
-        {!mine && <Pick label="User" value={name} options={users.data?.items.map((i) => i.id) ?? [name]} onPick={(v) => c.nav("user", { name: v })} />}
+        {!mine && <Pick label="User" value={name} what="users" onPick={(v) => c.nav("user", { name: v })} />}
         <Sel label="Roles" value={c.params.roles ?? "all"} options={[["all", "All roles"], ["default", "Default role only"]]} onPick={(v) => c.set({ roles: v === "all" ? null : v })} />
         <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />
         <Tog label="Data only" on={c.params.dataonly !== "0"} help="Hide USAGE on databases and schemas outside the Usage tab"

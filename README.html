@@ -174,7 +174,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <figure><img src="docs/img/redesign/home_search.png" alt="Home with the search open: people, roles, objects and screens that match"><figcaption>Top bar, side menu and Home's search: each hit carries a one-line answer.</figcaption></figure>
   <div class="two">
     <div><h3>Top bar</h3><ul>
-      <li><b>Find</b>: any person, role or object; a user and a role with the same name are two hits.</li>
+      <li><b>Find</b>: any person, role or object; a user and a role with the same name are two hits. Find and every picker search on the server as you type: arrow keys and Enter pick, Escape or a click elsewhere closes the list.</li>
       <li><b>Shared snapshot</b> / <b>My access</b>: the whole account, or only your own access read live with your rights (<a href="#mine">My access</a>).</li>
       <li><b>Data from &lt;time&gt;</b> and <b>↻</b> (Read Snowflake again); with <code>SOURCE=objects</code> also <b>Rebuild snapshot</b>, which CALLs the procedure. <b>Demo data</b> marks fake data; <b>Dark</b> switches the theme.</li>
       <li><b>Incomplete · N sources</b> (side menu): what could not be read, why, and the grant that fixes it.</li>
@@ -193,7 +193,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <section class="card" id="graph">
   <div class="eyebrow">Legend</div>
   <h2>How to read a graph</h2>
-  <p class="key">Every graph runs left to right: the start, one lane per depth, then objects. Click a box to open it; hover a box or line for details; drag to pan, + / − / fit to zoom. A user and a role with the same name are two boxes. The legend sits under each graph.</p>
+  <p class="key">Every graph runs left to right: the start, one lane per depth, then objects. Click a box to open it; hover a box or line for details; drag to pan, + / − / fit to zoom. A graph of up to 6 lanes opens fitted, a bigger one centred on the box it starts from; Tab moves between boxes and Enter opens one; on a touch screen the first tap shows the tip and the second opens. The legend lists only what the graph draws. A user and a role with the same name are two boxes. The legend sits under each graph.</p>
   <div class="legend" style="margin-top:16px">
     <dl>
       <dt><span class="n user">ENGINEER_01</span></dt><dd>User (person or service)</dd>
@@ -236,6 +236,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li>Search a person, role, table or screen, or type a question: <code>can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER</code> (a role works too: <code>can F_MARKETING read …</code>). Press <b>/</b> to jump to it.</li>
       <li>Each hit has a one-line answer (what a person or role reaches, who reaches an object); warehouses are their own group; matching screens are listed too.</li>
       <li><b>Try</b> shortcuts open a screen filled with the first hit, or the default user.</li>
+      <li><b>Findings by area</b> (Account risks): one bar per rule area, coloured by severity; a click opens the Rules list at that area.</li>
     </ul></div>
     <div><h3>Cards</h3><dl class="nums">
       <dt>Access of …</dt><dd>Your objects as a ladder: Read only, Read + change, Owns; plus runs and account powers</dd>
@@ -381,7 +382,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <figure><img src="docs/img/redesign/compare_diff.png" alt="Compare: differences"><figcaption>Differences first, the same ones folded.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Counts: only A, only B, both but different, same. Scope: sensitive data, everything or one database.</li>
+      <li>Two overlapping circles: only A, only B, and in the overlap both but different and the same; a click opens the differences. Scope: sensitive data, everything or one database.</li>
       <li><b>Make B match A</b> or <b>Remove A's extras</b> writes SQL / Terraform / ticket text; <b>Simulate</b> runs it on What if.</li>
     </ul></div>
     <div><h3>Tabs</h3><dl class="nums">
@@ -392,18 +393,19 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 </section>
 
 <section class="card screen" id="rules">
-  <header><h2>Risks &amp; fixes</h2><span class="q">?page=rules · &amp;show=fixes&amp;sev=High&amp;by=rule|person|object · &amp;show=list</span></header>
+  <header><h2>Risks &amp; fixes</h2><span class="q">?page=rules · &amp;show=fixes&amp;sev=High&amp;by=rule|person|object|grid · &amp;show=list&amp;area=…</span></header>
   <p class="answers"><b>Answers</b>Where does the role model break its own rules, what is the fix, and what happens if I apply it?</p>
   <figure><img src="docs/img/redesign/risks.png" alt="Risks and change plan"><figcaption>Risks &amp; change plan: severity tiles, rules by people affected, the change plan on the right.</figcaption></figure>
   <div class="two">
     <figure><img src="docs/img/redesign/risks_person.png" alt="Risks grouped by person"><figcaption>Grouped by person.</figcaption></figure>
-    <figure><img src="docs/img/redesign/rules.png" alt="Rules list"><figcaption>Rules: by area, with On/Off.</figcaption></figure>
+    <figure><img src="docs/img/redesign/rules.png" alt="Rules list"><figcaption>Rules: by area, a severity bar per area, with On/Off.</figcaption></figure>
   </div>
+  <figure><img src="docs/img/redesign/risks_grid.png" alt="Heat grid of grantees by rule"><figcaption>Heat grid: one row per grantee, one column per rule, coloured by severity, the number of findings in each cell.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>Severity tiles filter (click the active one again for all); the Admin holders tile opens the object screen's admin preset.</li>
-      <li>Group by rule, person or object; rule rows are sorted by people affected. Open one: why it matters, findings with chain chips, <b>Add fix to plan</b>, See on the graph, Rule settings, Mute with a reason.</li>
-      <li>The <b>Change plan</b> panel: items, impact tiles (people lose, keep it another way, findings fixed, new findings), who loses what, SQL / Terraform / ticket text, Open full what-if. Simulation only.</li>
+      <li>Group by rule, person or object, or show the <b>Heat grid</b> (grantee x rule; a cell opens that rule's findings); rule rows are sorted by people affected. Open one: why it matters, findings with chain chips, <b>Add fix to plan</b>, See on the graph, Rule settings, Mute with a reason.</li>
+      <li>The <b>Change plan</b> panel: items, impact tiles (people lose, keep it another way, findings fixed, new findings), who loses what (a lose-vs-keep bar and people who lose the same thing as one row, the removed link crossed out), SQL / Terraform / ticket text, Open full what-if. Simulation only.</li>
       <li>Findings without a grant to revoke show their fix as text.</li>
     </ul></div>
     <div><h3>Tabs</h3><dl class="nums">
@@ -428,7 +430,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>One line: [Revoke role | Drop role | Revoke privilege | Empty PUBLIC] [role] from [user or role] [Add to plan]. After you pick a role, only the users or roles that reach it are offered, direct ones first.</li>
-      <li>Seven impact tiles; people rows expand to Loses / Keeps through another path. Objects left unreached and roles left empty are listed.</li>
+      <li>Seven impact tiles; a bar of privileges lost against kept another way; people who lose the same thing are one row, with the path and the removed link crossed out (open a row for the names; one row per person below). Objects left unreached and roles left empty are listed.</li>
       <li>The same plan as Risks &amp; fixes, saved in this browser. A simulation: it prints REVOKE text for your infrastructure as code and never runs it.</li>
     </ul></div>
     <div><h3>Tabs</h3><dl class="nums">
@@ -523,7 +525,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>Compares the current snapshot with the previous one, which the local version keeps in <code>.cache/</code> as <code>&lt;name&gt;.prev.pkl</code> when a new read replaces it. Inside Snowflake, with <code>CACHE_HOURS=0</code> or before a second read, the screen says why it is empty.</li>
-      <li>Grants gained and lost with who gains or loses what, people turned dormant or disabled, new and fixed findings, and <code>GRANTED_BY</code>. Filters All, Gained access, Lost access, New findings, Sensitive only.</li>
+      <li>A strip of new findings against fixed ones, per severity. Each grant gained or lost is drawn as two boxes and a + or crossed-out link (click a box to open it), with who gains or loses what, people turned dormant or disabled, new and fixed findings, and <code>GRANTED_BY</code>. Filters All, Gained access, Lost access, New findings, Sensitive only.</li>
       <li>Watched questions (Can [person] read [object]? / Who can read [object]? / Who holds admin roles?) are saved in this browser and asked again on each snapshot. Notify is text only; nothing is sent. Shared snapshot only.</li>
     </ul></div>
     <div><h3>Tabs</h3><dl class="nums">

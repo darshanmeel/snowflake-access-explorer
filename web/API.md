@@ -191,7 +191,8 @@ computed once per build key.
 
 Mode, run, warnings and constants for the frame (sidebar, nav, legends). Producer: `a.run`, `a.cached("rows",
 a.rule_rows)`, `a.cached("sens", a.sensitive)`, `a.governance_kpis()`, constants of `access.py` and `ui.py`.
-Answers even when the data is not loaded (`loaded: false`, no run).
+Answers even when the data is not loaded (`loaded: false`, no run). `cache_hours`: `CACHE_HOURS` when copies are
+kept in `.cache/`, else 0 (the My access card says where your access is kept).
 
 ```json
 {
@@ -255,11 +256,13 @@ people with access.
             "type": "TABLE", "sensitive": true, "page": "object", "answer": "8 people have access"}], "total": 2}
 ```
 
-### GET /api/list?what=users|roles|objects|types|databases&type=&view=
+### GET /api/list?what=users|roles|objects|types|databases[,...]&type=&q=&limit=&view=
 
 Picker options. users: `a.users` (+ status); roles: `a.roles` (+ kind); objects: `a.objects` (filter by `type`,
 + type); types: `sorted(set(a.kinds.values()))`; databases: database names of `a.objects` (review page).
-Answer: `{"items": [{"id", "name", "kind", "type", "status"}]}`.
+`what` takes a comma list (`users,roles` for a person-or-role picker). `q` filters and ranks the items as Find does
+(`a.search`); `limit` caps the answer. The pickers search here as you type (50 at a time) instead of downloading
+every name. Answer: `{"items": [{"id", "name", "kind", "type", "status"}], "total": n}` (`total` before `limit`).
 
 ### GET /api/user?view=&name=&roles=all|default&depth=&dataonly=1&schema=&otype=&on=&priv=
 
@@ -769,7 +772,10 @@ in My access, with `CACHE_HOURS=0` or before a second run. `subject` (user, role
  "new": 6, "fixed": 2, "high": 4}
 ```
 
-`kind`: `gain` | `lose` (grants), `user` (became dormant or disabled), `risk` (new finding), `fixed`. Watched
+`kind`: `gain` | `lose` (grants), `user` (became dormant or disabled), `risk` (new finding), `fixed`. A `gain` /
+`lose` event also has `edge` `{source, source_kind, target, target_kind, privilege, added}` (the grant drawn as two
+boxes and a + or crossed-out link; `privilege` is `role` for a role grant). Without `subject` the answer has `severity`
+`{"new": {"High": 4, ...}, "fixed": {...}}` for the strip of new against fixed findings (`null` with `subject`). Watched
 questions are kept in the browser (localStorage `ae-watch`) and asked again through `/api/check` and `/api/who`.
 
 ### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0

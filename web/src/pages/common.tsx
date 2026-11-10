@@ -1,8 +1,8 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
-import { useId, type ReactNode } from "react";
-import type { ApiFail, State } from "../api/client";
-import type { Banner as B, DataView, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
-import { Banner, Card, DataTable, FindingList, Graph, PathText, type Column } from "../components";
+import { type ReactNode } from "react";
+import { clearCache, get, type ApiFail, type State } from "../api/client";
+import type { Banner as B, DataView, ListItem, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
+import { Banner, Card, Combo, DataTable, FindingList, Graph, PathText, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -23,8 +23,8 @@ export function ErrorBox({ e }: { e: ApiFail }) {
   if (e.detail === "shared_unreadable")
     return (
       <Banner tone="bad" title="The shared snapshot cannot be read" lines={[e.message]}>
-        <p>You can still look at your own access: switch to "My access" in the top bar.</p>
-        <button className="ae-btn" onClick={() => c.nav("user", {})}>Try again</button>
+        {c?.meta?.mine_available !== false && <p>You can still look at your own access: switch to "My access" in the top bar.</p>}
+        <button className="ae-btn" onClick={clearCache}>Try again</button>
       </Banner>
     );
   return <Banner tone={e.status === 404 ? "warn" : "bad"} title={e.status === 404 ? "Not found" : "Something went wrong"} lines={[e.message]} />;
@@ -45,18 +45,26 @@ export function Banners({ list }: { list: B[] }) {
   );
 }
 
-/** Pick one value from a long list: type to narrow, commit when the text matches an option. */
-export function Pick({ label, value, options, onPick, width = 240 }: {
-  label: string; value: string; options: string[]; onPick: (v: string) => void; width?: number;
+const KIND_SHORT: Record<string, string> = { user: "user", functional: "functional", technical: "technical", group: "group role",
+  database_role: "database role", admin: "admin role", object: "object" };
+
+/** Pick one value from a long list: the server searches as you type (what= users / roles / objects or a comma list,
+ * 50 hits a keystroke, never the whole account), or `options` when the list is already small (holders on What if).
+ * onPick gets the item too: its kind tells a user from a role of the same name. */
+export function Pick({ label, value, what, params, options, onPick, width = 240 }: {
+  label: string; value: string; what?: string; params?: Record<string, string | undefined>; options?: string[];
+  onPick: (v: string, item: ListItem) => void; width?: number;
 }) {
-  const id = useId();
+  const c = useApp();
+  const search = (q: string): Promise<ListItem[]> => options
+    ? Promise.resolve(options.filter((o) => o.toLowerCase().includes(q.toLowerCase())).slice(0, 50).map((o) => ({ id: o, name: o, kind: null, type: null, status: null })))
+    : get<{ items: ListItem[] }>("list", { what: what ?? "objects", q, limit: "50", view: c.view, ...params }).then((r) => r.items);
   return (
     <label className="ae-field">
       <span>{label}</span>
-      <input className="ae-input" style={{ width }} list={id} defaultValue={value} key={value} placeholder="type to search"
-        onChange={(e) => { if (options.includes(e.target.value) && e.target.value !== value) onPick(e.target.value); }}
-        onFocus={(e) => e.target.select()} />
-      <datalist id={id}>{options.slice(0, 2000).map((o) => <option key={o} value={o} />)}</datalist>
+      <Combo<ListItem> label={label} value={value} width={width} placeholder="type to search" search={search} keyOf={(i) => i.id}
+        onPick={(i) => { if (i.id !== value) onPick(i.id, i); }}
+        render={(i) => <><span className="ae-mono">{i.id}</span>{(i.kind || i.type) && <span className="ae-muted">{i.kind && i.kind !== "object" ? KIND_SHORT[i.kind] ?? i.kind : (i.type ?? "").toLowerCase()}</span>}</>} />
     </label>
   );
 }

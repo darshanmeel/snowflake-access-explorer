@@ -41,8 +41,9 @@ export function DataTable<R>({
   const shown = all ? view : view.slice(0, limit);
   const tools = filter && rows.length >= 10; // a filter box and row count only where there is something to filter
 
+  const data = columns.filter((c) => c.label); // a column without a label holds buttons: not in the CSV, not sortable
   const exportCsv = () =>
-    download(csv || "table.csv", toCsv(columns.map((c) => c.label), view.map((r) => columns.map((c) => cellText(c.get(r))))));
+    download(csv || "table.csv", toCsv(data.map((c) => c.label), view.map((r) => data.map((c) => cellText(c.get(r))))));
 
   return (
     <div className="ae-table-wrap">
@@ -59,8 +60,8 @@ export function DataTable<R>({
             <tr>
               {columns.map((c) => (
                 <th key={c.key} title={c.help} style={{ width: c.width }} className={c.num ? "num" : undefined}
-                  aria-sort={by?.key === c.key ? (by.dir === 1 ? "ascending" : "descending") : undefined}
-                  onClick={() => setBy(by?.key === c.key ? { key: c.key, dir: by.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 })}>
+                  aria-sort={c.label && by?.key === c.key ? (by.dir === 1 ? "ascending" : "descending") : undefined}
+                  onClick={c.label ? () => setBy(by?.key === c.key ? { key: c.key, dir: by.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 }) : undefined}>
                   {c.label}
                   <span className="ae-sort">{by?.key === c.key ? (by.dir === 1 ? "▲" : "▼") : ""}</span>
                 </th>

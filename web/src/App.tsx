@@ -1,9 +1,9 @@
 // App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
 // Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearCache, get, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page } from "./api/types";
-import { Card, Root, type ThemeName } from "./components";
+import { Banner, Card, Combo, Root, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -12,7 +12,7 @@ import { ComparePageView } from "./pages/Compare";
 import { ErrorBox } from "./pages/common";
 import { FlowPageView } from "./pages/Flow";
 import { GraphPageView } from "./pages/Map";
-import { HomePageView, remember } from "./pages/Home";
+import { HomePageView, openFound } from "./pages/Home";
 import { ObjectPageView } from "./pages/Object";
 import { RequestPageView } from "./pages/Request";
 import { ReviewPageView } from "./pages/Review";
@@ -92,6 +92,11 @@ export function redirect(page: string | null, params: Params): { page: Page; par
 
 interface Loc { page: Page; params: Params; mine: boolean }
 
+/** What the My access card says about where your access is kept (cache.py: 24 h in memory, CACHE_HOURS on disk). */
+export const mineText = (hours: number | undefined) =>
+  `This reads what you can reach with your own role, once, and keeps it for 24 hours in the server's memory${
+    hours ? ` and in .cache/ on this machine (CACHE_HOURS=${hours})` : " only (CACHE_HOURS=0: nothing on disk)"}. Nothing is written to Snowflake.`;
+
 /** My access: ?data=mine, or the brief's ?page=me. */
 export const mine = (page: string | null, data: string | null) => data === "mine" || page === "me";
 
@@ -129,36 +134,38 @@ function useTheme(): [ThemeName, () => void] {
   return [t, () => setT((x) => { const n = x === "dark" ? "light" : "dark"; try { localStorage.setItem("ae-theme", n); } catch { /* no storage */ } return n; })];
 }
 
-function Find({ view, onOpen }: { view: string; onOpen: (i: FindItem) => void }) {
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState<FindItem[]>([]);
-  useEffect(() => {
-    if (q.trim().length < 2) { setItems([]); return; }
-    const t = setTimeout(() => { get<{ items: FindItem[] }>("find", { q, view, limit: "20" }).then((r) => setItems(r.items), () => setItems([])); }, 180);
-    return () => clearTimeout(t);
-  }, [q, view]);
+/** Top-bar search: people, roles and objects, ArrowUp / ArrowDown and Enter, closes on a click elsewhere. */
+export function Find({ view, onOpen }: { view: string; onOpen: (i: FindItem) => void }) {
   return (
     <div className="find">
-      <input className="ae-input" type="search" aria-label="Find" placeholder="Find a person, role or object" value={q} onChange={(e) => setQ(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Escape") setQ(""); if (e.key === "Enter" && items[0]) { onOpen(items[0]); setQ(""); } }} />
-      {items.length > 0 && (
-        <div className="find-list">
-          {items.map((i) => (
-            <button key={i.id} onClick={() => { onOpen(i); setQ(""); }}>
-              <span className="ae-mono">{i.name}{i.sensitive && <span className="ae-sens-word"> · sensitive</span>}</span><span className="ae-muted">{i.kind_label}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <Combo<FindItem> label="Find" placeholder="Find a person, role or object" value="" clear min={2} wait={180} keyOf={(i) => i.id} onPick={onOpen}
+        search={(q) => get<{ items: FindItem[] }>("find", { q, view, limit: "20" }).then((r) => r.items)}
+        render={(i) => <><span className="ae-mono">{i.name}{i.sensitive && <span className="ae-sens-word"> · sensitive</span>}</span><span className="ae-muted">{i.kind_label}</span></>} />
     </div>
   );
 }
 
+/** Below 1000 px (the usual Streamlit width) the side menu folds; it follows the window as it is resized. */
+function useWide() {
+  const q = "(max-width: 1000px)";
+  const [wide, setWide] = useState(() => typeof matchMedia !== "function" || !matchMedia(q).matches);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const m = matchMedia(q);
+    const f = () => setWide(!m.matches);
+    m.addEventListener?.("change", f);
+    return () => m.removeEventListener?.("change", f);
+  }, []);
+  return wide;
+}
+
 function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void }) {
-  const wide = typeof matchMedia !== "function" || !matchMedia("(max-width: 1000px)").matches;
+  const wide = useWide();
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
   return (
     <aside className="side">
-      <details className="side-menu" open={wide}>
+      <details className="side-menu" ref={menu} open={wide}>
         <summary>Menu · {LABEL[page]}</summary>
         {GROUPS.map(([g, title]) => {
           const ps = meta.pages.filter((p) => (p.group ?? "detail") === g);
@@ -199,13 +206,13 @@ function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page, para
   );
 }
 
-function DataTime({ meta, reload }: { meta: Meta; reload: () => void }) {
+function DataTime({ meta, reload, busy }: { meta: Meta; reload: () => void; busy: boolean }) {
   if (!meta.run) return null;
   const what = meta.mode === "fake" ? "Data" : meta.source === "direct" ? "Read" : "Snapshot";
   return (
     <span className={`top-time${meta.mode !== "fake" && meta.run.old ? " old" : ""}`} title={meta.fetched_at ? `Read ${meta.fetched_at}` : undefined}>
       <span className="top-time-dot" aria-hidden />{what} {meta.run.when}
-      <button type="button" className="side-reload" onClick={reload} title={meta.mode === "fake" ? "Reload" : "Read Snowflake again"} aria-label="Read again">↻</button>
+      <button type="button" className="side-reload" onClick={reload} disabled={busy} title={meta.mode === "fake" ? "Reload" : "Read Snowflake again"} aria-label="Read again">↻</button>
     </span>
   );
 }
@@ -223,6 +230,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   useEffect(() => { onUrl?.(url(loc)); }, [loc]);
   const [theme, flip] = useTheme();
   const [busy, setBusy] = useState("");
+  const [notice, setNotice] = useState<{ tone: "info" | "bad"; title: string; text: string } | null>(null);
   const view = loc.mine ? "mine" : "shared";
   const m = useApi<Meta>("meta", { view });
   const meta = m.data;
@@ -235,16 +243,22 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   }, [go, loc]);
   const setView = (mine: boolean) => go({ page: mine && ["review", "flow", "changes", "home"].includes(loc.page) ? "access" : loc.page, params: {}, mine }); // shared-only pages are not in My access
 
+  // one at a time: a second click while Snowflake is being read does nothing (the buttons are disabled too)
+  const running = useRef(false);
   const run = async (label: string, f: () => Promise<unknown>) => {
+    if (running.current) return;
+    running.current = true;
     setBusy(label);
-    try { await f(); } catch (e) { alert((e as Error).message); } finally { clearCache(); setBusy(""); }
+    setNotice(null);
+    try { await f(); } catch (e) { setNotice({ tone: "bad", title: `${label.replace(/….*$/, "")} failed`, text: (e as Error).message }); }
+    finally { running.current = false; clearCache(); setBusy(""); }
   };
   const loadMine = (fresh = false) => run("Loading your access…", async () => { await post<MineState>(fresh ? "mine/load?fresh=1" : "mine/load"); setView(true); });
   const reload = () => run("Reading Snowflake…", () => post("reload", { what: "page" }));
   const loadShared = () => run("Reading Snowflake… this can take a few minutes", () => post("reload", { what: "load" }));
   const rebuild = () => run("Rebuilding snapshot…", async () => {
     const r = await post<{ ok: boolean; message: string }>("reload", { what: "rebuild" });
-    if (r.message) alert(r.message);
+    if (r.message) setNotice({ tone: r.ok ? "info" : "bad", title: r.ok ? "Snapshot rebuilt" : "Snapshot not rebuilt", text: r.message });
   });
 
   const ctx: Ctx | null = useMemo(() => meta && {
@@ -264,32 +278,33 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
             Access explorer
           </button>
-          <Find view={view} onOpen={(i) => {
-            remember({ page: i.page, id: i.id, label: i.name });
-            go(i.kind === "user" ? { page: "access", params: { user: i.name }, mine: loc.mine }
-              : i.kind === "object" ? { page: "object", params: { name: i.id }, mine: loc.mine } : { page: "access", params: { role: i.id }, mine: loc.mine });
-          }} />
+          <Find view={view} onOpen={(i) => openFound(i, nav)} />
           <div className="seg" role="group" aria-label="Data">
             <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)}>Shared snapshot</button>
-            {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
+            {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} disabled={!!busy && !meta?.mine.loaded} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
           </div>
-          {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
-          {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
+          {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} disabled={!!busy} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
+          {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
           <span className="top-right">
-            {meta && <DataTime meta={meta} reload={reload} />}
+            {meta && <DataTime meta={meta} reload={reload} busy={!!busy} />}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
             <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           </span>
-          {busy && <span className="ae-muted">{busy}</span>}
+          {busy && <span className="ae-muted top-busy" role="status"><span className="ae-spin" aria-hidden />{busy}</span>}
         </header>
         {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
         <main className="main">
+          {notice && (
+            <Banner tone={notice.tone} title={notice.title} lines={[notice.text]}>
+              <button type="button" className="ae-btn ae-btn-s" onClick={() => setNotice(null)}>Dismiss</button>
+            </Banner>
+          )}
           {m.error && <ErrorBox e={m.error} />}
           {!meta && !m.error && <p className="ae-muted">Loading…</p>}
           {needMine && (
             <Card title="My access">
-              <p>This reads what you can reach, once, and keeps it in server memory for an hour. Nothing is written anywhere.</p>
-              <button className="ae-btn" onClick={() => loadMine()}>Load my access</button>
+              <p>{mineText(meta.cache_hours)}</p>
+              <button className="ae-btn" onClick={() => loadMine()} disabled={!!busy}>Load my access</button>
             </Card>
           )}
           {needShared && (

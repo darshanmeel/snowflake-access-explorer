@@ -16,22 +16,17 @@ export function CheckPageView() {
   const mine = c.view === "mine";
   const asked = subjectIn(c.params);
   const name = asked.name ?? c.meta.default_user;
-  const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
-  const roles = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "roles", view: c.view });
-  const objs = useApi<{ items: ListItem[] }>("list", { what: "objects", view: c.view });
   const s = useApi<CheckPage>("check", { ...apiParams(c), ...(asked.role ? { role: name } : { name }) });
-  const us = useMemo(() => users.data?.items.map((i) => i.id) ?? [], [users.data]);
-  const rs = useMemo(() => roles.data?.items.map((i) => i.id) ?? [], [roles.data]);
   return (
     <>
       <h2 className="ae-h1">Can they?</h2>
       <div className="ae-ask" role="group" aria-label="Question">
         <span className="ae-ask-w">Can</span>
         {mine ? <span className="ae-mono ae-ask-w">{s.data?.user ?? "you"}</span>
-          : <Pick label="Person or role" value={name} options={us.length || rs.length ? [...us, ...rs] : [name]} onPick={(v) => c.set({ ...pickSubject(v, us, rs), obj: null })} />}
+          : <Pick label="Person or role" value={name} what="users,roles" onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v]), obj: null })} />}
         {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v, do: null })}
           options={s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p])} />}
-        <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} options={objs.data?.items.map((i) => i.id) ?? []} onPick={(v) => c.set({ obj: v, priv: null })} />
+        <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, priv: null })} />
         <span className="ae-ask-w">?</span>
       </div>
       <Load s={s}>{(d) => <Body d={d} />}</Load>
@@ -131,9 +126,9 @@ function Routes({ d }: { d: CheckPage }) {
           <span><span className="ae-route-key" />Only in this route</span>
         </div>
       </Card>
-      <div className="ae-two">
+      <div>
         <Card title="Where to cut" sub={d.cuts.length ? "Removing one of these links removes this access. The side effects differ."
-          : d.view === "mine" ? "Not worked out in My access: it needs everyone's grants." : "No single link is on every route: each route needs its own cut (see Answer & diagram)."}>
+          : d.view === "mine" ? "Not worked out in My access: it needs everyone's grants." : "No single link is on every route: each route needs its own cut, below."}>
           <ul className="ae-cuts">
             {d.cuts.map((x, i) => (
               <li key={i} className={i === sel ? "on" : ""}>
@@ -151,20 +146,7 @@ function Routes({ d }: { d: CheckPage }) {
             ))}
           </ul>
           {cut && <CodeOutput changes={[]} texts={cutTexts(cut, d.user)} name={`revoke_${d.user.toLowerCase()}`} />}
-        </Card>
-        <Card title="What they see">
-          {d.read ? (
-            <ul className="ae-items">
-              <li><span>Rows</span>{d.read.rows ? StateTag(d.read.rows) : <b>All rows</b>}</li>
-              {d.read.columns.map((x) => <li key={x.column}><span className="ae-mono">{x.column}</span>{StateTag(x)}</li>)}
-            </ul>
-          ) : <p className="ae-muted">Not a read of a table or view.</p>}
-          {d.use_role && (
-            <>
-              <div className="ae-muted ae-mt">To use it</div>
-              <pre className="ae-code">{`USE ROLE ${d.use_role};${d.warehouse ? `\nUSE WAREHOUSE ${d.warehouse};` : ""}`}</pre>
-            </>
-          )}
+          {!d.cuts.length && <RemoveOptions d={d} />}
         </Card>
       </div>
     </>
@@ -173,8 +155,8 @@ function Routes({ d }: { d: CheckPage }) {
 
 function NearestWays({ d }: { d: CheckPage }) {
   const c = useApp();
-  if (d.view === "mine") return <EmptyState title="Not worked out in My access">The nearest ways in need everyone's grants: open the shared snapshot.</EmptyState>;
-  if (!d.nearest.length) return <EmptyState title="No way in to suggest">No role that can be suggested reaches {d.ask_priv} on {d.object} (admin and build roles are never suggested).</EmptyState>;
+  if (d.view === "mine") return <EmptyState title="Not worked out in My access" art="wait">The nearest ways in need everyone's grants: open the shared snapshot.</EmptyState>;
+  if (!d.nearest.length) return <EmptyState title="No way in to suggest" art="search">No role that can be suggested reaches {d.ask_priv} on {d.object} (admin and build roles are never suggested).</EmptyState>;
   return (
     <Card title="Nearest ways in" sub={`For ${d.ask_priv}. The dashed red link is what is missing. Fewest missing links first, then the fewest people who would get it too.`}>
       <div className="ae-near">
@@ -219,8 +201,25 @@ function Layers({ d }: { d: CheckPage }) {
   );
 }
 
-/** The old Can they? page, kept as the default tab. */
+/** When no single link is on every route: the server's ways to remove the access, one per route. */
+function RemoveOptions({ d }: { d: CheckPage }) {
+  if (!d.options.length) return null;
+  return (
+    <div className="ae-options">
+      {d.options.map((x, i) => (
+        <div key={i} className="ae-option">
+          <p><strong>Option {i + 1}</strong> · {x.affects} privilege(s) lost · {x.users.length} user(s) affected</p>
+          <pre className="ae-code">{x.iac}</pre><pre className="ae-code">{x.sql}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The old Can they? page, kept as the default tab: the answer, diagram and paths, what they see; removing it lives
+ * on Routes & where to cut. */
 function Answer({ d }: { d: CheckPage }) {
+  const c = useApp();
   const a = d.answer;
   return (
     <>
@@ -238,7 +237,7 @@ function Answer({ d }: { d: CheckPage }) {
               col("d", "Depth", (r: CheckPage["paths"][number]) => r.depth, { num: true }),
               col("h", "Held by", (r: CheckPage["paths"][number]) => r.holder, { render: (r: CheckPage["paths"][number]) => <NameLink id={r.holder} refs={d.refs} /> }),
               col("w", "How", (r: CheckPage["paths"][number]) => r.how, { wrap: "wrap" }), pathCol<CheckPage["paths"][number]>(d.refs),
-              col("w", "", () => "", { render: (r: CheckPage["paths"][number]) => { const ch = changeOfPath(r.path, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; } })]} />
+              col("act", "", () => "", { render: (r: CheckPage["paths"][number]) => { const ch = changeOfPath(r.path, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; } })]} />
         </Card>
       )}
       {d.owner.length > 0 && (
@@ -246,10 +245,11 @@ function Answer({ d }: { d: CheckPage }) {
           {d.owner.map((p, i) => <div key={i}><PathCell path={p} refs={d.refs} /></div>)}
         </Card>
       )}
-      {d.choke.length > 0 && (
-        <Card title="Where to cut" sub="Every path goes through one of these. Remove the link and the access is gone.">
-          {d.choke.map((r) => <div key={r} className="ae-fd-path"><NameLink id={r} refs={d.refs} /><WhatIfButton ch={[{ op: "drop_role", role: r }]} label="What if dropped?" /></div>)}
-        </Card>
+      {a.yes && d.lanes_total > 0 && d.view !== "mine" && (
+        <p className="ae-cutlink">
+          To take this access away, see <button type="button" className="ae-link" onClick={() => c.set({ show: "routes" })}>Routes & where to cut</button>:{" "}
+          {d.cuts.length ? `${d.cuts.length} place${d.cuts.length === 1 ? "" : "s"} to cut, each with its side effects and the text to apply.` : "each route needs its own cut."}
+        </p>
       )}
       {!a.yes && d.closest && (
         <Card title={`Closest the ${d.subject.user ? "user" : "role"} gets`} sub="The nearest chain that stops short">
@@ -263,19 +263,15 @@ function Answer({ d }: { d: CheckPage }) {
               col("n", "Privileges", (r: CheckPage["ask"][number]) => r.privileges, { num: true }), pathCol<CheckPage["ask"][number]>(d.refs)]} />
         </Card>
       )}
-      {d.options.length > 0 && (
-        <Card title="Ways to remove this access" sub="Text to copy into your infrastructure as code. This app never runs it.">
-          {d.options.map((x, i) => (
-            <div key={i} className="ae-option">
-              <p><strong>Option {i + 1}</strong> · {x.affects} privilege(s) lost · {x.users.length} user(s) affected</p>
-              <pre className="ae-code">{x.iac}</pre><pre className="ae-code">{x.sql}</pre>
-            </div>
-          ))}
-        </Card>
-      )}
+      {d.options.length > 0 && !d.lanes_total && <Card title="Ways to remove this access" sub="Text to copy into your infrastructure as code. This app never runs it."><RemoveOptions d={d} /></Card>}
       {d.read && (
         <Card title="What they see" sub={d.read.summary}>
-          {d.use_role && <p>Use role <NameLink id={d.use_role} refs={d.refs} />{d.warehouse ? ` with warehouse ${d.warehouse}` : ""}.</p>}
+          {d.use_role && (
+            <>
+              <p>Use role <NameLink id={d.use_role} refs={d.refs} />{d.warehouse ? ` with warehouse ${d.warehouse}` : ""}:</p>
+              <pre className="ae-code">{`USE ROLE ${d.use_role};${d.warehouse ? `\nUSE WAREHOUSE ${d.warehouse};` : ""}`}</pre>
+            </>
+          )}
           {d.read.role_only && <p className="ae-muted">{d.read.role_only}</p>}
           {d.read.rows && <p>Rows: {StateTag(d.read.rows)} <span className="ae-muted">{d.read.rows.reason}</span></p>}
           {d.read.columns.length > 0 && (

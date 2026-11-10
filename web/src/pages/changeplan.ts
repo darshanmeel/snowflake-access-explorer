@@ -101,3 +101,43 @@ export function objectImpact(users: WhatIfUser[]): { object: string; type: strin
   return [...m.entries()].map(([object, x]) => ({ object, type: x.type, people: x.who.size, privileges: [...x.pv].sort() }))
     .sort((a, b) => b.people - a.people || a.object.localeCompare(b.object));
 }
+
+/** The links of a lost path that the changes remove (index i: path[i] -> path[i+1]), to draw them crossed out. */
+export function cutLinks(path: string[], changes: WhatIfChange[]): Set<number> {
+  const out = new Set<number>();
+  const base = (n: string) => n.replace(/ \(user\)$/, "");
+  for (let i = 0; i + 1 < path.length; i++) {
+    const [a, b] = [base(path[i]), path[i + 1]];
+    for (const ch of changes) {
+      if ((ch.op === "revoke_role_from_user" && a === ch.user && b === ch.role)
+        || (ch.op === "revoke_role_from_role" && a === ch.grantee && b === ch.role)
+        || (ch.op === "revoke_priv" && a === ch.role && b === ch.object)
+        || (ch.op === "drop_role" && (a === ch.role || b === ch.role))
+        || (ch.op === "empty_public" && a === "PUBLIC")) out.add(i);
+    }
+  }
+  return out;
+}
+
+export interface LossGroup { key: string; users: WhatIfUser[]; lost: WhatIfUser["lost_rows"]; kept: WhatIfUser["kept_rows"]; text: string }
+
+/** People who lose the same privileges on the same objects (and keep the same ones another way), as one row:
+ * "24 people lose USAGE on WH_SALES_XS". Most people first. */
+export function lossGroups(users: WhatIfUser[]): LossGroup[] {
+  const sig = (rows: WhatIfUser["lost_rows"]) => rows.map((r) => `${r.object}:${r.privileges.join(",")}`).sort().join("|");
+  const by = new Map<string, LossGroup>();
+  for (const u of users) {
+    const key = `${sig(u.lost_rows)}#${sig(u.kept_rows)}#${u.objects}`;
+    const g = by.get(key) ?? { key, users: [], lost: u.lost_rows, kept: u.kept_rows, text: "" };
+    g.users.push(u);
+    by.set(key, g);
+  }
+  return [...by.values()].map((g) => {
+    const who = g.users.length === 1 ? g.users[0].user : `${g.users.length} people`;
+    const what = g.lost.map((r) => `${r.privileges.join(", ")} on ${r.object}`);
+    const more = g.users[0].objects - g.lost.length;
+    const text = what.length ? `${who} lose${g.users.length === 1 ? "s" : ""} ${what.join(" and ")}${more > 0 ? ` and ${more} more object${more === 1 ? "" : "s"}` : ""}`
+      : `${who} lose${g.users.length === 1 ? "s" : ""} nothing`;
+    return { ...g, text };
+  }).sort((a, b) => b.users.length - a.users.length || b.lost.length - a.lost.length);
+}

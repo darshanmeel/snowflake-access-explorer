@@ -22,9 +22,8 @@ export function GraphPageView() {
   const name = c.params.table ?? c.params.role ?? c.params.user ?? "";
   const s = useApi<MapPage>("map", { ...apiParams(c), show: null, sel: null, risky: null }); // a click or a tab: no new request
   const what = mode === "object" ? "objects" : mode === "role" ? "roles" : "users";
-  const list = useApi<{ items: ListItem[] }>(mine && mode === "user" ? null : "list", { what, view: c.view });
-  const objs = useApi<{ items: ListItem[] }>(mode === "object" || mine ? null : "list", { what: "objects", type: "TABLE", view: c.view });
-  const roles = useApi<{ items: ListItem[] }>(mode === "role" ? null : "list", { what: "roles", view: c.view });
+  const objs = useApi<{ items: ListItem[] }>(mode === "object" || mine ? null : "list", { what: "objects", type: "TABLE", view: c.view, limit: "1" });
+  const roles = useApi<{ items: ListItem[] }>(mode === "role" ? null : "list", { what: "roles", view: c.view, limit: "1" });
   const shown = s.data?.name ?? name;
   const first = (m: string) => (m === "object" ? objs.data?.items[0]?.id : m === "role" ? roles.data?.items[0]?.id : c.meta.default_user);
   const pick = (m: string) => {
@@ -50,7 +49,7 @@ export function GraphPageView() {
       </div>
       {!(mine && mode === "user") && (
         <div className="ae-controls">
-          <Pick label={MODES.find((x) => x[0] === mode)![1]} value={shown} options={list.data?.items.map((i) => i.id) ?? [shown]}
+          <Pick label={MODES.find((x) => x[0] === mode)![1]} value={shown} what={what} params={mode === "object" ? { type: "TABLE" } : undefined}
             onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />
         </div>
       )}

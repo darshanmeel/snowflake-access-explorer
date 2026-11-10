@@ -8,16 +8,8 @@ import { useApp, useOpen } from "../ctx";
 import { col, DataViews, Load, NameLink, pathCol, Pick, StateTag, Usage } from "./common";
 import { seeSentence } from "./screens";
 
-/** "What [person or role] sees": the picker every screen 7 / 9 header uses, users first. */
-export function useSubjects() {
-  const c = useApp();
-  const mine = c.view === "mine";
-  const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
-  const roles = useApi<{ items: ListItem[] }>("list", { what: "roles", view: c.view });
-  const options = useMemo(() => [...(users.data?.items ?? []).map((i) => i.id), ...(roles.data?.items ?? []).map((i) => i.id)], [users.data, roles.data]);
-  const isRole = (v: string) => !!roles.data?.items.some((i) => i.id === v) && !users.data?.items.some((i) => i.id === v);
-  return { options, isRole };
-}
+/** What the picker of screens 7 and 9 searches: people and roles (My access: the roles of your slice). */
+export const subjects = (mine: boolean) => (mine ? "roles" : "users,roles");
 
 export function SeePageView() {
   const c = useApp();
@@ -25,14 +17,13 @@ export function SeePageView() {
   const role = mine ? "" : c.params.role ?? "";
   const user = c.params.user ?? (role ? "" : c.meta.default_user);
   const s = useApi<SeePage>("see", { view: c.view, ...(role ? { role } : { user }) });
-  const subj = useSubjects();
   const id = role || user;
   return (
     <>
       <div className="ae-headrow">
         {mine ? <h2 className="ae-h1">What I see</h2> : (
-          <div className="ae-h1 ae-h1-pick">What <Pick label="Person or role" value={id} options={subj.options.length ? subj.options : [id]} width={260}
-            onPick={(v) => c.set(subj.isRole(v) ? { role: v, user: null } : { user: v, role: null })} /> sees</div>
+          <div className="ae-h1 ae-h1-pick">What <Pick label="Person or role" value={id} what={subjects(mine)} width={260}
+            onPick={(v, i) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null })} /> sees</div>
         )}
       </div>
       <Load s={s}>{(d) => <Body d={d} />}</Load>

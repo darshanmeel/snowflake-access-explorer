@@ -1,12 +1,13 @@
 // Screen 5, Risks & fixes: severity tiles as filters, findings by rule / person / object, each fix into the change plan
 // (a simulation through access.what_if; its text is never run). Screen 10, Rules: the rule list by area with On/Off.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { Finding, RulesPage, Severity, WhatIfPage } from "../api/types";
-import { CodeOutput, EmptyState, FilterChips, groupByRule, SEVERITIES } from "../components";
+import { CodeOutput, CutPath, EmptyState, FilterChips, groupByRule, MiniBar, SEVERITIES, StackBar } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { Load } from "./common";
 import { changeText, findingKey, groupFindings, inPlan, muted, plan, planTexts, rulesOff, toggleFix, useSaved, visible } from "./changeplan";
+import { LoseKeep, LossGroups } from "./Plan";
 import { startOf } from "./screens";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -95,13 +96,14 @@ export function RisksTab({ d }: { d: RulesPage }) {
   // no sev= opens the worst severity; sev=all (a click on the active tile) shows every severity
   const sev = (c.params.sev === "all" ? "" : c.params.sev && SEVERITIES.includes(c.params.sev as Severity) ? c.params.sev : SEVERITIES.find((s) => count(s)) ?? "") as Severity | "";
   const list = pool.filter((f) => !sev || f.severity === sev);
-  const by = c.params.by === "person" || c.params.by === "object" ? c.params.by : "rule";
+  const by = c.params.by === "person" || c.params.by === "object" || c.params.by === "grid" ? c.params.by : "rule";
+  const onSev = by === "grid" && !c.params.sev ? "" : sev; // the heat grid opens on every severity
   const rules = c.meta.rules;
   const pass = rules.filter((r) => !d.per_rule[r.num]).length;
   const high = d.findings.filter((f) => f.severity === "High");
   const info = (num: string) => rules.find((r) => r.num === num);
   // per person the bar is that person's findings (counted over rules); else the people the findings reach
-  const groups = (by === "rule" ? groupByRule(list).map((g) => ({ key: g.num, items: g.items, people: g.people })) : groupFindings(list, by))
+  const groups = (by === "rule" || by === "grid" ? groupByRule(list).map((g) => ({ key: g.num, items: g.items, people: g.people })) : groupFindings(list, by))
     .map((g) => ({ ...g, count: by === "person" ? new Set(g.items.map((f) => f.num)).size : g.items.length, n: by === "person" ? g.items.length : g.people }));
   const max = Math.max(1, ...groups.map((g) => g.n));
   const graph = (f: Finding) => c.nav("graph", Object.fromEntries(Object.entries(startOf(f.kind, f.grantee)).filter(([, x]) => x)) as Record<string, string>);
@@ -114,12 +116,12 @@ export function RisksTab({ d }: { d: RulesPage }) {
           {high.length > 0 && ` across ${plural(new Set(high.map((f) => f.num)).size, "rule")}.`} Fixes go into a plan you can test before touching Snowflake.
         </p>
         <FilterChips label="Group findings by" value={by} onPick={(k) => { c.set({ by: k === "rule" ? null : k }); setOpen(null); }}
-          items={[{ key: "rule", label: "By rule" }, { key: "person", label: "By person" }, { key: "object", label: "By object" }]} />
+          items={[{ key: "rule", label: "By rule" }, { key: "person", label: "By person" }, { key: "object", label: "By object" }, { key: "grid", label: "Heat grid" }]} />
       </div>
       <div className="ae-tiles">
         {SEVERITIES.map((s) => (
-          <button type="button" key={s} aria-pressed={sev === s} className={`ae-tile${sev === s ? " on" : ""}${s === "Critical" || s === "High" ? " ae-tile-bad" : s === "Medium" ? " ae-tile-warn" : ""}`}
-            onClick={() => { c.set({ sev: sev === s ? "all" : s }); setOpen(null); }} disabled={!count(s)}>
+          <button type="button" key={s} aria-pressed={onSev === s} className={`ae-tile${onSev === s ? " on" : ""}${s === "Critical" || s === "High" ? " ae-tile-bad" : s === "Medium" ? " ae-tile-warn" : ""}`}
+            onClick={() => { c.set({ sev: onSev === s ? "all" : s }); setOpen(null); }} disabled={!count(s)}>
             <span className="ae-tile-l">{s}</span><span className="ae-tile-v">{count(s)}</span>
           </button>
         ))}
@@ -133,6 +135,7 @@ export function RisksTab({ d }: { d: RulesPage }) {
           <button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "Hide them" : "Show them"}</button>
         </p>
       )}
+      {by === "grid" ? <HeatGrid list={onSev ? list : pool} onRule={(num) => { c.set({ by: null }); setOpen(num); }} onOpen={o.open} /> : (
       <div className="ae-whogrid">
         <section className="ae-rlist" aria-label="Findings">
           <div className="ae-rrow-h">
@@ -156,11 +159,56 @@ export function RisksTab({ d }: { d: RulesPage }) {
               </Row>
             );
           })}
-          {!groups.length && <EmptyState title="Nothing here">{d.findings.length ? "Every finding at this level is muted or its rule is off." : "Every rule passes."}</EmptyState>}
+          {!groups.length && <EmptyState title="Nothing here" art={d.findings.length ? "search" : "clear"}>{d.findings.length ? "Every finding at this level is muted or its rule is off." : "Every rule passes."}</EmptyState>}
         </section>
         <PlanPanel />
-      </div>
+      </div>)}
     </>
+  );
+}
+
+const SEV_RANK: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+const GRID_ROWS = 40;
+
+/** Who breaks which rule: one row per grantee (worst first), one column per rule with a finding, the cell coloured by
+ * the rule's severity and showing how many findings. A cell opens that rule's findings; a name opens the grantee. */
+export function HeatGrid({ list, onRule, onOpen }: { list: Finding[]; onRule: (num: string) => void; onOpen: (id: string) => void }) {
+  const [all, setAll] = useState(false);
+  if (!list.length) return <EmptyState title="Nothing here" art="clear">No finding at this level.</EmptyState>;
+  const rules = [...new Map(list.map((f) => [f.num, f])).values()].sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity] || Number(a.num) - Number(b.num));
+  const by = new Map<string, Finding[]>();
+  for (const f of list) by.set(f.grantee, [...(by.get(f.grantee) ?? []), f]);
+  const rows = [...by].map(([g, fs]) => ({ g, fs, kind: fs[0].kind, worst: Math.min(...fs.map((f) => SEV_RANK[f.severity])) }))
+    .sort((a, b) => a.worst - b.worst || b.fs.length - a.fs.length || a.g.localeCompare(b.g));
+  const shown = all ? rows : rows.slice(0, GRID_ROWS);
+  return (
+    <section className="ae-card ae-hgrid-card" aria-label="Findings heat grid">
+      <p className="ae-muted">{rows.length} grantees × {rules.length} rules with a finding. Darker is more severe; the number is how many findings. Click a cell for the rule's findings.</p>
+      <div className="ae-hgrid-scroll">
+        <table className="ae-hgrid">
+          <thead>
+            <tr><th scope="col" className="ae-hgrid-who">Grantee</th>
+              {rules.map((r) => <th key={r.num} scope="col" title={`#${r.num} ${r.title} (${r.severity})`}><span className={`ae-hgrid-rule ae-sev-${r.severity}`}>#{r.num}</span></th>)}
+              <th scope="col">All</th></tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.g}>
+                <th scope="row" className="ae-hgrid-who"><button type="button" className={`ae-pchip ae-pchip-${r.kind === "object" ? "obj" : r.kind}`} onClick={() => onOpen(r.g)} title={r.g}>{r.g.replace(/ \(user\)$/, "")}</button></th>
+                {rules.map((x) => {
+                  const n = r.fs.filter((f) => f.num === x.num).length;
+                  return <td key={x.num}>{n > 0 && <button type="button" className={`ae-hgrid-c ae-hc-${x.severity}`} onClick={() => onRule(x.num)}
+                    title={`${r.g}: ${n} finding${n === 1 ? "" : "s"} of #${x.num} ${x.title}`}>{n}</button>}</td>;
+                })}
+                <td className="ae-hgrid-n">{r.fs.length}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > GRID_ROWS && <button type="button" className="ae-btn ae-mt" onClick={() => setAll(!all)}>{all ? "Show the first 40" : `Show all ${rows.length}`}</button>}
+      <div className="ae-bar-legend ae-mt">{(["Critical", "High", "Medium", "Low"] as const).filter((s) => rules.some((r) => r.severity === s)).map((s) => <span key={s}><span className={`ae-hgrid-c ae-hc-${s} ae-hgrid-key`} />{s}</span>)}</div>
+    </section>
   );
 }
 
@@ -173,7 +221,7 @@ export function PlanPanel() {
     <aside className="ae-plan" id="plan" aria-label="Change plan">
       <div className="ae-plan-head"><h3>Change plan</h3><span className="ae-tag ae-tag-ok">Simulation</span></div>
       <p className="ae-muted">Nothing changes in Snowflake until you apply the text below. The plan is saved in this browser.</p>
-      {!list.length && <EmptyState title="No changes yet">Add a fix from a finding, or a change such as "revoke a role from a person" on What if, to see who would lose what.</EmptyState>}
+      {!list.length && <EmptyState title="No changes yet" art="plan">Add a fix from a finding, or a change such as "revoke a role from a person" on What if, to see who would lose what.</EmptyState>}
       {list.length > 0 && (
         <>
           <ul className="ae-plan-items">
@@ -190,16 +238,11 @@ export function PlanPanel() {
                 <div className="ae-tile"><span className="ae-tile-l">Findings fixed</span><span className="ae-tile-v">{d.counts.fixed}</span></div>
                 <div className={`ae-tile${d.counts.new ? " ae-tile-warn" : ""}`}><span className="ae-tile-l">New findings</span><span className="ae-tile-v">{d.counts.new}</span></div>
               </div>
-              {d.users.some((u) => u.lost) && (
+              {d.users.length > 0 && (
                 <div>
                   <h4>Who loses what</h4>
-                  <ul className="ae-plan-lose">
-                    {d.users.filter((u) => u.lost).slice(0, 8).map((u) => (
-                      <li key={u.user}><span className="ae-mono">{u.user}</span>
-                        <span className="ae-muted">{u.lost_rows.slice(0, 2).map((r) => r.object).join(", ")}{u.objects > 2 ? ` +${u.objects - 2}` : ""}{u.kept ? ` · keeps ${u.kept} another way` : ""}</span></li>
-                    ))}
-                    {d.users.filter((u) => u.lost).length > 8 && <li className="ae-muted">and {d.users.filter((u) => u.lost).length - 8} more on What if</li>}
-                  </ul>
+                  <LoseKeep users={d.users} />
+                  <LossGroups users={d.users} changes={list} refs={d.refs} max={4} />
                 </div>
               )}
               <CodeOutput changes={[]} name="change_plan" texts={planTexts(list, d.sql)} />
@@ -225,6 +268,8 @@ export function RuleList({ d }: { d: RulesPage }) {
   const rules = c.meta.rules;
   const areas = [...AREAS.filter((a) => rules.some((r) => r.area === a)), ...[...new Set(rules.map((r) => r.area))].filter((a) => !AREAS.includes(a))];
   const sevs = SEVERITIES.map((s) => [s, rules.filter((r) => r.severity === s).length] as const).filter(([, n]) => n);
+  useEffect(() => { if (c.params.area) document.getElementById(`area-${c.params.area}`)?.scrollIntoView({ block: "start" }); }, [c.params.area]);
+  const most = Math.max(1, ...areas.map((a) => rules.filter((r) => r.area === a).reduce((n, r) => n + (d.per_rule[r.num] ?? 0), 0)));
   return (
     <>
       <div className="ae-headrow">
@@ -235,8 +280,12 @@ export function RuleList({ d }: { d: RulesPage }) {
       {areas.map((a) => {
         const rs = rules.filter((r) => r.area === a).sort((x, y) => Number(x.num) - Number(y.num));
         return (
-          <section key={a} className="ae-rarea">
-            <div className="ae-rarea-head"><h3>{a}</h3><span className="ae-muted">{plural(rs.length, "rule")} · {plural(rs.reduce((n, r) => n + (d.per_rule[r.num] ?? 0), 0), "finding")}</span></div>
+          <section key={a} className={`ae-rarea${c.params.area === a ? " on" : ""}`} id={`area-${a}`}>
+            <div className="ae-rarea-head"><h3>{a}</h3>
+              <MiniBar of={most} text={plural(rs.reduce((n, r) => n + (d.per_rule[r.num] ?? 0), 0), "finding")} parts={SEVERITIES.map((s) => ({
+                key: s, label: s, cls: s === "Critical" || s === "High" ? "high" : s.toLowerCase(),
+                value: rs.filter((r) => r.severity === s).reduce((n, r) => n + (d.per_rule[r.num] ?? 0), 0) }))} />
+              <span className="ae-muted">{plural(rs.length, "rule")}</span></div>
             {rs.map((r) => {
               const on = !off.includes(r.num);
               const n = d.per_rule[r.num] ?? 0;

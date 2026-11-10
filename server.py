@@ -1051,7 +1051,11 @@ def home_page(p, view):
     unmasked = sorted({x["grantee"].split(".")[-1] + "." + x["detail"].split(" ")[1].rstrip(":") for x in S["rows"] if x["num"] == "6"})[:8]
     dormant = sorted({x["grantee"] for x in S["rows"] if x["num"] == "7"})
     counts = dict(users=len(a.users), roles=len(a.roles), objects=len(a.objects), sensitive=len(S["sens"]))
+    per_rule = {}
+    for x in S["rows"]:
+        per_rule[x["num"]] = per_rule.get(x["num"], 0) + 1
     return dict(view=view, me=mine, risks=sev if view == "shared" else None, counts=counts,
+                per_rule=per_rule if view == "shared" else None,
                 protection=dict(unmasked=sum(x["num"] == "6" for x in S["rows"]), unmasked_names=unmasked,
                                 dormant=len(dormant), dormant_names=dormant[:8], tagged=g["tagged_objects"],
                                 masked=g["masked_columns"], row_tables=g["row_tables"],
@@ -1657,8 +1661,11 @@ def changes_page(p, view):
     text = (f"Since the snapshot of {before}: {plural(n['all'], 'change')}"
             + (f", {plural(d['high'], 'new high finding')}" if d["high"] and not out["subject"] else "")
             + (f", {len(gained)} {'person' if len(gained) == 1 else 'people'} gained sensitive access" if gained else "") + ".")
+    ev = [e | dict(edge=e["edge"] | dict(source_kind=norm(e["edge"]["source_kind"]), target_kind=norm(e["edge"]["target_kind"])))
+          if e.get("edge") else e for e in ev]
     return out | dict(available=True, events=ev, counts=n, text=text, before=before,
-                      now=d["runs"]["now"], new=d["new"], fixed=d["fixed"], high=d["high"])
+                      now=d["runs"]["now"], new=d["new"], fixed=d["fixed"], high=d["high"],
+                      severity=None if out["subject"] else d["severity"])
 
 
 # ---------- compare (screen 9) ----------
@@ -1987,7 +1994,24 @@ def answer(n, k, name):
 
 
 def list_page(p, view):
-    what = p.get("what", "users")
+    """Users, roles, objects (type=), types, databases or the holders of role= (What if). q= keeps the matches in search
+    order and limit= the first ones (a picker asks for 50 per keystroke instead of the whole account); what= takes a
+    comma list ("users,roles": one picker for a person or role). total: the matches before the limit."""
+    whats = p.get("what", "users").split(",")
+    if len(whats) > 1:
+        items = [i for w in whats for i in list_page(dict(p, what=w, q="", limit=""), view)["items"]]
+    else:
+        items = list_items(p, whats[0])
+    q = p.get("q", "").strip()
+    if q:
+        by = {i["id"]: i for i in items}
+        items = [by[n] for n in a.search(q, list(by))]
+    total = len(items)
+    lim = p.get("limit", "")
+    return dict(items=items[:int(lim)] if lim.isdigit() else items, total=total)
+
+
+def list_items(p, what):
     if what == "users":
         items = [dict(id=u, name=u, kind="user", type=str((a.profile.get(u) or {}).get("TYPE") or "PERSON"), status=a.status(u))
                  for u in a.users]
@@ -2012,7 +2036,7 @@ def list_page(p, view):
         items = [dict(id=d, name=d, kind=None, type="DATABASE", status=None) for d in sorted({a.split_name(o)[0] for o in a.objects} - {""})]
     else:
         raise ApiError(400, "bad_param", "what must be users, roles, objects, types, databases, role_holders or user_holders")
-    return dict(items=items)
+    return items
 
 
 def graph_page(p, view):
@@ -2045,7 +2069,7 @@ def theme_tokens():
 def meta(p, sid):
     view = p.get("view", "shared")
     base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
-                mine=mine_state(sid), mine_available=mine_off() is None, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
+                mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
@@ -2190,7 +2214,10 @@ def make_app():
     from fastapi import FastAPI, Request
     from fastapi.responses import FileResponse, JSONResponse, Response
 
+    from starlette.middleware.gzip import GZipMiddleware
+
     app = FastAPI(title="Snowflake access explorer API")
+    app.add_middleware(GZipMiddleware, minimum_size=2000)  # the bundle and big answers (review, objects) shrink ~5x
     hosts = allowed_hosts()
 
     @app.middleware("http")

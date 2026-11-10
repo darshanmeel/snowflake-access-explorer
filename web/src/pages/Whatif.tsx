@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, WhatIfPage, WhatIfUser } from "../api/types";
-import { Banner, Card, DataTable, KpiRow, Tabs } from "../components";
+import { Banner, Card, DataTable, EmptyState, KpiRow, Tabs } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
 import { col, Controls, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
-import { PlanTab } from "./Plan";
+import { LoseKeep, LossGroups, PlanTab } from "./Plan";
 import { addTo, changeText, plan } from "./changeplan";
 
 const OPS: [WhatIfOp, string][] = [
@@ -50,13 +50,11 @@ function Builder({ onAdd }: { onAdd: (ch: WhatIfChange) => void }) {
   const [role, setRole] = useState("");
   const [other, setOther] = useState("");
   const [priv, setPriv] = useState("SELECT");
-  const roles = useApi<{ items: ListItem[] }>("list", { what: "roles", view: c.view });
   // only who reaches the chosen role, directly first, then through other roles (cut where it is granted)
   const holders = useApi<{ items: ListItem[] }>(
     role && (op === "revoke_role_from_user" || op === "revoke_role_from_role") ? "list" : null,
     { what: op === "revoke_role_from_user" ? "user_holders" : "role_holders", role, view: c.view });
-  const objs = useApi<{ items: ListItem[] }>(op === "revoke_priv" ? "list" : null, { what: "objects", view: c.view });
-  const ids = (s: typeof roles) => s.data?.items.map((i) => i.id) ?? [];
+  const ids = (s: typeof holders) => s.data?.items.map((i) => i.id) ?? [];
   const nDirect = holders.data?.items.filter((i) => i.type === "direct").length ?? 0;
   const nVia = (holders.data?.items.length ?? 0) - nDirect;
   const holderHint = !role ? "pick a role first" : holders.data ? `${nDirect} direct · ${nVia} through other roles` : "…";
@@ -71,11 +69,11 @@ function Builder({ onAdd }: { onAdd: (ch: WhatIfChange) => void }) {
   return (
     <Controls>
       <Sel label="Change" value={op} onPick={(v) => { setOp(v as WhatIfOp); setOther(""); }} options={OPS} />
-      {op !== "empty_public" && <Pick label={op === "revoke_role_from_role" ? "Role taken away" : "Role"} value={role} options={ids(roles)} onPick={(v) => { setRole(v); setOther(""); }} />}
+      {op !== "empty_public" && <Pick label={op === "revoke_role_from_role" ? "Role taken away" : "Role"} value={role} what="roles" onPick={(v) => { setRole(v); setOther(""); }} />}
       {op === "revoke_role_from_user" && <Pick label={`From user (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
       {op === "revoke_role_from_role" && <Pick label={`From role (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
       {op === "revoke_priv" && <Sel label="Privilege" value={priv} onPick={setPriv} options={PRIVS.map((p): [string, string] => [p, p])} />}
-      {op === "revoke_priv" && <Pick label="On object" value={other} width={340} options={ids(objs)} onPick={setOther} />}
+      {op === "revoke_priv" && <Pick label="On object" value={other} width={340} what="objects" onPick={setOther} />}
       <button className="ae-btn" disabled={!ch} onClick={() => ch && onAdd(ch)}>Add</button>
     </Controls>
   );
@@ -145,8 +143,15 @@ function Result({ d }: { d: WhatIfPage }) {
         { key: "fix", label: "Text to apply" },
       ]} />
       {tab === "users" && (
-        <Card>
-          {d.users.length ? d.users.map((u) => <UserRow key={u.user} u={u} refs={d.refs} />) : <p className="ae-muted">No user loses anything.</p>}
+        <Card title="Who loses what" sub="People who lose the same thing are one row; the crossed-out link is the one the change removes. Open a row for the names.">
+          <LoseKeep users={d.users} />
+          <LossGroups users={d.users} changes={d.changes.map((x) => x.change)} refs={d.refs} />
+          {d.users.length > 0 && (
+            <details className="ae-mt">
+              <summary>One row per person, with every path</summary>
+              {d.users.map((u) => <UserRow key={u.user} u={u} refs={d.refs} />)}
+            </details>
+          )}
         </Card>
       )}
       {tab === "objects" && (
@@ -208,7 +213,7 @@ export function WhatIfPageView() {
           ? <div className="ae-chips">{list.map((x) => (
               <button key={text(x)} className="ae-chip ae-chip-plain" onClick={() => put(list.filter((y) => y !== x))} title="Remove">{text(x)} ×</button>
             ))}</div>
-          : <p className="ae-muted">Add one or more changes. You can also start from a role page, a path or a finding ("What if revoked?").</p>}
+          : <EmptyState title="No change yet" art="plan">Add one or more changes above. You can also start from a role page, a path or a finding ("What if revoked?").</EmptyState>}
       </Card>
       {list.length > 0 && <Load s={s}>{(d) => <Result d={d} />}</Load>}
       </>}

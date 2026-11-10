@@ -133,7 +133,7 @@ export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
   groups: Record<string, GraphGroup>;
-  legend: { kinds: NodeKind[]; edges: EdgeCls[]; marks: Mark[]; rules: boolean };
+  legend: { kinds: NodeKind[]; edges: EdgeCls[]; marks: Mark[]; rules: boolean; back?: boolean }; // back: a dotted "also deeper" line is drawn
 }
 
 // ---------- frame ----------
@@ -195,6 +195,7 @@ export interface Meta {
   notes: Note[];
   mine: MineState;
   mine_available: boolean; // false inside Snowflake (owner's rights)
+  cache_hours: number; // hours a copy stays in .cache/ (0: memory only, as inside Snowflake)
   error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click
   pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; group: "answers" | "admin" | "detail" }[]; // rules: count of the worst severity
   default_user: string;
@@ -927,6 +928,7 @@ export interface HomePage {
   me: { user: string; counts: LadderCounts } | null;
   risks: Record<Severity, number> | null;
   counts: { users: number; roles: number; objects: number; sensitive: number };
+  per_rule: Record<string, number> | null; // findings per rule (shared only): Home's findings by area
   protection: { unmasked: number; unmasked_names: string[]; dormant: number; dormant_names: string[]; tagged: number;
     masked: number; row_tables: number; row_list: { object: string; policies: string[] }[] } | null;
 }
@@ -1175,6 +1177,7 @@ export interface ChangeEvent {
   text: string;
   impact: string;
   by: string | null; // GRANTED_BY, when known
+  edge?: ChangeEdge; // gain / lose: the grant drawn as two boxes and a + / - link
   sensitive: boolean;
   findings: { num: string; severity: Severity; title: string; fixed: boolean }[];
   link: { page: Page; params: Record<string, string> };
@@ -1182,6 +1185,7 @@ export interface ChangeEvent {
   people: string[];
   objects: string[];
 }
+export interface ChangeEdge { source: string; source_kind: NodeKind; target: string; target_kind: NodeKind; privilege: string | null; added: boolean }
 export interface ChangeCounts { all: number; gain: number; lose: number; risk: number; sensitive: number }
 export interface ChangesPage {
   view: View;
@@ -1196,5 +1200,6 @@ export interface ChangesPage {
   new?: number;
   fixed?: number;
   high?: number;
+  severity?: { new: Record<Severity, number>; fixed: Record<Severity, number> } | null; // the strip; null for one subject
   refs: Refs;
 }

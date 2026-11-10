@@ -3,6 +3,7 @@ import "./styles.css";
 
 export { Graph, type GraphProps } from "./Graph";
 export { Legend } from "./Legend";
+export { Combo, type ComboProps } from "./Combo";
 export { DataTable, type Column, type DataTableProps } from "./DataTable";
 export { AccessTag, PrivilegeTabs, type PrivilegeTabsProps } from "./PrivilegeTabs";
 export { PathText } from "./PathText";
@@ -15,5 +16,6 @@ export { TAB_ORDER, TAB_LABEL, privTab, tabList, tabRows, tabRoles, byObject } f
 export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind, pathGraph, related, MAX_BOXES } from "./graphs";
 export { tabGraph, tabPaths } from "./tabgraph";
 export { cellText, filterRows, sortRows, toCsv } from "./table";
-export { AccessPill, CodeOutput, EmptyState, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, PathChips, SensitiveCell, Toggle, type FilterItem } from "./kit";
+export { AccessPill, CodeOutput, copyText, EmptyState, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, MaskDots, MiniBar, PathChips, SensitiveCell, StackBar, Toggle, type Art, type BarPart, type FilterItem } from "./kit";
+export { CutPath, GrantLink, Overlap } from "./visuals";
 export { expiryOf, newRoleOf, sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";

@@ -109,7 +109,7 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-graph .react-flow__node-lane { cursor: default; pointer-events: none; }
 .ae-graph .react-flow__controls button { background: var(--ae-panel); color: var(--ae-ink); border-color: var(--ae-line); fill: var(--ae-ink); }
 .ae-lane { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; text-align: center; border-bottom: 2px solid;
-  padding-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  padding-bottom: 4px; line-height: 13px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .ae-node { position: relative; width: 100%; height: 100%; padding: 7px 10px; font-family: var(--ae-mono); font-size: 12px;
   display: flex; flex-direction: column; justify-content: center; text-align: center; line-height: 16px; }
 .ae-node-user { padding: 7px 16px; }
@@ -271,3 +271,86 @@ button.ae-pchip:hover { border-color: var(--ae-accent); }
 .ae-idtag { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--ae-accent_soft); color: var(--ae-accent_ink); }
 .ae-idroles { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
 .ae-btn:focus-visible, .ae-seg2 button:focus-visible, .ae-pchip:focus-visible, .ae-fchip:focus-visible, .ae-link:focus-visible { outline: 2px solid var(--ae-accent); outline-offset: 2px; }
+
+/* search box with a suggestion list (top bar Find, every picker) */
+.ae-combo { position: relative; display: inline-block; max-width: 100%; }
+.ae-combo > input { max-width: 100%; box-sizing: border-box; }
+.ae-combo-list { position: absolute; left: 0; top: 100%; margin-top: 4px; min-width: 100%; width: max-content; max-width: min(560px, 92vw); z-index: 40;
+  box-sizing: border-box; display: grid; padding: 4px; background: var(--ae-panel); border: 1px solid var(--ae-line); border-radius: 8px;
+  max-height: 340px; overflow: auto; box-shadow: 0 12px 32px rgba(0, 0, 0, .16); }
+.ae-combo-list [role="option"] { display: flex; justify-content: space-between; gap: 16px; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--ae-ink); }
+.ae-combo-list [role="option"].on { background: var(--ae-accent_soft); color: var(--ae-accent_ink); }
+.ae-combo-list .ae-muted { font-size: 12px; white-space: nowrap; }
+
+/* busy */
+.ae-spin { width: 12px; height: 12px; box-sizing: border-box; border: 2px solid var(--ae-line_strong); border-top-color: var(--ae-accent); border-radius: 50%;
+  display: inline-block; flex: none; animation: ae-spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+@keyframes ae-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ae-spin { animation-duration: 2.4s; } }
+.ae-graph-busy { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 6; display: inline-flex; align-items: center; padding: 5px 12px;
+  border-radius: 999px; font-size: 12.5px; background: var(--ae-panel); color: var(--ae-ink2); border: 1px solid var(--ae-line); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
+.ae-graph .react-flow__node:focus-visible { outline: 2px solid var(--ae-accent); outline-offset: 5px; border-radius: 8px; }
+
+/* empty states */
+.ae-empty { display: grid; justify-items: center; gap: 2px; padding: 22px 18px; }
+.ae-empty-art { margin-bottom: 8px; }
+
+/* stacked bars: one colour per part */
+.ae-bar-pick { height: 20px; }
+.ae-bar-pick button { border: 0; padding: 0; margin: 0; cursor: pointer; height: 100%; display: block; }
+.ae-bar-pick button:hover { filter: brightness(.92); }
+.ae-bar-pick button.on { box-shadow: inset 0 0 0 2px var(--ae-ink); }
+.ae-bar-pick button:focus-visible { outline: 2px solid var(--ae-accent); outline-offset: 2px; }
+.ae-bar-key { all: unset; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; padding: 2px 6px; margin-left: -6px; border-radius: 6px; }
+.ae-bar-key.on { background: var(--ae-accent_soft); color: var(--ae-accent_ink); }
+.ae-bar-key:disabled { opacity: .5; cursor: default; }
+.ae-bar-key:focus-visible { outline: 2px solid var(--ae-accent); }
+.ae-bar-lose { background: var(--ae-bad_ink); } .ae-bar-keep { background: var(--ae-ok_ink); }
+.ae-bar-active, .ae-bar-people { background: var(--ae-accent); } .ae-bar-dormant { background: var(--ae-warn_ink); }
+.ae-bar-service { background: var(--ae-k-technical-bd); } .ae-bar-admin { background: var(--ae-lvl_admin_bg); }
+.ae-mini { display: inline-flex; align-items: center; gap: 8px; }
+.ae-mini-track { display: flex; width: 84px; height: 8px; border-radius: 4px; background: var(--ae-sunk); box-shadow: inset 0 0 0 1px var(--ae-line); overflow: hidden; flex: none; }
+.ae-mini-track > span { height: 100%; }
+.ae-mini-n { font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+
+/* masked dots */
+.ae-dots { display: inline-flex; gap: 4px; align-items: center; }
+.ae-dotm { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-sizing: border-box; flex: none; vertical-align: -1px; }
+.ae-dotm-ok { background: var(--ae-ok_ink); } .ae-dotm-bad { border: 2px solid var(--ae-bad_ink); }
+
+/* compare overlap */
+.ae-venn { margin: 0; flex: 0 1 380px; min-width: 240px; }
+.ae-venn svg { width: 100%; height: auto; display: block; }
+.ae-venn-a { fill: var(--ae-accent_soft); stroke: var(--ae-accent); stroke-width: 2; fill-opacity: .9; }
+.ae-venn-b { fill: var(--ae-warn_bg); stroke: var(--ae-warn_ink); stroke-width: 2; fill-opacity: .55; }
+.ae-venn-n { font-size: 26px; font-weight: 700; text-anchor: middle; fill: var(--ae-ink); font-variant-numeric: tabular-nums; }
+.ae-venn-nd, .ae-venn-ns { font-size: 18px; } .ae-venn-ns { fill: var(--ae-muted); }
+.ae-venn-na { fill: var(--ae-accent_ink); } .ae-venn-nb { fill: var(--ae-warn_ink); }
+.ae-venn-l { font-size: 11.5px; text-anchor: middle; fill: var(--ae-muted); }
+.ae-venn-ls { font-size: 10px; }
+.ae-venn-name { font-size: 12px; font-weight: 600; text-anchor: middle; font-family: var(--ae-mono); }
+.ae-venn-hit { cursor: pointer; outline: none; }
+.ae-venn-hit:focus-visible text { text-decoration: underline; }
+
+/* a grant: two boxes and a + / - link */
+.ae-glink { display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 4px; margin: 2px 0; }
+.ae-glink-line { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 84px; padding: 0 12px 0 8px; height: 22px;
+  font-size: 11.5px; font-family: var(--ae-mono); box-sizing: border-box; }
+.ae-glink-line::before { content: ""; position: absolute; left: 0; right: 4px; top: 50%; border-top: 2px solid var(--ae-ok_ink); }
+.ae-glink-line::after { content: ""; position: absolute; right: 0; top: calc(50% - 4px); border: 4px solid transparent; border-left: 6px solid var(--ae-ok_ink); border-right: 0; }
+.ae-glink-del .ae-glink-line::before { border-top: 2px dashed var(--ae-bad_ink); }
+.ae-glink-del .ae-glink-line::after { border-left-color: var(--ae-bad_ink); }
+.ae-glink-sign, .ae-glink-what { position: relative; background: var(--ae-panel); padding: 0 3px; }
+.ae-glink-sign { font-weight: 800; font-size: 13px; color: var(--ae-ok_ink); }
+.ae-glink-del .ae-glink-sign { color: var(--ae-bad_ink); }
+.ae-glink-del .ae-glink-what { text-decoration: line-through; color: var(--ae-bad_ink); }
+.ae-pchip-user { border-radius: 999px; }
+.ae-pchip-off { opacity: .75; border-style: dashed; }
+
+/* a path with the cut link crossed out */
+.ae-cutpath { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ae-cutpath-step { display: inline-flex; align-items: center; gap: 4px; }
+.ae-cutpath-cut { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 16px; color: var(--ae-bad_ink); font-size: 11px; font-weight: 800; }
+.ae-cutpath-cut::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 2px dashed var(--ae-bad_ink); }
+.ae-cutpath-cut > span[aria-hidden] { position: relative; background: var(--ae-panel); padding: 0 2px; line-height: 1; }
+.ae-cutpath-who { cursor: default; font-weight: 600; }

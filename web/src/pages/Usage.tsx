@@ -23,15 +23,12 @@ export function UsagePageView() {
   const role = c.params.role ?? "";
   const user = c.params.user ?? (role ? "" : c.meta.default_user);
   const s = useApi<UsagePage>("usage", { view: c.view, days: c.params.days, ...(role ? { role } : { user }) });
-  const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
-  const roles = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "roles", view: c.view });
-  const options = useMemo(() => [...(users.data?.items ?? []).map((i) => i.id), ...(roles.data?.items ?? []).map((i) => i.id)], [users.data, roles.data]);
-  const pick = (v: string) => c.set(roles.data?.items.some((i) => i.id === v) && !users.data?.items.some((i) => i.id === v) ? { role: v, user: null } : { user: v, role: null });
+  const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null });
   return (
     <>
       <div className="ae-headrow">
         {mine ? <h2 className="ae-h1">Granted vs used</h2> : (
-          <div className="ae-h1 ae-h1-pick">Granted vs used for <Pick label="Person or role" value={role || user} options={options.length ? options : [role || user]} onPick={pick} width={260} /></div>
+          <div className="ae-h1 ae-h1-pick">Granted vs used for <Pick label="Person or role" value={role || user} what="users,roles" onPick={pick} width={260} /></div>
         )}
       </div>
       <Load s={s}>{(d) => <Body d={d} />}</Load>

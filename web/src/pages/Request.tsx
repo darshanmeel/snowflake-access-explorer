@@ -14,14 +14,9 @@ const DAYS: [number, string][] = [[30, "30 days"], [90, "90 days"], [0, "Until r
 export function RequestPageView() {
   const c = useApp();
   const mine = c.view === "mine";
-  const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
-  const roles = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "roles", view: c.view });
-  const objs = useApi<{ items: ListItem[] }>("list", { what: "objects", view: c.view });
   const p = c.params;
   const s = useApi<RequestPage>("request", apiParams(c));
   const name = subjectIn(p, "request").name ?? s.data?.user ?? c.meta.default_user;
-  const us = useMemo(() => users.data?.items.map((i) => i.id) ?? [], [users.data]);
-  const rs = useMemo(() => roles.data?.items.map((i) => i.id) ?? [], [roles.data]);
   const back = s.data ? subjectLink(s.data.subject) : { name };
   return (
     <>
@@ -33,9 +28,9 @@ export function RequestPageView() {
         </div>
       </div>
       <div className="ae-forstrip">
-        {!mine && <Pick label="For (person or role)" value={name} options={us.length || rs.length ? [...us, ...rs] : [name]}
-          onPick={(v) => c.set({ ...pickSubject(v, us, rs, "request"), role: null, to: null })} />}
-        <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} options={objs.data?.items.map((i) => i.id) ?? []} onPick={(v) => c.set({ obj: v, role: null, to: null })} />
+        {!mine && <Pick label="For (person or role)" value={name} what="users,roles"
+          onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v], "request"), role: null, to: null })} />}
+        <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, role: null, to: null })} />
       </div>
       <Load s={s}>{(d) => <Body key={`${d.user}:${d.object}:${d.need}:${d.asked?.role ?? ""}`} d={d} />}</Load>
     </>

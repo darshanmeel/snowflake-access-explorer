@@ -2,14 +2,14 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { AccessObject, AccessPage, ListItem } from "../api/types";
-import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Toggle, toCsv } from "../components";
+import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, StackBar, Toggle, toCsv } from "../components";
 import { download } from "../components/table";
 import { AppCtx, useApp, useOpen } from "../ctx";
 import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick } from "./common";
-import { recent, remember } from "./Home";
+import { ladderParts, recent, remember } from "./Home";
 import { byName, groupKey, type GroupBy } from "./screens";
 
 const RANK = { names: 0, read: 1, change: 2, own: 3, admin: 4 } as const;
@@ -30,16 +30,13 @@ export function AccessPageView() {
   const role = c.params.role ?? "";
   const user = c.params.user ?? (role ? "" : c.meta.default_user);
   const s = useApi<AccessPage>("access", { view: c.view, ...(role ? { role } : { user }) });
-  const users = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "users", view: c.view });
-  const roles = useApi<{ items: ListItem[] }>(mine ? null : "list", { what: "roles", view: c.view });
-  const options = useMemo(() => [...(users.data?.items ?? []).map((i) => i.id), ...(roles.data?.items ?? []).map((i) => i.id)], [users.data, roles.data]);
-  const pick = (v: string) => c.set(roles.data?.items.some((i) => i.id === v) && !users.data?.items.some((i) => i.id === v) ? { role: v, user: null } : { user: v, role: null });
+  const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null });
   return (
     <>
       <div className="ae-headrow">
         <div>
           {mine ? <h2 className="ae-h1">My access</h2> : (
-            <div className="ae-h1 ae-h1-pick">Access for <Pick label="Person or role" value={role || user} options={options.length ? options : [role || user]} onPick={pick} width={260} />
+            <div className="ae-h1 ae-h1-pick">Access for <Pick label="Person or role" value={role || user} what="users,roles" onPick={pick} width={260} />
               {recent().filter((r) => (r.page === "user" || r.page === "role") && r.id !== (role || user)).slice(0, 4).map((r) => (
                 <button type="button" key={r.id} className="ae-pchip" title="Recently viewed" onClick={() => c.set(r.page === "role" ? { role: r.id, user: null } : { user: r.label, role: null })}>{r.label}</button>))}
             </div>
@@ -93,12 +90,12 @@ function Body({ d }: { d: AccessPage }) {
         {n.sensitive > 0 && <> <span className="ae-sens-word">{n.sensitive} hold sensitive columns</span> seen unmasked.</>}
         {n.admin > 0 && <> <b className="ae-bad">{n.admin} through an admin role.</b></>}
       </p>
-      <div className="ae-tiles">
-        {([["read", "Can read", n.read], ["change", "Can change", n.change], ["own", "Owns", n.own]] as const).map(([k, l, v]) => (
-          <button type="button" key={k} className={`ae-tile${lvl === k ? " on" : ""}`} onClick={() => { setLvl(lvl === k ? "all" : k); c.set({ show: "summary" }); }}>
-            <span className="ae-tile-l"><span className={`ae-dot2 ae-lvl-${k}`} />{l}</span><span className="ae-tile-v">{v}</span>
-          </button>
-        ))}
+      <div className="ae-ladder">
+        <div className="ae-ladder-bar">
+          <div className="ae-ladder-h"><b>{n.read}</b> objects with data <span className="ae-muted">· click a part to list them</span></div>
+          <StackBar label="Access ladder: read only, read and change, owns" parts={ladderParts(n)} on={lvl}
+            onPick={(k) => { setLvl(lvl === k ? "all" : k); c.set({ show: "summary" }); }} />
+        </div>
         <div className="ae-tile ae-tile-sens"><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{n.sensitive}</span></div>
         <button type="button" className="ae-tile" onClick={() => { c.set({ show: "summary" }); setTimeout(() => document.getElementById("runs")?.scrollIntoView(), 50); }}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
       </div>

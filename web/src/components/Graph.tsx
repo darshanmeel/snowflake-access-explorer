@@ -1,16 +1,19 @@
 // Lane graph: ELK lays it out (one lane per depth, left to right, orthogonal bundled lines), React Flow draws it.
 // Crowded lanes fold (database roles per database, group roles); folded and combined boxes open on click, big ones
-// by schema / type first. Hover shows what a box or line is in words and lights up every path through it.
+// by schema / type first. Hover (or keyboard focus, or a first tap on a touch screen) shows what a box or line is in
+// words and lights up every path through it; Enter / Space or a second tap opens it. A tall drawing starts centred
+// on the selected box; up to 6 lanes it is shrunk to fit when that keeps the labels readable.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BaseEdge, EdgeLabelRenderer, Handle, Position, ReactFlow, Controls, getSmoothStepPath,
-  type Edge, type EdgeProps, type Node, type NodeProps,
+  type Edge, type EdgeProps, type Node, type NodeProps, type ReactFlowInstance, type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { Graph as G, GraphEdge, GraphNode } from "../api/types";
 import { EDGE, KIND_LABEL, TOKENS, edgeColor, kindStyle, type ThemeName, type Tokens } from "./theme";
 import { GROUP_KINDS, buckets, edgeTip, expand, foldRoles, related } from "./graphs";
 import { layout, nodeSize, roundPath, type Layout, type Pt, badgeLines } from "./layout";
+import { SEVERITY_ORDER } from "./Legend";
 import { Legend } from "./Legend";
 
 export interface GraphProps {
@@ -28,12 +31,28 @@ export interface GraphProps {
 
 const SEV = ["Critical", "High", "Medium", "Low"] as const;
 
-type NData = { n: GraphNode; t: Tokens; lines: string[]; selected: boolean; dim: boolean; red: boolean };
+type NData = { n: GraphNode; t: Tokens; lines: string[]; subs: string[]; selected: boolean; dim: boolean; red: boolean };
 type EData = { e: GraphEdge; t: Tokens; pts?: Pt[]; at?: Pt; dim: boolean; hot: boolean; red: boolean; flow: boolean };
 type Tip = { text: string; x: number; y: number };
 
 const PAD = 16;
+const FIT_ZOOM = 0.68; // smallest zoom a whole graph is shrunk to (mono labels stay readable)
 const isBox = (n: GraphNode) => !!n.group || GROUP_KINDS.has(n.kind);
+
+/** First view of a drawing: the zoom that fits the width (never below minZoom); up to 6 lanes, the zoom that fits
+ * it all when that is at least FIT_ZOOM; else, when it is taller than the panel, centred on the selected box. */
+export function startView(lay: { width: number; height: number; lanes: unknown[]; nodes: Map<string, { x: number; y: number; w: number; h: number }> },
+  width: number, maxHeight: number, minZoom: number, selected: string | null): { view: Viewport; height: number } {
+  const zw = Math.max(minZoom, Math.min(1, (width - 2 * PAD) / Math.max(1, lay.width)));
+  const fit = Math.min(zw, (maxHeight - 2 * PAD) / Math.max(1, lay.height));
+  const zoom = lay.lanes.length <= 6 && lay.height * zw + 2 * PAD > maxHeight && fit >= FIT_ZOOM ? fit : zw;
+  const height = Math.min(maxHeight, Math.ceil(lay.height * zoom + 2 * PAD));
+  const p = selected ? lay.nodes.get(selected) : undefined;
+  const cx = (w: number, at: number, size: number) => Math.min(PAD, Math.max(w - PAD - size * zoom, w / 2 - at * zoom));
+  const x = lay.width * zoom <= width - 2 * PAD ? Math.max(PAD, (width - lay.width * zoom) / 2) : p ? cx(width, p.x + p.w / 2, lay.width) : PAD;
+  const y = lay.height * zoom + 2 * PAD <= maxHeight || !p ? PAD : cx(height, p.y + p.h / 2, lay.height);
+  return { view: { x, y, zoom }, height };
+}
 
 export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8, focus = null, hi, flow = false }: GraphProps) {
   const t = TOKENS[theme];
@@ -41,17 +60,20 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   useEffect(() => setOpen(new Map()), [graph]);
   const folded = useMemo(() => foldRoles(graph), [graph]);
   const shown = useMemo(() => expand(folded, new Set(open.keys())), [folded, open]);
-  const [lay, setLay] = useState<Layout | null>(null);
+  const [laid, setLaid] = useState<{ g: G; lay: Layout } | null>(null);
   useEffect(() => {
     let live = true;
-    layout(shown).then((l) => live && setLay(l));
+    layout(shown).then((l) => live && setLaid({ g: shown, lay: l }));
     return () => { live = false; };
   }, [shown]);
+  const lay = laid?.lay ?? null;
+  const busy = !laid || laid.g !== shown; // a layout is running: the old drawing stays, under a note
 
   const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(800);
+  const [width, setWidth] = useState(0); // 0 until measured: the first view is worked out for the real width
   useEffect(() => {
     if (!box.current) return;
+    setWidth(box.current.clientWidth || 800);
     const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width || 800));
     ro.observe(box.current);
     return () => ro.disconnect();
@@ -64,11 +86,22 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   const byId = useMemo(() => new Map(shown.nodes.map((n) => [n.id, n])), [shown]);
   const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot, focus, hi, flow), [shown, lay, t, hot, focus, hi, flow]);
 
-  // drawn at the zoom that fits the width, never below minZoom; the panel is as tall as the drawing
-  const zoom = lay ? Math.max(minZoom, Math.min(1, (width - 2 * PAD) / Math.max(1, lay.width))) : 1;
-  const height = lay ? Math.min(maxHeight, Math.ceil(lay.height * zoom + 2 * PAD)) : 120;
-  const pans = !!lay && (lay.width * zoom > width - 2 * PAD || lay.height * zoom + 2 * PAD > maxHeight);
-  const vx = lay ? Math.max(PAD, (width - lay.width * zoom) / 2) : PAD;
+  // the panel is as tall as the drawing; a resize keeps the reader's pan and zoom once they moved it
+  const sel = useMemo(() => { // the picked box, else the start of the walk (the one box of the first lane)
+    if (focus ?? graph.selected) return focus ?? graph.selected ?? null;
+    const first = Math.min(...shown.nodes.map((n) => n.lane));
+    const lane0 = shown.nodes.filter((n) => n.lane === first);
+    return lane0.length === 1 ? lane0[0].id : null;
+  }, [focus, graph.selected, shown]);
+  const start = lay && width ? startView(lay, width, maxHeight, minZoom, sel) : null;
+  const height = start?.height ?? 120;
+  const pans = !!lay && !!start && (lay.width * start.view.zoom > width - 2 * PAD || lay.height * start.view.zoom + 2 * PAD > maxHeight);
+  const rf = useRef<ReactFlowInstance | null>(null);
+  const moved = useRef(false);
+  const startKey = start ? `${start.view.x}:${start.view.y}:${start.view.zoom}` : "";
+  useEffect(() => { if (start && rf.current && !moved.current) rf.current.setViewport(start.view); }, [startKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const touch = useRef(false); // the last pointer was a finger: a first tap explains, a second one opens
+  const tapped = useRef<string | null>(null);
 
   const click = (n: GraphNode) => {
     if (n.action?.kind === "expand" || (shown.groups[n.id] && isBox(n))) {
@@ -93,6 +126,21 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
       grp ? `Click to open${buckets(grp.nodes) ? ", grouped" : ""}` : ""]
       .filter(Boolean).join("\n");
   };
+  const tapOrClick = (ev: React.MouseEvent, n: GraphNode) => {
+    if (touch.current && tapped.current !== n.id) { tapped.current = n.id; setHover(n.id); place(ev, nodeTip(n)); return; }
+    tapped.current = null;
+    if (onRules && (ev.target as HTMLElement).closest(".ae-node-rules")) onRules(n.id); else click(n);
+  };
+  const keyNode = (ev: React.KeyboardEvent | React.FocusEvent, open: boolean) => {
+    const el = (ev.target as HTMLElement).closest?.(".react-flow__node");
+    const n = el && byId.get(el.getAttribute("data-id") ?? "");
+    if (!n || !box.current) return;
+    if (open) { ev.preventDefault(); click(n); return; }
+    const r = el.getBoundingClientRect(), b = box.current.getBoundingClientRect();
+    setHover(n.id);
+    const x = r.right - b.left + 8;
+    setTip({ text: nodeTip(n), x: x > b.width - 300 ? Math.max(4, r.left - b.left - 296) : x, y: r.top - b.top });
+  };
   const drop = (id: string) => setOpen((m) => {
     const c = new Map(m);
     for (const k of c.keys()) if (k === id || k.startsWith(id + "/")) c.delete(k);
@@ -101,17 +149,23 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
 
   return (
     <div className="ae-graph-wrap">
-      <div className="ae-graph" ref={box} style={{ height, background: t.panel }} onMouseLeave={() => { setHover(null); setTip(null); }}>
-        {lay && (
+      <div className="ae-graph" ref={box} style={{ height, background: t.panel }} aria-busy={busy}
+        onMouseLeave={() => { setHover(null); setTip(null); }}
+        onPointerDown={(e) => { touch.current = e.pointerType === "touch"; }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") keyNode(e, true); else if (e.key === "Escape") { setHover(null); setTip(null); } }}
+        onFocus={(e) => keyNode(e, false)}>
+        {lay && start && (
           <ReactFlow
-            key={`${lay.width}:${lay.height}:${shown.nodes.length}:${Math.round(width / 40)}`}
+            key={`${lay.width}:${lay.height}:${shown.nodes.length}`}
             nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES}
-            defaultViewport={{ x: vx, y: PAD, zoom }} fitViewOptions={{ padding: 0.04 }} minZoom={0.2} maxZoom={2}
-            nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}
+            defaultViewport={start.view} fitViewOptions={{ padding: 0.04 }} minZoom={0.2} maxZoom={2}
+            nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} nodesFocusable edgesFocusable={false}
             panOnScroll={false} zoomOnScroll={false} zoomOnPinch preventScrolling={false}
             proOptions={{ hideAttribution: true }}
-            onNodeClick={(ev, node) => { if (node.type !== "ae") return; const n = (node.data as NData).n;
-              if (onRules && (ev.target as HTMLElement).closest(".ae-node-rules")) onRules(n.id); else click(n); }}
+            onInit={(i) => { rf.current = i; moved.current = false; }}
+            onMoveStart={(ev) => { if (ev) moved.current = true; }}
+            onNodeClick={(ev, node) => { if (node.type === "ae") tapOrClick(ev, (node.data as NData).n); }}
+            onEdgeClick={(ev, edge) => { if (touch.current) { setHover(edge.id); place(ev, edgeTip((edge.data as EData).e, byId, shown.groups)); } }}
             onNodeMouseEnter={(ev, node) => { if (node.type === "ae") { setHover(node.id); place(ev, nodeTip((node.data as NData).n)); } }}
             onNodeMouseMove={(ev, node) => node.type === "ae" && place(ev, nodeTip((node.data as NData).n))}
             onNodeMouseLeave={() => { setHover(null); setTip(null); }}
@@ -123,6 +177,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
           </ReactFlow>
         )}
         {pans && <div className="ae-graph-hint" style={{ color: t.muted }}>Drag to see the rest</div>}
+        {busy && <div className="ae-graph-busy" role="status"><span className="ae-spin" aria-hidden />Laying out {shown.nodes.length} boxes…</div>}
         {tip && (
           <div className="ae-graph-tip" style={{ left: tip.x, top: tip.y, background: t.ink, color: t.panel }}>
             {tip.text.split("\n").map((l, i) => <div key={i} className={i ? "" : "ae-graph-tip-head"}>{l}</div>)}
@@ -140,7 +195,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
         </div>
       )}
       {graph.note && <div className="ae-graph-note">{graph.note}</div>}
-      {legend && <Legend legend={mergeLegend(shown)} theme={theme} />}
+      {legend && <Legend legend={mergeLegend(shown)} theme={theme} severities={SEVERITY_ORDER.filter((v: string) => shown.nodes.some((n) => n.rules.some((r) => r.severity === v)))} />}
     </div>
   );
 }
@@ -149,7 +204,7 @@ function mergeLegend(g: G): G["legend"] {
   const kinds = [...new Set([...g.legend.kinds, ...g.nodes.map((n) => (n.group && !GROUP_KINDS.has(n.kind) ? "fold" : n.kind))])];
   const edges = [...new Set([...g.legend.edges, ...g.edges.map((e) => e.cls)])];
   const marks = [...new Set([...g.legend.marks, ...g.nodes.flatMap((n) => n.marks)])];
-  return { ...g.legend, kinds, edges, marks, rules: g.legend.rules || g.nodes.some((n) => n.rules.length > 0) };
+  return { ...g.legend, kinds, edges, marks, rules: g.legend.rules || g.nodes.some((n) => n.rules.length > 0), back: g.edges.some((e) => e.back) };
 }
 
 function toFlow(g: G, lay: Layout | null, t: Tokens, hot: Set<string> | null, focus: string | null, hi: Set<string> | undefined,
@@ -164,7 +219,8 @@ function toFlow(g: G, lay: Layout | null, t: Tokens, hot: Set<string> | null, fo
     if (!p) continue;
     nodes.push({
       id: n.id, type: "ae", position: { x: p.x, y: p.y }, width: p.w, height: p.h,
-      data: { n, t, lines: nodeSize(n).lines, selected: (focus ?? g.selected) === n.id, dim: !!hot && !hot.has(n.id), red: !!hi?.has(n.id) } satisfies NData,
+      ariaLabel: `${n.name === n.label ? n.label : n.name}, ${KIND_LABEL[n.kind] ?? n.kind}${n.action || g.groups[n.id] ? ": Enter opens it" : ""}`,
+      data: { n, t, lines: nodeSize(n).lines, subs: nodeSize(n).subs, selected: (focus ?? g.selected) === n.id, dim: !!hot && !hot.has(n.id), red: !!hi?.has(n.id) } satisfies NData,
     });
   }
   const edges: Edge[] = g.edges.filter((e) => lay.nodes.has(e.source) && lay.nodes.has(e.target)).map((e) => ({
@@ -180,7 +236,7 @@ function LaneLabel({ data }: NodeProps) {
 }
 
 function AeNode({ data }: NodeProps) {
-  const { n, t, lines, selected, dim, red } = data as NData;
+  const { n, t, lines, subs, selected, dim, red } = data as NData;
   const bad = n.kind === "admin" || n.marks.includes("bad");
   const s = kindStyle(t, bad ? "admin" : n.kind);
   const group = isBox(n) || n.marks.includes("stack");
@@ -201,7 +257,7 @@ function AeNode({ data }: NodeProps) {
         {n.marks.includes("sensitive") && <Lock color={t.bad_ink} />}
         {lines.map((l, i) => <div key={i}>{l}</div>)}
       </div>
-      {n.sub && <div className="ae-node-sub" style={{ color: dbRole ? s.border : t.muted }}>{n.sub}</div>}
+      {subs.map((l, i) => <div key={i} className="ae-node-sub" style={{ color: dbRole ? s.border : t.muted }}>{l}</div>)}
       {badgeLines(n.badge).map((l, i) => <div key={i} className="ae-node-badge" style={{ color: group ? s.text : t.muted }}>{l}</div>)}
       {n.rules.length > 0 && (() => {
         const worst = SEV.find((v) => n.rules.some((r) => r.severity === v)) ?? "Low";
