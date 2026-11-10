@@ -79,6 +79,29 @@ python run.py --fake                                  # try it on fake data: ope
 ```
 For your own account: `copy .env.example .env` (macOS/Linux: `cp`), fill in account, user, role and warehouse (step 3 below), then `python run.py`. A browser tab opens for the Snowflake login. The details follow.
 
+## Run each mode
+Every mode after install ([step 1](#1-install-once-powershell-needs-python-310-and-git-no-node-or-npm)). Commands are PowerShell; on macOS/Linux write
+`NAME=value python run.py` instead of `$env:NAME="value"; python run.py`. Stop with Ctrl+C.
+
+| Mode | Needs | Command | Open |
+|---|---|---|---|
+| Fake data, local web app | nothing | `python run.py --fake` | http://localhost:8000 |
+| Fake data, Streamlit | `pip install -r requirements.txt` | `python run.py streamlit --fake` | http://localhost:8501 |
+| Your account, read directly (default), web app | `.env` ([step 3](#3-fill-in-env-for-snowflake)) | `python run.py` (same as `python run.py --direct`) | http://localhost:8000 |
+| Your account, read directly, Streamlit | `.env`, `requirements.txt` | `python run.py streamlit --direct` | http://localhost:8501 |
+| Your account, snapshot objects, web app | `.env` with `ACCESS_SNAPSHOT=<DB>.<SCHEMA>`, the [objects setup](#objects-in-snowflake-sourceobjects) once | `python run.py --objects` | http://localhost:8000 |
+| Your account, snapshot objects, Streamlit | the same, `requirements.txt` | `python run.py streamlit --objects` | http://localhost:8501 |
+| Both versions side by side | two terminals | `python run.py` and `python run.py streamlit` | :8000 and :8501 |
+| Another port | | `python run.py --port 9000` | http://localhost:9000 |
+| DuckDB SQL copy | `requirements-web.txt` (has `duckdb`) | on by default after each Snowflake read; off: `$env:DUCKDB="0"; python run.py`; also for fake data: `$env:DUCKDB="1"; python run.py --fake` | `.cache\access.duckdb`, see [Query the data with SQL](#query-the-data-with-sql-duckdb) |
+| Memory only, nothing in `.cache/` | | `$env:CACHE_HOURS="0"; python run.py` | |
+| Shared server for a team | key-pair login in `.env` | `$env:HOST="0.0.0.0"; python run.py` | `http://<server>:8000`, [details](#on-a-shared-server-local-web-app-or-streamlit) |
+| Streamlit in Snowflake, snapshot objects | objects setup, `sis/.env` with `INSIDE=1`, `SOURCE=objects`, `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` | `python run_sql.py sql/4_streamlit.sql` | Snowsight > Projects > Streamlit, [details](#streamlit-in-snowflake-sis) |
+| Streamlit in Snowflake, read directly (no objects) | `sis/.env` with `INSIDE=1`, `SOURCE=direct`; owner role holds `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` | `python run_sql.py sql/4_streamlit.sql` | Snowsight > Projects > Streamlit |
+| Streamlit on another host | key-pair login, `requirements.txt` | `python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true` | `http://<host>:8501`, [details](#streamlit-anywhere-else) |
+
+The same settings can live in `.env` instead of the command line (`SOURCE`, `FAKE`, `DUCKDB`, `HOST`, `WEB_PORT`, ...; see [Settings](#settings)).
+
 ## Run it
 The **local web app (React)** is the recommended and default version: it runs on your machine and reads Snowflake with your own login. The Streamlit version runs the very same React app inside Streamlit, so both look and work the same. Data comes from Snowflake by default; fake data only with `--fake`. Both use the same code (`access.py`).
 
