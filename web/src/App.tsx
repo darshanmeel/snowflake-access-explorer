@@ -202,15 +202,44 @@ function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page, para
           </ul>
         </details>
       )}
+      <DataInfo meta={meta} />
     </aside>
+  );
+}
+
+/** Side panel "Data": where the data shown comes from, how long it is kept, and the DuckDB copy to query with SQL. */
+export function DataInfo({ meta }: { meta: Meta }) {
+  if (!meta.run) return null;
+  const sq = meta.sql_copy;
+  const from = meta.mode === "fake" ? "fake data in access.py" : meta.view === "mine" ? "Snowflake, with your own role"
+    : meta.source === "direct" ? `Snowflake, read directly with ${meta.inside ? "the app owner's role" : "your role"} (SOURCE=direct)` : `the snapshot tables in ${meta.where} (SOURCE=objects)`;
+  return (
+    <details className="side-notes side-data">
+      <summary><span className="side-data-dot" />Data from {meta.run.when}</summary>
+      <ul>
+        <li><b>Source</b><span>{from}{meta.fetched_at ? `, read ${meta.fetched_at}` : ""}.</span></li>
+        <li><b>Kept</b><span>24 h in memory{meta.cache_hours && meta.mode !== "fake" ? ` and ${meta.cache_hours} h in .cache/ on this machine` : ""}. ↻ reads again.</span></li>
+        <li>
+          <b>SQL copy (DuckDB)</b>
+          {sq?.on && sq.schema ? (
+            <span>
+              <code className="side-data-path">{sq.path}</code>, schema <code>{sq.schema}</code>: the TBL_ACCESS_ tables of this read
+              {sq.written_at ? ` (written ${sq.written_at})` : " (written at the next read from Snowflake)"}, the read before as TBL_ACCESS_…_PREV.
+              {sq.note && <span className="side-notes-fix">{sq.note}</span>}
+            </span>
+          ) : <span>{sq?.note ?? "None."}</span>}
+        </li>
+      </ul>
+    </details>
   );
 }
 
 function DataTime({ meta, reload, busy }: { meta: Meta; reload: () => void; busy: boolean }) {
   if (!meta.run) return null;
   const what = meta.mode === "fake" ? "Data" : meta.source === "direct" ? "Read" : "Snapshot";
+  const sq = meta.sql_copy?.on && meta.sql_copy.schema ? ` · SQL copy: ${meta.sql_copy.path} (schema ${meta.sql_copy.schema})` : "";
   return (
-    <span className={`top-time${meta.mode !== "fake" && meta.run.old ? " old" : ""}`} title={meta.fetched_at ? `Read ${meta.fetched_at}` : undefined}>
+    <span className={`top-time${meta.mode !== "fake" && meta.run.old ? " old" : ""}`} title={meta.fetched_at || sq ? `${meta.fetched_at ? `Read ${meta.fetched_at}` : ""}${sq}` : undefined}>
       <span className="top-time-dot" aria-hidden />{what} {meta.run.when}
       <button type="button" className="side-reload" onClick={reload} disabled={busy} title={meta.mode === "fake" ? "Reload" : "Read Snowflake again"} aria-label="Read again">↻</button>
     </span>
@@ -309,7 +338,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           )}
           {needShared && (
             <Card title="Shared data">
-              <p>Reads every role, user and grant of the account with your role, once, and keeps it for 24 hours.
+              <p>Reads every role, user and grant of the account with {meta?.inside ? "the app owner's role" : "your role"}, once, and keeps it for 24 hours.
                 Without ACCOUNT_USAGE it sends a SHOW per role, so a big account can take a few minutes.</p>
               <div className="ae-row">
                 <button className="ae-btn ae-btn-primary" onClick={loadShared} disabled={!!busy}>Load shared data</button>

@@ -329,6 +329,15 @@ def test_show_fallback():
     assert not any(k[0] == bad for k in proc) and any("." in k[0] for k in proc)  # the other database roles are read
     assert f"{bad}: " in str(live["run"].get("NOTES"))
 
+    def refused(text, params=None):  # SOURCE=direct inside Snowflake when even SHOW DATABASES is refused
+        if text.lstrip().upper().startswith("SHOW DATABASES"):
+            raise RuntimeError("SHOW DATABASES is not allowed")
+        return sql(text, params)
+
+    session.sql = refused
+    src, why = ns["future"](session, "run-9")
+    assert src == "UNAVAILABLE" and "not allowed" in why  # the run goes on, as access.live() does
+
 
 if __name__ == "__main__":
     for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_show_fallback):

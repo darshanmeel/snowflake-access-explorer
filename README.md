@@ -94,7 +94,7 @@ once), so **My access** works without waiting for it. Without ACCOUNT_USAGE it r
 time (`SHOW_THREADS`); `IMPORTED PRIVILEGES` on database `SNOWFLAKE` makes it one fast query. The side menu's
 **Incomplete** box says what could not be read and which grant fixes it.
 
-Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The top bar shows **Data from &lt;time&gt;**; **↻** (Read Snowflake again) reads it again. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
+Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The top bar shows **Data from &lt;time&gt;**; **↻** (Read Snowflake again) reads it again. The side menu's **Data from** box says where the data came from, how long it is kept and where its [SQL copy](#query-the-data-with-sql-duckdb) is. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
 
 ### 1. Install once (PowerShell; needs Python 3.10+ and git, no Node or npm)
 ```
@@ -145,9 +145,41 @@ SNOWFLAKE_WAREHOUSE=<WH>
 | `APP`, `WEB_PORT`, `STREAMLIT_PORT` | `web`, `8000`, `8501` | What `run.py` starts, and where |
 | `SHOW_THREADS` | `16` | SHOW statements sent at once when ACCOUNT_USAGE is not readable (`1` = one after another) |
 | `HOST` | `127.0.0.1` | Address the local web app listens on; `0.0.0.0` on a shared server ([Deploy](#deploy)) |
+| `DUCKDB` | unset | The [SQL copy](#query-the-data-with-sql-duckdb) in `.cache/access.duckdb`: unset = after each read from Snowflake, `0` = off, `1` = also of the fake data |
 | `KEEP_BUILT` | `3` | Data sets kept built in memory besides the loaded one (shared, My access, `builtin=1`): switching back costs no rebuild |
 
 More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, `MAX_PATHS`, ...): README.html. Path counts are exact and counted over the role graph; full chains are listed up to `MAX_PATHS`, so big accounts stay quick (README.html > Limits).
+
+### Query the data with SQL (DuckDB)
+After each read from Snowflake (shared data and My access) the app also writes what it read to `.cache/access.duckdb`, a
+local [DuckDB](https://duckdb.org) file you can query with SQL. The app itself keeps using its `.pkl` copy; this file is
+only for you. It holds the `TBL_ACCESS_` tables of `sql/1_setup.sql` with the same names and columns (`RUN`, `GRANT`,
+`USER_ROLE`, `USER`, `USAGE`, `TAG`, `POLICY`, `STREAM`, `OBJECT_USE`):
+- one **schema per account + source** (and per user for My access), named after the copy in `.cache/`, for example
+  `myorg_myacct_direct_jdoe_analyst`; the table `COPIES` lists them (`SCHEMA_NAME`, `CACHE_KEY`, `RUN_ID`, `READ_AT`, `PREV_RUN_ID`);
+- each new read **replaces** that schema's tables, and the read before stays as `TBL_ACCESS_<name>_PREV` (a read of the same
+  snapshot run replaces only the current tables). Direct reads and My access get a `RUN_ID` per read (`direct-20261110080000`).
+- The side menu's **Data from** box names the file and schema. Not inside Snowflake (no disk there), not with `DUCKDB=0`
+  or `CACHE_HOURS=0`, not for fake data unless `DUCKDB=1`. Without the `duckdb` package (it is in `requirements-web.txt`;
+  the Streamlit version needs `pip install duckdb`) the app runs as before and the box says why there is no copy. While
+  another program has the file open for writing, the copy is skipped with a note: close it and read again.
+
+```
+duckdb .cache/access.duckdb -readonly        # DuckDB CLI
+SELECT SCHEMA_NAME, READ_AT FROM COPIES;
+USE myorg_myacct_direct_jdoe_analyst;
+-- who holds a role directly, and since which read
+SELECT USER_NAME, ROLE_NAME FROM TBL_ACCESS_USER_ROLE WHERE ROLE_NAME = 'F_ANALYST';
+-- grants that are new since the previous read
+SELECT GRANTEE_ROLE, PRIVILEGE, OBJECT_NAME FROM TBL_ACCESS_GRANT
+EXCEPT SELECT GRANTEE_ROLE, PRIVILEGE, OBJECT_NAME FROM TBL_ACCESS_GRANT_PREV;
+```
+```python
+import duckdb
+con = duckdb.connect(".cache/access.duckdb", read_only=True)
+s = con.sql("SELECT SCHEMA_NAME FROM COPIES ORDER BY READ_AT DESC LIMIT 1").fetchone()[0]
+print(con.sql(f'SELECT PRIVILEGE, COUNT(*) AS N FROM "{s}".TBL_ACCESS_GRANT GROUP BY 1 ORDER BY 2 DESC'))
+```
 
 ### What you see depends on your role
 | Your role has | You see |
@@ -183,7 +215,7 @@ Four ways to run it. All of them only read; none of them changes grants.
 |---|---|---|---|
 | [Your own machine](#on-your-own-machine) | you | your own (browser SSO or key pair) | what your role can read |
 | [A shared server](#on-a-shared-server-local-web-app-or-streamlit) | a team, in the browser | one service user (key pair) | what that user's role can read |
-| [Streamlit in Snowflake](#streamlit-in-snowflake-sis) | anyone with the app role, in Snowsight | none extra: Snowflake's own login | what the owner role can read |
+| [Streamlit in Snowflake](#streamlit-in-snowflake-sis) | anyone with the app role, in Snowsight | none extra: Snowflake's own login | what the owner role can read (snapshot tables, or ACCOUNT_USAGE live) |
 | [Streamlit elsewhere](#streamlit-anywhere-else) | a team, in the browser | one service user (key pair) | what that user's role can read |
 
 ### On your own machine
@@ -212,20 +244,28 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 ### Streamlit in Snowflake (SiS)
 The app runs inside Snowflake and opens in Snowsight; nobody installs anything. It runs the same React app as one Streamlit
 component (`web/dist-st/`, committed); its data calls are answered in Python by the same code as the local server.
-It uses the app's own Snowflake session, keeps data in memory only (24 h) and writes nothing.
+It uses the app's own Snowflake session, keeps data in memory only (24 h) and writes nothing. Two options:
 
-1. Do the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) setup first (`1_setup.sql`, `2_snapshot.sql`, the daily task):
-   inside Snowflake the app reads the `TBL_ACCESS_` tables.
+| | `SOURCE=objects` (recommended for a team) | `SOURCE=direct` |
+|---|---|---|
+| Creates in Snowflake | the snapshot tables, procedures and daily task (`1_setup.sql`, `2_snapshot.sql`), then the app (`4_streamlit.sql`) | only the stage and the app (`4_streamlit.sql`): no tables, procedures or task |
+| How the data is read | the app reads the last snapshot: opens fast, every viewer sees the same run | each viewer's session reads `ACCOUNT_USAGE` live with the owner role on **Load shared data** (seconds to minutes), kept 24 h in memory |
+| The owner role (`DEV_ROLE`) needs | the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) privileges | `USAGE` on `<DB>`, `<SCHEMA>`, `<WH>`, `CREATE STAGE` and `CREATE STREAMLIT` on the schema, and `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or the `SNOWFLAKE` database roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`) |
+| Missing | as in both: My access and What changed (local version only) | also future grants and streams when Snowflake refuses their `SHOW` in the app: listed under **Incomplete** |
+
+1. `SOURCE=objects`: do the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) setup first (`1_setup.sql`,
+   `2_snapshot.sql`, the daily task). `SOURCE=direct`: skip it; step 3 also grants the app role `USAGE` on `<DB>`,
+   `<SCHEMA>` and `<WH>`.
 2. Settings for the app go in `sis/.env` (required, git-ignored, so the `sis` folder is not in a fresh clone), uploaded
    as the app's `.env`: `mkdir sis; copy sis.env.example sis\.env` (macOS/Linux: `mkdir -p sis && cp sis.env.example sis/.env`)
    and fill in:
    ```
    INSIDE=1
-   SOURCE=objects
+   SOURCE=objects                 # or SOURCE=direct (then no ACCESS_SNAPSHOT)
    ACCESS_SNAPSHOT=<DB>.<SCHEMA>
    ```
-   Inside Snowflake the app reads the snapshot tables: direct reads need `SHOW`, which is restricted there. It uses the
-   app's own session (`INSIDE=1`; it also finds the session by itself). Never put `SNOWFLAKE_ACCOUNT` or a key in this file.
+   With `SOURCE=direct` the app reads `ACCOUNT_USAGE` with the owner role; `USE SECONDARY ROLES` is refused in there, so
+   the owner role itself needs `IMPORTED PRIVILEGES` (not through a secondary role). It uses the app's own session (`INSIDE=1`; it also finds the session by itself). Never put `SNOWFLAKE_ACCOUNT` or a key in this file.
 3. Upload the files and create the app, from the repo folder with the same `.env` and `settings.local.sql` as step 1:
    ```
    python run_sql.py sql/4_streamlit.sql;  python run_sql.py sql/4_streamlit_verify.sql

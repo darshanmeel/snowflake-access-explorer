@@ -488,6 +488,109 @@ def test_live():
                                            for g in plain)
 
 
+def test_live_inside():
+    """SOURCE=direct inside Streamlit in Snowflake: config gives direct without a snapshot location; live() with the
+    owner role, where USE SECONDARY ROLES, CURRENT_DATABASE() and every SHOW are refused, still loads from
+    ACCOUNT_USAGE, and the SHOW-only parts (future grants, streams) land in the notes (the side's Incomplete)."""
+    assert cache.config({"SOURCE": "direct", "INSIDE": "1"}) == ("snowflake", "direct", "")
+    assert cache.config({"INSIDE": "1"}) == ("snowflake", "direct", "")  # no ACCESS_SNAPSHOT: direct
+    d = a.fake()
+    a.build(d)
+    want = (sorted(a.role_grants), sorted(a.user_grants), a.users[:])
+    show, calls = fake_snowflake(d, True)
+
+    def query(sql):
+        s = " ".join(sql.split())
+        if s.startswith("SHOW") or s.startswith("USE SECONDARY") or "CURRENT_DATABASE" in s:
+            raise RuntimeError("Stored procedure execution error: Unsupported statement type 'SHOW'.")
+        return show(sql)
+
+    s = a.live(query)
+    src, notes = s["run"]["SOURCES"], s["run"]["NOTES"]
+    assert src["grants"] == src["users"] == src["tags"] == src["policies"] == "ACCOUNT_USAGE"
+    assert src["future_grants"] == src["streams"] == "UNAVAILABLE" and "SHOW DATABASES" in notes["future_grants"]
+    assert "streams" in notes and not s["STREAM"] and not [g for g in s["GRANT"] if g["IS_FUTURE"]]
+    a.build(s)
+    assert (sorted(a.role_grants), sorted(a.user_grants), a.users) == want  # every role link and user still there
+    import server
+    info = {k: server.note_info(k, src.get(k), "shared")[0] for k in notes}
+    assert info["future_grants"] == "Future grants unread" and info["streams"] == "Streams unread"
+
+
+def test_duckdb():
+    """The SQL copy in .cache/access.duckdb: the TBL_ACCESS_ tables of sql/1_setup.sql with the same columns, one
+    schema per cache key, the read before as _PREV; off with DUCKDB=0, inside Snowflake and (unless DUCKDB=1) for fake
+    data; without duckdb one note and the read still works."""
+    import shutil
+    import tempfile
+    import time as t_
+    from pathlib import Path
+    import duckdb
+    setup = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql", "1_setup.sql"), encoding="utf-8").read()
+    for name, cols in cache.COLUMNS.items():
+        body = re.search(rf"TABLE IF NOT EXISTS &DB\.&SCHEMA\.TBL_ACCESS_{name} \(.*?\n(.*?)\n\);", setup, re.S).group(1)
+        want = [ln.split()[0] for ln in body.splitlines() if ln.strip() and not ln.strip().startswith("--")]
+        assert [c.split()[0] for c in cols.split(", ")] == want, name
+    assert set(cache.COLUMNS) == {"RUN"} | set(a.TABLES) | set(a.OPTIONAL)
+    old = cache.DIR, cache.DUCKDB, a.INSIDE, dict(cache.SQL), cache.HOURS
+    cache.DIR, cache.HOURS = Path(tempfile.mkdtemp()), 24
+    try:
+        cache.DUCKDB, a.INSIDE = "", False
+        assert cache.sql_wanted(True) and not cache.sql_wanted(False)  # Snowflake yes, fake only with DUCKDB=1
+        d = a.fake()
+        cache.get("acct_direct", lambda: d)  # a read from Snowflake (disk): copied
+        con = duckdb.connect(str(cache.sql_file()), read_only=True)
+        s = cache.schema("acct_direct")
+        for tb in a.TABLES + a.OPTIONAL:
+            assert con.execute(f'SELECT COUNT(*) FROM "{s}".TBL_ACCESS_{tb}').fetchone()[0] == len(d[tb]), tb
+        assert con.execute(f'SELECT COUNT(*) FROM "{s}".TBL_ACCESS_GRANT WHERE IS_FUTURE').fetchone()[0] == sum(g["IS_FUTURE"] for g in d["GRANT"])
+        rid = con.execute(f'SELECT RUN_ID FROM "{s}".TBL_ACCESS_RUN').fetchone()[0]
+        assert con.execute(f'SELECT DISTINCT RUN_ID FROM "{s}".TBL_ACCESS_GRANT').fetchall() == [(rid,)]
+        assert con.execute("SELECT SCHEMA_NAME, CACHE_KEY, PREV_RUN_ID FROM COPIES").fetchall() == [(s, "acct_direct", None)]
+        con.close()
+        info = cache.sql_info("acct_direct")
+        assert info["on"] and info["schema"] == s and info["path"].endswith("access.duckdb") and info["written_at"]
+        cache.sql_copy("acct_direct", a.fake_previous(), t_.time())  # another run: the first becomes _PREV
+        con = duckdb.connect(str(cache.sql_file()), read_only=True)
+        assert con.execute(f'SELECT RUN_ID FROM "{s}".TBL_ACCESS_RUN_PREV').fetchone()[0] == rid
+        assert con.execute("SELECT PREV_RUN_ID FROM COPIES").fetchone()[0] == rid
+        n = con.execute(f'SELECT COUNT(*) FROM "{s}".TBL_ACCESS_GRANT_PREV').fetchone()[0]
+        con.close()
+        cache.sql_copy("acct_direct", a.fake_previous(), t_.time())  # the same run again: _PREV stays
+        con = duckdb.connect(str(cache.sql_file()), read_only=True)
+        assert con.execute(f'SELECT RUN_ID FROM "{s}".TBL_ACCESS_RUN_PREV').fetchone()[0] == rid
+        assert con.execute(f'SELECT COUNT(*) FROM "{s}".TBL_ACCESS_GRANT_PREV').fetchone()[0] == n
+        con.close()
+        cache.DUCKDB = "0"
+        assert not cache.sql_wanted(True) and "DUCKDB=0" in cache.sql_info("x")["note"]
+        cache.DUCKDB = "1"
+        assert cache.sql_wanted(False)  # fake data when asked
+        a.INSIDE = True
+        assert not cache.sql_wanted(True) and "Inside Snowflake" in cache.sql_info("x")["note"]
+        a.INSIDE, cache.DUCKDB = False, ""
+        locked = duckdb.connect(str(cache.sql_file()))  # another session holds the file: a note, the read works
+        try:
+            cache.MEM.clear()
+            cache.drop("acct_direct")
+            got, _ = cache.get("acct_direct", lambda: d)
+        finally:
+            locked.close()
+        assert got is d
+        saved = sys.modules.get("duckdb")
+        sys.modules["duckdb"] = None  # not installed
+        try:
+            cache.sql_copy("k2", d, t_.time())
+        finally:
+            sys.modules["duckdb"] = saved
+        assert "not installed" in cache.SQL["k2"]["note"] and "not installed" in cache.sql_info("k2")["note"]
+    finally:
+        shutil.rmtree(cache.DIR, ignore_errors=True)
+        cache.DIR, cache.DUCKDB, a.INSIDE, cache.HOURS = old[0], old[1], old[2], old[4]
+        cache.SQL.clear()
+        cache.SQL.update(old[3])
+        cache.MEM.clear()
+
+
 def test_db_roles():
     """A database role is a role that is held: role link, kind "database", its grants count for the user; mine()
     follows it with SHOW GRANTS TO DATABASE ROLE, recursively, and notes one it can't read."""

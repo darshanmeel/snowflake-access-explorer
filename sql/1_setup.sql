@@ -261,7 +261,11 @@ def grants(session, run_id, mode):
 def future(session, run_id):
     """Future grants: no ACCOUNT_USAGE view, so always SHOW FUTURE GRANTS IN DATABASE / SCHEMA."""
     out, skipped = [], []
-    for d in rows(session, "SHOW DATABASES"):
+    try:  # when even SHOW DATABASES is refused, the rest of the run still loads (as access.live does)
+        dbs = rows(session, "SHOW DATABASES")
+    except Exception as e:
+        return "UNAVAILABLE", f"SHOW DATABASES: {first_line(e)}"
+    for d in dbs:
         if d.get("kind", "STANDARD") != "STANDARD":  # shares, applications: their grants are not ours
             continue
         db = d["name"]

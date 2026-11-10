@@ -8,7 +8,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - The app writes nothing to Snowflake. Shared view: reads the `TBL_ACCESS_` tables and may CALL `SP_ACCESS_SNAPSHOT`
   (owner's rights). My-access view: read-only queries as the logged-in user. Locally the only thing written is
   `.cache/` (git-ignored, `cache.py`: one file per account + source plus the previous one as `<key>.prev.pkl` for What changed, one per user for My access, `CACHE_HOURS`=24, 0 = memory
-  only); in memory 24 h per process. Inside Snowflake (SiS) memory only, no disk. Data needs no real time: the UI shows
+  only), plus the SQL copy `.cache/access.duckdb` (`cache.sql_copy`: the `TBL_ACCESS_` tables, same columns as
+  `sql/1_setup.sql`, one schema per cache key, the read before as `TBL_ACCESS_*_PREV`; `DUCKDB=0` off, `1` also fake
+  data; skipped with a note without duckdb, which is only in requirements-web.txt); in memory 24 h per process. Inside Snowflake (SiS) memory only, no disk. Data needs no real time: the UI shows
   "Data from <time>" and a refresh (Read Snowflake again) that reads again.
 - The app reads only the `TBL_ACCESS_` snapshot tables in the shared view. `SP_ACCESS_SNAPSHOT` (sql/1_setup.sql) fills them from
   ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable (ACCESS_HISTORY into `TBL_ACCESS_OBJECT_USE` is an optional may-fail step), and writes nothing else.
@@ -33,7 +35,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Built bundles `web/dist` and `web/dist-st` are committed: users only run Python, never npm. After any change in
   `web/src`, rebuild both (`npm run build`, `npm run build:st`) and commit them.
   Must keep running as a Streamlit app inside Snowflake: `sql/4_streamlit.sql` deploys it (stage + `CREATE STREAMLIT`,
-  settings from the required `sis/.env`, `INSIDE=1`, `SOURCE=objects`); there (`a.INSIDE`: an active Snowpark session or
+  settings from the required `sis/.env`, `INSIDE=1`, `SOURCE=objects`, or `SOURCE=direct`: no snapshot objects,
+  `live()` with the owner role, where USE SECONDARY ROLES and SHOW may be refused and land in the notes); there (`a.INSIDE`: an active Snowpark session or
   `INSIDE=1`, never "no `SNOWFLAKE_ACCOUNT`") `sf.connect()` uses the app's session, never closed (`sf.owned()`), and
   My access is hidden (owner's rights, not the viewer's). My access is also off on a shared server (`HOST` not loopback)
   and with a key-pair login (`server.mine_off()`, `MY_ACCESS=1|0` decides). Container Services: optional, only to give everyone the local version.

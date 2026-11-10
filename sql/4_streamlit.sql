@@ -1,8 +1,13 @@
 -- 4 · Streamlit in Snowflake (developer role): uploads the app to a stage and creates the Streamlit app the app role may open.
--- Before: 1_setup.sql and 2_snapshot.sql (inside Snowflake the app reads the TBL_ACCESS_ tables). The React bundle
--- web/dist-st is committed: no npm needed. The app runs with the owner's rights (&DEV_ROLE) and writes nothing.
--- Settings for the app inside Snowflake: sis/.env (required, git-ignored; template sis.env.example), uploaded as the
--- app's .env: SOURCE=objects and ACCESS_SNAPSHOT=<DB>.<SCHEMA>. Never SNOWFLAKE_ACCOUNT.
+-- Two options (sis/.env, README > Deploy):
+--   SOURCE=objects (recommended for a team): run 1_setup.sql and 2_snapshot.sql first; the app reads the TBL_ACCESS_
+--     tables, ACCESS_SNAPSHOT=<DB>.<SCHEMA>.
+--   SOURCE=direct: only this file, no tables, procedures or task. The app reads ACCOUNT_USAGE live with the owner role
+--     (&DEV_ROLE), which needs GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE &DEV_ROLE (or the SNOWFLAKE
+--     database roles SECURITY_VIEWER + GOVERNANCE_VIEWER). &DB.&SCHEMA only holds the stage and the app.
+-- The React bundle web/dist-st is committed: no npm needed. The app runs with the owner's rights (&DEV_ROLE) and
+-- writes nothing. Settings for the app inside Snowflake: sis/.env (required, git-ignored; template sis.env.example),
+-- uploaded as the app's .env. Never SNOWFLAKE_ACCOUNT.
 -- Safe to run again: files are overwritten and the app is replaced, which loads the new files.
 -- SnowSQL: !source sql/4_streamlit.sql (from the repo folder)
 !source settings.local.sql
@@ -61,6 +66,15 @@ CREATE OR REPLACE STREAMLIT &DB.&SCHEMA.ST_ACCESS_EXPLORER
     TITLE = 'Access explorer'
     COMMENT = 'Access explorer: read-only, shows who has what access and through which path';
 
--- the app role also needs USAGE on the database, schema and warehouse (1_setup.sql grants them)
+-- the app role also needs USAGE on the database, schema and warehouse (as 1_setup.sql; here for SOURCE=direct)
+-- name: GRANT_DATABASE_APP (may fail)
+GRANT USAGE ON DATABASE &DB TO ROLE &APP_ROLE;
+
+-- name: GRANT_SCHEMA_APP (may fail)
+GRANT USAGE ON SCHEMA &DB.&SCHEMA TO ROLE &APP_ROLE;
+
+-- name: GRANT_WAREHOUSE_APP (may fail)
+GRANT USAGE ON WAREHOUSE &WH TO ROLE &APP_ROLE;
+
 -- name: GRANT_STREAMLIT
 GRANT USAGE ON STREAMLIT &DB.&SCHEMA.ST_ACCESS_EXPLORER TO ROLE &APP_ROLE;

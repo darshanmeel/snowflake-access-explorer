@@ -61,6 +61,11 @@ body { background: #F6F7F9; }
 .side-notes-raw summary { cursor: pointer; color: var(--ae-accent); font-size: 11px; margin-top: 2px; }
 .side-notes-raw code { display: block; margin-top: 4px; font: 10.5px/1.45 var(--ae-mono); color: var(--ae-muted);
   background: var(--ae-panel); border: 1px solid var(--ae-line); border-radius: 6px; padding: 6px; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
+.side-data { border-color: var(--ae-line); background: var(--ae-panel); }
+.side-data > summary { color: var(--ae-ink); }
+.side-data li { border-left-color: var(--ae-line); }
+.side-data-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ae-accent); flex: none; }
+.side-data code { font: 11px/1.45 var(--ae-mono); color: var(--ae-ink); overflow-wrap: anywhere; }
 .side-link { all: unset; display: block; cursor: pointer; font-size: 13px; padding: 2px 0; }
 .side-link:hover { text-decoration: underline; }
 .ae-bad { color: var(--ae-bad_ink); font-weight: 600; } .ae-warn { color: var(--ae-warn_ink); }

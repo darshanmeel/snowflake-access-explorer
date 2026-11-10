@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { WhatIfObjectRow, WhatIfUser } from "../api/types";
 import { cutLinks, lossGroups } from "../pages/changeplan";
 import { areaCounts, ladderParts, sevParts } from "../pages/Home";
-import { mineText } from "../App";
+import { DataInfo, mineText } from "../App";
 import { Combo } from "./Combo";
 import { startView } from "./Graph";
 import { copyText, MiniBar, StackBar } from "./kit";
@@ -140,5 +140,23 @@ describe("web fixes", () => {
     expect(th[1].getAttribute("aria-sort")).toBeNull();
     fireEvent.click(th[0]);
     expect(th[0].getAttribute("aria-sort")).toBe("ascending");
+  });
+});
+
+// Step 4: the "Data from" panel says where the DuckDB SQL copy is, or why there is none.
+describe("data panel", () => {
+  const base = { mode: "snowflake", source: "direct", view: "shared", where: "", fetched_at: "2026-11-10 08:00", cache_hours: 24, run: { when: "2026-11-10 08:00 UTC · 0 h ago" } };
+  it("names the file and schema of the SQL copy", () => {
+    const meta = { ...base, sql_copy: { on: true, path: "D:/x/.cache/access.duckdb", schema: "acct_direct", note: null, written_at: "2026-11-10 08:00" } };
+    const { container } = render(<DataInfo meta={meta as never} />);
+    expect(container.textContent).toContain("D:/x/.cache/access.duckdb");
+    expect(container.textContent).toContain("acct_direct");
+    expect(container.textContent).toContain("_PREV");
+  });
+  it("says why there is none", () => {
+    const meta = { ...base, inside: true, cache_hours: 0, sql_copy: { on: false, path: "", schema: "k", note: "Inside Snowflake there is no local disk, so no SQL copy.", written_at: null } };
+    const { container } = render(<DataInfo meta={meta as never} />);
+    expect(container.textContent).toContain("no local disk");
+    expect(container.textContent).toContain("the app owner's role");
   });
 });

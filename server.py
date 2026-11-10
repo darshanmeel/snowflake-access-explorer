@@ -150,13 +150,13 @@ def load_mine(sid, fresh=False):
         raise ApiError(409, "mine_unavailable", why)
     for k in list(MINE):
         mine_entry(k)  # drops the expired ones
-    at = time.time()
+    at, ck = time.time(), None  # ck: the cache key (local copy, SQL copy)
     if MODE == "snowflake":
-        key = cache.name("mine", os.environ.get("SNOWFLAKE_USER") or sid, WHERE)
+        ck = cache.name("mine", os.environ.get("SNOWFLAKE_USER") or sid, WHERE)
         if fresh:
-            cache.drop(key)
+            cache.drop(ck)
         try:
-            d, at = cache.get(key, lambda: with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None)))
+            d, at = cache.get(ck, lambda: with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None)))
         except Exception as x:  # a cancelled SSO, no warehouse, the network: the real message, as for the shared data
             raise ApiError(503, "mine_unreadable", a.line(x))
     else:
@@ -167,7 +167,7 @@ def load_mine(sid, fresh=False):
     with LOCK:
         a.build(d, key)
         user = a.users[0] if a.users else ""
-    MINE[sid] = dict(data=d, key=key, user=user, at=at)
+    MINE[sid] = dict(data=d, key=key, user=user, at=at, cache_key=ck)
     return mine_state(sid) | dict(notes=notes_of(d["run"], "mine"))
 
 
@@ -373,7 +373,9 @@ def note_info(k, source, view):
                  "Use the shared snapshot.") if mine else
                 ("Tags partly read", "Sensitive marks may be incomplete.", f"{IP}."),
         "policies": ("Policies partly read", "'Masked' / 'unmasked' on sensitive columns may be wrong.", f"{IP}."),
-        "future_grants": ("Future grants partly read", "Future grants of the databases in the error are missing.",
+        "future_grants": ("Future grants unread", "No future grants: rule 15 can't run.", "Run the local version, "
+                          "or SOURCE=objects (the procedure reads them).") if source == "UNAVAILABLE" else
+                         ("Future grants partly read", "Future grants of the databases in the error are missing.",
                           "MANAGE GRANTS, or ownership of those schemas."),
         "streams": ("Streams unread", "The stream rule (22) can't run.", f"{IP}."),
         "object_use": ("No object usage", "Granted vs used has nothing to compare: ACCESS_HISTORY is not readable "
@@ -2069,7 +2071,8 @@ def theme_tokens():
 def meta(p, sid):
     view = p.get("view", "shared")
     base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
-                mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
+                mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0,
+                sql_copy=sql_copy(view, sid), inside=a.INSIDE, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
@@ -2100,6 +2103,17 @@ def meta(p, sid):
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)
     return clean(base)
+
+
+def sql_copy(view, sid):
+    """Where the DuckDB copy of what this view shows is (cache.sql_info): file, schema, or why there is none."""
+    if view == "mine":
+        m = mine_entry(sid)
+        if m and m.get("cache_key"):
+            return cache.sql_info(m["cache_key"])
+        return cache.sql_info("", disk=False) | dict(on=False, schema=None, note=None if not m else
+                                                     "Demo data: My access gets no SQL copy.")
+    return cache.sql_info(KEY, disk=MODE == "snowflake")
 
 
 def protection():

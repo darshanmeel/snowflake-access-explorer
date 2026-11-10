@@ -648,6 +648,16 @@ def test_step3():  # review 2026-11-09 step 3: server-side search for pickers, a
     assert r.status_code == 200 and r.headers.get("content-encoding") == "gzip"
 
 
+
+def test_step4():  # review 2026-11-09 step 4: where the DuckDB SQL copy is, in the "Data from" panel
+    m = js("/api/meta", ["sql_copy", "inside"])
+    q = m["sql_copy"]
+    assert set(q) == {"on", "path", "schema", "note", "written_at"} and q["path"].endswith("access.duckdb")
+    assert m["inside"] is False and (q["on"] or q["note"])  # demo data: off unless DUCKDB=1, and it says so
+    mine = js("/api/meta?view=mine")["sql_copy"]
+    assert mine["on"] is False and mine["schema"] is None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

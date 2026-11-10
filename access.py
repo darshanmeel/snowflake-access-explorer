@@ -581,12 +581,15 @@ def live(query):
         return None if v in ("", "null", None) else v
 
     src, notes, d = {}, {}, {t: [] for t in TABLES + OPTIONAL}
-    try:  # privileges of every granted role count (e.g. IMPORTED PRIVILEGES through another role)
-        query("USE SECONDARY ROLES ALL")
+    try:  # privileges of every granted role count (e.g. IMPORTED PRIVILEGES through another role); refused inside
+        query("USE SECONDARY ROLES ALL")  # Streamlit in Snowflake (owner's rights): the owner role alone counts there
     except Exception:
         pass
     now = query("SELECT CURRENT_TIMESTAMP() AS T")[0]["T"]
-    db = query("SELECT CURRENT_DATABASE() AS D")[0]["D"]
+    try:  # a context function: an owner's-rights app (Streamlit in Snowflake) may need READ SESSION for it
+        db = query("SELECT CURRENT_DATABASE() AS D")[0]["D"]
+    except Exception:
+        db = None
 
     def note(name, source, why):
         src[name] = source
@@ -641,7 +644,12 @@ def live(query):
     note("user_roles", src["grants"], notes.get("grants"))
 
     skipped = []  # future grants: no ACCOUNT_USAGE view; shares and applications: their grants are not ours
-    dbs = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+    try:  # SHOW only: when even SHOW DATABASES is refused, the rest still loads and the note says so
+        dbs = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+    except Exception as e:
+        dbs, nodb = [], f"SHOW DATABASES: {line(e)}"
+    else:
+        nodb = None
     places, failed = [], set()
     for name, got in zip(dbs, many([f"SHOW SCHEMAS IN DATABASE {ident(x)}" for x in dbs])):
         if isinstance(got, Exception):
@@ -660,7 +668,10 @@ def live(query):
                             GRANTED_ON=f["grant_on"], OBJECT_NAME=clean(f["name"]), IS_FUTURE=True,
                             GRANT_OPTION=str(f.get("grant_option")).lower() == "true", GRANTED_BY=None)
                        for f in got if f.get("grant_to") in ("ROLE", "DATABASE_ROLE")]
-    note("future_grants", "SHOW", f"{len(skipped)} databases skipped: " + " | ".join(skipped[:20]) if skipped else None)
+    if nodb:
+        note("future_grants", "UNAVAILABLE", nodb)
+    else:
+        note("future_grants", "SHOW", f"{len(skipped)} databases skipped: " + " | ".join(skipped[:20]) if skipped else None)
 
     why = readable("USERS")
     if why is None:  # OBJECT_CONSTRUCT(*): the secondary roles column name differs between Snowflake versions
