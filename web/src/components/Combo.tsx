@@ -1,5 +1,6 @@
 // Search box with a suggestion list: the top bar Find and every picker. The list closes on blur (a click elsewhere,
-// Tab) and on Escape; ArrowUp / ArrowDown move through the hits, Enter picks the active one (or the first).
+// Tab) and on Escape; ArrowUp / ArrowDown move through the hits, Enter picks the active one (or the first), but only
+// from hits for the text now in the box (not those of older text while the new search waits).
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 export interface ComboProps<T> {
@@ -22,15 +23,16 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
   const [q, setQ] = useState(value);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<T[]>([]);
+  const got = useRef(""); // the text the items answer
   const [active, setActive] = useState(-1);
   const typed = useRef(false); // the box holds what the user typed, not the committed value
   useEffect(() => { if (!typed.current) setQ(clear ? "" : value); }, [value, clear]);
   useEffect(() => {
     if (!open) return;
     const text = typed.current ? q.trim() : "";
-    if (text.length < min) { setItems([]); return; }
+    if (text.length < min) { got.current = text; setItems([]); return; }
     let live = true;
-    const t = setTimeout(() => search(text).then((xs) => { if (live) { setItems(xs); setActive(-1); } }, () => live && setItems([])), wait);
+    const t = setTimeout(() => search(text).then((xs) => { if (live) { got.current = text; setItems(xs); setActive(-1); } }, () => live && setItems([])), wait);
     return () => { live = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, open, min]);
@@ -52,7 +54,7 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
             setOpen(true);
             if (shown.length) setActive((a) => (e.key === "ArrowDown" ? (a + 1) % shown.length : (a <= 0 ? shown.length : a) - 1));
           } else if (e.key === "Enter") {
-            const x = shown[active] ?? shown[0];
+            const x = got.current === (typed.current ? q.trim() : "") ? shown[active] ?? shown[0] : undefined;
             if (x) { e.preventDefault(); pick(x); }
           } else if (e.key === "Escape") {
             if (clear) setQ("");

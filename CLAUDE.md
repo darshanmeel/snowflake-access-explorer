@@ -40,8 +40,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   `INSIDE=1`, never "no `SNOWFLAKE_ACCOUNT`") `sf.connect()` uses the app's session, never closed (`sf.owned()`), and
   My access is hidden (owner's rights, not the viewer's). My access is also off on a shared server (`HOST` not loopback)
   and with a key-pair login (`server.mine_off()`, `MY_ACCESS=1|0` decides). Container Services: optional, only to give everyone the local version.
-- The local API answers only its own host names (`server.allowed_hosts()`, `ALLOWED_HOSTS`) and refuses a cross-site
-  POST (Origin check); errors answer JSON with the real message in both versions.
+- The local API answers only its own host names (`server.allowed_hosts()`, `ALLOWED_HOSTS`; with `HOST=0.0.0.0` also the
+  machine's names and IPs), refuses a POST whose Origin is not one of them and any `/api/` call another page starts
+  (`Sec-Fetch-Site` not same-origin / none); errors answer JSON with the real message in both versions.
 - All Snowflake reads go through `sf.rows()`; `test_read_only` records every statement and allows only reads plus the
   `SP_ACCESS_SNAPSHOT` CALL.
 - `access.py` is the only place for data, walks and rules; both versions call it, neither has its own logic.

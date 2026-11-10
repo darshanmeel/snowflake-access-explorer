@@ -2219,6 +2219,10 @@ def allowed_hosts():
     out = set(LOOPBACK) | {h.strip().lower() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()}
     if host in ("0.0.0.0", "::"):
         out |= {socket.gethostname().lower(), socket.getfqdn().lower()}
+        try:  # opened by IP address too
+            out |= set(socket.gethostbyname_ex(socket.gethostname())[2])
+        except OSError:
+            pass
     elif host:
         out.add(host.lower())
     return out
@@ -2234,17 +2238,25 @@ def make_app():
     app.add_middleware(GZipMiddleware, minimum_size=2000)  # the bundle and big answers (review, objects) shrink ~5x
     hosts = allowed_hosts()
 
+    def served(host):  # "name", "name:port", "[::1]:port"
+        host = host.lower()
+        name = host.rsplit(":", 1)[0] if not host.endswith("]") else host
+        return "*" in hosts or name.strip("[]") in hosts
+
     @app.middleware("http")
     async def same_site(request: Request, call_next):
-        """Only this server's own pages: a Host it serves (no DNS rebinding), and no POST from another site's page
-        (a form or no-cors fetch could start a rebuild or a login)."""
+        """Only this server's own pages: a Host it serves (no DNS rebinding), no POST from another site's page (a form
+        or no-cors fetch could start a rebuild or a login) and no API call another page starts (an <img> on /api/home
+        would start a Snowflake read and the SSO login)."""
         host = (request.headers.get("host") or "").lower()
-        name = host.rsplit(":", 1)[0] if not host.endswith("]") else host
-        if "*" not in hosts and name.strip("[]") not in hosts:
-            return JSONResponse(dict(detail="bad_host", message=f"Host {host} is not served here (ALLOWED_HOSTS)."),
-                                status_code=400)
+        if not served(host):
+            return JSONResponse(dict(detail="bad_host", message=f"Host {host} is not served here: add it to "
+                                     "ALLOWED_HOSTS (comma-separated)."), status_code=400)
         origin = request.headers.get("origin")
-        if request.method not in ("GET", "HEAD") and origin and origin.split("://", 1)[-1].lower() != host:
+        # Origin's host name, not the Host header: a proxy may rewrite Host
+        cross = (request.method not in ("GET", "HEAD") and origin and not served(origin.split("://", 1)[-1])) or             (request.url.path.startswith("/api/") and request.headers.get("sec-fetch-site", "same-origin")
+             not in ("same-origin", "none"))
+        if cross:
             return JSONResponse(dict(detail="cross_site", message="Requests from another site are refused."),
                                 status_code=403)
         return await call_next(request)

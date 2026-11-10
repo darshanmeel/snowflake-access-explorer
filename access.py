@@ -4767,7 +4767,7 @@ def rule18():
     out = []
     for x in cached("unusual", unusual):
         r, o, k = x["role"], x["object"], x["type"]
-        std = sorted(CAP_PRIVS[x["cap"]], key=lambda p: (valid_privs(k) + [p]).index(p))
+        std = sorted(CAP_PRIVS[x["cap"]], key=lambda p: ((valid_privs(k) + [p]).index(p), p))  # p: READ / WRITE tie, set order is per process
         bits = ([f"extra {', '.join(x['extra'])}"] if x["extra"] else []) + \
             ([f"missing {', '.join(x['missing'])}"] if x["missing"] else [])
         edges = [priv_edge(r, pv, k, o) for pv in x["extra"]]

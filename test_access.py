@@ -251,6 +251,14 @@ def test_users():
     assert any(r["user"] == "OPS_01" and r["privileges"] == "ALL" for r in rv)
 
 
+def test_rule18_stable():
+    """Rule 18's text (part of the Mute key) is the same in every process: READ / WRITE tie on the privilege order."""
+    code = "import access as a; a.build(a.fake()); print(sorted(c[3] for c in a.checks() if c[0] == '18'))"
+    outs = {subprocess.run([sys.executable, "-c", code], env={**os.environ, "PYTHONHASHSEED": str(i)}, capture_output=True,
+                           text=True, cwd=os.path.dirname(os.path.abspath(__file__))).stdout for i in (1, 2, 3, 4)}
+    assert len(outs) == 1 and "standard" in outs.pop()
+
+
 def test_rules():
     rows = a.rule_rows()
     n = {}
@@ -533,7 +541,7 @@ def test_duckdb():
         assert [c.split()[0] for c in cols.split(", ")] == want, name
     assert set(cache.COLUMNS) == {"RUN"} | set(a.TABLES) | set(a.OPTIONAL)
     old = cache.DIR, cache.DUCKDB, a.INSIDE, dict(cache.SQL), cache.HOURS
-    cache.DIR, cache.HOURS = Path(tempfile.mkdtemp()), 24
+    cache.DIR, cache.HOURS = Path(tempfile.mkdtemp(prefix="o'brien_")), 24  # a quote in the path
     try:
         cache.DUCKDB, a.INSIDE = "", False
         assert cache.sql_wanted(True) and not cache.sql_wanted(False)  # Snowflake yes, fake only with DUCKDB=1

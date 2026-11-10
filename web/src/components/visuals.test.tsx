@@ -1,6 +1,6 @@
 // Step 3 of the 2026-11-09 review: the small visuals and the web fixes (search box, copy, start view, legend).
 import { describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { WhatIfObjectRow, WhatIfUser } from "../api/types";
 import { cutLinks, lossGroups } from "../pages/changeplan";
 import { areaCounts, ladderParts, sevParts } from "../pages/Home";
@@ -114,6 +114,24 @@ describe("web fixes", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(20); });
     fireEvent.keyDown(box, { key: "Escape" });
     expect(screen.queryByRole("listbox")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("Combo's Enter never picks a hit for older text", async () => {
+    vi.useFakeTimers();
+    const pick = vi.fn();
+    const search = vi.fn(async (q: string) => ["F_ANALYST", "F_ENGINEER", "F_MARKETING"].filter((x) => x.includes(q.toUpperCase())));
+    const view = render(<Combo<string> value="" search={search} onPick={pick} keyOf={(x) => x} render={(x) => x} label="Find" wait={10} />);
+    const box = within(view.container).getByRole("combobox");
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "f_" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    fireEvent.change(box, { target: { value: "f_m" } });
+    fireEvent.keyDown(box, { key: "Enter" }); // the search for "f_m" still waits: the "f_" hits are stale
+    expect(pick).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(pick).toHaveBeenCalledWith("F_MARKETING");
     vi.useRealTimers();
   });
 

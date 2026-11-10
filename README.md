@@ -192,7 +192,7 @@ print(con.sql(f'SELECT PRIVILEGE, COUNT(*) AS N FROM "{s}".TBL_ACCESS_GRANT GROU
 - Without `.env` (and not `--fake`) the app says to copy `.env.example` to `.env`; it never mistakes your laptop for Snowflake.
 - My access reads with your own rights and writes nothing to Snowflake. It has no sensitivity (tags need the governance views), and Risks & fixes runs on your own roles only.
 - My access is only offered when the login is yours: off inside Snowflake, on a shared server (`HOST` not `127.0.0.1` / `localhost`) and with a key-pair login (a service user). `MY_ACCESS=1` turns it on when the key pair is your own user, `MY_ACCESS=0` turns it off.
-- The local server answers only its own host names (`localhost`, `127.0.0.1`, `HOST`, this machine's names with `HOST=0.0.0.0`, plus `ALLOWED_HOSTS`, comma-separated) and refuses a POST from another site's page.
+- The local server answers only its own host names (`localhost`, `127.0.0.1`, `HOST`, this machine's names and IP addresses with `HOST=0.0.0.0`, plus `ALLOWED_HOSTS`, comma-separated), refuses a POST from another site's page (its Origin is checked against these names, so a proxy that rewrites Host still works) and any API call another site's page starts (an image or link to `/api/...` cannot start a Snowflake read or the SSO login).
 
 ### Objects in Snowflake (`SOURCE=objects`)
 A developer whose role can create tables and procedures runs this once, from the same folder and `.env`:
@@ -234,7 +234,7 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 - Browser SSO can't work on a server (the login tab would open there): create a service user with a **key pair** and set
   `SNOWFLAKE_PRIVATE_KEY_FILE` (and `SNOWFLAKE_PRIVATE_KEY_PWD`) in `.env`. Everyone then sees what that user's role sees,
   so **My access** is off there (it would show the service user's access as each visitor's own).
-- With `HOST=0.0.0.0` the server answers this machine's names; for another name (a DNS alias, a proxy) add it to
+- With `HOST=0.0.0.0` the server answers this machine's names and IP addresses; for another name (a DNS alias, a proxy) add it to
   `ALLOWED_HOSTS`.
 - Prefer `SOURCE=objects` with the daily snapshot task: the service role then needs only `SELECT` on the `TBL_ACCESS_` tables.
 - The app has no login of its own and shows who can reach what: put it behind your company sign-in (VPN, a reverse proxy

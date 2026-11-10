@@ -223,9 +223,10 @@ def sql_copy(key, d, at):
                 if rows[t]:  # one bulk read of a JSON lines file: an INSERT per row takes minutes on a big account
                     tmp.write_text("\n".join(json.dumps({c: rid if c == "RUN_ID" else r.get(c) for c, _ in pairs},
                                                         default=str) for r in rows[t]), encoding="utf-8")
+                    path = tmp.as_posix().replace("'", "''")  # a folder like O'Brien
                     spec = "{" + ", ".join(f"'{c}': 'VARCHAR'" for c, _ in pairs) + "}"
                     con.execute(f"INSERT INTO {name} SELECT " + ", ".join(f"TRY_CAST({c} AS {ty})" for c, ty in pairs)
-                                + f" FROM read_json('{tmp.as_posix()}', format = 'newline_delimited', columns = {spec})")
+                                + f" FROM read_json('{path}', format = 'newline_delimited', columns = {spec})")
             con.execute("DELETE FROM COPIES WHERE SCHEMA_NAME = ?", [s])
             con.execute("INSERT INTO COPIES VALUES (?, ?, ?, ?, ?)",
                         [s, key, rid, stamp(at), had[0] if turn else (had[1] if had else None)])

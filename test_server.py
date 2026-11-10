@@ -272,6 +272,8 @@ def test_streamlit_bridge():  # the React app inside Streamlit gets the same ans
     assert ans("/api/reload", {"what": "page"})[1]["ok"]
     st, mine, sid = ans("/api/mine/load", {})
     assert st == 200 and sid and ans("/api/mine", sid=sid)[1]["loaded"]
+    st, _, sid2 = ans("/api/mine/load", {}, sid)  # Load My access again: the previous data set is dropped, as locally
+    assert st == 200 and sid2 != sid and sid not in server.MINE and sid2 in server.MINE
 
 
 def test_whatif():
@@ -392,12 +394,25 @@ def test_same_site():
     assert r.status_code == 403 and r.json()["detail"] == "cross_site"
     assert c.post("/api/reload", content='{"what":"rebuild"}', headers={"Origin": "null", "Content-Type": "text/plain"}).status_code == 403
     assert c.post("/api/reload", json={"what": "page"}, headers={"Origin": "http://localhost"}).json()["ok"]
-    old = os.environ.get("ALLOWED_HOSTS")
+    # an <img> or link on another site's page must not start a Snowflake read (and the SSO login)
+    for site, code in (("cross-site", 403), ("same-site", 403), ("same-origin", 200), ("none", 200)):
+        assert c.get("/api/meta", headers={"Sec-Fetch-Site": site}).status_code == code, site
+    assert c.get("/", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200  # the page itself may be linked
+    old = {k: os.environ.get(k) for k in ("ALLOWED_HOSTS", "HOST")}
     os.environ["ALLOWED_HOSTS"] = "access.example"
     try:
         assert TestClient(server.make_app(), base_url="http://access.example").get("/api/mine").status_code == 200
+        # behind a proxy that rewrites Host: Origin is checked against the served names, not the Host header
+        proxied = TestClient(server.make_app(), base_url="http://127.0.0.1")
+        assert proxied.post("/api/reload", json={"what": "page"}, headers={"Origin": "https://access.example"}).json()["ok"]
+        assert proxied.post("/api/reload", json={"what": "page"}, headers={"Origin": "https://evil.example"}).status_code == 403
+        os.environ["HOST"] = "0.0.0.0"
+        import socket
+        ips = set(socket.gethostbyname_ex(socket.gethostname())[2])
+        assert ips <= server.allowed_hosts(), ips  # opened by IP address on a shared server
     finally:
-        os.environ.pop("ALLOWED_HOSTS") if old is None else os.environ.__setitem__("ALLOWED_HOSTS", old)
+        for k, v in old.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
 
 
 def test_error_text():
