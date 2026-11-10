@@ -17,9 +17,9 @@ flowchart TD
 - Run it (direct vs objects table) — README.md:105-120; Install — README.md:122-131; Start — README.md:133-143; `.env` — README.md:145-158; Settings — README.md:160-174; DuckDB SQL copy — README.md:176; role-based visibility — README.md:207-218; Objects in Snowflake — README.md:220-232.
 - Deploy — README.md:234-242; own machine — README.md:244; shared server — README.md:248-265; SiS — README.md:267-307; Streamlit elsewhere — README.md:309-319; Container Services — README.md:321-325.
 - Data sources — README.md:327-331.
-- Use the queries without the app — README.md:333-348: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:336-344; Run (worksheet or notebook path A / B) — README.md:346; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:347; Check (`test_queries.py`) — README.md:348. See modules/access-queries.md, flows/standalone-queries.md.
-- Also in this repo — README.md:350-354: access_queries (both notebooks, `functions.sql`, test) — README.md:351; sf.py CLI — README.md:352; tests incl. `access_queries/test_queries.py` — README.md:353; IaC — README.md:354.
-- Where to find more — README.md:356-365; License (MIT or Apache-2.0) — README.md:367-370.
+- Use the queries without the app — README.md:333-385: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:336-344; Run (worksheet or notebook path A / B) — README.md:346; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:384; Check (`test_queries.py`) — README.md:385. See modules/access-queries.md, flows/standalone-queries.md.
+- Also in this repo — README.md:387-391: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:388; sf.py CLI — README.md:389; tests incl. `access_queries/test_queries.py` — README.md:390; IaC — README.md:391.
+- Where to find more — README.md:393-402; License (MIT or Apache-2.0) — README.md:404-407.
 
 ## Relates to
 - Processes: setup-local, run-local, deploy-snowflake, build-web, test, container-services.

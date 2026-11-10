@@ -17,7 +17,7 @@ flowchart LR
 - `python access_queries/test_queries.py` green: query files and `functions.sql` equal to `access.py`, notebook current — CLAUDE.md:113 (modules/access-queries.md > Test).
 - `test_pages` (app.py hands every page to the component) and `test_server.py` (what each page answers) — CLAUDE.md:114-115.
 - Test packages: `requirements-dev.txt` — CLAUDE.md:111, requirements-dev.txt:1-4.
-- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:353.
+- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:390.
 
 ## test_access.py
 - Forces `FAKE=1` — test_access.py:12.

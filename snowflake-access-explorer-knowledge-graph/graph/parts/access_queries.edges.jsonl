@@ -152,10 +152,10 @@
 {"from": "document:access_queries/README.md", "to": "file:access_queries/make_notebook.py", "type": "documents", "evidence": "access_queries/README.md:28", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "access_queries/README.md:29", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "flow:standalone_queries", "type": "documents", "evidence": "access_queries/README.md:42-84", "status": "verified"}
-{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:333-348", "status": "verified"}
+{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:333-385", "status": "verified"}
 {"from": "document:README.md", "to": "flow:standalone_queries", "type": "documents", "evidence": "README.md:346", "status": "verified"}
-{"from": "document:README.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "README.md:348", "status": "verified"}
-{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:351", "status": "verified"}
+{"from": "document:README.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "README.md:385", "status": "verified"}
+{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:388", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "module:access_queries", "type": "documents", "evidence": "CLAUDE.md:70", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "CLAUDE.md:113", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "file:access_queries/make_notebook.py", "type": "documents", "evidence": "access_queries/README.md:82", "status": "verified"}
@@ -168,3 +168,7 @@
 {"from": "external_system:au:GRANTS_TO_USERS", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:49", "status": "verified"}
 {"from": "external_system:au:USERS", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:53", "status": "verified"}
 {"from": "file:access_queries/access_examples.ipynb", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/README.md:72", "status": "verified"}
+{"from": "document:docs/overview.html", "to": "module:access_queries", "type": "documents", "evidence": "docs/overview.html:270", "status": "verified"}
+{"from": "document:docs/overview.html", "to": "flow:standalone_queries", "type": "documents", "evidence": "docs/overview.html:270", "status": "verified"}
+{"from": "document:docs/technical.html", "to": "module:access_queries", "type": "documents", "evidence": "docs/technical.html:180", "status": "verified"}
+{"from": "document:docs/technical.html", "to": "flow:standalone_queries", "type": "documents", "evidence": "docs/technical.html:180", "status": "verified"}

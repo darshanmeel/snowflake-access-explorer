@@ -13,4 +13,4 @@ flowchart LR
 - elkjs — THIRD_PARTY.md:6-7; IBM Plex Mono with licence file `web/src/components/fonts/OFL-IBMPlexMono.txt` — THIRD_PARTY.md:8-9; web deps — THIRD_PARTY.md:10-11; Python packages — THIRD_PARTY.md:12-13.
 
 ## Relates to
-- web/package.json, web/package-lock.json, LICENSE-MIT, LICENSE-APACHE, README.md:367-370; processes/build-web.md.
+- web/package.json, web/package-lock.json, LICENSE-MIT, LICENSE-APACHE, README.md:404-407; processes/build-web.md.

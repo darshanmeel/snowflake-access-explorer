@@ -14,7 +14,7 @@ flowchart LR
 
 ## Rules
 - App is read-only; never runs GRANT, REVOKE, CREATE, ALTER or DROP; RBAC changes go through IaC; manual grants get removed by reconciliation — CLAUDE.md:6-7.
-- Roles and grants are managed as IaC; the app only reads them — README.md:354.
+- Roles and grants are managed as IaC; the app only reads them — README.md:391.
 - "Real set-up: schema, roles and grants via infrastructure as code" — sql/1_setup.sql:4; what DEV_ROLE needs "(real set-up: infrastructure as code)" — sql/1_setup.sql:801.
 - Grant `APP_ROLE` to people who use the app "through your infrastructure as code" — README.html:638.
 - What if prints REVOKE / IaC text, never runs it — CLAUDE.md:64.

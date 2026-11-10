@@ -101,7 +101,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
   .map-wrap { overflow:visible; } .map { zoom:.68; } }
 </style></head><body><main>
 <div class="eyebrow">Overview · for business and newcomers</div><h1>Snowflake access explorer</h1>
-<nav class="toc" aria-label="Contents"><a href="#big-picture">Big picture</a><a href="#what">What it is</a><a href="#scenario">Example: who can read customer data</a><a href="#examples">More examples</a><a href="#checks">What the 23 checks look for</a><a href="#run">Two ways to run</a><a href="#read-only">Read-only promise</a><a href="#risks">Costs and risks</a><a href="#decision">Decision needed</a></nav>
+<nav class="toc" aria-label="Contents"><a href="#big-picture">Big picture</a><a href="#what">What it is</a><a href="#scenario">Example: who can read customer data</a><a href="#examples">More examples</a><a href="#checks">What the 23 checks look for</a><a href="#run">Two ways to run the app</a><a href="#no-app">Answers without the app</a><a href="#read-only">Read-only promise</a><a href="#risks">Costs and risks</a><a href="#decision">Decision needed</a></nav>
 
 <section id="big-picture"><h2>Big picture</h2>
 <div class="map-wrap"><div class="map" style="width:1000px;height:310px"><svg width="1000" height="310" aria-hidden="true"><defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#17191D"/></marker></defs><polyline points="150,80 370,80" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#h)"/><polyline points="790,80 540,80" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="420,120 420,150 270,150 270,210" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="490,120 490,150 570,150 570,210" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="655,245 790,245" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#h)"/><polyline points="895,200 895,130" fill="none" stroke="#17191D" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#h)"/></svg><div class="b c actor" style="left:0px;top:25px;width:150px;height:110px"><span class="tag">PEOPLE</span><span class="t">People with a question</span><span class="sub">who has what, and how</span></div><div class="b c entry" style="left:370px;top:40px;width:170px;height:80px"><span class="tag">ENTRY</span><span class="t">Access explorer</span><span class="sub">read-only</span></div><div class="b c data" style="left:790px;top:25px;width:210px;height:105px"><span class="tag">DATA</span><span class="t">Snowflake account</span><span class="sub">people · roles · permissions · data labels · hiding rules</span></div><div class="b c " style="left:170px;top:210px;width:200px;height:70px"><span class="t">Answers with the full path</span></div><div class="b c " style="left:485px;top:210px;width:170px;height:70px"><span class="t">Risk checks with written fixes</span></div><div class="b c actor ext" style="left:790px;top:200px;width:210px;height:90px"><span class="tag">OUTSIDE THE APP</span><span class="t">Change team</span><span class="sub">reviewed change scripts</span></div><span class="num" style="left:260px;top:80px">1</span><span class="lbl" style="left:260px;top:62px">asks</span><span class="lbl chip" style="left:260px;top:102px">Who can read customer data?</span><span class="num" style="left:665px;top:80px">2</span><span class="lbl" style="left:665px;top:62px">permissions and labels</span><span class="lbl chip" style="left:665px;top:102px">metadata only</span><span class="num" style="left:345px;top:150px">3</span><span class="lbl" style="left:345px;top:132px">answer</span><span class="lbl chip" style="left:150px;top:180px">5 people · each with its path</span><span class="num" style="left:530px;top:150px">4</span><span class="lbl" style="left:530px;top:132px">findings</span><span class="lbl chip" style="left:478px;top:180px">62 findings · 20 High</span><span class="num" style="left:722px;top:245px">5</span><span class="lbl" style="left:722px;top:226px">fix text</span><span class="num" style="left:895px;top:175px">6</span><span class="lbl" style="left:748px;top:165px">applies approved changes (not the app)</span></div></div>
@@ -133,6 +133,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>Depth = roles between person and data, the last one included.</li>
 <li>Answers at any depth: access ten roles deep shows next to direct grants.</li>
 <li>Only reads; never gives or removes a permission.</li>
+<li>No app allowed? Five ready queries give the same answers in Snowflake.</li>
 <li>Why: access is inherited role by role, hard to trace by hand.</li>
 <li>My access: your own access, local version with your own sign-in only.</li>
 <li>Who uses which screen: Not defined in source — confirm with owner.</li>
@@ -145,7 +146,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>"What if" shows who would lose access before anything is changed.</li>
 <li>Sensitive data view: who reads labelled columns, and which are hidden (masked).</li>
 </ul>
-<p class="src">README.md:3, 17-23, 32-41 · CLAUDE.md:3, 6, 57, 86 · server.py:126-143</p></section>
+<p class="src">README.md:3, 17-23, 32-41 · CLAUDE.md:3, 6, 57, 86 · server.py:126-143 · access_queries/README.md:3-4</p></section>
 
 <section id="scenario"><h2>Example: an auditor asks who can read customer data</h2>
 <ul><li>Question: who can read the customer table <code>SALES.CORE.TBL_CUSTOMER</code>, and how? (fake data)</li></ul>
@@ -233,7 +234,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <tr><td class="v">1</td><td>Technical role granted to a user or group role</td><td><span class="sev medium">Medium</span></td><td>Technical roles belong under functional roles only.</td></tr><tr><td class="v">2</td><td>Direct privilege on a functional role</td><td><span class="sev medium">Medium</span></td><td>Privileges sit on technical roles, so the role model stays reviewable.</td></tr><tr><td class="v">3</td><td>READ held directly and through another role</td><td><span class="sev low">Low</span></td><td>The direct grant is redundant and survives when the other one is removed.</td></tr><tr><td class="v">4</td><td>OWNER role held by a consumer</td><td><span class="sev high">High</span></td><td>Owners can drop and re-grant objects; only the build identity should own.</td></tr><tr><td class="v">5</td><td>Admin role held by a person</td><td><span class="sev high">High</span></td><td>Admin roles bypass the role model; use them for emergencies only (break-glass).</td></tr><tr><td class="v">6</td><td>Sensitive column without a masking policy</td><td><span class="sev medium">Medium</span></td><td>Everyone who can read the object sees the value in clear.</td></tr><tr><td class="v">7</td><td>Dormant or disabled person can read sensitive data</td><td><span class="sev high">High</span></td><td>Unused access to sensitive data is pure risk.</td></tr><tr><td class="v">8</td><td>Disabled user still holds roles</td><td><span class="sev low">Low</span></td><td>Re-enabling the user brings all access back at once.</td></tr><tr><td class="v">9</td><td>Privilege granted to PUBLIC</td><td><span class="sev high">High</span></td><td>Every user, present and future, gets it.</td></tr><tr><td class="v">10</td><td>Person can write to a sensitive object</td><td><span class="sev medium">Medium</span></td><td>Writes to sensitive data should come from the build or a service user.</td></tr><tr><td class="v">11</td><td>Sensitive object reachable through a group role</td><td><span class="sev low">Low</span></td><td>Group membership is managed outside Snowflake, so reviews miss it.</td></tr><tr><td class="v">12</td><td>Admin role is a user&#x27;s default role</td><td><span class="sev high">High</span></td><td>Every session starts with admin rights.</td></tr><tr><td class="v">13</td><td>Orphan role: no users and no parent roles</td><td><span class="sev low">Low</span></td><td>Unused roles hide access that nobody reviews.</td></tr><tr><td class="v">14</td><td>Chain deeper than 5 roles</td><td><span class="sev low">Low</span></td><td>Long chains are hard to review and hide where access comes from.</td></tr><tr><td class="v">15</td><td>Future grant in a schema that holds sensitive data</td><td><span class="sev medium">Medium</span></td><td>New tables there are readable before anyone classifies them.</td></tr><tr><td class="v">16</td><td>Dormant user (no login for 90 days) still holds roles</td><td><span class="sev medium">Medium</span></td><td>Unused accounts are an easy way in.</td></tr><tr><td class="v">17</td><td>Read-only role can write</td><td><span class="sev high">High</span></td><td>The role name or its use says read-only, but it can change data.</td></tr><tr><td class="v">18</td><td>Unusual privilege set</td><td><span class="sev low">Low</span></td><td>Its privileges don't match its READ / WRITE label, so the name misleads.</td></tr><tr><td class="v">19</td><td>EXECUTE TASK held by a person or consumer role</td><td><span class="sev medium">Medium</span></td><td>Running tasks belongs to the build or a service user.</td></tr><tr><td class="v">20</td><td>OPERATE on a task outside owner/build roles</td><td><span class="sev high">High</span></td><td>Whoever starts the task borrows its owner&#x27;s privileges.</td></tr><tr><td class="v">21</td><td>Warehouse MODIFY or OPERATE outside owner/build roles</td><td><span class="sev medium">Medium</span></td><td>Resizing or stopping compute changes cost and availability for everyone.</td></tr><tr><td class="v">22</td><td>Stream on sensitive table readable without the table</td><td><span class="sev high">High</span></td><td>A stream returns the table&#x27;s changed rows, so it leaks the table.</td></tr><tr><td class="v">23</td><td>CREATE privilege on a schema held by a read-only role</td><td><span class="sev high">High</span></td><td>A read-only role that can create objects can copy data or change the schema.</td></tr>
 </table></div></details></section>
 
-<section id="run"><h2>Two ways to run</h2>
+<section id="run"><h2>Two ways to run the app</h2>
 <div class="two">
 <div class="card"><h3>On your laptop (recommended)</h3>
 <div class="strip"><div class="s">You (browser)</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s e">Explorer on your computer</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Snowflake (your login)</div></div>
@@ -266,6 +267,49 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>With read rights on the whole account you see everyone.</li></ul>
 <p class="src">README.md:11-12, 72, 107-112, 120, 156, 207-212, 217, 230, 268-277 · sql/2_snapshot.sql:1 · CLAUDE.md:9, 33-36 · server.py:126-143 · README.html:528</p></section>
 
+<section id="no-app"><h2>Answers without the app</h2>
+<div class="strip"><div class="s">Person with a question</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s e">Snowflake's SQL page or notebook</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Snowflake account history (read only)</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Answer table</div></div>
+<p class="key">Key: thick outline = where the question is run · grey = data, only read · arrow = next step</p>
+<p class="cap">Ask who has what straight in Snowflake: nothing to install, nothing created.</p>
+<ul>
+<li>Five ready questions, run in Snowflake; nothing installed, nothing created.</li>
+<li>Each answer is a table: shortest role path and number of paths.</li>
+<li>Every path instead: remove one line in the query.</li>
+<li>Same rules as the app; a test compares answers on fake data.</li>
+<li>Optional: a ready notebook with 8 worked examples.</li>
+<li>Optional: shortcuts (saved functions), if your account may create them.</li>
+<li>For auditors, security or data teams who cannot install or run the app.</li>
+<li>Needs permission to read Snowflake's account history, and a compute warehouse.</li>
+<li>Reads no business data.</li>
+</ul>
+<div class="tblwrap"><table>
+<tr><th>#</th><th>Question</th><th>What you get</th></tr>
+<tr><td class="v">1</td><td>A person's roles</td><td>Every role they hold, direct and inherited</td></tr>
+<tr><td class="v">2</td><td>A person's access</td><td>Every permission, on which object, through which role</td></tr>
+<tr><td class="v">3</td><td>What a role grants</td><td>Its permissions and those of every role below it</td></tr>
+<tr><td class="v">4</td><td>Who holds a role</td><td>Every role above it, and the people at the end</td></tr>
+<tr><td class="v">5</td><td>Who can use an object</td><td>The roles and people that reach it</td></tr>
+</table></div>
+<div class="exset"><div class="ex ok"><div class="h"><span class="verdict">EXAMPLE · FAKE DATA</span><b>An auditor asks who can read customer data</b></div>
+<div class="lbl2">IN</div><div class="res">Question 5, who can use <code>SALES.CORE.TBL_CUSTOMER</code>, privilege <code>SELECT</code> (read)<br>Plain: use Snowflake's privilege name; <code>READ</code> gives 0 rows, empty <code>''</code> = any (28 rows).</div>
+<div class="lbl2">OUT (3 of 12 rows)</div>
+<table><tr><td>ANALYST_01</td><td>via GRP_ANALYSTS &gt; F_ANALYST &gt; T_SALES_CORE_READ · 1 path</td></tr><tr><td>ENGINEER_01</td><td>via F_ANALYST &gt; T_SALES_CORE_READ · 3 paths (shortest shown)</td></tr><tr><td>F_ANALYST</td><td>a role, not a person · T_SALES_CORE_READ · 1 path</td></tr></table>
+<p class="src">access_queries/README.md:25, 33-36, 113-117, 139-145 · 5_object_users.sql on access.fake(), DuckDB: SELECT 12 rows, '' 28, READ 0 · run 2026-11-10</p></div></div>
+<h3>When to use which</h3>
+<div class="tblwrap"><table>
+<tr><th>Need</th><th>Use</th></tr>
+<tr><td>A quick answer, no install, or the app is not allowed</td><td>The 5 queries in Snowflake's SQL page or notebook</td></tr>
+<tr><td>Browse a picture of the paths, ask "what if", run the 23 checks</td><td>The app</td></tr>
+<tr><td>Both</td><td>Same answers; start with the queries, open the app when you need the picture or the checks</td></tr>
+</table></div>
+<h3>Limits</h3>
+<ul>
+<li>Snowflake updates its history with a lag of up to about 2 hours.</li>
+<li>Only grants on that exact table count; ask again for its schema or database.</li>
+<li>Future grants are not included; no masking or row rules.</li>
+</ul>
+<p class="src">access_queries/README.md:3-4, 17-36, 85-118 · test_queries.py</p></section>
+
 <section id="read-only"><h2>Read-only promise</h2>
 <div class="two">
 <div class="card does"><h3>Does</h3><ul>
@@ -286,8 +330,9 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>An automated test records every statement the app sends and allows reads only.</li>
 <li>The only exception it allows: running the snapshot procedure.</li>
 <li>Inside Snowflake it keeps nothing on disk, memory only.</li>
+<li>The queries without the app also only read Snowflake's account history.</li>
 </ul>
-<p class="src">test_server.py:322-342 test_read_only · README.md:22, 328 · CLAUDE.md:6, 9-13, 15, 24, 63</p></section>
+<p class="src">test_server.py:322-342 test_read_only · README.md:22, 328 · CLAUDE.md:6, 9-13, 15, 24, 63 · access_queries/README.md:4, 90</p></section>
 
 <section id="risks"><h2>Costs and risks</h2>
 <h3>Top 3 risks</h3>
@@ -315,7 +360,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <tr><td>Snowflake compute</td><td>Reads run on a warehouse (Snowflake compute, SNOWFLAKE_WAREHOUSE); amount: Not defined in source — confirm with owner</td><td class="v">README.md:153</td></tr>
 <tr><td>Setup in Snowflake</td><td>Read directly: nothing created. Shared copy: snapshot tables, 2 procedures, 3 table functions; you schedule the daily CALL (no task in the repo)</td><td class="v">README.md:109, 230 · sql/2_snapshot.sql:1</td></tr>
 <tr><td>Install effort</td><td>Laptop: Python 3.10+ and git; no Node or npm. Inside Snowflake: none for viewers</td><td class="v">README.md:72, 122, 268</td></tr>
-<tr><td>Licence</td><td>MIT or Apache-2.0</td><td class="v">README.md:349-352</td></tr>
+<tr><td>Licence</td><td>MIT or Apache-2.0</td><td class="v">README.md:386-389</td></tr>
 </table></div></details></section>
 
 <section id="decision"><h2>Decision needed</h2>
@@ -324,7 +369,8 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>Choose the data source: read directly (nothing created) or a shared copy.</li>
 <li>A shared copy needs a daily refresh you schedule; the repo has none.</li>
 <li>Choose the reading role: wider read rights show the whole account, faster.</li>
+<li>Choose whether auditors get the queries without the app.</li>
 <li>Who approves these choices: Not defined in source — confirm with owner.</li>
 </ul>
-<p class="src">README.md:107-112, 207-212, 230, 268 · sql/2_snapshot.sql:1</p></section>
+<p class="src">README.md:107-112, 207-212, 230, 268 · sql/2_snapshot.sql:1 · access_queries/README.md:3-4</p></section>
 </main></body></html>

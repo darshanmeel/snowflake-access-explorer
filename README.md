@@ -343,7 +343,44 @@ Only want the answers, not the app? [`access_queries/`](access_queries/README.md
 | `functions.sql` | optional: the five as table functions `AQ_USER_ROLES` ... `AQ_OBJECT_USERS` (if functions are not allowed, skip it) |
 | `access_examples.ipynb` | Snowflake Notebook with 8 examples, each twice: path A calls the functions, path B runs the query directly |
 
-- **Run:** open a file in a Snowsight worksheet, change the `SET` lines, run all. Or import the notebook (Snowsight > Notebooks > Import .ipynb), run its inputs cell, then path A or B.
+### How to use them
+Pick one of three ways; all read the same views and give the same rows.
+
+**A. Run a query directly (nothing created)**
+1. Snowsight > Projects > Worksheets > new SQL worksheet; pick a role with the access below and a warehouse.
+2. Paste one file, e.g. `2_user_access.sql`.
+3. Change its `SET` lines to your names (names as stored, unquoted names are upper case):
+   ```sql
+   SET USER_NAME = 'ANALYST_01';   -- 1_user_roles.sql, 2_user_access.sql
+   SET MAX_DEPTH = 50;             -- every file; NULL = 50
+   SET SHOW_BUILTIN = FALSE;       -- TRUE also lists Snowflake's own grants via PUBLIC
+   ```
+   Other inputs: `ROLE_NAME` (files 3 and 4), `OBJECT_NAME` = `DB`, `DB.SCHEMA` or `DB.SCHEMA.OBJECT` and
+   `PRIVILEGE` (`''` = any) in file 5.
+4. Select all and run. Result: one row per answer with `DEPTH`, the shortest `PATH` (`ANALYST_01 > F_ANALYST > ...`)
+   and `WAYS` (how many role paths lead there). To filter it, wrap the query: `SELECT * FROM (<query>) WHERE ...`.
+
+**B. Create the functions once, then call them**
+1. In `functions.sql` replace `AQ_DB.AQ_SCHEMA` with a schema where your role may create functions; run the file.
+2. Call them like tables:
+   ```sql
+   SELECT * FROM TABLE(MY_DB.MY_SCHEMA.AQ_USER_ROLES('ANALYST_01')) ORDER BY DEPTH;
+   SELECT * FROM TABLE(MY_DB.MY_SCHEMA.AQ_USER_ACCESS('ANALYST_01')) WHERE OBJECT_NAME LIKE 'SALES.%';
+   SELECT * FROM TABLE(MY_DB.MY_SCHEMA.AQ_ROLE_ACCESS('F_ANALYST'));
+   SELECT * FROM TABLE(MY_DB.MY_SCHEMA.AQ_ROLE_HOLDERS('T_SALES_CORE_READ')) WHERE HOLDER_KIND = 'USER';
+   SELECT * FROM TABLE(MY_DB.MY_SCHEMA.AQ_OBJECT_USERS('SALES.CORE.TBL_CUSTOMER', 'SELECT'));
+   ```
+   Optional last arguments: `MAX_DEPTH` (50), `SHOW_BUILTIN` (`FALSE`).
+3. If a `CREATE FUNCTION` is refused (functions not allowed, or the account does not accept the recursive query in a
+   function), use way A; nothing else changes. To remove them: the commented drop lines at the end of `functions.sql`.
+
+**C. The notebook (8 examples)**
+1. Snowsight > Projects > Notebooks > Import .ipynb file > `access_queries/access_examples.ipynb`; pick a warehouse.
+2. Run the inputs cell after changing the names.
+3. Run path A (creates the functions, then 8 examples calling them) or path B (the same 8 as plain queries).
+
+The names above are the repo's fake data; use your own.
+
 - **Needs:** read access to `SNOWFLAKE.ACCOUNT_USAGE` (`IMPORTED PRIVILEGES` on `SNOWFLAKE`, or the database role `SNOWFLAKE.SECURITY_VIEWER`) and a warehouse; only path A needs `CREATE FUNCTION` on a schema. Read-only, no business data, up to about 2 hours behind.
 - **Check:** `python access_queries/test_queries.py` compares them with the app's rules on the fake data.
 
