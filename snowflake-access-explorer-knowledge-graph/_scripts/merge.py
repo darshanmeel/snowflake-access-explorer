@@ -12,7 +12,7 @@ def rich(n):
     return (n.get('status') == 'verified', len(n.get('summary') or ''), bool(n.get('line_end')))
 
 
-tracked = [f for f in subprocess.run(['git', '-C', R, 'ls-files'], capture_output=True, text=True).stdout.split('\n') if f and not f.startswith('snowflake-access-explorer-knowledge-graph/')]
+tracked = [f for f in subprocess.run(['git', '-C', R, 'ls-files', '--cached', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.split('\n') if f and not f.startswith('snowflake-access-explorer-knowledge-graph/')]
 _lines = {}
 
 

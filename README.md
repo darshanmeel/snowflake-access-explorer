@@ -330,9 +330,27 @@ Only metadata, never table data: `ACCOUNT_USAGE` grants, users, query history, t
 aggregated per user, object and week; without it that screen explains why it is empty. The full table, with the fallbacks,
 is in [README.html](README.html) > Data sources.
 
+## Use the queries without the app
+Only want the answers, not the app? [`access_queries/`](access_queries/README.md) holds plain SQL over `SNOWFLAKE.ACCOUNT_USAGE`:
+
+| File | Answers |
+|---|---|
+| `1_user_roles.sql` | every role a user holds, direct and inherited |
+| `2_user_access.sql` | everything a user can finally do, through which role |
+| `3_role_access.sql` | everything a role grants, downwards |
+| `4_role_holders.sql` | who holds a role, upwards, down to the users |
+| `5_object_users.sql` | which roles and users reach an object |
+| `functions.sql` | optional: the five as table functions `AQ_USER_ROLES` ... `AQ_OBJECT_USERS` (if functions are not allowed, skip it) |
+| `access_examples.ipynb` | Snowflake Notebook with 8 examples, each twice: path A calls the functions, path B runs the query directly |
+
+- **Run:** open a file in a Snowsight worksheet, change the `SET` lines, run all. Or import the notebook (Snowsight > Notebooks > Import .ipynb), run its inputs cell, then path A or B.
+- **Needs:** read access to `SNOWFLAKE.ACCOUNT_USAGE` (`IMPORTED PRIVILEGES` on `SNOWFLAKE`, or the database role `SNOWFLAKE.SECURITY_VIEWER`) and a warehouse; only path A needs `CREATE FUNCTION` on a schema. Read-only, no business data, up to about 2 hours behind.
+- **Check:** `python access_queries/test_queries.py` compares them with the app's rules on the fake data.
+
 ## Also in this repo
+- **Access queries without the app: [`access_queries/`](access_queries/README.md).** Five plain SQL files over `SNOWFLAKE.ACCOUNT_USAGE`, nothing to install or create: a user's roles, a user's access, a role's access, who holds a role, who reaches an object, each with its shortest role path. Optional `functions.sql` makes them table functions (short calls, `MAX_DEPTH` default 50); `access_examples.ipynb` (Snowflake Notebook, 8 examples with or without functions) asks sample questions, running the files or creating and calling the functions; `python access_queries/test_queries.py` checks them against `access.py`.
 - **`sf.py` runs plain SQL from your machine.** It uses the same `.env` and logins. Run `python sf.py "select current_user(), current_role()"` or `python sf.py -f query.sql`, or from Python: `from sf import run; cols, rows = run("select 1")`.
-- **Tests:** `pip install -r requirements-dev.txt` (both versions plus DuckDB and httpx), then `python test_access.py`, `python test_sql.py` and `python test_server.py` (all set `FAKE=1` themselves): every page answers, and `app.py` hands every page to the Streamlit component. `test_access.py` runs every `test_` function, reports all failures, then reruns with `ROLE_PREFIXES=ZF_,ZT_`. `test_perf` times the big test account with room for a busy machine: `PERF_SCALE=2` doubles its budgets, `PERF=0` skips it. Web: `cd web; npm test`.
+- **Tests:** `pip install -r requirements-dev.txt` (both versions plus DuckDB and httpx), then `python test_access.py`, `python test_sql.py`, `python test_server.py` and `python access_queries/test_queries.py` (all set `FAKE=1` themselves): every page answers, and `app.py` hands every page to the Streamlit component. `test_access.py` runs every `test_` function, reports all failures, then reruns with `ROLE_PREFIXES=ZF_,ZT_`. `test_perf` times the big test account with room for a busy machine: `PERF_SCALE=2` doubles its budgets, `PERF=0` skips it. Web: `cd web; npm test`.
 - **Roles and grants** are managed as infrastructure as code. This app only reads them and never changes them.
 
 ## Where to find more

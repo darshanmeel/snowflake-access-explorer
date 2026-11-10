@@ -67,6 +67,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   Show account-level privileges (MANAGE GRANTS, CREATE DATABASE, ...) in red too.
 
 ## Code style
+- `access_queries/` is standalone raw-ACCOUNT_USAGE SQL (files, `functions.sql`, `access_examples.ipynb` built by `make_notebook.py`), kept equal to `access.py` by `access_queries/test_queries.py`. Change a query file, then `functions.sql`, then rerun `make_notebook.py`.
 - Simple and minimal: plain functions, no classes. Python: standard library + streamlit + pandas
   + snowflake-connector-python, plus fastapi + uvicorn for the local web version only.
   Web: React + TypeScript + Vite, @xyflow/react + elkjs for graphs; nothing else without asking.
@@ -109,5 +110,6 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - `python test_access.py` and `python test_sql.py` green (test_access runs every `test_` function, reports all failures,
   reruns itself with `ROLE_PREFIXES=ZF_,ZT_`; `PERF_SCALE` / `PERF=0` for test_perf). Test packages: `requirements-dev.txt`.
 - Spot-check paths: a user via a group role, a role reached through 2 paths, an admin holder.
+- `python access_queries/test_queries.py` green (query files and `functions.sql` equal to `access.py`; the notebook is current).
 - `test_pages` (in test_access.py): `app.py` hands every page key in `server.PAGES` (shared and mine) to the component
   without an exception; `test_server.py` checks what each page answers.

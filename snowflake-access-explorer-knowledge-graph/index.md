@@ -1,6 +1,6 @@
 # Snowflake access explorer: knowledge graph index
 
-Read-only app that explains who has what in Snowflake and through which path; this graph maps its code, data, flows, rules and processes (built 2026-11-10, commit ab685a6).
+Read-only app that explains who has what in Snowflake and through which path; this graph maps its code, data, flows, rules and processes (built 2026-11-10, commit 990331e plus the uncommitted `access_queries/`).
 
 ## Big picture
 
@@ -24,14 +24,17 @@ flowchart LR
 - `app.py:18`: Streamlit in Snowflake page, runs the same React app (`flows/streamlit-in-snowflake.md`).
 - `sql/1_setup.sql`: tables, `SP_ACCESS_SNAPSHOT`, table functions (`data/model.md`, `modules/sql.md`).
 - `web/src/App.tsx`: React router and page map (`modules/web.md`).
+- `access_queries/`: standalone SQL over ACCOUNT_USAGE, optional `AQ_*` table functions (`access_queries/functions.sql:16`), Snowflake Notebook built by `make_notebook.py`, Jupyter notebook (`modules/access-queries.md`, `flows/standalone-queries.md`).
 
 ## Where to look for what
 
 | Question | Go to |
 |---|---|
-| How does a request / snapshot / My access / what-changed run, step by step? | `flows/` (snapshot-objects, direct-live, web-request, streamlit-in-snowflake, my-access, startup, what-changed) |
+| How does a request / snapshot / My access / what-changed / a standalone query run, step by step? | `flows/` (snapshot-objects, direct-live, web-request, streamlit-in-snowflake, my-access, startup, what-changed, standalone-queries) |
 | What does rule N check? How are paths counted, depth, what-if, graph roll-up, caching? | `logic/` (rules, walks, rbac-model, what-if, graph-input, diff, caching) |
-| What does file / module X do, what calls what? | `modules/` (access, server, cache, sf, app-and-st_react, ui, run-scripts, web, sql, tests) |
+| What does file / module X do, what calls what? | `modules/` (access, server, cache, sf, app-and-st_react, ui, run-scripts, web, sql, tests, access-queries) |
+| Plain SQL / table functions / notebooks over ACCOUNT_USAGE without the app (user roles, user or role access, role holders, object users)? | `modules/access-queries.md` (files, CTEs, functions, notebooks, test), `flows/standalone-queries.md` (worksheet / path A / path B, example rows) |
+| Which checks keep `access_queries/` equal to `access.py`? | `modules/access-queries.md` > Test; `processes/test.md` |
 | Which tables, columns, joins, dict keys, DuckDB copy? | `data/` (model.md, one page per `TBL_ACCESS_*`, snapshot-dict, duckdb-copy, model.json) |
 | How to set up, run, deploy, build the web bundles, test? | `processes/` |
 | What do README / CLAUDE.md / review notes / env templates say? | `documents/` (start at `documents/README.md`) |

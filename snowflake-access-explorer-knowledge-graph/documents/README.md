@@ -12,11 +12,12 @@ flowchart LR
   REV[docs/review-2026-11-09.md] -->|findings fixed in commits| CODE
   RD[docs/redesign-notes.md] -->|UI redesign plan| CODE
   TP[THIRD_PARTY.md] -->|licences of| DIST[web/dist, web/dist-st]
+  RM -->|queries without the app| AQ[access_queries/README.md]
 ```
 
 | Page | Source | One line |
 |---|---|---|
-| [readme-md.md](readme-md.md) | README.md | Quick start, run modes, settings, deploy options |
+| [readme-md.md](readme-md.md) | README.md | Quick start, run modes, settings, deploy options, queries without the app |
 | [readme-html.md](readme-html.md) | README.html | Full guide: every screen, 23 rules, run modes, settings, limits |
 | [claude-md.md](claude-md.md) | CLAUDE.md | Project standards and hard rules |
 | [web-api-md.md](web-api-md.md) | web/API.md | JSON API contract of server.py |
@@ -28,3 +29,4 @@ flowchart LR
 | [sis-env-example.md](sis-env-example.md) | sis.env.example | Streamlit-in-Snowflake settings template |
 | [third-party-md.md](third-party-md.md) | THIRD_PARTY.md | Third-party licences |
 | [settings-sql.md](settings-sql.md) | settings.sql | SQL names template for run_sql.py / SnowSQL |
+| [../modules/access-queries.md](../modules/access-queries.md) | access_queries/README.md | Standalone ACCOUNT_USAGE queries: how to run, privileges, rules, limits, example output |

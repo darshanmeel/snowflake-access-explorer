@@ -10,14 +10,14 @@ Markdown pages plus a JSON-lines graph of the access explorer repo; every fact c
 
 ## Rebuild
 
-1. `.venv\Scripts\python snowflake-access-explorer-knowledge-graph\_scripts\extract.py` writes `graph/parts/structure.*` (script facts).
-2. `graph/parts/{data,logic,flows,modules,processes}.*` and the markdown pages are model-written; edit them by hand or regenerate them with an agent.
+1. `.venv\Scripts\python snowflake-access-explorer-knowledge-graph\_scripts\extract.py` writes `graph/parts/structure.*` (script facts: Python, TypeScript, SQL `-- name:` statements, plain query files and `CREATE FUNCTION` blocks, notebook code cells).
+2. `graph/parts/{data,logic,flows,modules,processes,access_queries}.*` and the markdown pages are model-written; edit them by hand or regenerate them with an agent.
 3. `.venv\Scripts\python snowflake-access-explorer-knowledge-graph\_scripts\merge.py` merges parts into `graph/nodes.jsonl` / `edges.jsonl`, normalises ids, checks every path and line, spot-checks 20 evidence lines, scans for secrets; exit code 1 on any problem.
 4. `.venv\Scripts\python snowflake-access-explorer-knowledge-graph\_scripts\meta.py <commit> <date>` writes `meta.json` (sha256 of each tracked file, counts).
 
-Stats (from `meta.json`): 1666 nodes, 4729 edges, 189 tracked files mapped; counts per type are in `meta.json`.
+Stats (from `meta.json`): 1790 nodes, 5109 edges, 201 files mapped (tracked plus untracked, not ignored); counts per type are in `meta.json`.
 
-Last build: 2026-11-10, commit ab685a6. Files whose sha256 in `meta.json` differs from the repo are stale: update the pages that cite them.
+Last build: 2026-11-10, commit 990331e plus the uncommitted `access_queries/`. Files whose sha256 in `meta.json` differs from the repo are stale: update the pages that cite them.
 
 ## Notes
 

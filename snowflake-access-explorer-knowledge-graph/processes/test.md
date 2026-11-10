@@ -11,12 +11,13 @@ flowchart LR
 ```
 
 ## Commands (from CLAUDE.md "Verify before saying done")
-- Rule check: `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` must list all 23 rules — CLAUDE.md:101-108.
-- `python test_access.py` and `python test_sql.py` green — CLAUDE.md:109-110.
-- Spot-check paths: user via group role, role reached through 2 paths, an admin holder — CLAUDE.md:111.
-- `test_pages` (app.py hands every page to the component) and `test_server.py` (what each page answers) — CLAUDE.md:112-113.
-- Test packages: `requirements-dev.txt` — CLAUDE.md:110, requirements-dev.txt:1-4.
-- README version incl. `python test_server.py` and `cd web; npm test` — README.md:335.
+- Rule check: `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` must list all 23 rules — CLAUDE.md:102-109.
+- `python test_access.py` and `python test_sql.py` green — CLAUDE.md:110-111.
+- Spot-check paths: user via group role, role reached through 2 paths, an admin holder — CLAUDE.md:112.
+- `python access_queries/test_queries.py` green: query files and `functions.sql` equal to `access.py`, notebook current — CLAUDE.md:113 (modules/access-queries.md > Test).
+- `test_pages` (app.py hands every page to the component) and `test_server.py` (what each page answers) — CLAUDE.md:114-115.
+- Test packages: `requirements-dev.txt` — CLAUDE.md:111, requirements-dev.txt:1-4.
+- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:353.
 
 ## test_access.py
 - Forces `FAKE=1` — test_access.py:12.
@@ -28,7 +29,7 @@ flowchart LR
 - Forces `FAKE=1`, imports `duckdb` (so requirements-web.txt / dev needed) — test_sql.py:12-14, requirements-dev.txt:3.
 - Loads a data set into DuckDB as the `TBL_ACCESS_` tables — test_sql.py:31, test_sql.py:71.
 - Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:342-345.
-- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:80-81; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:544.
+- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:544.
 
 ## test_server.py
 - Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:676-681.

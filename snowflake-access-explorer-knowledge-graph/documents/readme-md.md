@@ -1,4 +1,4 @@
-README.md (353 lines): the entry doc — what the app does, quick start, every run mode, settings, objects setup, four deploy targets, data sources; points to README.html for the full guide.
+README.md (370 lines): the entry doc — what the app does, quick start, every run mode, settings, objects setup, four deploy targets, data sources, the standalone queries; points to README.html for the full guide.
 
 ```mermaid
 flowchart TD
@@ -7,7 +7,7 @@ flowchart TD
   C --> D[Run each mode table 82-103]
   D --> E[Run it: install, start, .env, Settings, DuckDB, role, objects 105-232]
   E --> F[Deploy: own machine, shared server, SiS, Streamlit elsewhere, Container Services 234-325]
-  F --> G[Data sources 327-331 / Also in repo 333-337 / More 339-348 / License 350-353]
+  F --> G[Data sources 327-331 / Queries without the app 333-348 / Also in repo 350-354 / More 356-365 / License 367-370]
 ```
 
 ## Sections (verified headings)
@@ -16,10 +16,13 @@ flowchart TD
 - Quick start — README.md:71-80; Run each mode — README.md:82-103.
 - Run it (direct vs objects table) — README.md:105-120; Install — README.md:122-131; Start — README.md:133-143; `.env` — README.md:145-158; Settings — README.md:160-174; DuckDB SQL copy — README.md:176; role-based visibility — README.md:207-218; Objects in Snowflake — README.md:220-232.
 - Deploy — README.md:234-242; own machine — README.md:244; shared server — README.md:248-265; SiS — README.md:267-307; Streamlit elsewhere — README.md:309-319; Container Services — README.md:321-325.
-- Data sources — README.md:327-331; Also in this repo (sf.py CLI, tests, IaC) — README.md:333-336; Where to find more — README.md:338-347; License (MIT or Apache-2.0) — README.md:349-352.
+- Data sources — README.md:327-331.
+- Use the queries without the app — README.md:333-348: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:336-344; Run (worksheet or notebook path A / B) — README.md:346; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:347; Check (`test_queries.py`) — README.md:348. See modules/access-queries.md, flows/standalone-queries.md.
+- Also in this repo — README.md:350-354: access_queries (both notebooks, `functions.sql`, test) — README.md:351; sf.py CLI — README.md:352; tests incl. `access_queries/test_queries.py` — README.md:353; IaC — README.md:354.
+- Where to find more — README.md:356-365; License (MIT or Apache-2.0) — README.md:367-370.
 
 ## Relates to
 - Processes: setup-local, run-local, deploy-snowflake, build-web, test, container-services.
 - Config: .env.example, sis.env.example, settings.sql, requirements*.txt, environment.yml.
-- Code: run.py, run_sql.py, sf.py, server.py, app.py, access.py, cache.py, sql/*.sql.
+- Code: run.py, run_sql.py, sf.py, server.py, app.py, access.py, cache.py, sql/*.sql, access_queries/.
 - Contains a clone URL with a personal handle — README.md:74 (not copied into the graph).

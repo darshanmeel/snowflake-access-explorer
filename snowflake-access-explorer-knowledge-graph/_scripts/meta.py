@@ -1,9 +1,9 @@
-"""Write meta.json (hashes of tracked files, counts) after merge.py. Usage: meta.py [commit] [date]"""
+"""Write meta.json (hashes of tracked and untracked-not-ignored files, counts) after merge.py. Usage: meta.py [commit] [date]"""
 import json, os, sys, hashlib, subprocess, collections
 G = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); R = os.path.dirname(G)
 commit = sys.argv[1] if len(sys.argv) > 1 else subprocess.run(['git', '-C', R, 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip()
 date = sys.argv[2] if len(sys.argv) > 2 else __import__('datetime').date.today().isoformat()
-files = [f for f in subprocess.run(['git', '-C', R, 'ls-files'], capture_output=True, text=True).stdout.split('\n') if f and not f.startswith('snowflake-access-explorer-knowledge-graph/')]
+files = [f for f in subprocess.run(['git', '-C', R, 'ls-files', '--cached', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.split('\n') if f and not f.startswith('snowflake-access-explorer-knowledge-graph/')]
 load = lambda p: [json.loads(l) for l in open(os.path.join(G, p), encoding='utf8') if l.strip()]
 nodes, edges = load('graph/nodes.jsonl'), load('graph/edges.jsonl')
 meta = {'built_at': date, 'commit': commit,

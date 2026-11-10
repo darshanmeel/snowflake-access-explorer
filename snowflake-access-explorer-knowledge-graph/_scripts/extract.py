@@ -1,4 +1,4 @@
-"""Structure extractor: git-tracked files -> graph/parts/structure.nodes.jsonl + structure.edges.jsonl.
+"""Structure extractor: git-tracked and untracked-not-ignored files -> graph/parts/structure.nodes.jsonl + structure.edges.jsonl.
 Stdlib only, rerunnable: python snowflake-access-explorer-knowledge-graph/_scripts/extract.py
 Every node/edge cites path:line taken from the source; validate() re-opens each cited line."""
 import ast
@@ -37,9 +37,10 @@ def add_edge(a, b, type, path, line, status="verified"):
 
 
 def tracked():
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split("\n")
+    out = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=ROOT,
+                         capture_output=True, text=True, check=True).stdout.split("\n")
     keep = []
-    for p in out:
+    for p in dict.fromkeys(out):
         if not p or p in SKIP_FILES or p.startswith(SKIP_PREFIX) or Path(p).suffix.lower() in BINARY_EXT:
             continue
         try:
@@ -80,9 +81,18 @@ def structure(files):
 
 # ---------- Python ----------
 
-def py_module_of(modname, pyfiles):
+def py_module_of(modname, pyfiles, here=""):
+    """Repo-root module, else one next to the importing file (access_queries/ puts its own folder on sys.path)."""
     f = modname.replace(".", "/") + ".py"
-    return f if f in pyfiles else None
+    for c in (f, (Path(here).parent / f).as_posix()):
+        if c in pyfiles:
+            return c
+    return None
+
+
+# test files whose checks are plain functions (no test_ prefix): these become test_case nodes
+CHECKS = {"access_queries/test_queries.py": {"user_roles", "access", "holders", "object_users", "functions", "notebook"}}
+PENDING = []  # (test_case, file, path, line): resolved to query task nodes after the SQL pass
 
 
 def py_pass1(p, tree):
@@ -103,7 +113,7 @@ def py_pass1(p, tree):
             tags.append(f"returns:{ret}")
         if nested:
             tags.append("nested")
-        if is_test and fn.name.startswith("test_"):
+        if is_test and (fn.name.startswith("test_") or qual in CHECKS.get(p, ())):
             nid = f"test_case:{p}:{qual}"
             add_node(nid, "test_case", qual, p, fn.lineno, fn.end_lineno, f"{first_line(ast.get_docstring(fn)) or 'Test'} ({sig})", tags + ["test"])
         else:
@@ -254,12 +264,12 @@ def py_pass2(p, tree, info, pyfiles, allinfo):
     for n in ast.walk(tree):
         if isinstance(n, ast.Import):
             for al in n.names:
-                f = py_module_of(al.name, pyfiles)
+                f = py_module_of(al.name, pyfiles, p)
                 if f:
                     alias[al.asname or al.name] = f
                     add_edge(f"file:{p}", f"file:{f}", "imports", p, n.lineno)
         elif isinstance(n, ast.ImportFrom) and n.module:
-            f = py_module_of(n.module, pyfiles)
+            f = py_module_of(n.module, pyfiles, p)
             if f:
                 add_edge(f"file:{p}", f"file:{f}", "imports", p, n.lineno)
                 for al in n.names:
@@ -302,6 +312,9 @@ def py_pass2(p, tree, info, pyfiles, allinfo):
                     add_edge(o, f"business_rule:rule_{ch.args[0].value}", "implements", p, ch.lineno)
             if isinstance(ch, ast.Constant) and isinstance(ch.value, str):
                 scan_string_node(ch, p, o, consts)
+                if o.startswith("test_case:"):  # a query file or notebook the check runs or reads
+                    for fm in re.finditer(r"[\w.]+\.(?:sql|ipynb)\b", ch.value):
+                        PENDING.append((o, (Path(p).parent / fm.group(0)).as_posix(), p, ch.lineno))
             if isinstance(ch, ast.JoinedStr):
                 scan_string_node(ch, p, o, consts)
                 for v in ch.values:
@@ -582,9 +595,72 @@ def sql_file(p):
             scan_strings(pyb, p, owner, module_consts(pyb), off)
         else:
             scan_sql_text(text, i + 2, p, owner, (i + 2, end + 1))
-    # files with no name markers: scan whole
     if not marks:
+        plain_sql(p)
+
+
+def plain_sql(p):
+    """No -- name: markers: each CREATE FUNCTION up to its $$; is a function node; else the query (first SET, WITH
+    or SELECT line to the end) is one task node; table names are scanned inside them."""
+    lines = LINES[p]
+    fid = f"file:{p}"
+    fns = [(i, c) for i, l in enumerate(lines) if (c := CREATE_RE.match(l)) and c.group(1).upper() == "FUNCTION"]
+    for i, c in fns:
+        end = next((j for j in range(i + 1, len(lines)) if lines[j].strip() == "$$;"), len(lines) - 1)
+        name = c.group(2).split(".")[-1].upper()
+        note = lines[i - 1].lstrip("- ").strip() if i and lines[i - 1].startswith("--") else ""
+        oid = add_node(f"function:sql:{name}", "function", name, p, i + 1, end + 1,
+                       f"Table function {name} ({p}:{i + 1}-{end + 1}). {note}".strip(), ["function", "sql", "udtf"])
+        add_edge(fid, oid, "contains", p, i + 1)
+        scan_sql_text("\n".join(lines[i:end + 1]), i + 1, p, oid, (i + 1, end + 1))
+    if fns:
+        return
+    start = next((i for i, l in enumerate(lines) if re.match(r"(SET|WITH|SELECT)\b", l)), None)
+    if start is None:
         scan_sql_text("\n".join(lines), 1, p, fid, (1, len(lines)))
+        return
+    head = lines[0].lstrip("- ").strip() if lines[0].startswith("--") else ""
+    sets = re.findall(r"^SET (\w+)", "\n".join(lines), re.M)
+    tid = add_node(f"task:{p}:{Path(p).stem}", "task", Path(p).stem, p, start + 1, len(lines),
+                   f"Plain query: {head} Inputs: {', '.join(sets) or 'none'}.", ["sql", "query"])
+    add_edge(fid, tid, "contains", p, start + 1)
+    scan_sql_text("\n".join(lines[start:]), start + 1, p, tid, (start + 1, len(lines)))
+
+
+# ---------- notebooks ----------
+
+def notebook(p, pyfiles):
+    """One task node per code cell (json indent=1: a cell runs from '  {' to '  }'). SQL cells: table names and AQ_
+    function calls; any cell: repo imports and query file names (depends_on)."""
+    lines = LINES[p]
+    nb = json.loads("\n".join(lines))
+    cells = nb["cells"]
+    kernel = (nb.get("metadata", {}).get("kernelspec") or {}).get("language")
+    starts = [i for i, l in enumerate(lines) if l == "  {"]
+    ends = [i for i, l in enumerate(lines) if l in ("  }", "  },")]
+    fid = f"file:{p}"
+    nodes[fid]["tags"].append("notebook")
+    for k, (c, a, b) in enumerate(zip(cells, starts, ends)):
+        if c["cell_type"] != "code":
+            continue
+        md = c.get("metadata") or {}
+        name = md.get("name") or c.get("id") or f"cell_{k}"
+        lang = md.get("language") or kernel or "sql"  # no language: a Snowflake Notebook SQL cell
+        first = next((s.strip() for s in c["source"] if s.strip() and not s.lstrip().startswith(("--", "#"))), "")[:120]
+        tid = add_node(f"task:{p}:{name}", "task", name, p, a + 1, b + 1, f"Notebook {lang} cell '{name}': {first}",
+                       ["notebook", lang])
+        add_edge(fid, tid, "contains", p, a + 1)
+        block = "\n".join(lines[a:b + 1])
+        at = lambda m: a + 1 + block.count("\n", 0, m.start())
+        if lang == "sql":
+            scan_sql_text(block, a + 1, p, tid, (a + 1, b + 1))
+            for m in re.finditer(r"\.(AQ_\w+)\(", block):
+                if f"function:sql:{m.group(1)}" in nodes:
+                    add_edge(tid, f"function:sql:{m.group(1)}", "calls", p, at(m))
+        for m in re.finditer(r"\b(?:\d_\w+|functions)\.sql\b", block):
+            f = (Path(p).parent / m.group(0)).as_posix()
+            if f"file:{f}" in nodes:
+                add_edge(tid, f"file:{f}", "depends_on", p, at(m))
 
 
 # ---------- main ----------
@@ -656,6 +732,13 @@ def main():
     for f in sorted(files):
         if f.endswith(".sql"):
             sql_file(f)
+    for f in sorted(files):
+        if f.endswith(".ipynb"):
+            notebook(f, pyfiles)
+    for o, f, p, line in PENDING:
+        task = f"task:{f}:{Path(f).stem}"
+        if task in nodes or f"file:{f}" in nodes:
+            add_edge(o, task if task in nodes else f"file:{f}", "illustrates", p, line)
     bad = validate()
     OUT.mkdir(parents=True, exist_ok=True)
     with open(OUT / "structure.nodes.jsonl", "w", encoding="utf-8") as fh:

@@ -41,7 +41,7 @@
 {"from": "process:build_web", "to": "config:web/vite.config.ts", "type": "depends_on", "evidence": "web/vite.config.ts:22-24", "status": "verified"}
 {"from": "process:build_web", "to": "dir:web/dist", "type": "writes", "evidence": "web/vite.config.ts:27", "status": "verified"}
 {"from": "process:build_web", "to": "dir:web/dist-st", "type": "writes", "evidence": "web/vite.config.ts:27", "status": "verified"}
-{"from": "process:test", "to": "config:requirements-dev.txt", "type": "depends_on", "evidence": "CLAUDE.md:110", "status": "verified"}
+{"from": "process:test", "to": "config:requirements-dev.txt", "type": "depends_on", "evidence": "CLAUDE.md:111", "status": "verified"}
 {"from": "process:test", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:11", "status": "verified"}
 {"from": "process:test", "to": "dir:web/dist", "type": "reads", "evidence": "test_server.py:429-441", "status": "verified"}
 {"from": "process:test", "to": "dir:web/dist-st", "type": "reads", "evidence": "test_server.py:429-441", "status": "verified"}
@@ -68,15 +68,15 @@
 {"from": "document:README.md", "to": "process:run_local", "type": "documents", "evidence": "README.md:82-103", "status": "verified"}
 {"from": "document:README.md", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.md:220-232", "status": "verified"}
 {"from": "document:README.md", "to": "process:build_web", "type": "documents", "evidence": "README.md:131", "status": "verified"}
-{"from": "document:README.md", "to": "process:test", "type": "documents", "evidence": "README.md:335", "status": "verified"}
-{"from": "document:README.md", "to": "process:access_requests", "type": "documents", "evidence": "README.md:336", "status": "verified"}
+{"from": "document:README.md", "to": "process:test", "type": "documents", "evidence": "README.md:353", "status": "verified"}
+{"from": "document:README.md", "to": "process:access_requests", "type": "documents", "evidence": "README.md:354", "status": "verified"}
 {"from": "document:README.md", "to": "process:container_services", "type": "documents", "evidence": "README.md:321-325", "status": "verified"}
 {"from": "document:README.md", "to": "document:README.html", "type": "depends_on", "evidence": "README.md:5", "status": "verified"}
 {"from": "document:README.html", "to": "process:snapshot_task", "type": "documents", "evidence": "README.html:638-640", "status": "verified"}
 {"from": "document:README.html", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.html:633-642", "status": "verified"}
 {"from": "document:README.html", "to": "process:access_requests", "type": "documents", "evidence": "README.html:320-337", "status": "verified"}
 {"from": "document:README.html", "to": "process:run_local", "type": "documents", "evidence": "README.html:606-613", "status": "verified"}
-{"from": "document:CLAUDE.md", "to": "process:test", "type": "documents", "evidence": "CLAUDE.md:100-113", "status": "verified"}
+{"from": "document:CLAUDE.md", "to": "process:test", "type": "documents", "evidence": "CLAUDE.md:101-115", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "process:build_web", "type": "documents", "evidence": "CLAUDE.md:35-36", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "process:access_requests", "type": "documents", "evidence": "CLAUDE.md:6-7", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "process:run_local", "type": "documents", "evidence": "CLAUDE.md:28-30", "status": "verified"}
