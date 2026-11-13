@@ -19,7 +19,7 @@ flowchart LR
 | Page | Source | One line |
 |---|---|---|
 | [readme-md.md](readme-md.md) | README.md | Quick start, run modes, settings, deploy options, queries without the app |
-| [readme-html.md](readme-html.md) | README.html | Full guide: every screen, 28 rules, Activity tabs, run modes, settings, limits |
+| [readme-html.md](readme-html.md) | README.html | Full guide: every screen, 29 rules, Activity tabs, run modes, settings, limits |
 | [claude-md.md](claude-md.md) | CLAUDE.md | Project standards and hard rules |
 | [web-api-md.md](web-api-md.md) | web/API.md | JSON API contract of server.py |
 | [web-st-md.md](web-st-md.md) | web/ST.md | React app as a Streamlit component, SiS packaging |

@@ -5,33 +5,33 @@
 
 ```mermaid
 flowchart TD
-  IG["server.input_graph<br/>server.py:641-659"] --> GI["a.graph_input<br/>access.py:3000-3090"]
+  IG["server.input_graph<br/>server.py:644-662"] --> GI["a.graph_input<br/>access.py:3027-3117"]
   GI --> LV{"objects > MAX_OBJECTS (12)?"}
   LV -- no --> OBJ[level object]
   LV -- yes --> SC["level schema<br/>(database if schemas > 12)"]
-  IG --> TB{"too_big(g)?<br/>access.py:3096-3107"}
-  TB -- "yes, not full" --> SU["a.summary(g)<br/>access.py:3110-3165"]
+  IG --> TB{"too_big(g)?<br/>access.py:3123-3134"}
+  TB -- "yes, not full" --> SU["a.summary(g)<br/>access.py:3137-3192"]
   TB -- "no / full=1" --> RAW[graph as is]
 ```
 
-## graph_input (`access.py:3000-3090`)
-- Rows = `grants(start)` minus USAGE on DATABASE/SCHEMA (unless `cat`) (`access.py:3015-3018`).
-- Level: `object` if <= `max_objects` or `otype`; with `schema` a database -> its schemas, a schema -> object types; else `schema` if schemas <= max, else `database` (`access.py:3023-3030`).
-- `MAX_OBJECTS = 12`, matches `graphs.ts` `MAX_BOXES` (`access.py:2997`, `web/src/components/graphs.ts:4`).
-- Object level paths per object; grouped levels list paths once per holder (`access.py:3041-3044`); roles leading to no object still shown (`access.py:3045-3046`).
-- Lanes: start, one lane per shortest depth (`by_depth`, `Depth {}`), then objects/groups (`access.py:3048-3056`).
-- Group edges carry object count `(holder, group, cls, privilege, n)` (`access.py:3066`).
-- Built-in fold box under PUBLIC (`access.py:3067-3070`, `2968-2972`).
-- Returns lanes, edges, notes, info, kinds, header, level, shown, total, groups, types (`access.py:3087-3090`).
+## graph_input (`access.py:3027-3117`)
+- Rows = `grants(start)` minus USAGE on DATABASE/SCHEMA (unless `cat`) (`access.py:3042-3045`).
+- Level: `object` if <= `max_objects` or `otype`; with `schema` a database -> its schemas, a schema -> object types; else `schema` if schemas <= max, else `database` (`access.py:3050-3057`).
+- `MAX_OBJECTS = 12`, matches `graphs.ts` `MAX_BOXES` (`access.py:3024`, `web/src/components/graphs.ts:4`).
+- Object level paths per object; grouped levels list paths once per holder (`access.py:3068-3071`); roles leading to no object still shown (`access.py:3072-3073`).
+- Lanes: start, one lane per shortest depth (`by_depth`, `Depth {}`), then objects/groups (`access.py:3075-3083`).
+- Group edges carry object count `(holder, group, cls, privilege, n)` (`access.py:3093`).
+- Built-in fold box under PUBLIC (`access.py:3094-3097`, `2968-2972`).
+- Returns lanes, edges, notes, info, kinds, header, level, shown, total, groups, types (`access.py:3114-3117`).
 - Example (fake, verified): `graph_input("ANALYST_01", user=True)` -> header `6 objects`, level `object`, lanes User 1, Depth 1-3 (2 each), Objects 7 (incl. built-in box), `too_big` False.
 
-## summary (`access.py:3093-3165`)
-- `SUMMARY_ROLES, SUMMARY_LANES = 30, 6` (`access.py:3093`).
-- `too_big(g)`: role boxes > 30 or role lanes > 6, a run of 3+ single-role lanes counted as one (`access.py:3096-3107`).
-- Layout: start -> granted roles -> one `⋯ N roles ⋯` fold box per granted role -> grant holders -> objects/groups (`access.py:3110-3114`, `3048-3049`).
-- Ranked by objects reached; fold boxes only for the first 12 granted roles (`access.py:3136-3138`, `3033`).
-- Holders picked round-robin so every object/group keeps a line (`access.py:3143-3145`).
-- Returns `kinds[fold] = "fold"`, `folded` = hidden role count (`access.py:3164-3165`).
-- Server: `full=1` skips the summary with note "Full chain of a big graph." (`server.py:650-658`).
+## summary (`access.py:3120-3192`)
+- `SUMMARY_ROLES, SUMMARY_LANES = 30, 6` (`access.py:3120`).
+- `too_big(g)`: role boxes > 30 or role lanes > 6, a run of 3+ single-role lanes counted as one (`access.py:3123-3134`).
+- Layout: start -> granted roles -> one `⋯ N roles ⋯` fold box per granted role -> grant holders -> objects/groups (`access.py:3137-3141`, `3048-3049`).
+- Ranked by objects reached; fold boxes only for the first 12 granted roles (`access.py:3163-3165`, `3033`).
+- Holders picked round-robin so every object/group keeps a line (`access.py:3170-3172`).
+- Returns `kinds[fold] = "fold"`, `folded` = hidden role count (`access.py:3191-3192`).
+- Server: `full=1` skips the summary with note "Full chain of a big graph." (`server.py:653-661`).
 - No fake user triggers the summary (checked all users: `too_big` False) - example only via `test_summary` (`test_access.py:1381`), not opened.
 - Tests: `test_graph_inputs` (`test_access.py:1362`), `test_summary` (`test_access.py:1381`).

@@ -7,22 +7,22 @@ flowchart LR
   R -->|DELETE all + append| F[(TBL_ACCESS_FINDING)]
 ```
 
-DDL: `sql/1_setup.sql:123-133`. Grain: one row per finding of the last run (`DELETE FROM` the whole table before the append, `sql/1_setup.sql:828`).
+DDL: `sql/1_setup.sql:131-141`. Grain: one row per finding of the last run (`DELETE FROM` the whole table before the append, `sql/1_setup.sql:846`).
 
 | Column | Type | Meaning | Line |
 |---|---|---|---|
-| RUN_ID | VARCHAR(36) | snapshot run checked | 110 |
-| RULE_NUM | VARCHAR(10) | rule 1..23 | 111 |
-| TITLE | VARCHAR(500) | | 112 |
-| SEVERITY | VARCHAR(20) | High, Medium, Low | 113 |
-| GRANTEE | VARCHAR(2000) | user, role or object (may be a user name) | 114 |
-| KIND | VARCHAR(20) | user, admin, functional, technical, group, object | 115 |
-| DETAIL | VARCHAR | | 116 |
-| PATH | VARCHAR | `A > B > C` | 117 |
-| CREATED_AT | TIMESTAMP_LTZ | default CURRENT_TIMESTAMP() | 118 |
+| RUN_ID | VARCHAR(36) | snapshot run checked | 132 |
+| RULE_NUM | VARCHAR(10) | rule 1..29 | 133 |
+| TITLE | VARCHAR(500) | | 134 |
+| SEVERITY | VARCHAR(20) | High, Medium, Low | 135 |
+| GRANTEE | VARCHAR(2000) | user, role or object (may be a user name) | 136 |
+| KIND | VARCHAR(20) | user, admin, functional, technical, group, object | 137 |
+| DETAIL | VARCHAR | | 138 |
+| PATH | VARCHAR | `A > B > C` | 139 |
+| CREATED_AT | TIMESTAMP_LTZ | default CURRENT_TIMESTAMP() | 140 |
 
-- Procedure: `sql/1_setup.sql:779-841`; code from stage `STG_ACCESS_CODE` (`:696-701,709`).
-- Flow: settings -> `access.snapshot` -> `build` -> `rule_rows` (`sql/1_setup.sql:809-821`); write in a transaction (`:750-760`).
-- Not cleaned by SP_ACCESS_SNAPSHOT (`DATA` excludes it, `sql/1_setup.sql:162`); `SP_ACCESS_FINDINGS` empties it itself on every call, so only the last run's findings stay (`sql/1_setup.sql:828`; README.md:231).
-- Readers: SELECT granted to APP_ROLE `sql/1_setup.sql:884`; no reader in `access.py` / `server.py` (grep); not in the DuckDB copy (`cache.py:160-179`).
+- Procedure: `sql/1_setup.sql:797-859`; code from stage `STG_ACCESS_CODE` (`:696-701,709`).
+- Flow: settings -> `access.snapshot` -> `build` -> `rule_rows` (`sql/1_setup.sql:827-839`); write in a transaction (`:750-760`).
+- Not cleaned by SP_ACCESS_SNAPSHOT (`DATA` excludes it, `sql/1_setup.sql:170`); `SP_ACCESS_FINDINGS` empties it itself on every call, so only the last run's findings stay (`sql/1_setup.sql:846`; README.md:231).
+- Readers: SELECT granted to APP_ROLE `sql/1_setup.sql:902`; no reader in `access.py` / `server.py` (grep); not in the DuckDB copy (`cache.py:160-180`).
 - Test: `test_sql.py:230-232` runs the DDL and procedure body on DuckDB.

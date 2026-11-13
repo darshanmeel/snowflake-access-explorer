@@ -19,7 +19,7 @@ Markdown pages plus a JSON-lines graph of the access explorer repo; every fact c
 
 Stats and counts per type: `meta.json` (`counts`).
 
-Last update: 2026-11-13, commit 0b40a83. Files whose sha256 in `meta.json` `file_hashes` differs from the repo are stale: update the pages that cite them.
+Last update: 2026-11-13, commit d3b23f4. Files whose sha256 in `meta.json` `file_hashes` differs from the repo are stale: update the pages that cite them.
 
 ## Notes
 

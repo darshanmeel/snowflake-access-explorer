@@ -17,41 +17,41 @@ flowchart LR
 
 | Key | Table | Row keys | Consumed in `build` |
 |---|---|---|---|
-| `run` | `TBL_ACCESS_RUN` (one row) | RUN_ID, FINISHED_AT, SOURCES, NOTES (`access.py:456-462`) | `access.py:1057` |
-| `GRANT` | `TBL_ACCESS_GRANT` | GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE, GRANT_OPTION, GRANTED_BY | `access.py:1023-1040` |
-| `USER_ROLE` | `TBL_ACCESS_USER_ROLE` | USER_NAME, ROLE_NAME, GRANTED_BY | `access.py:1041` |
-| `USER` | `TBL_ACCESS_USER` | USER_NAME, TYPE, DISABLED, DEFAULT_*, LAST_SUCCESS_LOGIN | `access.py:1051` |
-| `USAGE` | `TBL_ACCESS_USAGE` | USER_NAME, KIND, NAME, QUERIES, LAST_USED | `access.py:1052-1053` |
-| `TAG` | `TBL_ACCESS_TAG` | OBJECT_NAME, DOMAIN, COLUMN_NAME, TAG_NAME, TAG_VALUE, APPLY_METHOD | `access.py:1058` |
-| `POLICY` | `TBL_ACCESS_POLICY` | POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY | `access.py:1059` |
-| `STREAM` | `TBL_ACCESS_STREAM` | STREAM_NAME, SOURCE_NAME, SOURCE_TYPE | `access.py:1060` |
-| `OBJECT_USE` | `TBL_ACCESS_OBJECT_USE` (optional) | USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED | `access.py:1061-1062` |
-| `ACTIVITY` | `TBL_ACCESS_ACTIVITY` (optional) | DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED | `access.py:1063` (`acts`) |
+| `run` | `TBL_ACCESS_RUN` (one row) | RUN_ID, FINISHED_AT, SOURCES, NOTES (`access.py:466-472`) | `access.py:1084` |
+| `GRANT` | `TBL_ACCESS_GRANT` | GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE, GRANT_OPTION, GRANTED_BY | `access.py:1050-1067` |
+| `USER_ROLE` | `TBL_ACCESS_USER_ROLE` | USER_NAME, ROLE_NAME, GRANTED_BY | `access.py:1068` |
+| `USER` | `TBL_ACCESS_USER` | USER_NAME, TYPE, DISABLED, DEFAULT_*, LAST_SUCCESS_LOGIN | `access.py:1078` |
+| `USAGE` | `TBL_ACCESS_USAGE` | USER_NAME, KIND, NAME, QUERIES, LAST_USED | `access.py:1079-1080` |
+| `TAG` | `TBL_ACCESS_TAG` | OBJECT_NAME, DOMAIN, COLUMN_NAME, TAG_NAME, TAG_VALUE, APPLY_METHOD | `access.py:1085` |
+| `POLICY` | `TBL_ACCESS_POLICY` | POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY | `access.py:1086` |
+| `STREAM` | `TBL_ACCESS_STREAM` | STREAM_NAME, SOURCE_NAME, SOURCE_TYPE | `access.py:1087` |
+| `OBJECT_USE` | `TBL_ACCESS_OBJECT_USE` (optional) | USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED | `access.py:1088-1089` |
+| `ACTIVITY` | `TBL_ACCESS_ACTIVITY` (optional) | DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED | `access.py:1090` (`acts`) |
 
-- Mapping key -> table: `TABLES` / `OPTIONAL` `access.py:60-61`, `SELECT * FROM {where}.TBL_ACCESS_{t}` `access.py:463,413`.
-- `snapshot()` rows also carry RUN_ID (SELECT *); `live()` / `mine()` rows have no RUN_ID key (`access.py:656-665,483-484`).
-- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:464-468`; `act_state()` then explains it (`access.py:4252-4254`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:90-92`, `access.py:883-892`).
+- Mapping key -> table: `TABLES` / `OPTIONAL` `access.py:60-61`, `SELECT * FROM {where}.TBL_ACCESS_{t}` `access.py:473,413`.
+- `snapshot()` rows also carry RUN_ID (SELECT *); `live()` / `mine()` rows have no RUN_ID key (`access.py:672-681,483-484`).
+- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:474-478`; `act_state()` then explains it (`access.py:4279-4281`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:90-92`, `access.py:899-908`).
 
 ## Producers
 
 | Producer | `run.RUN_ID` | Evidence | Notes |
 |---|---|---|---|
-| `snapshot(query, where)` | uuid of the last OK run | `access.py:454-469` | raises when no OK run (`:405-406`) |
-| `live(query)` | `"direct"` | `access.py:613-901` | same sources as SP_ACCESS_SNAPSHOT; `FINISHED_AT` = CURRENT_TIMESTAMP (`:588,836`) |
-| `mine(query, db)` | `"live"` | `access.py:523-606` | TAG / POLICY / STREAM empty, no OBJECT_USE; tags/policies UNAVAILABLE (`:548-549`) |
-| `fake()` | `"fake"` | `access.py:150-365` | `access.py:361,344-345` |
-| `fake_previous()` | `"fake-previous"` | `access.py:440-451` | What changed demo |
-| `only(d, user)` | `"live"` | `access.py:962-971` | demo of mine() |
+| `snapshot(query, where)` | uuid of the last OK run | `access.py:464-479` | raises when no OK run (`:405-406`) |
+| `live(query)` | `"direct"` | `access.py:629-917` | same sources as SP_ACCESS_SNAPSHOT; `FINISHED_AT` = CURRENT_TIMESTAMP (`:588,836`) |
+| `mine(query, db)` | `"live"` | `access.py:539-622` | TAG / POLICY / STREAM empty, no OBJECT_USE; tags/policies UNAVAILABLE (`:548-549`) |
+| `fake()` | `"fake"` | `access.py:154-370` | `access.py:366,344-345` |
+| `fake_previous()` | `"fake-previous"` | `access.py:450-461` | What changed demo |
+| `only(d, user)` | `"live"` | `access.py:989-998` | demo of mine() |
 
 - Shared data chosen by `server.read_shared` `server.py:87-88` (fake / live / snapshot by MODE and SOURCE from `cache.config()` `cache.py:27-40`, `server.py:21`), cached via `load_shared` `server.py:96-105`.
 - My access: `server.py:162-166` (`cache.get(cache.name("mine", ...), a.mine)`).
-- SP_ACCESS_FINDINGS also builds it inside Snowflake: `sql/1_setup.sql:819-820`.
+- SP_ACCESS_FINDINGS also builds it inside Snowflake: `sql/1_setup.sql:837-838`.
 
 ## Kept where
 
 - Memory `cache.MEM`, 24 h (`TTL`): `cache.py:22-23,95-98`.
 - `.cache/<key>.pkl` for `CACHE_HOURS` (24, 0 = memory only), not inside Snowflake: `cache.py:21,51-57,99-114`.
-- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:67-81`; read by `cache.prev` `cache.py:84-90` for What changed `server.py:1706`.
+- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:67-81`; read by `cache.prev` `cache.py:84-90` for What changed `server.py:1722`.
 - `drop` sets the file aside as `.old.pkl` (Read again): `cache.py:146-154`.
 - Cache key = account, source/what, snapshot location, user, role: `cache.py:43-48`; server `KEY` `server.py:23`.
-- `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:990-991,903-909`.
+- `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:1017-1018,903-909`.

@@ -66,7 +66,7 @@ QUERY_TAG = "access-explorer"  # set on the app's own connection; its queries ar
 INTERACTIVE = set(os.environ.get("INTERACTIVE_CLIENTS", "Snowflake UI,SnowSQL,Snowflake CLI").split(","))
 CLIENTS = {"Snowflake UI": "Snowsight", "PythonConnector": "Python", "JavaScript": "Node.js", "Go": "Go",
            "SnowSQL": "SnowSQL", "Snowflake CLI": "Snowflake CLI", "JDBC": "JDBC", "ODBC": "ODBC", ".NET": ".NET"}
-# off-hours: outside these UTC hours (start inclusive, end exclusive) or at a weekend; the Activity tab's slider starts here
+# business hours, local time (start inclusive, end exclusive), Monday to Friday: outside them or at a weekend is off-hours; the Activity tab shifts UTC to local with a business-time slider
 WORK_HOURS = tuple(int(x) for x in os.environ.get("WORK_HOURS", "7-19").split("-"))
 SPIKE = (3, 50)  # rule 28: a day over 3x the usual (median) day on a table, and at least 50 queries
 NEW_DAYS = 7  # rule 27: first access in the last 7 days

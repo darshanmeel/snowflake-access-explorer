@@ -74,13 +74,14 @@ const SERIES = ["e_manage", "e_write", "warn_ink", "ok_ink", "e_read"]; // up to
  * Other), weekends shaded, the average day dashed. Above it a readout: the hovered or pinned day (else the whole window)
  * with each key's count; click a key to show only it. Click a day to pin it (again to unpin). lanes: labelled rows under
  * the chart with a mark on the days something happened (a DDL, a person writing, ...). */
-export function DayStack({ first, series, label, pinned = null, onPin, focus = null, onFocus, lanes = [] }: {
+export function DayStack({ first, series, label, pinned = null, onPin, focus = null, onFocus, lanes = [], top: most = SERIES.length, colors }: {
   first: string; series: { key: string; values: number[] }[]; label: string; pinned?: number | null; onPin?: (i: number | null) => void;
   focus?: string | null; onFocus?: (key: string | null) => void; lanes?: { label: string; color: string; days: boolean[] }[];
+  top?: number; colors?: string[]; // top: keys drawn before Other; colors: one per key instead of the palette
 }) {
   const [hover, setHover] = useState<number | null>(null);
-  const top = series.slice(0, SERIES.length);
-  const rest = series.slice(SERIES.length);
+  const top = series.slice(0, most);
+  const rest = series.slice(most);
   const parts = rest.length ? [...top, { key: `Other (${rest.length})`, values: top[0].values.map((_, i) => rest.reduce((n, s) => n + s.values[i], 0)) }] : top;
   const n = parts[0]?.values.length ?? 0;
   const tot = Array.from({ length: n }, (_, i) => parts.reduce((s, p) => s + p.values[i], 0));
@@ -89,7 +90,7 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
   const day = (i: number) => new Date(Date.parse(first) + i * 864e5);
   const short = (i: number) => day(i).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
   const weekend = (i: number) => [0, 6].includes(day(i).getUTCDay());
-  const color = (k: number) => k < SERIES.length ? `var(--ae-${SERIES[k]})` : "var(--ae-line_strong)";
+  const color = (k: number) => k < top.length ? (colors?.[k] ?? `var(--ae-${SERIES[k % SERIES.length]})`) : "var(--ae-line_strong)";
   const show = hover ?? pinned;
   const sum = (p: { values: number[] }) => (show == null ? p.values.reduce((a, v) => a + v, 0) : p.values[show]);
   const cols = { gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` };
@@ -106,7 +107,7 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
       <div className="ae-ds-keys">
         {parts.map((p, k) => {
           const body = <><i style={{ background: color(k) }} /><span className="ae-mono">{p.key}</span><b>{sum(p)}</b></>;
-          return onFocus && k < SERIES.length
+          return onFocus && k < top.length
             ? <button type="button" key={p.key} className={focus && focus !== p.key ? "off" : ""} aria-pressed={focus === p.key} onClick={() => onFocus(focus === p.key ? null : p.key)}>{body}</button>
             : <span key={p.key}>{body}</span>;
         })}

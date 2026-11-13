@@ -20,5 +20,5 @@ flowchart LR
 - Main: injects overview, flow, rules; writes README.html — docs/make_readme.py:148-155.
 
 ## Relates to
-- README.html (markers README.html:136, 159, 419); access.py; server.py RULE_INFO; test_readme_rules checks the output is current — test_access.py:1767-1777.
+- README.html (markers README.html:136, 159, 422); access.py; server.py RULE_INFO; test_readme_rules checks the output is current — test_access.py:1788-1798.
 - Code, not a doc; listed here because it only serves documentation.

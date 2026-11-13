@@ -20,7 +20,7 @@ flowchart LR
 | `__main__` | `python sf.py "select ..."` or `-f file.sql` | sf.py:67-72 |
 
 - Env vars: SNOWFLAKE_ACCOUNT / USER / ROLE / WAREHOUSE / DATABASE / SCHEMA (sf.py:27-35), SNOWFLAKE_PRIVATE_KEY_FILE / _PWD (sf.py:36-39).
-- The query tag is set only on connections this file opens; inside Snowflake the app's active session is returned as it is (sf.py:20-22). Filter: `access.py:945`, `sql/1_setup.sql:552`.
+- The query tag is set only on connections this file opens; inside Snowflake the app's active session is returned as it is (sf.py:20-22). Filter: `access.py:965`, `sql/1_setup.sql:564`.
 - SSO uses the token cache (`client_store_temporary_credential`) (sf.py:40-41).
 - `test_read_only` records statements at this layer (test_server.py:328-375).
 - Used by: server.with_query (server.py:73-77), run_sql.py (run_sql.py:14).

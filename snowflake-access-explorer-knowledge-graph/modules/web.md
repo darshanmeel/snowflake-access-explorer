@@ -44,10 +44,10 @@ flowchart LR
 | Page key | File | Shows | Endpoints (path:line) |
 |---|---|---|---|
 | home | pages/Home.tsx | Search, "can X read Y" to Can they?, my access, risks, data protection, recent | home (Home.tsx:66), find (Home.tsx:79); hits keep the text they answer, a slow older answer never replaces a newer one, Enter opens only hits for the text now in the box (Home.tsx:68-69, 77-80, 87) |
-| access | pages/Access.tsx | One row per object at highest ladder level; embeds User / Role / ChangeFeed; tab Activity (`ActivityTab what=user|role`, Access.tsx:106-110) | access (Access.tsx:32), activity (Activity.tsx:19) |
+| access | pages/Access.tsx | One row per object at highest ladder level; embeds User / Role / ChangeFeed; tab Activity (`ActivityTab what=user|role`, Access.tsx:106-110) | access (Access.tsx:32), activity (Activity.tsx:37) |
 | user | pages/User.tsx | User paths | user (User.tsx:14) |
 | role | pages/Role.tsx | Role paths | role (Role.tsx:77) |
-| object | pages/Object.tsx | Who has access to an object or admin roles (preset=admin); tab Activity (not on preset=admin, Object.tsx:71-75) filtered by `as=`; "Access for" strip shows `UseLine` (Object.tsx:102) | who (Object.tsx:26), rules (Object.tsx:240), list (Object.tsx:251), object (Object.tsx:253) |
+| object | pages/Object.tsx | Who has access to an object or admin roles (preset=admin); tab Activity (not on preset=admin, Object.tsx:72-76) filtered by `as=`; "Access for" strip shows `UseLine` (Object.tsx:121); `AppNote` for a Streamlit app (Object.tsx:68) | who (Object.tsx:27), rules (Object.tsx:262), list (Object.tsx:273), object (Object.tsx:275) |
 | check | pages/Check.tsx | Can they? Yes / Partly / No, routes, where to cut, nearest ways in | check (Check.tsx:19) |
 | graph | pages/Map.tsx | Access graph from table, role or person | map (Map.tsx:23), list (Map.tsx:25-26), graph (Map.tsx:69) |
 | see | pages/See.tsx | What they see + role usage | see (See.tsx:19) |
@@ -61,7 +61,8 @@ flowchart LR
 | usage | pages/Usage.tsx | Granted vs used (ACCESS_HISTORY) | usage (Usage.tsx:25) |
 | changes | pages/Changes.tsx | Gained / lost access, new / fixed findings, watched questions | changes (Changes.tsx:32), list (Changes.tsx:115), check / who (Changes.tsx:156) |
 
-- pages/Activity.tsx: `ActivityTab` (Activity.tsx:17-21) and `UseLine` (Activity.tsx:35-49) call `/api/activity`; parts Per day & by (`Summary`, Activity.tsx:90-115), Paths (Activity.tsx:127-145), Who, role, client and DDL changes (`Rows`, Activity.tsx:186-201), Sensitive (Activity.tsx:147-184); types `ActivityPage` etc. (web/src/api/types.ts:1213-1247). Flow: [flows/activity-tab.md](../flows/activity-tab.md).
+- pages/Activity.tsx: `ActivityTab` (Activity.tsx:35-39) and `UseLine` (Activity.tsx:53-67) call `/api/activity`; `Activity` (Activity.tsx:81-124) is one access log of stacked sections (the CLAUDE.md exception to the tabs rule), shaped by `what`: `Warehouse` (Activity.tsx:204-230) for a warehouse; tiles (`Tiles`, Activity.tsx:134-157) or `AppViewers` for a Streamlit app (Activity.tsx:171-201); `OffHours` (Activity.tsx:233-280); `Touched` heat grid (`Heat`, Activity.tsx:284-360); `Hours` with the business-time slider UTC-12..+14 (Activity.tsx:364-412); `Detail` (objects busiest first, then `ObjTiles`, `ByClient`, `Kinds`, `Matrix`, `ByType`, Activity.tsx:415-623); `WhoUsed` (Activity.tsx:626-669); `Sensitive` (Activity.tsx:705-732); `Paths` (Activity.tsx:683-702); DDL changes; `QuerySql` (Activity.tsx:735-744); `Checks` (Activity.tsx:746-759). Exports `offOf` (off-hours of a row after the UTC offset, Activity.tsx:25-26) and `combine` (rows summed per combination of dimensions, Activity.tsx:562-575). Types `ActivityPage` etc. (web/src/api/types.ts:1216-1259). Flow: [flows/activity-tab.md](../flows/activity-tab.md).
+- pages/Object.tsx: `AppNote` banner on a Streamlit app's Who has access page: viewers see the owner role's data; who sees sensitive data they can't read (Object.tsx:68, Object.tsx:83-98; `WhoPage.app`, web/src/api/types.ts:985-986).
 - Pickers search the server: `Pick` -> `GET /api/list?q=&limit=50` (web/src/pages/common.tsx:54-71).
 - Page helpers without UI: changeplan.ts, history.ts, signoff.ts, verdict.ts, who.ts, screens.ts (imports at web/src/pages/Plan.tsx:9, web/src/pages/Changes.tsx:11, web/src/pages/Catalog.tsx:7, web/src/pages/Check.tsx:10, web/src/pages/Object.tsx:15, web/src/pages/Map.tsx:9).
 - The change plan is saved in this browser (`useSaved`, web/src/pages/Risks.tsx:9) (inferred from name; see changeplan.ts).
@@ -79,7 +80,7 @@ flowchart LR
 | Findings.tsx | Rule findings with Fix panel (text only) |
 | Grantees.tsx | Who can reach an object, grouped by chain |
 | PrivilegeTabs.tsx / tabs.ts | Privileges split in tabs |
-| kit.tsx / visuals.tsx / parts.tsx | Small SVG / CSS pieces on `--ae-*` tokens; `DayStack` queries-per-day stacked bars (visuals.tsx:74-112) |
+| kit.tsx / visuals.tsx / parts.tsx | Small SVG / CSS pieces on `--ae-*` tokens; `DayStack` queries-per-day stacked HTML bars with readout, pin, key focus, weekend shading and lanes (visuals.tsx:72-152) |
 | Combo.tsx | Search box for Find and pickers; `close(keep)` sets the text kept after a pick or blur (Combo.tsx:39, 50, 60) |
 | codegen.ts | SQL / Terraform / ticket text. `sqlOf()` only joins the server's `sql` of each change (`access.with_sql` / `revoke`) under the note's comments: the server is the one SQL writer (codegen.ts:68-71); Terraform uses `roleDb` / `toDb` from the server, never a dot in the name; names quoted as `access.sql_name` / `sql_obj` (`name`, `obj`), HCL strings escaped (`h`), every line of a multi-line note commented (codegen.ts:18-26) |
 | theme.ts | Copy of ui.py TOKENS |
@@ -89,7 +90,7 @@ flowchart LR
 | | `npm run build` -> web/dist | `npm run build:st` -> web/dist-st |
 |---|---|---|
 | Entry | web/index.html -> src/main.tsx | web/st/index.html -> src/st/main.tsx (web/st/index.html:10) |
-| Served by | server.py `spa` (server.py:26, server.py:2378-2388) | st_react.py component (st_react.py:12-13) |
+| Served by | server.py `spa` (server.py:26, server.py:2394-2404) | st_react.py component (st_react.py:12-13) |
 | Assets | inline limit 4096, ELK own chunk | no inlined assets, one JS (inlineDynamicImports) + one CSS (web/vite.config.ts:37-39) |
 | Stamp | src-hash.txt of web/src (web/vite.config.ts:10-20), checked by `test_bundles_fresh` (test_server.py:463) | same |
 

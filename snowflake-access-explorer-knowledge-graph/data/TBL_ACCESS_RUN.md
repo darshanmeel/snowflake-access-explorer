@@ -13,7 +13,7 @@ DDL: `sql/1_setup.sql:13-21`.
 
 | Column | Type | Meaning | Line |
 |---|---|---|---|
-| RUN_ID | VARCHAR(36) | uuid4 (`sql/1_setup.sql:589`) | 14 |
+| RUN_ID | VARCHAR(36) | uuid4 (`sql/1_setup.sql:607`) | 14 |
 | STARTED_AT | TIMESTAMP_LTZ | CALL start | 15 |
 | FINISHED_AT | TIMESTAMP_LTZ | end; ordering key for "last run" | 16 |
 | STATUS | VARCHAR(10) | RUNNING, OK, FAILED | 17 |
@@ -21,8 +21,8 @@ DDL: `sql/1_setup.sql:13-21`.
 | ROW_COUNTS | VARIANT | dataset -> rows | 19 |
 | NOTES | VARIANT | dataset -> fallback reason, skipped roles, error | 20 |
 
-- Written: INSERT `sql/1_setup.sql:592`; UPDATE `sql/1_setup.sql:626-629`; row counts `sql/1_setup.sql:620-622`.
-- Busy guard (insert first, then look: the run's RUNNING row goes in, then the earliest RUNNING run of the last hour (ORDER BY STARTED_AT, RUN_ID) goes on and any other deletes its own row and returns SKIPPED, so two CALLs a moment apart can no longer both start): `sql/1_setup.sql:590-598`; test `test_run_overlap` (`test_sql.py:384`).
-- Read: `access.py:456-462` (RUN_ID, FINISHED_AT, SOURCES, NOTES; VARIANT parsed from JSON text); `sql/1_setup.sql:662,626`; `sql/2_snapshot_verify.sql:5-6`.
-- Dataset keys in SOURCES: grants, user_roles, future_grants, users, usage, tags, policies, streams, object_use (`sql/1_setup.sql:607-615`).
-- Triggered from the app: Rebuild snapshot -> `CALL SP_ACCESS_SNAPSHOT('AUTO')` (`server.py:2184-2198`).
+- Written: INSERT `sql/1_setup.sql:610`; UPDATE `sql/1_setup.sql:644-647`; row counts `sql/1_setup.sql:638-640`.
+- Busy guard (insert first, then look: the run's RUNNING row goes in, then the earliest RUNNING run of the last hour (ORDER BY STARTED_AT, RUN_ID) goes on and any other deletes its own row and returns SKIPPED, so two CALLs a moment apart can no longer both start): `sql/1_setup.sql:608-616`; test `test_run_overlap` (`test_sql.py:384`).
+- Read: `access.py:466-472` (RUN_ID, FINISHED_AT, SOURCES, NOTES; VARIANT parsed from JSON text); `sql/1_setup.sql:680,626`; `sql/2_snapshot_verify.sql:5-6`.
+- Dataset keys in SOURCES: grants, user_roles, future_grants, users, usage, tags, policies, streams, object_use (`sql/1_setup.sql:625-633`).
+- Triggered from the app: Rebuild snapshot -> `CALL SP_ACCESS_SNAPSHOT('AUTO')` (`server.py:2200-2214`).

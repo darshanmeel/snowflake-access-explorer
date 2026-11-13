@@ -14,7 +14,7 @@ flowchart LR
 - Optional, only to give everyone the local web app; any image with Python and `requirements-web.txt`, `HOST=0.0.0.0` — README.md:321-323, CLAUDE.md:42.
 - Login like a shared server: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, key pair `SNOWFLAKE_PRIVATE_KEY_FILE` mounted as a secret; SSO can't work; My access off — README.md:324-325, server.py:146-147.
 - Inside detection is by active Snowpark session or `INSIDE=1`, not by a missing `SNOWFLAKE_ACCOUNT` — access.py:29-40 (fix of docs/review-2026-11-09.md:320-327).
-- Host allow-list: with `HOST=0.0.0.0` the server also answers machine names/IPs; add others to `ALLOWED_HOSTS` — README.md:260-261, server.py:2273-2277.
+- Host allow-list: with `HOST=0.0.0.0` the server also answers machine names/IPs; add others to `ALLOWED_HOSTS` — README.md:260-261, server.py:2289-2293.
 
 ## Not defined
 - No Dockerfile, service spec, compute pool or SQL for SPCS in the repo (tracked files checked); steps are unclear beyond README.md:321-325.

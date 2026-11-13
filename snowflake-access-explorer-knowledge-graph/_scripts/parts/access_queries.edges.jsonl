@@ -17,7 +17,7 @@
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/1_user_roles.sql:53", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "function:access.py:walk", "type": "implements", "evidence": "access_queries/1_user_roles.sql:6", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/1_user_roles.sql:8", "status": "verified"}
-{"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:654", "status": "inferred"}
+{"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:672", "status": "inferred"}
 {"from": "function:sql:AQ_USER_ROLES", "to": "task:access_queries/1_user_roles.sql:1_user_roles", "type": "derived_from", "evidence": "access_queries/functions.sql:15", "status": "verified"}
 {"from": "file:access_queries/make_notebook.py", "to": "file:access_queries/1_user_roles.sql", "type": "depends_on", "evidence": "access_queries/make_notebook.py:29", "status": "verified"}
 {"from": "module:access_queries", "to": "file:access_queries/2_user_access.sql", "type": "contains", "evidence": "access_queries/2_user_access.sql:1", "status": "verified"}
@@ -40,7 +40,7 @@
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/2_user_access.sql:58", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "function:access.py:access_of", "type": "implements", "evidence": "access_queries/2_user_access.sql:7", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/2_user_access.sql:9", "status": "verified"}
-{"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:654", "status": "inferred"}
+{"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:672", "status": "inferred"}
 {"from": "function:sql:AQ_USER_ACCESS", "to": "task:access_queries/2_user_access.sql:2_user_access", "type": "derived_from", "evidence": "access_queries/functions.sql:75", "status": "verified"}
 {"from": "file:access_queries/make_notebook.py", "to": "file:access_queries/2_user_access.sql", "type": "depends_on", "evidence": "access_queries/make_notebook.py:32", "status": "verified"}
 {"from": "file:access_queries/make_notebook.py", "to": "file:access_queries/2_user_access.sql", "type": "depends_on", "evidence": "access_queries/make_notebook.py:35", "status": "verified"}
@@ -59,7 +59,7 @@
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access_queries/3_role_access.sql:35", "status": "verified"}
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "function:access.py:access_of", "type": "implements", "evidence": "access_queries/3_role_access.sql:8", "status": "verified"}
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/3_role_access.sql:10", "status": "verified"}
-{"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:654", "status": "inferred"}
+{"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:672", "status": "inferred"}
 {"from": "function:sql:AQ_ROLE_ACCESS", "to": "task:access_queries/3_role_access.sql:3_role_access", "type": "derived_from", "evidence": "access_queries/functions.sql:143", "status": "verified"}
 {"from": "file:access_queries/make_notebook.py", "to": "file:access_queries/3_role_access.sql", "type": "depends_on", "evidence": "access_queries/make_notebook.py:38", "status": "verified"}
 {"from": "module:access_queries", "to": "file:access_queries/4_role_holders.sql", "type": "contains", "evidence": "access_queries/4_role_holders.sql:1", "status": "verified"}
@@ -80,7 +80,7 @@
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/4_role_holders.sql:55", "status": "verified"}
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "function:access.py:up", "type": "implements", "evidence": "access_queries/4_role_holders.sql:8", "status": "verified"}
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/4_role_holders.sql:10", "status": "verified"}
-{"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "function:sql:TF_WHO_CAN", "type": "derived_from", "evidence": "sql/1_setup.sql:715", "status": "inferred"}
+{"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "function:sql:TF_WHO_CAN", "type": "derived_from", "evidence": "sql/1_setup.sql:733", "status": "inferred"}
 {"from": "function:sql:AQ_ROLE_HOLDERS", "to": "task:access_queries/4_role_holders.sql:4_role_holders", "type": "derived_from", "evidence": "access_queries/functions.sql:197", "status": "verified"}
 {"from": "file:access_queries/make_notebook.py", "to": "file:access_queries/4_role_holders.sql", "type": "depends_on", "evidence": "access_queries/make_notebook.py:41", "status": "verified"}
 {"from": "module:access_queries", "to": "file:access_queries/5_object_users.sql", "type": "contains", "evidence": "access_queries/5_object_users.sql:1", "status": "verified"}
@@ -102,7 +102,7 @@
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/5_object_users.sql:62", "status": "verified"}
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "function:access.py:up", "type": "implements", "evidence": "access_queries/5_object_users.sql:9", "status": "verified"}
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/5_object_users.sql:11", "status": "verified"}
-{"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "function:sql:TF_WHO_CAN", "type": "derived_from", "evidence": "sql/1_setup.sql:715", "status": "inferred"}
+{"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "function:sql:TF_WHO_CAN", "type": "derived_from", "evidence": "sql/1_setup.sql:733", "status": "inferred"}
 {"from": "function:sql:AQ_OBJECT_USERS", "to": "task:access_queries/5_object_users.sql:5_object_users", "type": "derived_from", "evidence": "access_queries/functions.sql:257", "status": "verified"}
 {"from": "file:access_queries/make_notebook.py", "to": "file:access_queries/5_object_users.sql", "type": "depends_on", "evidence": "access_queries/make_notebook.py:45", "status": "verified"}
 {"from": "file:access_queries/make_notebook.py", "to": "file:access_queries/5_object_users.sql", "type": "depends_on", "evidence": "access_queries/make_notebook.py:49", "status": "verified"}
@@ -139,7 +139,7 @@
 {"from": "module:access_queries", "to": "file:access_queries/make_notebook.py", "type": "contains", "evidence": "access_queries/make_notebook.py:1", "status": "verified"}
 {"from": "module:access_queries", "to": "file:access_queries/test_queries.py", "type": "contains", "evidence": "access_queries/test_queries.py:1", "status": "verified"}
 {"from": "module:access_queries", "to": "file:access_queries/README.md", "type": "contains", "evidence": "access_queries/README.md:1", "status": "verified"}
-{"from": "process:test", "to": "file:access_queries/test_queries.py", "type": "calls", "evidence": "CLAUDE.md:114", "status": "verified"}
+{"from": "process:test", "to": "file:access_queries/test_queries.py", "type": "calls", "evidence": "CLAUDE.md:115", "status": "verified"}
 {"from": "file:access_queries/test_queries.py", "to": "function:access.py:fake", "type": "calls", "evidence": "access_queries/test_queries.py:219", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "module:access_queries", "type": "documents", "evidence": "access_queries/README.md:1-15", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/1_user_roles.sql:1_user_roles", "type": "documents", "evidence": "access_queries/README.md:21", "status": "verified"}
@@ -157,7 +157,7 @@
 {"from": "document:README.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "README.md:390", "status": "verified"}
 {"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:393", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "module:access_queries", "type": "documents", "evidence": "CLAUDE.md:70", "status": "verified"}
-{"from": "document:CLAUDE.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "CLAUDE.md:114", "status": "verified"}
+{"from": "document:CLAUDE.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "CLAUDE.md:115", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "file:access_queries/make_notebook.py", "type": "documents", "evidence": "access_queries/README.md:82", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:2", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/2_user_access.sql:2", "status": "verified"}

@@ -8,7 +8,7 @@ flowchart TD
   G[get key, fn, disk<br/>cache.py:107-133] -->|fresh in MEM| M[(MEM 24 h)]
   G -->|file younger than CACHE_HOURS| P[(.cache/key.pkl)]
   G -->|else| FN[fn = read Snowflake / fake]
-  FN --> SQ[sql_copy<br/>cache.py:204-261]
+  FN --> SQ[sql_copy<br/>cache.py:205-262]
   FN --> KP[keep_prev -> key.prev.pkl<br/>cache.py:72-81]
   KP --> P
   SQ --> D[(.cache/access.duckdb)]
@@ -28,18 +28,18 @@ flowchart TD
 | `get(key, fn, disk)` | Memory, else local file, else `fn()` stored in both | cache.py:107-133 |
 | `ready(key)` | Would `get` answer without reading the source | cache.py:136-143 |
 | `drop(key)` | Out of memory; file set aside as `.old.pkl` | cache.py:146-154 |
-| `sql_wanted(disk)` | Never inside Snowflake or DUCKDB=0; fake only with DUCKDB=1 | cache.py:192-197 |
-| `sql_copy(key, d, at)` | Writes TBL_ACCESS_ tables to schema `schema(key)`, older run as `*_PREV`, `COPIES` index | cache.py:204-261 |
-| `sql_info(key)` | For the UI: file, schema, or why there is none | cache.py:264-272 |
+| `sql_wanted(disk)` | Never inside Snowflake or DUCKDB=0; fake only with DUCKDB=1 | cache.py:193-198 |
+| `sql_copy(key, d, at)` | Writes TBL_ACCESS_ tables to schema `schema(key)`, older run as `*_PREV`, `COPIES` index | cache.py:205-262 |
+| `sql_info(key)` | For the UI: file, schema, or why there is none | cache.py:265-273 |
 
 ## Settings
 
 - `CACHE_HOURS` (default 24; 0 = memory only) (cache.py:21); memory `TTL` 24 h (cache.py:22).
-- `DUCKDB` "" / 0 / 1 (cache.py:158); `COLUMNS` = TBL_ACCESS_ columns of sql/1_setup.sql, ACTIVITY included (cache.py:160-179, cache.py:177-178), checked by `test_duckdb` (cache.py:159).
+- `DUCKDB` "" / 0 / 1 (cache.py:158); `COLUMNS` = TBL_ACCESS_ columns of sql/1_setup.sql, ACTIVITY included with `HOURS JSON` and `APP VARCHAR` (cache.py:160-180, cache.py:177-179), checked by `test_duckdb` (cache.py:159).
 - `LOCK` RLock: one read at a time (cache.py:24).
 
 ## Notes
 
-- Without duckdb installed, a note and no copy; the app works the same (cache.py:209-213).
-- Bulk load via a JSON-lines temp file, path quoted for folders with `'` (cache.py:244-250).
+- Without duckdb installed, a note and no copy; the app works the same (cache.py:210-214).
+- Bulk load via a JSON-lines temp file, path quoted for folders with `'` (cache.py:245-251).
 - Example key: `local_fake` in fake mode (inferred from `name()` defaults: account "local" when SNOWFLAKE_ACCOUNT is unset, cache.py:47).

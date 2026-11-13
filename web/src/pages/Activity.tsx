@@ -21,7 +21,7 @@ const ACT_LABEL = { WRITE: "Writes", READ: "Reads", DDL: "DDL" } as const;
 const ACTS = ["WRITE", "READ", "DDL"] as const;
 type Work = { start: number; end: number; tz: number }; // business hours, local; tz: local = UTC + tz hours
 type Open = (k: ActivityKey, v: string) => void;
-/** Off-hours queries of a row: weekends, plus weekday hours outside [start, end) UTC. */
+/** Off-hours queries of a row: weekends, plus weekday hours outside [start, end) local time (UTC + tz). */
 export const offOf = (r: Pick<ActivityRow, "hours" | "weekend">, w: Work) =>
   r.weekend + r.hours.reduce((n, v, h) => { const l = (h + w.tz + 48) % 24; return n + (l < w.start || l >= w.end ? v : 0); }, 0);
 /** "UTC+2", "UTC−5", "UTC+0". */
@@ -554,17 +554,19 @@ function Matrix({ d, rows }: { d: ActivityPage; rows: ActivityRow[] }) {
   );
 }
 
-type Dim = ActivityKey | "action";
-const DIM: Record<Dim, string> = { ...LABEL, action: "Action" };
+type Dim = ActivityKey | "action" | "okind";
+const DIM: Record<Dim, string> = { ...LABEL, action: "R / W / DDL", okind: "Object kind" };
+const ACT_NAME = { WRITE: "DML · writes", READ: "Reads", DDL: "DDL" } as Record<string, string>;
+type Row = ActivityRow & { okind?: string };
 
 /** Activity rows summed per combination of dims ("F_ENGINEER · Snowsight · INSERT"), most queries first; day: only
- * that day's queries. */
-export function combine(rows: ActivityRow[], dims: Dim[], day: number | null = null): ActivityBy[] {
+ * that day's queries. A row's okind is its object's kind (table, view, stage, ...). */
+export function combine(rows: Row[], dims: Dim[], day: number | null = null): ActivityBy[] {
   const out = new Map<string, ActivityBy>();
   for (const r of rows) {
     const q = day == null ? r.queries : r.daily[day];
     if (!q) continue;
-    const key = dims.map((k) => r[k]).join(" · ");
+    const key = dims.map((k) => k === "okind" ? r.okind ?? "–" : k === "action" ? ACT_NAME[r.action] : r[k]).join(" · ");
     const b = out.get(key) ?? { key, read: 0, write: 0, ddl: 0, last: "", daily: r.daily.map(() => 0) };
     b[r.action.toLowerCase() as "read" | "write" | "ddl"] += q;
     b.last = r.last > b.last ? r.last : b.last;
@@ -574,50 +576,91 @@ export function combine(rows: ActivityRow[], dims: Dim[], day: number | null = n
   return [...out.values()].sort((x, y) => sum(y) - sum(x));
 }
 
-/** Queries by statement type: the DML / reads / DDL split, then per day (by action, or any combination), with the
- * busiest or the picked day spelled out. */
+/** The busiest (or pinned) day spelled out: date, average, active days, its total and split. */
+function DayPanel({ d, rows, pin, work }: { d: ActivityPage; rows: ActivityRow[]; pin: number | null; work: Work }) {
+  const days = d.days ?? 60, total = rows.reduce((n, r) => n + r.queries, 0), avg = total / days;
+  const daily = rows.reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(days).fill(0) as number[]);
+  const day = pin ?? daily.indexOf(Math.max(...daily));
+  const date = new Date(Date.parse(d.first!) + day * 864e5).toISOString().slice(0, 10);
+  const on = (a: string) => rows.filter((r) => r.action === a).reduce((s, r) => s + r.daily[day], 0);
+  return (
+    <div className="ae-log-day">
+      <div><span className="ae-log-tl">{pin == null ? "Busiest day" : "Selected day"}</span><b>{short(date)}</b><span className="ae-muted">{new Date(date + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" })}</span></div>
+      <div><span className="ae-log-tl">Average a day</span><b>~{fmt(Math.round(avg))}</b></div>
+      <div><span className="ae-log-tl">Active days</span><b>{daily.filter(Boolean).length} of {days}</b></div>
+      <div><span className="ae-log-tl">That day</span><b>{fmt(daily[day])}</b><span className="ae-muted">{avg ? `${daily[day] >= avg ? "+" : ""}${Math.round((100 * (daily[day] - avg)) / avg)}% vs average` : ""}</span></div>
+      <div><span className="ae-log-tl">DML</span><b>{fmt(on("WRITE"))}</b></div>
+      <div><span className="ae-log-tl">Reads</span><b>{fmt(on("READ"))}</b></div>
+      <div><span className="ae-log-tl">DDL</span><b>{fmt(on("DDL"))}</b></div>
+      <div><span className="ae-log-tl">Off-hours</span><b>{fmt(rows.reduce((s, r) => s + offOf(r, work), 0))}</b><span className="ae-muted">in the window</span></div>
+    </div>
+  );
+}
+
+/** Queries by statement type: the DML / reads / DDL split, then per day by DML / reads / DDL with the busiest or the
+ * picked day spelled out; then queries per day by user, role, client, statement, R / W / DDL or object kind. */
 function ByType({ d, rows, work }: { d: ActivityPage; rows: ActivityRow[]; work: Work }) {
-  const dims: Dim[] = ["action", "type", "user", "role", "client"];
-  const [ks, setKs] = useState<Dim[]>(["action"]);
   const [pin, setPin] = useState<number | null>(null);
-  const [focus, setFocus] = useState<string | null>(null);
   const days = d.days ?? 60;
   const total = rows.reduce((n, r) => n + r.queries, 0);
   const n = (a: string) => rows.filter((r) => r.action === a).reduce((s, r) => s + r.queries, 0);
   const types = (a: string) => [...new Set(rows.filter((r) => r.action === a).map((r) => r.type))].join(" · ") || "none";
   const daily = rows.reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(days).fill(0) as number[]);
-  const busiest = daily.indexOf(Math.max(...daily));
-  const day = pin ?? busiest;
-  const date = (i: number) => new Date(Date.parse(d.first!) + i * 864e5).toISOString().slice(0, 10);
-  const on = (a: string) => rows.filter((r) => r.action === a).reduce((s, r) => s + r.daily[day], 0);
-  const avg = total / days;
-  const toggle = (k: Dim) => { setFocus(null); setKs(ks.includes(k) ? (ks.length > 1 ? ks.filter((x) => x !== k) : ks) : dims.filter((x) => ks.includes(x) || x === k)); };
   const lane = (label: string, color: string, f: (r: ActivityRow) => boolean) => ({ label, color, days: daily.map((_, i) => rows.some((r) => f(r) && r.daily[i] > 0)) });
   const lanes = [lane("A person changed a table's definition (DDL)", "var(--ae-bad_ink)", (r) => r.action === "DDL" && r.kind === "person"),
     lane("A person wrote data", "var(--ae-warn_ink)", (r) => r.action === "WRITE" && r.kind === "person"),
     lane("A service user from Snowsight, SnowSQL or the CLI", "var(--ae-accent)", (r) => r.kind === "service" && r.interactive)].filter((l) => l.days.some(Boolean));
+  const acts = ACTS.filter((a) => n(a));
+  const series = acts.map((a) => ({ key: ACT_NAME[a], values: rows.filter((r) => r.action === a).reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(days).fill(0) as number[]) }));
   return (
-    <Sec title="Queries by statement type" sub={`All ${days} days · ${short(d.first!)} → ${short(d.last!)} · ${fmt(total)} queries · weekends shaded · pick one or more to split the days`}
-      right={<div className="ae-seg2" role="group" aria-label="Per day by, pick one or more">{dims.map((k) => (
-        <button key={k} type="button" aria-pressed={ks.includes(k)} className={ks.includes(k) ? "on" : ""} onClick={() => toggle(k)}>{DIM[k]}</button>))}</div>}>
-      <div className="ae-log-tiles">
-        {([["WRITE", "DML · writes"], ["READ", "Reads"], ["DDL", "DDL"]] as const).map(([a, l]) => (
-          <Tile key={a} label={<><i style={{ background: ACT[a] }} className="ae-log-dot" />{l}</>}
-            value={<>{fmt(n(a))} <small className="ae-muted">{total ? ((100 * n(a)) / total).toFixed(1) : 0}%</small></>} cap={<span className="ae-mono">{types(a)}</span>} />))}
-      </div>
-      <span className="ae-log-act ae-log-share">{ACTS.map((a) => n(a) ? <i key={a} style={{ flex: n(a), background: ACT[a] }} /> : null)}</span>
-      <h4 className="ae-log-h4">Per day</h4>
-      <DayStack first={d.first!} label={d.name} series={combine(rows, ks).map((b) => ({ key: b.key, values: b.daily }))} pinned={pin} onPin={setPin} focus={focus} onFocus={setFocus} lanes={lanes} />
-      <div className="ae-log-day">
-        <div><span className="ae-log-tl">{pin == null ? "Busiest day" : "Selected day"}</span><b>{short(date(day))}</b><span className="ae-muted">{new Date(date(day) + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" })}</span></div>
-        <div><span className="ae-log-tl">Average a day</span><b>~{fmt(Math.round(avg))}</b></div>
-        <div><span className="ae-log-tl">Active days</span><b>{daily.filter(Boolean).length} of {days}</b></div>
-        <div><span className="ae-log-tl">Total</span><b>{fmt(daily[day])}</b><span className="ae-muted">{avg ? `${daily[day] >= avg ? "+" : ""}${Math.round((100 * (daily[day] - avg)) / avg)}% vs average` : ""}</span></div>
-        <div><span className="ae-log-tl">DML</span><b>{fmt(on("WRITE"))}</b></div>
-        <div><span className="ae-log-tl">Reads</span><b>{fmt(on("READ"))}</b></div>
-        <div><span className="ae-log-tl">DDL</span><b>{fmt(on("DDL"))}</b></div>
-        <div><span className="ae-log-tl">Off-hours</span><b>{fmt(rows.reduce((s, r) => s + offOf(r, work), 0))}</b><span className="ae-muted">in the window</span></div>
-      </div>
+    <>
+      <Sec title="Queries by statement type" sub={`Per day · ${short(d.first!)} → ${short(d.last!)} · ${fmt(total)} queries · weekends shaded · click a day to pin it`}>
+        <div className="ae-log-tiles">
+          {([["WRITE", "DML · writes"], ["READ", "Reads"], ["DDL", "DDL"]] as const).map(([a, l]) => (
+            <Tile key={a} label={<><i style={{ background: ACT[a] }} className="ae-log-dot" />{l}</>}
+              value={<>{fmt(n(a))} <small className="ae-muted">{total ? ((100 * n(a)) / total).toFixed(1) : 0}%</small></>} cap={<span className="ae-mono">{types(a)}</span>} />))}
+        </div>
+        <span className="ae-log-act ae-log-share">{ACTS.map((a) => n(a) ? <i key={a} style={{ flex: n(a), background: ACT[a] }} /> : null)}</span>
+        <DayStack first={d.first!} label={d.name} series={series} colors={acts.map((a) => ACT[a])} pinned={pin} onPin={setPin} lanes={lanes} />
+        <DayPanel d={d} rows={rows} pin={pin} work={work} />
+      </Sec>
+      <ByDay d={d} rows={rows} />
+    </>
+  );
+}
+
+/** Queries per day by user (role, client, statement, R / W / DDL, object kind, or any combination): the top 4 and
+ * Other, as a chart or as a table with a row per day. */
+function ByDay({ d, rows }: { d: ActivityPage; rows: ActivityRow[] }) {
+  const dims: Dim[] = ["user", "role", "client", "type", "action", "okind"];
+  const [ks, setKs] = useState<Dim[]>(["user"]);
+  const [table, setTable] = useState(false);
+  const [pin, setPin] = useState<number | null>(null);
+  const [focus, setFocus] = useState<string | null>(null);
+  const days = d.days ?? 60;
+  const all = combine(rows.map((r) => ({ ...r, okind: d.objects?.[r.object]?.kind ?? "–" })), ks);
+  const name = ks.map((k) => (k === "action" ? DIM[k] : DIM[k].toLowerCase())).join(" + ");
+  const toggle = (k: Dim) => { setFocus(null); setKs(ks.includes(k) ? (ks.length > 1 ? ks.filter((x) => x !== k) : ks) : dims.filter((x) => ks.includes(x) || x === k)); };
+  const shown = all.slice(0, 4), rest = all.slice(4);
+  const cols = [...shown, ...(rest.length ? [{ key: `Other (${rest.length})`, daily: Array.from({ length: days }, (_, i) => rest.reduce((s, b) => s + b.daily[i], 0)) }] : [])];
+  type DayRow = { day: string; total: number } & Record<string, number | string>;
+  const dayRows: DayRow[] = Array.from({ length: days }, (_, i) => ({
+    day: new Date(Date.parse(d.first!) + i * 864e5).toISOString().slice(0, 10), total: cols.reduce((s, c) => s + c.daily[i], 0),
+    ...Object.fromEntries(cols.map((c) => [c.key, c.daily[i]])) })).filter((r) => r.total).reverse();
+  return (
+    <Sec title={`Queries per day, by ${name}`} sub={`Every day of the window · the top 4 and Other · pick one or more for combinations${table ? "" : " · click a day to pin it, a name to show only it"}`}
+      right={<div className="ae-row"><div className="ae-seg2" role="group" aria-label="Per day by, pick one or more">{dims.map((k) => (
+        <button key={k} type="button" aria-pressed={ks.includes(k)} className={ks.includes(k) ? "on" : ""} onClick={() => toggle(k)}>{DIM[k]}</button>))}</div>
+        <button type="button" className={`ae-btn${table ? " ae-btn-primary" : ""}`} aria-pressed={table} onClick={() => setTable(!table)}>Table</button></div>}>
+      {table ? (
+        <DataTable rows={dayRows} csv={`${d.name}_per_day_by_${ks.join("_")}.csv`} sort={{ key: "day", dir: -1 }} filter={false} columns={[
+          col<DayRow>("day", "Day", (r) => r.day, { render: (r) => <span className="ae-mono">{r.day}</span> }),
+          ...cols.map((c) => col<DayRow>(c.key, c.key, (r) => Number(r[c.key]), { num: true, render: (r) => Number(r[c.key]) ? fmt(Number(r[c.key])) : <span className="ae-muted">·</span> })),
+          col<DayRow>("total", "Total", (r) => r.total, { num: true, render: (r) => <b>{fmt(r.total)}</b> }),
+        ]} />
+      ) : (
+        <DayStack first={d.first!} label={d.name} series={all.map((b) => ({ key: b.key, values: b.daily }))} top={4} pinned={pin} onPin={setPin} focus={focus} onFocus={setFocus} />
+      )}
     </Sec>
   );
 }

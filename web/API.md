@@ -437,6 +437,10 @@ Screen 2 (page key `object`): who has access to one object, or with `preset=admi
   columns: [{ column, tags[], sensitive, policies[], clear[], masked[], unknown[] }],
   default_user, refs }
 ```
+`app` is set for a Streamlit app (else null), from `a.app_exposure`: `{owner: [roles holding OWNERSHIP], sensitive: {object: [sensitive
+columns]} (the owner reads them; `[]` = the whole object), holders: {role holding USAGE on the app: [users reaching it]},
+exposed: {user: [sensitive objects they cannot read themselves]}}`. An app runs with its owner's rights, so whoever opens
+it sees what the owner role reads; rule 29 is built from the same answer. The object page shows it as a banner.
 A user holding an admin role is `admin` and shown by its shortest path to the admin role. 404 for an unknown name.
 
 ### GET /api/check?view=&name=|user=|role=&obj=&priv=SELECT|&do=read|change|own|any
@@ -780,22 +784,29 @@ questions are kept in the browser (localStorage `ae-watch`) and asked again thro
 
 ### GET /api/activity?view=&name=|user=|role=&as=
 
-Activity tab of an object (`name`), a person (`user`) or a role (`role`): table use over the last `days` (60,
+Activity tab of an object (`name`), a person (`user`) or a role (`role`): use over the last `days` (60,
 `ACTIVITY_DAYS`) from `TBL_ACCESS_ACTIVITY` (ACCESS_HISTORY, QUERY_HISTORY, SESSIONS: query metadata, never query
-text). Producers: `a.activity(name, what, user)`, `a.activity_graph`, `a.activity_sensitive`, `a.mark_sensitive`; the
-findings are the rule 24-28 rows of `a.rule_rows` for the subject. `as` (object only) keeps one person's use: the
-object page's "Access for"; without it the tab shows all users. `available` false (with `reason`) when the data has no
+text). `what` follows the object type: `object` (table, view, ...), `app` (a Streamlit app: the queries it ran for its
+viewers, matched on the table's `APP`), `scope` (a database or schema: every object in it), `warehouse` (see below),
+`user`, `role`; `kind` is the object's type as the snapshot has it (`STREAMLIT`, `DATABASE`, `SCHEMA`, `WAREHOUSE`, ...,
+null for a person or role). Producers: `a.activity(name, what, user)`, `a.activity_graph`, `a.activity_sensitive`,
+`a.query_sql`, `a.app_use`, `a.warehouse_use`, `a.mark_sensitive`; the findings are the rule 24-28 rows of `a.rule_rows`
+for the subject. `as` (object and app only) keeps one person's use: the object page's "Access for"; without it the tab
+shows all users. `available` false (with `reason`) when the data has no
 activity: no Enterprise edition, a snapshot made before the table existed, or My access (it reads no ACCESS_HISTORY).
 `note` says when only part of it was read.
 
 ```json
 {"view": "shared", "what": "object", "name": "SALES.CORE.TBL_CUSTOMER", "user": null, "days": 60,
- "available": true, "reason": null, "note": null, "first": "2026-09-04", "last": "2026-11-02",
+ "kind": "TABLE", "available": true, "reason": null, "note": null, "first": "2026-09-04", "last": "2026-11-02",
+ "work": {"start": 7, "end": 19},
  "daily": [38, 36, 51, "... 60 numbers, oldest first"],
  "by": {"user": [{"key": "SVC_DEPLOY", "read": 7, "write": 1500, "ddl": 0, "last": "2026-11-02 08:15", "daily": [25, 24, "..."]}],
         "role": [], "client": [], "type": [], "object": []},
  "rows": [{"user": "SVC_DEPLOY", "role": "F_DEPLOY", "client": "Python", "type": "MERGE", "object": "SALES.CORE.TBL_CUSTOMER",
-           "action": "WRITE", "queries": 1500, "days": 60, "last": "2026-11-02 08:15", "daily": [25, 24, "..."]}],
+           "action": "WRITE", "queries": 1500, "days": 60, "first_day": "2026-09-04", "last": "2026-11-02 08:15",
+           "daily": [25, 24, "..."], "hours": [0, 0, "... 24 numbers"], "weekend": 0, "weekend_hours": [0, 0, "... 24 numbers"],
+           "kind": "service", "interactive": false}],
  "total": 6,
  "ddl": [{"user": "ENGINEER_01", "role": "F_ENGINEER", "client": "Snowsight", "type": "ALTER_TABLE_ADD_COLUMN",
           "object": "SALES.CORE.TBL_CUSTOMER", "action": "DDL", "queries": 3, "days": 1, "last": "2026-10-21 11:15", "daily": [0, "..."]}],
@@ -807,20 +818,40 @@ activity: no Enterprise edition, a snapshot made before the table existed, or My
                 "masking": {"EMAIL": ["SHARED.GOVERNANCE.MP_EMAIL"]}, "row_policies": [],
                 "people": [{"user": "ANALYST_01", "role": "GRP_ANALYSTS", "read": true, "clear": ["BIRTH_DATE", "PHONE"],
                             "masked": ["EMAIL"], "rows": "all"}]}],
- "mark": null, "refs": {}}
+ "mark": null,
+ "objects": {"SALES.CORE.TBL_CUSTOMER": {"kind": "table", "sensitive": true}},
+ "query_sql": "SELECT ... -- one row per query: id and time, no query text",
+ "app": null, "refs": {}}
 ```
 
 `by` has the five groupings (`user`, `role`, `client`, `type` = statement type, `object`), most queries first; `read`,
 `write` and `ddl` are query counts per action (a MERGE that reads and changes a table counts in both) and `daily` is
 one number per day, oldest first, ending at `last`. `rows` is one row per user, role, client, object, statement type
-and action, the first 500 (`MAX_ACTIVITY`); `total` counts all of them. `ddl` lists the DDL rows. `graph` is a Graph
+and action, the first 2000 (`MAX_ACTIVITY`); `total` counts all of them. `ddl` lists the DDL rows. In a row, `days` is
+the number of active days and `first_day` the first of them; `hours` is the weekday queries per UTC hour (24 numbers),
+`weekend` the queries on a Saturday or Sunday (by the UTC day) and `weekend_hours` those per UTC hour; `kind` is the
+user's `person`, `service` or `system`; `interactive` is true for a client where people type queries (Snowsight,
+SnowSQL, ...). The page counts off-hours from these: `work` is `WORK_HOURS` (default 7-19, local time, start inclusive,
+end exclusive, Monday to Friday), and the UI shifts it from UTC with a business-time slider (UTC-12 to UTC+14). Nothing
+off-hours is stored. `objects` has the type (`kind`, lower case, `gone` for an object no longer in the snapshot) and
+`sensitive` of every object in `rows`. `query_sql` is SQL to copy and run in Snowflake for the query ids and times
+behind the counts (no query text); the app never runs it. `graph` is a Graph
 (see Shared shapes): user, role used, then the grant path that role has now, then the table (a person or role page:
-role used first, top `MAX_OBJECTS` tables); `gone` holds the rows whose role reaches no grant on the table now (an
-admin role, or the grant was removed since). `sensitive` has one entry per used table that carries a sensitive tag or
+role used first, top `MAX_OBJECTS` tables; null for an app or a database or schema); `gone` holds the rows whose role
+reaches no grant on the table now (an admin role, or the grant was removed since). `sensitive` has one entry per used table that carries a sensitive tag or
 a masking or row access policy; `people[].rows` is `all`, `filtered`, `none` or `unknown`, read from the policy text.
 `mark` is `{sql, tf, ticket, tag, value}` for an object that is a table or view without a sensitive tag: text to tag
 it, which the app never runs (else null). `findings` are the rule 24-28 findings for the subject (and for `as`).
+`app` is set only for a Streamlit app (else null), from `a.app_use`: `{can: {user: role holding USAGE}, opened:
+{user: {queries, last}}, never: [users who can open it and did not], saw: {user: [sensitive objects they opened it for
+but cannot read themselves]}}`. Opening an app without a table query leaves no row, so `opened` only has users whose
+queries touched an object. A user in `opened` but not in `can` opened it without access now.
 When `available` is false, only the head fields are returned (`view` to `note`).
+
+For a warehouse (`kind` `WAREHOUSE`) there are no ACCESS_HISTORY rows: the answer is `{view, what: "warehouse", kind, name,
+user: null, available, reason, warehouse: {used: [{user, queries, last}], unused: [users who can use or operate it and
+did not]}, source}`. It comes from the query-history read (`USAGE` rows; `source` is its state, `demo values` for fake
+data); `available` is false when that source is `UNAVAILABLE`, with `reason`.
 
 ### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0
 

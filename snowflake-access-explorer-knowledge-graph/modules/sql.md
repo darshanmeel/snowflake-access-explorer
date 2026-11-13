@@ -34,45 +34,46 @@ flowchart LR
 | Statement | Creates | Line |
 |---|---|---|
 | TABLE_RUN ... TABLE_ACTIVITY | `TBL_ACCESS_RUN`, `_GRANT`, `_USER_ROLE`, `_USER`, `_USAGE`, `_TAG`, `_POLICY`, `_STREAM`, `_OBJECT_USE`, `_ACTIVITY` | sql/1_setup.sql:12, 23, 35, 43, 56, 66, 77, 89, 97, 108 |
-| TABLE_FINDING | findings table for SP_ACCESS_FINDINGS | sql/1_setup.sql:122 |
-| PROCEDURE | `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, EXECUTE AS OWNER | sql/1_setup.sql:135-637 |
-| FUNCTION_ACCESS_OF (may fail) | `TF_ACCESS_OF(NAME, MAX_DEPTH)` | sql/1_setup.sql:653-712 |
-| FUNCTION_WHO_CAN (may fail) | `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` | sql/1_setup.sql:714-755 |
-| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` | sql/1_setup.sql:757-769 |
-| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:772, 680 |
-| PROCEDURE_FINDINGS | `SP_ACCESS_FINDINGS(P_SETTINGS)` runs access.py | sql/1_setup.sql:779-841 |
-| GRANT_*_APP (may fail) | USAGE on db / schema / warehouse, SELECT on each table, USAGE on TFs and procedure to `&APP_ROLE` | sql/1_setup.sql:844-897 |
+| TABLE_ACTIVITY_HOURS, TABLE_ACTIVITY_APP (may fail) | `ALTER TABLE TBL_ACCESS_ACTIVITY ADD COLUMN IF NOT EXISTS` HOURS VARIANT / APP VARCHAR(2000), for a table made before them | sql/1_setup.sql:124-128 |
+| TABLE_FINDING | findings table for SP_ACCESS_FINDINGS | sql/1_setup.sql:130 |
+| PROCEDURE | `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, EXECUTE AS OWNER | sql/1_setup.sql:143-655 |
+| FUNCTION_ACCESS_OF (may fail) | `TF_ACCESS_OF(NAME, MAX_DEPTH)` | sql/1_setup.sql:671-730 |
+| FUNCTION_WHO_CAN (may fail) | `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` | sql/1_setup.sql:732-773 |
+| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` | sql/1_setup.sql:775-787 |
+| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:790, 680 |
+| PROCEDURE_FINDINGS | `SP_ACCESS_FINDINGS(P_SETTINGS)` runs access.py | sql/1_setup.sql:797-859 |
+| GRANT_*_APP (may fail) | USAGE on db / schema / warehouse, SELECT on each table, USAGE on TFs and procedure to `&APP_ROLE` | sql/1_setup.sql:862-915 |
 
 ### SP_ACCESS_SNAPSHOT internals
 
 ```mermaid
 flowchart TD
-  RUN[run session, p_source<br/>sql/1_setup.sql:585] --> G[grants 222]
-  RUN --> FU[future 279]
-  RUN --> U[users 316]
-  RUN --> US[usage 333]
-  RUN --> TG[tags 391]
-  RUN --> PO[policies 432]
-  RUN --> STR[streams 481]
-  RUN --> OU[object_use 512<br/>ACCESS_HISTORY, may fail]
-  RUN --> AC[activity 559<br/>ACCESS_HISTORY + QUERY_HISTORY + SESSIONS,<br/>copies the last OK run's older days, may fail]
-  G & U & US & TG & PO -->|ACCOUNT_USAGE not readable| FB[fallback 199 -> SHOW]
-  RUN --> SV[save 212 -> TBL_ACCESS_* with RUN_ID]
+  RUN[run session, p_source<br/>sql/1_setup.sql:603] --> G[grants 230]
+  RUN --> FU[future 287]
+  RUN --> U[users 324]
+  RUN --> US[usage 341]
+  RUN --> TG[tags 399]
+  RUN --> PO[policies 440]
+  RUN --> STR[streams 489]
+  RUN --> OU[object_use 520<br/>ACCESS_HISTORY, may fail]
+  RUN --> AC[activity 577<br/>ACCESS_HISTORY + QUERY_HISTORY + SESSIONS,<br/>UTC day, HOURS, APP;<br/>copies the last OK run's older days, may fail]
+  G & U & US & TG & PO -->|ACCOUNT_USAGE not readable| FB[fallback 207 -> SHOW]
+  RUN --> SV[save 220 -> TBL_ACCESS_* with RUN_ID]
 ```
 
-- Rows carry `RUN_ID`; the app reads only the last OK run (sql/1_setup.sql:147, access.py:456-459).
-- `grants()` SHOW path: per role both `SHOW GRANTS TO ROLE` and `SHOW GRANTS OF ROLE` are read before either is kept, so a role refused half-way is skipped whole (listed in NOTES), never kept without its holders (sql/1_setup.sql:244-253).
-- `future()` SHOW path: each place (database or schema) is tried on its own; a refused place skips only itself, one note per database, as `access.live` does (sql/1_setup.sql:297-311).
-- `usage()`: the ACCOUNT_USAGE `QUERY_HISTORY` insert is extra; when it fails its rows are deleted and the dataset is `UNAVAILABLE` with the reason, the run stays OK (sql/1_setup.sql:352-359); test `test_usage_extra` (test_sql.py:426).
-- `run()`: busy guard after the insert (earliest RUNNING run of the last hour goes on, others SKIPPED, sql/1_setup.sql:590-598); an OK run keeps the rows of a run RUNNING for under a day (sql/1_setup.sql:630-635). `test_run_overlap` (test_sql.py:384).
-- `SP_ACCESS_FINDINGS` keeps only the last run: `DELETE FROM` the findings table inside the transaction (sql/1_setup.sql:828).
-- `activity()`: reads only the days the last OK run lacks (its rows older than the day before its last day are copied), then `activity_sql(since)` (same text as `access.activity_sql`); not readable -> UNAVAILABLE, the run stays OK; SESSIONS not readable -> no client (sql/1_setup.sql:559-582, sql/1_setup.sql:528-556). Settings `ACTIVITY_DAYS`, `QUERY_TAG` (sql/1_setup.sql:170-171); test: test_sql.py:298. Flow: [flows/activity-read.md](../flows/activity-read.md).
-- Helpers: `rows` 174, `ident` 179, `clean` 183, `count` 218, `data_objects` 367, `use_sql` 495, `activity_sql` 528 (all sql/1_setup.sql).
+- Rows carry `RUN_ID`; the app reads only the last OK run (sql/1_setup.sql:155, access.py:466-469).
+- `grants()` SHOW path: per role both `SHOW GRANTS TO ROLE` and `SHOW GRANTS OF ROLE` are read before either is kept, so a role refused half-way is skipped whole (listed in NOTES), never kept without its holders (sql/1_setup.sql:252-261).
+- `future()` SHOW path: each place (database or schema) is tried on its own; a refused place skips only itself, one note per database, as `access.live` does (sql/1_setup.sql:305-319).
+- `usage()`: the ACCOUNT_USAGE `QUERY_HISTORY` insert is extra; when it fails its rows are deleted and the dataset is `UNAVAILABLE` with the reason, the run stays OK (sql/1_setup.sql:360-367); test `test_usage_extra` (test_sql.py:426).
+- `run()`: busy guard after the insert (earliest RUNNING run of the last hour goes on, others SKIPPED, sql/1_setup.sql:608-616); an OK run keeps the rows of a run RUNNING for under a day (sql/1_setup.sql:648-653). `test_run_overlap` (test_sql.py:384).
+- `SP_ACCESS_FINDINGS` keeps only the last run: `DELETE FROM` the findings table inside the transaction (sql/1_setup.sql:846).
+- `activity()`: reads only the days the last OK run lacks (its rows older than the day before its last day are copied), then `activity_sql(since)` (same text as `access.activity_sql`); not readable -> UNAVAILABLE, the run stays OK; SESSIONS not readable -> no client (sql/1_setup.sql:577-600, sql/1_setup.sql:536-575); rows per UTC day with `HOURS` (queries per UTC hour) and `APP` (Streamlit app from the QUERY_TAG), both copied forward (sql/1_setup.sql:590). Settings `ACTIVITY_DAYS`, `QUERY_TAG` (sql/1_setup.sql:178-179); test: test_sql.py:298. Flow: [flows/activity-read.md](../flows/activity-read.md).
+- Helpers: `rows` 182, `ident` 187, `clean` 191, `count` 226, `data_objects` 375, `use_sql` 503, `activity_sql` 536 (all sql/1_setup.sql).
 
 ## sql/2_snapshot.sql
 
 - `SNAPSHOT`: `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')` (sql/2_snapshot.sql:11-12). P_SOURCE AUTO / ACCOUNT_USAGE / SHOW (sql/2_snapshot.sql:2-3).
-- The app's "rebuild" sends the same CALL (server.py:2192).
+- The app's "rebuild" sends the same CALL (server.py:2208).
 
 ## sql/3_cleanup.sql
 

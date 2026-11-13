@@ -201,6 +201,8 @@ describe("activity combinations", () => {
     expect(got.map((b) => [b.key, b.read, b.write, b.ddl, b.daily])).toEqual([["R1 · JDBC", 5, 4, 0, [6, 3]], ["R2 · Snowsight", 0, 0, 1, [0, 1]]]);
     const day1 = combine([row("R1", "JDBC", "SELECT", "READ", 5, [2, 3]), row("R1", "JDBC", "MERGE", "WRITE", 4, [4, 0])], ["role"], 1);
     expect(day1.map((b) => [b.key, b.read, b.write])).toEqual([["R1", 3, 0]]); // one pinned day: that day's counts only
+    const byKind = combine([{ ...row("R1", "JDBC", "SELECT", "READ", 5, [2, 3]), okind: "view" }, { ...row("R2", "JDBC", "MERGE", "WRITE", 4, [4, 0]), okind: "table" }], ["okind", "action"]);
+    expect(byKind.map((b) => b.key)).toEqual(["view · Reads", "table · DML · writes"]); // object kind and R / W / DDL as dimensions
     const { offOf } = await import("../pages/Activity");  // off-hours follow the working-hours slider
     const r = { hours: Array.from({ length: 24 }, (_, h) => (h === 7 || h === 20 ? 2 : h === 12 ? 5 : 0)), weekend: 3 };
     expect([offOf(r, { start: 8, end: 18, tz: 0 }), offOf(r, { start: 7, end: 21, tz: 0 }), offOf(r, { start: 8, end: 18, tz: 2 })]).toEqual([7, 3, 5]); // tz 2: 07 and 20 UTC are 09 and 22 local

@@ -29,7 +29,7 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 |---|---|
 | Home (`home`) | Search a person, role, table or screen, or type "can X read Y". Your access, account risks, data protection. |
 | A person or role (`access`) | What can they reach, through every role? Role hierarchy diagram and privilege tabs first, then one row per object at the most it allows. An Activity tab shows which tables they used in the last 60 days, with which role and client. |
-| Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. An Activity tab shows who used the table in the last 60 days, with which role and client. |
+| Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. An Activity tab shows who used it in the last 60 days, with which role and client, and how much of it outside business hours; for a Streamlit app, who opened it and who saw data they can't read; for a warehouse, who ran queries on it. A Streamlit app runs with its owner's rights, so its page says whose data viewers see (rule 29). |
 | Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. For a database role: ways in only from database roles of its own database, and no USE ROLE line (a database role can't be activated). |
 | Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
@@ -329,8 +329,9 @@ Only metadata, never table data: `ACCOUNT_USAGE` grants, users, query history, t
 `ACCOUNT_USAGE` is not readable). Granted vs used also reads `ACCOUNT_USAGE.ACCESS_HISTORY` (Enterprise edition),
 aggregated per user, object and week; without it that screen explains why it is empty. The Activity tabs (object, person,
 role) and rules 24-28 read `ACCESS_HISTORY` with `QUERY_HISTORY` (role, statement type) and `SESSIONS` (client) for the
-last 60 days (`ACTIVITY_DAYS`), aggregated per day, user, role, client, object and statement: query metadata, never query
-text. To keep the cost down, a new read copies the days the last one already has and reads only the days after them
+last 60 days (`ACTIVITY_DAYS`), aggregated per UTC day, user, role, client, object, Streamlit app (from the query tag) and statement, with the queries
+per UTC hour (`HOURS`): query metadata, never query text. Off-hours are worked out in the app from `HOURS` and
+`WORK_HOURS`. To keep the cost down, a new read copies the days the last one already has and reads only the days after them
 (the last day again, as ACCESS_HISTORY lags up to 3 hours); the app tags its own queries (`QUERY_TAG` = `access-explorer`)
 and leaves them out. Snowflake does not log result downloads from Snowsight or drivers. The full table, with the fallbacks,
 is in [README.html](README.html) > Data sources.

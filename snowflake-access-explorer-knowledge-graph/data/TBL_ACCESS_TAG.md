@@ -20,8 +20,8 @@ DDL: `sql/1_setup.sql:67-75`. Grain: run x object x domain x column x tag (infer
 | TAG_VALUE | VARCHAR(500) | value | 73 |
 | APPLY_METHOD | VARCHAR(50) | MANUAL, CLASSIFIED, PROPAGATED, INHERITED, ... | 74 |
 
-- ACCOUNT_USAGE: `sql/1_setup.sql:400-407` (`OBJECT_DELETED IS NULL`; Enterprise edition, `:374-375`).
-- Fallback per table/view of the grant data: `sql/1_setup.sql:409-426` (objects from `data_objects` `:349-353`; cap `TAG_FALLBACK_MAX=300` `:152`).
-- Error -> UNAVAILABLE, this run's rows deleted, run stays OK: `sql/1_setup.sql:427-429`.
-- Read: `access.py:1058`; inheritance DB > schema > table > column `access.py:2198-2214`; sensitive set `access.py:1064-1068`; `SENSITIVE_TAGS` default `access.py:72-73`.
-- Unclear: OBJECT_NAME / APPLY_METHOD semantics marked "to verify" `sql/1_setup.sql:398-399,382-383`.
+- ACCOUNT_USAGE: `sql/1_setup.sql:408-415` (`OBJECT_DELETED IS NULL`; Enterprise edition, `:374-375`).
+- Fallback per table/view of the grant data: `sql/1_setup.sql:417-434` (objects from `data_objects` `:349-353`; cap `TAG_FALLBACK_MAX=300` `:152`).
+- Error -> UNAVAILABLE, this run's rows deleted, run stays OK: `sql/1_setup.sql:435-437`.
+- Read: `access.py:1085`; inheritance DB > schema > table > column `access.py:2225-2241`; sensitive set `access.py:1091-1095`; `SENSITIVE_TAGS` default `access.py:74-75`.
+- Unclear: OBJECT_NAME / APPLY_METHOD semantics marked "to verify" `sql/1_setup.sql:406-407,382-383`.

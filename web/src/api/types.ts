@@ -1237,7 +1237,7 @@ export interface ActivityPage {
   name: string;
   user: string | null; // object page: only this user's use ("Access for")
   days?: number;
-  work?: { start: number; end: number }; // default working hours (UTC, Mon-Fri): outside them is off-hours
+  work?: { start: number; end: number }; // business hours, local, Mon-Fri (WORK_HOURS); the tab shifts UTC to local
   available: boolean;
   reason: string | null;
   note: string | null; // read, but partly (no client)
