@@ -26,7 +26,7 @@ flowchart LR
 | `PAGES`, `LABEL`, `GROUPS` | 17 page keys, labels, nav groups (answers / admin / detail) | web/src/App.tsx:31-38 |
 | `redirect(page, params)` | Old links to new screens; unknown page -> home | web/src/App.tsx:41-95 |
 | `read()` / `url()` / `useLoc()` | URL `?page=&data=mine&...` <-> location; pushState / popstate | web/src/App.tsx:110-133 |
-| `useTheme()` | light / dark, saved in localStorage | web/src/App.tsx:135-143 |
+| `useTheme()` | dark by default, light / dark switch saved in localStorage | web/src/App.tsx:135-143 |
 | `Find` | Top-bar search -> `GET /api/find` | web/src/App.tsx:145-154 |
 | `Side`, `DataInfo`, `DataTime` | Side nav, "Data from" box (SQL copy), refresh | web/src/App.tsx:169-254 |
 | `VIEWS` | page key -> page component | web/src/App.tsx:256-261 |

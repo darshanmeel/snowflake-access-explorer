@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-13",
- "commit": "de5175873d636fbff9ced8dc2d7c231d2ca103c8",
+ "commit": "7eb7c03863ce3fc0d24cba8899c6fc9e9cb21882",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -77,7 +77,7 @@
   "CLAUDE.md": "25ea59e7891e7b0a46305b0545561674d7c39c84ac798f3c5842578aa30cce3d",
   "LICENSE-APACHE": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
   "LICENSE-MIT": "ca553b75fe9ff718aee4e5c37cbd1505626ebe66ed23ed9eee0abfdd3a5e2d49",
-  "README.html": "06af02b884c6ca731859e4433c33a7b2b2631b280c6e6a088ec9983aa6af19e6",
+  "README.html": "9f159611f359645a94bfef98fd584056cd79a7b2a301052af3308c18be48acc1",
   "README.md": "61e2a27e9115cb1b3e4914d80ff4f79657dcfdb080e0c0454d5f78d89052eeb2",
   "THIRD_PARTY.md": "c948d1fcd2941f071b9c71bde325bd4871d6150346a589f8af49cc3e415d66dc",
   "access.py": "da95f1bb77af3e0b1db285a2c8294fa1db9a1f1ba2d15f0b46a3b9a34038d6f5",
@@ -166,21 +166,21 @@
   "web/ST.md": "0ae9d861039c44f722625b12fc9eb3ac7bae0d63e51374f6147a41da6944a355",
   "web/dist-st/assets/ibm-plex-mono-latin-400-normal-DMJ8VG8y.woff2": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7",
   "web/dist-st/assets/ibm-plex-mono-latin-500-normal-DSY6xOcd.woff2": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22",
-  "web/dist-st/assets/index-BuYh1Ojx.js": "35b7fdc6b1e909621b2a4e3e6073b1477caac31d5c00615c4eae624010fdce51",
+  "web/dist-st/assets/index-D0kLwsd9.js": "e963d6ac2cb2ba39ee6cd90d8b59bdb634d0632fccf676fd33f2df675058aac4",
   "web/dist-st/assets/style-DZnwuRtm.css": "664d48e3e9265445bd967f8353ac985bbb2880b75e214bb6100bb64a0d2dbb1e",
-  "web/dist-st/index.html": "012411a728cf32094bb6bb04a070c0a93733f1701017b7cee967397b728b1e11",
-  "web/dist-st/src-hash.txt": "3d0cf8eb14f62c90799c9745f5df5c9b4d63425d3d393c040281fa1f24199ae2",
-  "web/dist/assets/elk.bundled-BFHXN62z.js": "a14ad38e7162d1c9c339b1e6e9d39c4aeec4ddc7dd4469c94ccf7b4e9d4ac740",
+  "web/dist-st/index.html": "e0f289beeca6f44867275fa8c3c8f30e63268aa7d7164e1fd5bca9623d98a09c",
+  "web/dist-st/src-hash.txt": "ad11da5e077075d611e959abd96bb7699ec505254e6f29483f6a7a123ba2953c",
+  "web/dist/assets/elk.bundled-BOg_ZTjp.js": "142ece82886c55b212a75ffa5fa1ed3832a5fb600b51958a61e7d36c82a90c5e",
   "web/dist/assets/ibm-plex-mono-latin-400-normal-DMJ8VG8y.woff2": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7",
   "web/dist/assets/ibm-plex-mono-latin-500-normal-DSY6xOcd.woff2": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22",
-  "web/dist/assets/index-B4aUJkjx.js": "063c093ea9e667b58e0b7621ba7f9ac0e322a78d8fd677310c37423930cdbc8d",
+  "web/dist/assets/index-CfzoGqPK.js": "dba876b5aade13a82976f75a0e0a036255273d4a5fcae012b0678b39916b95df",
   "web/dist/assets/style-Ci0qadLN.css": "03176d4a55b9bea45f7fec895e17652698f1dca4defac403aa12fee39b27104f",
-  "web/dist/index.html": "e3355136cdaa5a63aca7c043c7c00f772c51de412ec70339663f0b49248f2b4b",
-  "web/dist/src-hash.txt": "3d0cf8eb14f62c90799c9745f5df5c9b4d63425d3d393c040281fa1f24199ae2",
+  "web/dist/index.html": "3084a5f3c5bce8666e77c5c50f64712e3eb2dcc1074a493f15d22e4b02970a10",
+  "web/dist/src-hash.txt": "ad11da5e077075d611e959abd96bb7699ec505254e6f29483f6a7a123ba2953c",
   "web/index.html": "5a0db429d9b858057ddba476cc61cf7e466d1be26a8e2f5165c7ca8f0d76bcf7",
   "web/package-lock.json": "210cc12e6874a7c38e2c276657b5c8e3517350a81e8612e07d360952c5b56dcb",
   "web/package.json": "ee04be342b09deda5ef423bac1d366bac95a84342046c97adf1d76f232b4a86d",
-  "web/src/App.tsx": "77408dc048610e57b7de5996bedad8ec8862d79e557b959049ed82f36b7d0746",
+  "web/src/App.tsx": "ba54d6988c80498d5746686af0df7b2e35596740d49e1eb37e610338b5ab0e58",
   "web/src/api/client.ts": "80428c7aa1671f637393b519b57e67ab360d2c64f23372e980a3e6d4ef03331e",
   "web/src/api/types.ts": "01253c3d838c95f6bcf913fd19a9832214ebcf9434f7a55650dff1107b915a0f",
   "web/src/app.css": "fe8ceb81fdaf6aced832bf6ebd35ceeb7fc2b605ae70caf5c3fe61f98c1ce084",
@@ -259,5 +259,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-13 21:42 UTC"
+ "updated": "2026-11-13 21:46 UTC"
 }
