@@ -4293,7 +4293,8 @@ def activity(name, what, user=None):
     dict(first, last (days), daily [queries per day, oldest first], by {user|role|client|type|object: [dict(key, read,
     write, ddl, last, daily)], most first}, rows [one per user, role, client, object, statement and action: queries, days,
     first_day, last, daily, hours (weekday queries per UTC hour, 24), weekend (queries on Saturday or Sunday),
-    weekend_hours (those per UTC hour, 24), kind
+    weekend_hours (those per UTC hour, 24), dh ([day index, UTC hour, queries]: lets the page move queries to the local
+    day and hour of any business time), kind
     (person | service | system, of the user), interactive (from Snowsight, SnowSQL, ...)], ddl [the DDL rows, newest
     first]). Counts are queries per action: a MERGE that reads and changes a table
     counts in both."""
@@ -4320,12 +4321,14 @@ def activity(name, what, user=None):
                 b["daily"][i] += q
         r = rows.setdefault(tuple(keys.values()) + (x["ACTION"],),
                             dict(keys, action=x["ACTION"], queries=0, days=set(), last="", daily=[0] * ACTIVITY_DAYS,
-                                 hours=[0] * 24, weekend=0, weekend_hours=[0] * 24, interactive=x["CLIENT"] in INTERACTIVE,
+                                 hours=[0] * 24, weekend=0, weekend_hours=[0] * 24, dh=[], interactive=x["CLIENT"] in INTERACTIVE,
                                  kind="system" if x["USER_NAME"] == "SYSTEM" else "service" if is_service(x["USER_NAME"])
                                  else "person"))
         r["queries"] += q
         for h, n in hrs.items():
             r["weekend_hours" if d.weekday() >= 5 else "hours"][int(h)] += int(n)
+            if 0 <= i < ACTIVITY_DAYS:
+                r["dh"].append([i, int(h), int(n)])
         if d.weekday() >= 5:
             r["weekend"] += q
         r["days"].add(d)
@@ -4395,8 +4398,8 @@ def plain(title, about, sets, body):
 ACT_FILTER = {"object": ("OBJECT_NAME", "X.OBJECT_NAME = $OBJECT_NAME"), "user": ("USER_NAME", "X.USER_NAME = $USER_NAME"),
               "role": ("ROLE_NAME", "X.ROLE_NAME = $ROLE_NAME"), "app": ("APP_NAME", "X.APP = $APP_NAME"),
               "scope": ("IN_SCOPE", "X.OBJECT_NAME LIKE $IN_SCOPE || '.%'")}
-ACT_BASE = """WITH A AS (   -- one row per query in the window (UTC days)
-    SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, CONVERT_TIMEZONE('UTC', QUERY_START_TIME) AS L,
+ACT_BASE = """WITH A AS (   -- one row per query in the window (UTC days); L: its time in business time (TZ_HOURS)
+    SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DATEADD(HOUR, $TZ_HOURS, CONVERT_TIMEZONE('UTC', QUERY_START_TIME)) AS L,
            DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
     FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
     WHERE QUERY_START_TIME >= $FROM_DAY::DATE AND QUERY_START_TIME < DATEADD(DAY, 1, $TO_DAY::DATE)),
@@ -4415,8 +4418,7 @@ X AS (   -- with the role, statement type, Streamlit app (query tag) and client 
     LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
     WHERE H.OBJECT_NAME IS NOT NULL AND COALESCE(Q.QUERY_TAG, '') <> '{tag}' AND {where})
 """
-OFF = ("(DAYOFWEEKISO(DATEADD(HOUR, $TZ_HOURS, L)) > 5 OR HOUR(DATEADD(HOUR, $TZ_HOURS, L)) < $WORK_START "
-       "OR HOUR(DATEADD(HOUR, $TZ_HOURS, L)) >= $WORK_END)")
+OFF = "(DAYOFWEEKISO(L) > 5 OR HOUR(L) < $WORK_START OR HOUR(L) >= $WORK_END)"  # L is already in business time
 ACT_SECTIONS = {  # key: (title, what it shows, the final SELECT on X)
     "tiles": ("Reads, writes, DDL and clients", "Queries per action, with users, roles and clients",
               "SELECT ACTION, COUNT(DISTINCT QUERY_ID) AS QUERIES, COUNT(DISTINCT USER_NAME) AS USERS,\n"
@@ -4434,7 +4436,7 @@ ACT_SECTIONS = {  # key: (title, what it shows, the final SELECT on X)
     "by_day": ("Queries per day, by user", "Queries per UTC day and user; put ROLE_NAME, CLIENT, QUERY_TYPE or ACTION in place of USER_NAME",
                "SELECT L::DATE AS DAY, USER_NAME, COUNT(DISTINCT QUERY_ID) AS QUERIES\nFROM X GROUP BY 1, 2 ORDER BY 1, 3 DESC;"),
     "hours": ("Hours of use", "Queries per user and hour of day in your business time; OFF_HOURS = weekend or outside the working hours",
-              f"SELECT USER_NAME, HOUR(DATEADD(HOUR, $TZ_HOURS, L)) AS LOCAL_HOUR, {OFF} AS OFF_HOURS,\n"
+              f"SELECT USER_NAME, HOUR(L) AS LOCAL_HOUR, {OFF} AS OFF_HOURS,\n"
               "       COUNT(DISTINCT QUERY_ID) AS QUERIES\nFROM X GROUP BY 1, 2, 3 ORDER BY 1, 2;"),
     "off": ("Off-hours use by people", "Off-hours queries per user and object, with the statements, roles and clients",
             "SELECT USER_NAME, OBJECT_NAME, COUNT(DISTINCT QUERY_ID) AS OFF_HOURS_QUERIES, ARRAY_AGG(DISTINCT QUERY_TYPE) AS STATEMENTS,\n"
@@ -4460,12 +4462,12 @@ def activity_section_sql(name, what, first, last, key, work=WORK_HOURS):
     """The SQL behind one Activity section, for name (what: object | user | role | app | scope): dict(title, sql)."""
     title, about, select = ACT_SECTIONS[key]
     var, where = ACT_FILTER[what]
-    sets = {var: name, "FROM_DAY": first, "TO_DAY": last}
+    sets = {var: name, "FROM_DAY": first, "TO_DAY": last, "TZ_HOURS": 0}
     if key in ("hours", "off"):
-        sets |= {"WORK_START": work[0], "WORK_END": work[1], "TZ_HOURS": 0}
+        sets |= {"WORK_START": work[0], "WORK_END": work[1]}
     return plain(f"{title}: {name}", [f"{title} for {name} ({what}), {first} to {last} (UTC days). {about}.",
-                                      "Change the SET lines for another one or another window." +
-                                      (" TZ_HOURS shifts UTC to your business time (e.g. 2 for UTC+2)." if key in ("hours", "off") else "")],
+                                      "Change the SET lines for another one or another window. TZ_HOURS shifts UTC to your business",
+                                      "time (e.g. 2 for UTC+2): days and hours below are in that time."],
                  sets, ACT_BASE.format(where=where, tag=QUERY_TAG) + select)
 
 

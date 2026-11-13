@@ -205,7 +205,12 @@ describe("activity combinations", () => {
     expect(byKind.map((b) => b.key)).toEqual(["view · Reads", "table · DML · writes"]); // object kind and R / W / DDL as dimensions
     const { offOf } = await import("../pages/Activity");  // off-hours follow the working-hours slider
     const r = { hours: Array.from({ length: 24 }, (_, h) => (h === 7 || h === 20 ? 2 : h === 12 ? 5 : 0)), weekend: 3 };
-    expect([offOf(r, { start: 8, end: 18, tz: 0 }), offOf(r, { start: 7, end: 21, tz: 0 }), offOf(r, { start: 8, end: 18, tz: 2 })]).toEqual([7, 3, 5]); // tz 2: 07 and 20 UTC are 09 and 22 local
+    expect([offOf(r, { start: 8, end: 18, tz: 0 }), offOf(r, { start: 7, end: 21, tz: 0 })]).toEqual([7, 3]);
+    const { localize } = await import("../pages/Activity");  // business time moves queries to their local day and hour
+    const one = { ...row("R1", "JDBC", "SELECT", "READ", 5, [3, 2, 0]), dh: [[0, 23, 3], [1, 10, 2]] };
+    const [l] = localize([one], 2, "2026-11-06", 3);  // Fri 6 Nov 23:00 UTC = Sat 7 Nov 01:00 at UTC+2
+    expect([l.daily, l.weekend, l.weekend_hours[1], l.hours[12], l.queries]).toEqual([[0, 5, 0], 5, 3, 0, 5]);
+    expect(localize([one], -2, "2026-11-06", 3)[0].daily).toEqual([3, 2, 0]);
   });
 });
 

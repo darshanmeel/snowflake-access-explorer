@@ -1218,7 +1218,7 @@ export interface ActivityBy { key: string; read: number; write: number; ddl: num
 export interface ActivityRow {
   user: string; role: string; client: string; type: string; object: string; action: "READ" | "WRITE" | "DDL";
   queries: number; days: number; first_day: string; last: string; daily: number[];
-  hours: number[]; weekend: number; weekend_hours: number[]; // weekday queries per UTC hour (24); weekend total and per hour
+  hours: number[]; weekend: number; weekend_hours: number[]; dh?: number[][]; // dh: [day index, UTC hour, queries] // weekday queries per UTC hour (24); weekend total and per hour
   kind: "person" | "service" | "system"; interactive: boolean; // the user's type; run from Snowsight, SnowSQL or the CLI
 }
 /** Sensitive data of one object used: columns, policies, and per user and role used what they see. */

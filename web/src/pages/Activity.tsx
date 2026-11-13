@@ -22,8 +22,27 @@ const ACTS = ["WRITE", "READ", "DDL"] as const;
 type Work = { start: number; end: number; tz: number }; // business hours, local; tz: local = UTC + tz hours
 type Open = (k: ActivityKey, v: string) => void;
 /** Off-hours queries of a row: weekends, plus weekday hours outside [start, end) local time (UTC + tz). */
-export const offOf = (r: Pick<ActivityRow, "hours" | "weekend">, w: Work) =>
-  r.weekend + r.hours.reduce((n, v, h) => { const l = (h + w.tz + 48) % 24; return n + (l < w.start || l >= w.end ? v : 0); }, 0);
+export const offOf = (r: Pick<ActivityRow, "hours" | "weekend">, w: Work) =>  // rows already in business time (localize)
+  r.weekend + r.hours.reduce((n, v, h) => n + (h < w.start || h >= w.end ? v : 0), 0);
+
+/** Rows moved from UTC to business time (UTC + tz hours): each query to its local day and hour (dh), weekends by the
+ * local day; queries shifted out of the window at either end drop out. */
+export function localize(rows: ActivityRow[], tz: number, first: string, days: number): ActivityRow[] {
+  if (!tz) return rows;
+  const wd0 = new Date(first + "T00:00:00Z").getUTCDay();
+  return rows.map((r) => {
+    if (!r.dh?.length) return r;  // a snapshot from before hours were kept
+    const daily = Array(days).fill(0) as number[], hours = Array(24).fill(0) as number[], wh = Array(24).fill(0) as number[];
+    for (const [i, h, n] of r.dh) {
+      const t = i * 24 + h + tz, di = Math.floor(t / 24), lh = ((t % 24) + 24) % 24;
+      if (di < 0 || di >= days) continue;
+      daily[di] += n;
+      ([0, 6].includes((wd0 + di) % 7) ? wh : hours)[lh] += n;
+    }
+    const weekend = wh.reduce((a, v) => a + v, 0);
+    return { ...r, daily, hours, weekend, weekend_hours: wh, queries: daily.reduce((a, v) => a + v, 0), days: daily.filter(Boolean).length };
+  }).filter((r) => r.queries > 0);
+}
 /** "UTC+2", "UTC−5", "UTC+0". */
 const tzl = (w: Work) => `UTC${w.tz < 0 ? "−" : "+"}${Math.abs(w.tz)}`;
 /** Business hours as text: "07:00–19:00 UTC+2". */
@@ -82,9 +101,18 @@ function Tile({ label, value, cap, tone }: { label: ReactNode; value: ReactNode;
   return <div className={`ae-log-tile${tone ? ` ae-tone-${tone}` : ""}`}><span className="ae-log-tl">{label}</span><span className="ae-log-tv">{value}</span>{cap != null && <span className="ae-muted">{cap}</span>}</div>;
 }
 
-function Activity({ d }: { d: ActivityPage }) {
+function Activity({ d: raw }: { d: ActivityPage }) {
   const c = useApp();
-  const [work, setWork] = useState<Work>({ ...(d.work ?? { start: 7, end: 19 }), tz: 0 });
+  const [work, setWork] = useState<Work>({ ...(raw.work ?? { start: 7, end: 19 }), tz: 0 });
+  // everything below sees the rows in business time: days, hours, weekends and off-hours follow the slider
+  const d = useMemo(() => {
+    if (!raw.rows || !work.tz) return raw;
+    const rows = localize(raw.rows, work.tz, raw.first!, raw.days ?? 60);
+    return { ...raw, rows, daily: rows.reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(raw.days ?? 60).fill(0) as number[]),
+      ddl: rows.filter((r) => r.action === "DDL") };
+  }, [raw, work.tz]);
+  // each section's SQL with the slider's business time filled in
+  const secSql = useMemo(() => Object.fromEntries(Object.entries(raw.section_sql ?? {}).map(([k, v]) => [k, v.replace("SET TZ_HOURS = 0;", `SET TZ_HOURS = ${work.tz};`)])), [raw.section_sql, work.tz]);
   if (d.what === "warehouse") return <Warehouse d={d} />;
   if (!d.available) return <Card><EmptyState title="– No table activity" art="wait">{d.reason}</EmptyState></Card>;
   const rows = d.rows!;
@@ -101,17 +129,17 @@ function Activity({ d }: { d: ActivityPage }) {
   const objs = d.by!.object.length, total = d.daily!.reduce((a, v) => a + v, 0);
   const one = d.what === "object" || d.what === "app";
   return (
-    <SectionSql.Provider value={d.section_sql ?? {}}>
+    <SectionSql.Provider value={secSql}>
     <div className="ae-log">
       {d.note && <Banner title="Activity partly read" lines={[d.note]} />}
       <div className="ae-log-bar-top">
         {d.what !== "user" && d.what !== "role" && <Pick label="Change object" value={d.name} width={320} what="objects" onPick={(v) => c.nav("object", { name: v, show: "activity" })} />}
         <label className="ae-log-slide ae-log-biz"><span className="ae-log-tl">Business time</span><b>{tzl(work)}</b>
           <input type="range" min={-12} max={14} value={work.tz} aria-label="Business time, hours from UTC" onChange={(e) => setWork({ ...work, tz: +e.target.value })} />
-          <span className="ae-muted">{hh(work.start)}–{hh(work.end)} local, Monday to Friday · hours are stored in UTC</span></label>
+          <span className="ae-muted">{hh(work.start)}–{hh(work.end)} local, Monday to Friday · moves every day, hour, weekend and off-hours count on this tab (stored in UTC)</span></label>
       </div>
       <p className="ae-log-lead">{lead(d, objs, total)}</p>
-      <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} (UTC) · reads, writes and DDL · no query text
+      <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} · days and hours in business time {tzl(work)} · reads, writes and DDL · no query text
         {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}</p>
       {d.what === "app" ? <AppViewers d={d} /> : <Tiles d={d} work={work} />}
       {!one && <>  {/* one table, view or app: the PDF's one-object layout, without the overview sections */}
@@ -385,7 +413,7 @@ function Hours({ d, work }: { d: ActivityPage; work: Work }) {
     .sort((a, b) => b.off / Math.max(1, b.x.n) - a.off / Math.max(1, a.x.n)).slice(0, 10);
   const top = Math.max(1, ...list.flatMap(({ x }) => x.hours.map((v, h) => v + x.we[h])));
   const inside = (h: number) => h >= work.start && h < work.end;
-  const utc = (l: number) => (l - work.tz + 48) % 24;  // the stored UTC hour shown at local hour l
+  const utc = (l: number) => l;  // rows are already in business time (localize)
   return (
     <Sec title="Hours of use" sql="hours" sub={`Queries by hour of day, ${tzl(work)} (stored in UTC; slide to your business time: ${hh(work.start)}–${hh(work.end)} local, Monday to Friday) · business hours ${hh(work.start)}–${hh(work.end)} shaded · weekends count as off hours · most off-hours first · business time at the top`}
       right={<div className="ae-row">
