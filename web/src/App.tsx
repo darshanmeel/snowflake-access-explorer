@@ -135,7 +135,7 @@ function useLoc() {
 function useTheme(): [ThemeName, () => void] {
   const [t, setT] = useState<ThemeName>(() => {
     try { const s = localStorage.getItem("ae-theme"); if (s === "light" || s === "dark") return s; } catch { /* no storage */ }
-    return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return "dark";  // dark by default; the top-bar button switches and the choice is kept in this browser
   });
   useEffect(() => { document.body.style.background = t === "dark" ? "#0F1216" : "#F6F7F9"; }, [t]);
   return [t, () => setT((x) => { const n = x === "dark" ? "light" : "dark"; try { localStorage.setItem("ae-theme", n); } catch { /* no storage */ } return n; })];
