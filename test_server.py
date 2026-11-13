@@ -654,6 +654,27 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
     assert {r["area"] for r in js("/api/meta")["rules"] if 24 <= int(r["num"]) <= 28} == {"Activity"}
 
 
+def test_sql_page():  # "SQL behind this page": commented, read-only, full names, the page's own name in the SET lines
+    import re as _re
+    cases = [("access", "user=ENGINEER_01", "SET USER_NAME = 'ENGINEER_01';"), ("access", "role=F_ANALYST", "SET ROLE_NAME = 'F_ANALYST';"),
+             ("object", "name=SALES.CORE.TBL_CUSTOMER", "SET OBJECT_NAME = 'SALES.CORE.TBL_CUSTOMER';"),
+             ("object", "name=SALES.CORE.TBL_CUSTOMER&show=activity", "SET FROM_DAY = "),
+             ("object", "name=SALES.MART.ST_CUSTOMER_LOOKUP&show=activity", "SET APP_NAME = 'SALES.MART.ST_CUSTOMER_LOOKUP';"),
+             ("object", "name=SALES.CORE&show=activity", "SET IN_SCOPE = 'SALES.CORE';"),
+             ("object", "name=WH_SALES_XS&show=activity", "SET WAREHOUSE_NAME = 'WH_SALES_XS';"),
+             ("access", "user=O'BRIEN&show=activity", "SET USER_NAME = 'O''BRIEN';"),
+             ("usage", "user=ENGINEER_01", "USER_NAME = $USER_NAME"), ("rules", "", "GRANTEE_NAME = 'PUBLIC'"), ("home", "", "SNOWFLAKE.ACCOUNT_USAGE")]
+    for page, q, want in cases:
+        qs = js(f"/api/sql?page={page}&{q}")["queries"]
+        assert qs and any(want in x["sql"] for x in qs), (page, q)
+        for x in qs:
+            code = chr(10).join(l.split("--")[0] for l in x["sql"].splitlines())
+            assert "SNOWFLAKE.ACCOUNT_USAGE." in code and not _re.search(r"\b(INSERT|UPDATE|DELETE|MERGE|CREATE|DROP|ALTER|GRANT|REVOKE|CALL)\b", code), x["title"]
+            assert code.count("(") == code.count(")") and x["sql"].lstrip().startswith("--"), x["title"]
+    sec = js("/api/activity?name=SALES.CORE.TBL_CUSTOMER")["section_sql"]
+    assert set(sec) >= {"client", "kinds", "matrix", "type_day", "by_day", "who", "hours", "off", "touched", "ddl"} and "$TZ_HOURS" in sec["hours"]
+
+
 API = {"graph": "map", "whatif": 'whatif?changes=[{"op":"empty_public"}]'}  # page key -> its endpoint, when they differ
 
 

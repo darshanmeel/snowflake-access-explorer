@@ -705,7 +705,7 @@ def test_sis_upload():
             names = [x.name for x in n.names] if isinstance(n, ast.Import) else [n.module] if isinstance(n, ast.ImportFrom) and n.module else []
             todo += [m.split(".")[0] + ".py" for m in names if os.path.isfile(os.path.join(here, m.split(".")[0] + ".py"))]
     assert need <= put, need - put
-    assert {"environment.yml", "sis/.env", "web/dist-st/index.html", "web/dist-st/assets/*"} <= put
+    assert {"environment.yml", "sis/.env", "web/dist-st/index.html", "web/dist-st/assets/*", "access_queries/*.sql"} <= put  # Show SQL
     assert glob.glob(os.path.join(here, "web", "dist-st", "assets", "*.js"))
     assert sql.index("REMOVE @&DB.&SCHEMA.STG_ACCESS_APP/web/dist-st/assets/") < sql.index("PUT 'file://&HERE/web/dist-st/assets/*'")
     pin = re.search(r"^\s*-\s*streamlit=(\d+)\.(\d+)", open(os.path.join(here, "environment.yml"), encoding="utf-8").read(), re.M)

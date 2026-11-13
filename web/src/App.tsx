@@ -9,7 +9,7 @@ import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
 import { CheckPageView } from "./pages/Check";
 import { ComparePageView } from "./pages/Compare";
-import { ErrorBox } from "./pages/common";
+import { ErrorBox, SqlPanel } from "./pages/common";
 import { FlowPageView } from "./pages/Flow";
 import { GraphPageView } from "./pages/Map";
 import { HomePageView, openFound } from "./pages/Home";
@@ -263,6 +263,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   useEffect(() => { onUrl?.(url(loc)); }, [loc]);
   const [theme, flip] = useTheme();
   const [busy, setBusy] = useState("");
+  const [sql, setSql] = useState(false);  // the "SQL behind this page" panel
   const [notice, setNotice] = useState<{ tone: "info" | "bad"; title: string; text: string } | null>(null);
   const view = loc.mine ? "mine" : "shared";
   const m = useApi<Meta>("meta", { view });
@@ -321,12 +322,15 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           <span className="top-right">
             {meta && <DataTime meta={meta} reload={reload} busy={!!busy} />}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
+            <button className="ae-btn" onClick={() => setSql(true)} title="The SQL behind this page, to run yourself (or right-click the page)">SQL</button>
             <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           </span>
           {busy && <span className="ae-muted top-busy" role="status"><span className="ae-spin" aria-hidden />{busy}</span>}
         </header>
         {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
-        <main className="main">
+        {/* right-click the page: the SQL behind it (Shift + right-click keeps the browser's menu) */}
+        <main className="main" onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); setSql(true); }}>
+          {sql && <SqlPanel page={loc.page} params={{ ...loc.params, view }} onClose={() => setSql(false)} />}
           {notice && (
             <Banner tone={notice.tone} title={notice.title} lines={[notice.text]}>
               <button type="button" className="ae-btn ae-btn-s" onClick={() => setNotice(null)}>Dismiss</button>

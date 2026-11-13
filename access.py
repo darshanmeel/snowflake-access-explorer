@@ -4359,6 +4359,204 @@ WHERE A.QUERY_START_TIME >= '{first}'::DATE AND A.QUERY_START_TIME < DATEADD(DAY
 ORDER BY A.QUERY_START_TIME DESC;"""
 
 
+# ---------- SQL to run yourself: the queries behind each page and Activity section ----------
+
+DAYS_USAGE = 30  # query history read for roles and warehouses used (the snapshot's DAYS)
+QUERIES = pathlib.Path(__file__).with_name("access_queries")  # the standalone query files (access_queries/test_queries.py)
+NEEDS = ("-- Read-only. Needs SNOWFLAKE.ACCOUNT_USAGE: IMPORTED PRIVILEGES on database SNOWFLAKE, or the database roles\n"
+         "-- SNOWFLAKE.SECURITY_VIEWER (grants, users) and SNOWFLAKE.GOVERNANCE_VIEWER (query and access history, tags,\n"
+         "-- policies). Without them Snowflake says the view does not exist. ACCOUNT_USAGE lags up to 3 hours.\n")
+
+
+def lit(v):
+    """A SQL literal for a SET line."""
+    return "NULL" if v is None else ("TRUE" if v else "FALSE") if isinstance(v, bool) else str(v) if isinstance(v, int) \
+        else "'" + str(v).replace("'", "''") + "'"
+
+
+def query_file(file, title, **sets):
+    """One of the access_queries/ files with its SET lines filled in: dict(title, sql); None when the file is not
+    there (an old deploy)."""
+    f = QUERIES / file
+    if not f.is_file():
+        return None
+    text = f.read_text(encoding="utf-8")
+    for k, v in sets.items():
+        text = re.sub(rf"^SET {k} = .*;$", f"SET {k} = {lit(v)};", text, flags=re.M)
+    return dict(title=title, sql=text.rstrip() + "\n")
+
+
+def plain(title, about, sets, body):
+    """A query of our own: comment lines, SET lines, then the SELECT (with $NAME for the SET values)."""
+    head = "".join(f"-- {x}\n" for x in about) + NEEDS
+    return dict(title=title, sql=head + "".join(f"SET {k} = {lit(v)};\n" for k, v in sets.items()) + "\n" + body.strip() + "\n")
+
+
+ACT_FILTER = {"object": ("OBJECT_NAME", "X.OBJECT_NAME = $OBJECT_NAME"), "user": ("USER_NAME", "X.USER_NAME = $USER_NAME"),
+              "role": ("ROLE_NAME", "X.ROLE_NAME = $ROLE_NAME"), "app": ("APP_NAME", "X.APP = $APP_NAME"),
+              "scope": ("IN_SCOPE", "X.OBJECT_NAME LIKE $IN_SCOPE || '.%'")}
+ACT_BASE = """WITH A AS (   -- one row per query in the window (UTC days)
+    SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, CONVERT_TIMEZONE('UTC', QUERY_START_TIME) AS L,
+           DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+    FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
+    WHERE QUERY_START_TIME >= $FROM_DAY::DATE AND QUERY_START_TIME < DATEADD(DAY, 1, $TO_DAY::DATE)),
+H AS (   -- each object a query read (READ), changed (WRITE) or created, altered or dropped (DDL)
+    SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+    FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
+    UNION ALL
+    SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING, 'WRITE' FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O
+    UNION ALL
+    SELECT QUERY_ID, USER_NAME, T, L, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL' FROM A WHERE OBJECT_MODIFIED_BY_DDL IS NOT NULL),
+X AS (   -- with the role, statement type, Streamlit app (query tag) and client of each query
+    SELECT H.*, Q.ROLE_NAME, Q.QUERY_TYPE, TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING AS APP,
+           REGEXP_REPLACE(S.CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
+    FROM H JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY Q ON Q.QUERY_ID = H.QUERY_ID AND Q.START_TIME >= $FROM_DAY::DATE
+    LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
+    WHERE H.OBJECT_NAME IS NOT NULL AND {where})
+"""
+OFF = ("(DAYOFWEEKISO(DATEADD(HOUR, $TZ_HOURS, L)) > 5 OR HOUR(DATEADD(HOUR, $TZ_HOURS, L)) < $WORK_START "
+       "OR HOUR(DATEADD(HOUR, $TZ_HOURS, L)) >= $WORK_END)")
+ACT_SECTIONS = {  # key: (title, what it shows, the final SELECT on X)
+    "tiles": ("Reads, writes, DDL and clients", "Queries per action, with users, roles and clients",
+              "SELECT ACTION, COUNT(DISTINCT QUERY_ID) AS QUERIES, COUNT(DISTINCT USER_NAME) AS USERS,\n"
+              "       COUNT(DISTINCT ROLE_NAME) AS ROLES, ARRAY_AGG(DISTINCT CLIENT) AS CLIENTS\nFROM X GROUP BY 1 ORDER BY 2 DESC;"),
+    "client": ("Queries by client", "Queries per client and action; put ROLE_NAME or USER_NAME in place of CLIENT for the other views",
+               "SELECT CLIENT, ACTION, COUNT(DISTINCT QUERY_ID) AS QUERIES, COUNT(DISTINCT OBJECT_NAME) AS OBJECTS,\n"
+               "       COUNT(DISTINCT USER_NAME) AS USERS, ARRAY_AGG(DISTINCT ROLE_NAME) AS ROLES\nFROM X GROUP BY 1, 2 ORDER BY 3 DESC;"),
+    "kinds": ("Statement kinds", "Queries per statement type, on how many objects and user / role / client rows",
+              "SELECT QUERY_TYPE, ACTION, COUNT(DISTINCT QUERY_ID) AS QUERIES, COUNT(DISTINCT OBJECT_NAME) AS OBJECTS,\n"
+              "       COUNT(DISTINCT USER_NAME || '|' || ROLE_NAME || '|' || COALESCE(CLIENT, '')) AS COMBOS\nFROM X GROUP BY 1, 2 ORDER BY 3 DESC;"),
+    "matrix": ("Role × client", "Queries per role and client (one row per cell); put QUERY_TYPE or ACTION in place of CLIENT for other columns",
+               "SELECT ROLE_NAME, CLIENT, COUNT(DISTINCT QUERY_ID) AS QUERIES\nFROM X GROUP BY 1, 2 ORDER BY 1, 3 DESC;"),
+    "type_day": ("Queries by statement type, per day", "Queries per UTC day and action (DML = WRITE)",
+                 "SELECT L::DATE AS DAY, ACTION, COUNT(DISTINCT QUERY_ID) AS QUERIES\nFROM X GROUP BY 1, 2 ORDER BY 1, 2;"),
+    "by_day": ("Queries per day, by user", "Queries per UTC day and user; put ROLE_NAME, CLIENT, QUERY_TYPE or ACTION in place of USER_NAME",
+               "SELECT L::DATE AS DAY, USER_NAME, COUNT(DISTINCT QUERY_ID) AS QUERIES\nFROM X GROUP BY 1, 2 ORDER BY 1, 3 DESC;"),
+    "hours": ("Hours of use", "Queries per user and hour of day in your business time; OFF_HOURS = weekend or outside the working hours",
+              f"SELECT USER_NAME, HOUR(DATEADD(HOUR, $TZ_HOURS, L)) AS LOCAL_HOUR, {OFF} AS OFF_HOURS,\n"
+              "       COUNT(DISTINCT QUERY_ID) AS QUERIES\nFROM X GROUP BY 1, 2, 3 ORDER BY 1, 2;"),
+    "off": ("Off-hours use by people", "Off-hours queries per user and object, with the statements, roles and clients",
+            "SELECT USER_NAME, OBJECT_NAME, COUNT(DISTINCT QUERY_ID) AS OFF_HOURS_QUERIES, ARRAY_AGG(DISTINCT QUERY_TYPE) AS STATEMENTS,\n"
+            f"       ARRAY_AGG(DISTINCT ROLE_NAME) AS ROLES, ARRAY_AGG(DISTINCT CLIENT) AS CLIENTS, MAX(T) AS LAST_USED\nFROM X WHERE {OFF}\n"
+            "GROUP BY 1, 2 ORDER BY 3 DESC;"),
+    "touched": ("Who touched what", "Queries per user and object (one row per cell); add WHERE <off-hours test> for off-hours only",
+                "SELECT USER_NAME, OBJECT_NAME, COUNT(DISTINCT QUERY_ID) AS QUERIES\nFROM X GROUP BY 1, 2 ORDER BY 3 DESC;"),
+    "objects": ("Objects, busiest first", "Reads, writes and DDL per object, with users and the last use",
+                "SELECT OBJECT_NAME, COUNT(DISTINCT IFF(ACTION = 'READ', QUERY_ID, NULL)) AS READS,\n"
+                "       COUNT(DISTINCT IFF(ACTION = 'WRITE', QUERY_ID, NULL)) AS WRITES, COUNT(DISTINCT IFF(ACTION = 'DDL', QUERY_ID, NULL)) AS DDL,\n"
+                "       COUNT(DISTINCT USER_NAME) AS USERS, MAX(T) AS LAST_USED\nFROM X GROUP BY 1 ORDER BY READS + WRITES + DDL DESC;"),
+    "who": ("Who used it", "One row per user, role and client: statements, queries per action, active days, first and last use",
+            "SELECT USER_NAME, ROLE_NAME, CLIENT, ARRAY_AGG(DISTINCT QUERY_TYPE) AS STATEMENTS,\n"
+            "       COUNT(DISTINCT IFF(ACTION = 'WRITE', QUERY_ID, NULL)) AS DML, COUNT(DISTINCT IFF(ACTION = 'READ', QUERY_ID, NULL)) AS READS,\n"
+            "       COUNT(DISTINCT IFF(ACTION = 'DDL', QUERY_ID, NULL)) AS DDL, COUNT(DISTINCT L::DATE) AS ACTIVE_DAYS,\n"
+            "       MIN(T) AS FIRST_USED, MAX(T) AS LAST_USED\nFROM X GROUP BY 1, 2, 3 ORDER BY DML + READS + DDL DESC;"),
+    "ddl": ("DDL changes", "Every CREATE, ALTER or DROP: query id, time, user, role, statement (no query text)",
+            "SELECT QUERY_ID, T AS STARTED, USER_NAME, ROLE_NAME, CLIENT, QUERY_TYPE, OBJECT_NAME\nFROM X WHERE ACTION = 'DDL' ORDER BY T DESC;"),
+}
+
+
+def activity_section_sql(name, what, first, last, key, work=WORK_HOURS):
+    """The SQL behind one Activity section, for name (what: object | user | role | app | scope): dict(title, sql)."""
+    title, about, select = ACT_SECTIONS[key]
+    var, where = ACT_FILTER[what]
+    sets = {var: name, "FROM_DAY": first, "TO_DAY": last}
+    if key in ("hours", "off"):
+        sets |= {"WORK_START": work[0], "WORK_END": work[1], "TZ_HOURS": 0}
+    return plain(f"{title}: {name}", [f"{title} for {name} ({what}), {first} to {last} (UTC days). {about}.",
+                                      "Change the SET lines for another one or another window." +
+                                      (" TZ_HOURS shifts UTC to your business time (e.g. 2 for UTC+2)." if key in ("hours", "off") else "")],
+                 sets, ACT_BASE.format(where=where) + select)
+
+
+def page_sql(page, p, first=None, last=None):
+    """The SQL to run yourself behind a page, for the name it shows (user=, role=, name=): [dict(title, sql)],
+    the most useful first. Grants come from the access_queries/ files; activity from activity_section_sql()."""
+    user, role, obj = p.get("user") or p.get("a") or "", p.get("role") or "", p.get("name") or p.get("obj") or p.get("table") or ""
+    end = day(ref_time())
+    first, last = first or (end - timedelta(days=ACTIVITY_DAYS - 1)).isoformat(), last or end.isoformat()
+    out = []
+    if p.get("show") == "activity" and kinds.get(obj) == "WAREHOUSE":
+        return [plain(f"Who ran queries on {obj}", [f"Queries per user and role on warehouse {obj}, last {DAYS_USAGE} days (QUERY_HISTORY)."],
+                      {"WAREHOUSE_NAME": obj, "DAYS": DAYS_USAGE}, """
+SELECT USER_NAME, ROLE_NAME, COUNT(*) AS QUERIES, SUM(CREDITS_USED_CLOUD_SERVICES) AS CLOUD_CREDITS,
+       MIN(START_TIME) AS FIRST_USED, MAX(START_TIME) AS LAST_USED
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE WAREHOUSE_NAME = $WAREHOUSE_NAME AND START_TIME >= DATEADD(DAY, -$DAYS, CURRENT_TIMESTAMP())
+GROUP BY 1, 2 ORDER BY 3 DESC;"""), query_file("5_object_users.sql", f"Who can use {obj}", OBJECT_NAME=obj)]
+    if p.get("show") == "activity" and (user or role or obj):
+        what = "user" if user else "role" if role else {"STREAMLIT": "app", "DATABASE": "scope", "SCHEMA": "scope"}.get(kinds.get(obj), "object")
+        name = user or role or obj
+        keys = (["tiles", "client", "kinds", "matrix", "type_day", "by_day", "who", "ddl"] if what in ("object", "app")
+                else ["tiles", "off", "touched", "hours", "objects", "client", "kinds", "matrix", "type_day", "by_day", "who", "ddl"])
+        return [activity_section_sql(name, what, first, last, k) for k in keys] + [dict(title=f"Every query, one by one: {name}",
+                                                                                         sql=query_sql(name, what, first, last) + "\n")]
+    if user:
+        out += [query_file("2_user_access.sql", f"Everything {user} can reach, through which roles", USER_NAME=user),
+                query_file("1_user_roles.sql", f"Every role {user} holds", USER_NAME=user)]
+    if role:
+        out += [query_file("3_role_access.sql", f"Everything {role} reaches", ROLE_NAME=role),
+                query_file("4_role_holders.sql", f"Who holds {role}, and through which roles", ROLE_NAME=role)]
+    if obj:
+        out += [query_file("5_object_users.sql", f"Who can reach {obj}", OBJECT_NAME=obj),
+                plain(f"Tags and policies on {obj}", [f"Tags on {obj}, its columns, its schema and its database (those apply to it too),",
+                                                    "and the masking / row access policies on it; a policy attached to a tag applies to every",
+                                                    "column carrying that tag."], {"OBJECT_NAME": obj}, """
+WITH T AS (
+    SELECT CASE DOMAIN WHEN 'DATABASE' THEN OBJECT_NAME WHEN 'SCHEMA' THEN OBJECT_DATABASE || '.' || OBJECT_NAME
+                ELSE OBJECT_DATABASE || '.' || OBJECT_SCHEMA || '.' || OBJECT_NAME END AS OBJ,
+           DOMAIN, IFF(DOMAIN = 'COLUMN', COLUMN_NAME, NULL) AS COLUMN_NAME,
+           TAG_DATABASE || '.' || TAG_SCHEMA || '.' || TAG_NAME AS TAG_NAME, TAG_VALUE, APPLY_METHOD
+    FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES
+    WHERE OBJECT_DELETED IS NULL AND DOMAIN IN ('DATABASE', 'SCHEMA', 'TABLE', 'COLUMN'))
+SELECT 'TAG' AS KIND, OBJ, DOMAIN, COLUMN_NAME, TAG_NAME AS NAME, TAG_VALUE AS VALUE, APPLY_METHOD AS HOW
+FROM T
+WHERE OBJ IN ($OBJECT_NAME, SPLIT_PART($OBJECT_NAME, '.', 1), SPLIT_PART($OBJECT_NAME, '.', 1) || '.' || SPLIT_PART($OBJECT_NAME, '.', 2))
+UNION ALL
+SELECT POLICY_KIND, REF_DATABASE_NAME || '.' || REF_SCHEMA_NAME || '.' || REF_ENTITY_NAME, REF_ENTITY_DOMAIN, REF_COLUMN_NAME,
+       POLICY_DB || '.' || POLICY_SCHEMA || '.' || POLICY_NAME, POLICY_STATUS, NULL
+FROM SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES
+WHERE POLICY_KIND IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY')
+  AND REF_DATABASE_NAME || '.' || REF_SCHEMA_NAME || '.' || REF_ENTITY_NAME = $OBJECT_NAME
+ORDER BY 1, 3, 4;""")]
+    if page == "usage" and (user or role):
+        out.insert(0, plain(f"Objects used by {user or role}", ["Tables and views read or changed per ISO week (ACCESS_HISTORY; "
+                                                              "Enterprise edition), the 'used' side of Granted vs used."],
+                            {"USER_NAME": user or None, "ROLE_NAME": role or None, "DAYS": USE_DAYS}, use_sql("$DAYS").replace(
+                                "FROM H WHERE OBJECT_NAME IS NOT NULL", "FROM H WHERE OBJECT_NAME IS NOT NULL AND USER_NAME = $USER_NAME") + ";"
+                            if user else "-- A role's use is the use of the users who hold it: run this per user (4_role_holders.sql lists them).\n"
+                            + use_sql("$DAYS") + ";"))
+    if page in ("sensitive", "flow", "review") or (page == "home" and not out):
+        out.append(plain("Sensitive tags", ["Every tag on databases, schemas, tables and columns; the app counts these as "
+                                            f"sensitive: {SENSITIVE_TAGS}."], {}, """
+SELECT CASE DOMAIN WHEN 'DATABASE' THEN OBJECT_NAME WHEN 'SCHEMA' THEN OBJECT_DATABASE || '.' || OBJECT_NAME
+            ELSE OBJECT_DATABASE || '.' || OBJECT_SCHEMA || '.' || OBJECT_NAME END AS OBJ,
+       DOMAIN, IFF(DOMAIN = 'COLUMN', COLUMN_NAME, NULL) AS COLUMN_NAME,
+       TAG_DATABASE || '.' || TAG_SCHEMA || '.' || TAG_NAME AS TAG_NAME, TAG_VALUE, APPLY_METHOD
+FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES
+WHERE OBJECT_DELETED IS NULL AND DOMAIN IN ('DATABASE', 'SCHEMA', 'TABLE', 'COLUMN')
+ORDER BY 1, 3;"""))
+    if page in ("rules", "home", "whatif", "review") or not out:
+        out += [plain("Grants to PUBLIC", ["Privileges every user gets through PUBLIC (rule 9)."], {}, """
+SELECT PRIVILEGE, GRANTED_ON, TABLE_CATALOG, TABLE_SCHEMA, NAME, GRANTED_BY, CREATED_ON
+FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
+WHERE DELETED_ON IS NULL AND GRANTED_TO = 'ROLE' AND GRANTEE_NAME = 'PUBLIC'
+ORDER BY 2, 3, 4, 5;"""),
+                plain("Admin roles held by users", ["Users holding an admin role directly (rule 5; through other roles: "
+                                                    "4_role_holders.sql per admin role)."], {}, f"""
+SELECT GRANTEE_NAME AS USER_NAME, ROLE, GRANTED_BY, CREATED_ON
+FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS
+WHERE DELETED_ON IS NULL AND ROLE IN ({", ".join(lit(r) for r in sorted(ADMIN))})
+ORDER BY 2, 1;"""),
+                plain("Dormant and disabled users with roles", [f"Users with no login for {DORMANT_DAYS} days (or never), "
+                                                                "or disabled, who still hold roles (rules 8, 16)."], {"DAYS": DORMANT_DAYS}, """
+SELECT U.NAME AS USER_NAME, U.TYPE, U.DISABLED, U.LAST_SUCCESS_LOGIN, COUNT(G.ROLE) AS ROLES
+FROM SNOWFLAKE.ACCOUNT_USAGE.USERS U
+JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS G ON G.GRANTEE_NAME = U.NAME AND G.DELETED_ON IS NULL
+WHERE U.DELETED_ON IS NULL
+  AND (U.DISABLED = TRUE OR U.LAST_SUCCESS_LOGIN IS NULL OR U.LAST_SUCCESS_LOGIN < DATEADD(DAY, -$DAYS, CURRENT_TIMESTAMP()))
+GROUP BY 1, 2, 3, 4 ORDER BY 4 NULLS FIRST;""")]
+    return [x for x in out if x]
+
 def used_path(u, r, o, action):
     """The grant path behind one use: u (None for a role page) -> ... -> r, the role used -> ... -> the holder of a
     privilege on o that fits the action (READ: a read privilege, else a write or OWNERSHIP) -> o, shortest first.

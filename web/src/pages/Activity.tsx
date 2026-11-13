@@ -4,12 +4,12 @@
 // of use (UTC, working hours on a slider), objects busiest first, an object in detail (clients, statements, role x
 // client, per day), who used it, sensitive data seen, grant paths, every query as copy-only SQL, the checks.
 // ACCESS_HISTORY + QUERY_HISTORY + SESSIONS metadata only, never query text.
-import { useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { useApi } from "../api/client";
 import type { ActivityBy, ActivityKey, ActivityPage, ActivityRow, ActivitySensitive } from "../api/types";
 import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips } from "../components";
 import { useApp } from "../ctx";
-import { col, GraphCard, Load, Pick } from "./common";
+import { col, GraphCard, Load, Pick, SqlBox } from "./common";
 
 const LABEL: Record<ActivityKey, string> = { user: "User", role: "Role", client: "Client", type: "Statement", object: "Table" };
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -66,8 +66,20 @@ export function UseLine({ name, user }: { name: string; user: string }) {
   );
 }
 
-function Sec({ title, sub, right, children, id }: { title: ReactNode; sub?: ReactNode; right?: ReactNode; children: ReactNode; id?: string }) {
-  return <div id={id}><Card title={title} sub={sub} right={right}>{children}</Card></div>;
+/** The SQL behind each section (activity_page section_sql), by section key. */
+const SectionSql = createContext<Record<string, string>>({});
+
+/** A section card; sql: the key of the query behind it, shown on its SQL button. */
+function Sec({ title, sub, right, children, id, sql }: { title: ReactNode; sub?: ReactNode; right?: ReactNode; children: ReactNode; id?: string; sql?: string }) {
+  const text = useContext(SectionSql)[sql ?? ""];
+  const [open, setOpen] = useState(false);
+  return (
+    <div id={id}><Card title={title} sub={sub} right={<div className="ae-row">{right}{text && (
+      <button type="button" className={`ae-btn${open ? " ae-btn-primary" : ""}`} aria-pressed={open} title="The SQL behind this section, to run yourself" onClick={() => setOpen(!open)}>SQL</button>)}</div>}>
+      {open && text && <SqlBox sql={text} />}
+      {children}
+    </Card></div>
+  );
 }
 
 function Seg<K extends string>({ value, items, onPick, label }: { value: K; items: [K, string][]; onPick: (k: K) => void; label: string }) {
@@ -97,6 +109,7 @@ function Activity({ d }: { d: ActivityPage }) {
   const objs = d.by!.object.length, total = d.daily!.reduce((a, v) => a + v, 0);
   const one = d.what === "object" || d.what === "app";
   return (
+    <SectionSql.Provider value={d.section_sql ?? {}}>
     <div className="ae-log">
       {d.note && <Banner title="Activity partly read" lines={[d.note]} />}
       <div className="ae-log-bar-top">
@@ -119,7 +132,7 @@ function Activity({ d }: { d: ActivityPage }) {
       <Sensitive d={d} />
       {(d.what === "object" || d.what === "user" || d.what === "role") && <Paths d={d} />}
       {d.ddl!.length > 0 && (
-        <Sec title="DDL changes" sub="CREATE, ALTER and DROP, newest first.">
+        <Sec title="DDL changes" sub="CREATE, ALTER and DROP, newest first." sql="ddl">
           <Plain d={d} rows={d.ddl!} open={open} />
         </Sec>
       )}
@@ -128,6 +141,7 @@ function Activity({ d }: { d: ActivityPage }) {
         <Checks d={d} />
       </div>
     </div>
+    </SectionSql.Provider>
   );
 }
 
@@ -253,7 +267,7 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
   const max = Math.max(1, ...gs.flatMap((g) => g.rs.map((r) => offOf(r, work))));
   const kind = new Map(d.rows!.map((r) => [r.user, r.kind]));
   return (
-    <Sec title="Off-hours use by people" sub={sub} right={<Seg label="Group off-hours" value={by} items={[["user", "By user"], ["object", "By object"]]} onPick={setBy} />}>
+    <Sec title="Off-hours use by people" sub={sub} sql="off" right={<Seg label="Group off-hours" value={by} items={[["user", "By user"], ["object", "By object"]]} onPick={setBy} />}>
       <div className="ae-log-people">
           {shown.map((g) => {
             const m = new Map<string, { off: number; types: Set<string>; via: Set<string>; last: string }>();
@@ -353,7 +367,7 @@ function Touched({ d, work, open }: { d: ActivityPage; work: Work; open: Open })
       {k === "object" && d.objects?.[v]?.sensitive && <span className="ae-otag ae-sens-tag">sensitive</span>}</>;
   const keys = (["user", "role", "client", "object", "type"] as K[]);
   return (
-    <Sec title="Who touched what" sub={`${NAME[rk]} down, ${NAME[across].toLowerCase()} across · ${period === "30" ? "last 30 days" : `all ${all} days`} · ${only === "off" ? `off-hours queries (weekends or outside ${biz(work)})` : "all queries"} · darker = more`}
+    <Sec title="Who touched what" sql="touched" sub={`${NAME[rk]} down, ${NAME[across].toLowerCase()} across · ${period === "30" ? "last 30 days" : `all ${all} days`} · ${only === "off" ? `off-hours queries (weekends or outside ${biz(work)})` : "all queries"} · darker = more`}
       right={<div className="ae-row"><span className="ae-muted">Rows</span><Seg label="Rows" value={rk} items={keys.filter((k) => k !== "type").map((k) => [k, NAME[k]])} onPick={setRk} />
         <span className="ae-muted">Across</span><Seg label="Across" value={across} items={[...keys.filter((k) => k !== rk).map((k) => [k, NAME[k]] as [K | "day", string]), ["day", "Days"]]} onPick={setCk} />
         <Seg label="Objects" value={objs} items={[["sens", "Sensitive objects"], ["all", "All objects"]]} onPick={setObjs} />
@@ -381,7 +395,7 @@ function Hours({ d, work }: { d: ActivityPage; work: Work }) {
   const inside = (h: number) => h >= work.start && h < work.end;
   const utc = (l: number) => (l - work.tz + 48) % 24;  // the stored UTC hour shown at local hour l
   return (
-    <Sec title="Hours of use" sub={`Queries by hour of day, ${tzl(work)} (stored in UTC; slide to your business time: ${hh(work.start)}–${hh(work.end)} local, Monday to Friday) · business hours ${hh(work.start)}–${hh(work.end)} shaded · weekends count as off hours · most off-hours first · business time at the top`}
+    <Sec title="Hours of use" sql="hours" sub={`Queries by hour of day, ${tzl(work)} (stored in UTC; slide to your business time: ${hh(work.start)}–${hh(work.end)} local, Monday to Friday) · business hours ${hh(work.start)}–${hh(work.end)} shaded · weekends count as off hours · most off-hours first · business time at the top`}
       right={<div className="ae-row">
         <Seg label="Hours of use by" value={by} items={[["user", "Users"], ["object", "Objects"]]} onPick={setBy} />
       </div>}>
@@ -432,7 +446,7 @@ function Detail({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) 
   return (
     <>
       {!one && (
-        <Sec title={d.what === "app" ? "Tables it read for its viewers" : "Objects, busiest first"} sub={`All queries in the window · ${plural(list.length, "object")} · click one for its detail below`}
+        <Sec title={d.what === "app" ? "Tables it read for its viewers" : "Objects, busiest first"} sql="objects" sub={`All queries in the window · ${plural(list.length, "object")} · click one for its detail below`}
           right={<div className="ae-row"><input className="ae-input" placeholder="Filter tables, views and stages" value={q} onChange={(e) => setQ(e.target.value)} />
             <Seg label="Objects shown" value={only} items={[["all", "All"], ["sens", "Sensitive"]]} onPick={setOnly} /></div>}>
           <table className="ae-log-table">
@@ -498,7 +512,7 @@ function ByClient({ rows }: { rows: ActivityRow[] }) {
   const list = all.slice(0, 8), top = Math.max(1, ...all.map((l) => l.t));
   const label = (key: string) => k === "action" ? { WRITE: "DML · writes", READ: "Reads", DDL: "DDL" }[key as "WRITE"] : key;
   return (
-    <Sec title={`Queries by ${k === "action" ? "DML / DDL / read" : k}`} sub="Writes, reads and DDL summed per row · sorted by volume"
+    <Sec title={`Queries by ${k === "action" ? "DML / DDL / read" : k}`} sql="client" sub="Writes, reads and DDL summed per row · sorted by volume"
       right={<Seg label="Queries by" value={k} items={[["client", "Client"], ["role", "Role"], ["user", "User"], ["action", "DML / DDL / Read"]]} onPick={setK} />}>
       {list.map((l) => (
         <div key={l.key} className="ae-log-crow">
@@ -521,7 +535,7 @@ function Kinds({ rows }: { rows: ActivityRow[] }) {
   const all = [...m.entries()].sort((a, b) => b[1].n - a[1].n), list = all.slice(0, 12);
   const top = Math.max(1, ...all.map(([, x]) => x.n));
   return (
-    <Sec title="Statement kinds" sub="Queries per statement type">
+    <Sec title="Statement kinds" sub="Queries per statement type" sql="kinds">
       {list.map(([t, x]) => (
         <div key={t} className="ae-log-krow">
           <span className="ae-mono ae-log-trunc"><i style={{ background: ACT[x.action] }} />{t}</span>
@@ -551,7 +565,7 @@ function Matrix({ d, rows }: { d: ActivityPage; rows: ActivityRow[] }) {
     : rows.filter((r) => r[rk] === a && r[ck] === b).reduce((n, r) => n + r.queries, 0);
   const name = { client: "client", action: "statement type", type: "statement", day: "day (last 30)" }[ck];
   return (
-    <Sec title={`${LABEL[rk]} × ${name}`} sub="Queries in each cell · row and column totals"
+    <Sec title={`${LABEL[rk]} × ${name}`} sql="matrix" sub="Queries in each cell · row and column totals"
       right={<div className="ae-row"><span className="ae-muted">Rows</span><Seg label="Rows" value={rk} items={[["role", "Role"], ["client", "Client"], ["user", "User"]]} onPick={setRk} />
         <span className="ae-muted">Columns</span><Seg label="Columns" value={ck} items={[["client", "Client"], ["action", "Statement type"], ["type", "Statement"], ["day", "Last 30 days"]]} onPick={setCk} /></div>}>
       <Heat corner={LABEL[rk]} rows={rs} cols={cs} value={value} color="var(--ae-e_write)" days={ck === "day"}
@@ -620,7 +634,7 @@ function ByType({ d, rows, work }: { d: ActivityPage; rows: ActivityRow[]; work:
   const series = acts.map((a) => ({ key: ACT_NAME[a], values: rows.filter((r) => r.action === a).reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(days).fill(0) as number[]) }));
   return (
     <>
-      <Sec title="Queries by statement type" sub={`Per day · ${short(d.first!)} → ${short(d.last!)} · ${fmt(total)} queries · weekends shaded · click a day to pin it`}>
+      <Sec title="Queries by statement type" sql="type_day" sub={`Per day · ${short(d.first!)} → ${short(d.last!)} · ${fmt(total)} queries · weekends shaded · click a day to pin it`}>
         <div className="ae-log-tiles">
           {([["WRITE", "DML · writes"], ["READ", "Reads"], ["DDL", "DDL"]] as const).map(([a, l]) => (
             <Tile key={a} label={<><i style={{ background: ACT[a] }} className="ae-log-dot" />{l}</>}
@@ -654,7 +668,7 @@ function ByDay({ d, rows }: { d: ActivityPage; rows: ActivityRow[] }) {
     day: new Date(Date.parse(d.first!) + i * 864e5).toISOString().slice(0, 10), total: cols.reduce((s, c) => s + c.daily[i], 0),
     ...Object.fromEntries(cols.map((c) => [c.key, c.daily[i]])) })).filter((r) => r.total).reverse();
   return (
-    <Sec title={`Queries per day, by ${name}`} sub={`Every day of the window · the top 4 and Other · pick one or more for combinations${table ? "" : " · click a day to pin it, a name to show only it"}`}
+    <Sec title={`Queries per day, by ${name}`} sql="by_day" sub={`Every day of the window · the top 4 and Other · pick one or more for combinations${table ? "" : " · click a day to pin it, a name to show only it"}`}
       right={<div className="ae-row"><div className="ae-seg2" role="group" aria-label="Per day by, pick one or more">{dims.map((k) => (
         <button key={k} type="button" aria-pressed={ks.includes(k)} className={ks.includes(k) ? "on" : ""} onClick={() => toggle(k)}>{DIM[k]}</button>))}</div>
         <button type="button" className={`ae-btn${table ? " ae-btn-primary" : ""}`} aria-pressed={table} onClick={() => setTable(!table)}>Table</button></div>}>
@@ -690,7 +704,7 @@ function WhoUsed({ d, work, open }: { d: ActivityPage; work: Work; open: Open })
     .sort((a, b) => sort === "volume" ? tot(b) - tot(a) : sort === "days" ? b.days.size - a.days.size : b.last.localeCompare(a.last));
   const top = Math.max(1, ...list.map(tot)), days = d.days ?? 60;
   return (
-    <Sec title={d.what === "app" ? "Who opened it" : "Who used it"} sub={`One row per user · role · client · ${list.length} rows${rows.length < (d.total ?? 0) ? ` (from the ${rows.length} busiest of ${d.total})` : ""}`}
+    <Sec title={d.what === "app" ? "Who opened it" : "Who used it"} sql="who" sub={`One row per user · role · client · ${list.length} rows${rows.length < (d.total ?? 0) ? ` (from the ${rows.length} busiest of ${d.total})` : ""}`}
       right={<div className="ae-row"><span className="ae-muted">Sort</span><Seg label="Sort" value={sort} items={[["volume", "Volume"], ["days", "Active days"], ["last", "Last seen"]]} onPick={setSort} />
         <Seg label="Who" value={who} items={[["all", "Everyone"], ["people", "People only"]]} onPick={setWho} /></div>}>
       <table className="ae-log-table ae-log-who">

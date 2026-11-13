@@ -42,6 +42,9 @@ PUT 'file://&HERE/ui.py' @&DB.&SCHEMA.STG_ACCESS_APP AUTO_COMPRESS = FALSE OVERW
 
 -- packages (streamlit pinned, snowflake-snowpark-python); the rest is the standard library.
 -- .streamlit/config.toml is not uploaded: its settings (toolbar, usage stats) are for local runs only.
+-- name: PUT_QUERIES
+PUT 'file://&HERE/access_queries/*.sql' @&DB.&SCHEMA.STG_ACCESS_APP/access_queries AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
+
 -- name: PUT_ENVIRONMENT
 PUT 'file://&HERE/environment.yml' @&DB.&SCHEMA.STG_ACCESS_APP AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 

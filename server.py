@@ -1684,6 +1684,7 @@ def activity_page(p, view):
                                 header=f"Role used, then the grant path it has now · top {a.MAX_OBJECTS} objects"
                                 if what != "object" else "User, role used, then the grant path it has now"),
         sensitive=a.activity_sensitive(name, what, x["rows"]), query_sql=a.query_sql(name, what, x["first"], x["last"]),
+        section_sql={k: a.activity_section_sql(name, what, x["first"], x["last"], k)["sql"] for k in a.ACT_SECTIONS},
         objects={o: dict(kind=(a.kinds.get(o) or "").lower() or "gone", sensitive=o in a.sens)
                  for o in dict.fromkeys(r["object"] for r in x["rows"])},
         mark=a.mark_sensitive(name) if data and name not in a.sens else None,
@@ -1691,6 +1692,11 @@ def activity_page(p, view):
         dict(num=r["num"], title=r["title"], severity=r["severity"], grantee=r["grantee"], detail=r["detail"])
         for r in S["rows"] if int(r["num"]) >= 24 and (r["grantee"] == name or name in r["path"])
         and (not who or r["grantee"] == who)])
+
+
+def sql_page(p, view):
+    """The SQL to run yourself behind a page (page= and its own parameters): commented, with SET lines filled in."""
+    return dict(page=p.get("page") or "home", queries=[q for q in a.page_sql(p.get("page") or "home", p) if q])
 
 
 def usage_page(p, view):
@@ -2262,7 +2268,7 @@ ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": r
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
           "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page,
-          "activity": activity_page}
+          "activity": activity_page, "sql": sql_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
              "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
@@ -2379,7 +2385,7 @@ def make_app():
         return h
 
     for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
-              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity"):
+              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "sql"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

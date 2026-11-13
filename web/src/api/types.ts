@@ -1254,6 +1254,7 @@ export interface ActivityPage {
   sensitive?: ActivitySensitive[];
   mark?: { sql: string; tf: string; ticket: string; tag: string; value: string } | null; // tag text for an untagged table
   query_sql?: string; // copy-only SQL: every query behind the tab, one by one
+  section_sql?: Record<string, string>; // the SQL behind each section (tiles, client, kinds, matrix, ...), copy-only
   objects?: Record<string, { kind: string; sensitive: boolean }>;
   refs?: Refs;
 }

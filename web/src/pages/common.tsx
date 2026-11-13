@@ -1,8 +1,8 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
-import { type ReactNode } from "react";
-import { clearCache, get, type ApiFail, type State } from "../api/client";
+import { useEffect, useState, type ReactNode } from "react";
+import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
 import type { Banner as B, DataView, ListItem, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
-import { Banner, Card, Combo, DataTable, FindingList, Graph, PathText, type Column } from "../components";
+import { Banner, Card, Combo, copyText, DataTable, FindingList, Graph, PathText, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -93,6 +93,33 @@ export function Tog({ label, on, onPick, help }: { label: string; on: boolean; o
 
 
 export const Controls = ({ children }: { children: ReactNode }) => <div className="ae-controls">{children}</div>;
+
+/** One query to copy and run in Snowflake yourself. */
+export function SqlBox({ title, sql }: { title?: string; sql: string }) {
+  const [done, setDone] = useState("");
+  return (
+    <div className="ae-sqlbox">
+      <div className="ae-sqlbox-h">{title && <b>{title}</b>}
+        <button type="button" className="ae-btn" onClick={() => copyText(sql).then((ok) => { setDone(ok ? "Copied" : "Select and copy"); setTimeout(() => setDone(""), 1500); })}>{done || "Copy SQL"}</button></div>
+      <pre tabIndex={0}>{sql}</pre>
+    </div>
+  );
+}
+
+/** The SQL behind a page (top bar "SQL", or a right-click on the page): every query, commented, with the SET lines
+ * filled in for what the page shows, to run in Snowflake with your own role. */
+export function SqlPanel({ page, params, onClose }: { page: string; params: Record<string, string | undefined>; onClose: () => void }) {
+  const s = useApi<{ page: string; queries: { title: string; sql: string }[] }>("sql", { ...params, page });
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [onClose]);
+  return (
+    <div className="ae-sqlpanel" role="dialog" aria-label="SQL behind this page">
+      <div className="ae-sqlpanel-h"><div><h2>SQL behind this page</h2>
+        <p className="ae-muted">Read-only queries over SNOWFLAKE.ACCOUNT_USAGE. Change the SET lines and run them in a worksheet with your own role; without access Snowflake says so. The app never runs them.</p></div>
+        <button type="button" className="ae-btn" onClick={onClose}>Close</button></div>
+      <Load s={s}>{(d) => <>{d.queries.map((q) => <SqlBox key={q.title} title={q.title} sql={q.sql} />)}</>}</Load>
+    </div>
+  );
+}
 
 export function Head({ title, sub, right }: { title: ReactNode; sub?: ReactNode; right?: ReactNode }) {
   return (
