@@ -43,7 +43,7 @@ sequenceDiagram
 9. Errors as in the web version: `ApiError` -> its status, other exceptions -> 500 `{detail:"error"}` — st_react.py:45-48; `_js` escapes `</` — st_react.py:17-19.
 10. Connection: `sf.connect()` returns the app's own session when `INSIDE` — sf.py:19-22; `sf.owned()` is False inside, so `with_query` never closes it — sf.py:45-47, server.py:83-84.
 11. No disk inside: `cache.local()` False -> memory only; no DuckDB copy — cache.py:51-53, cache.py:193-198.
-12. My access hidden: `mine_off()` returns the "not available inside Snowflake" reason first — server.py:136-138; `meta.mine_available=False` hides the button — server.py:2154, web/src/App.tsx:318.
+12. My access hidden: `mine_off()` returns the "not available inside Snowflake" reason first — server.py:136-138; `meta.mine_available=False` hides the button — server.py:2154, web/src/App.tsx:322.
 13. What changed has no previous snapshot inside (memory only) — server.py:1728-1732.
 14. Direct inside: `live()` with the owner role; `USE SECONDARY ROLES` and `CURRENT_DATABASE` may be refused — access.py:654-662.
 15. Tests: `test_streamlit_bridge` (same answers as HTTP) — test_server.py:267; `test_pages` (every page key handed to the component) — test_access.py:657.

@@ -29,7 +29,7 @@ sequenceDiagram
 
 ## Steps
 
-1. UI: "My access" button shown unless `meta.mine_available === false`; click -> `post("mine/load")` (Reload: `?fresh=1`) then switch view; switching to My access from `review`, `flow`, `changes` (SHARED_ONLY, same set as `server.SHARED_ONLY`, server.py:37) lands on `access`; `home` stays home (`viewPage`) — web/src/App.tsx:318-320, web/src/App.tsx:290, web/src/App.tsx:278, web/src/App.tsx:27-30.
+1. UI: "My access" button shown unless `meta.mine_available === false`; click -> `post("mine/load")` (Reload: `?fresh=1`) then switch view; switching to My access from `review`, `flow`, `changes` (SHARED_ONLY, same set as `server.SHARED_ONLY`, server.py:37) lands on `access`; `home` stays home (`viewPage`) — web/src/App.tsx:322-324, web/src/App.tsx:293, web/src/App.tsx:281, web/src/App.tsx:27-30.
 2. Endpoint: new random sid, `load_mine(sid, fresh)`, drop old sid, set cookie `ae_sid` (`max_age=TTL`, httponly, samesite strict, path `/api`) — server.py:2368-2376. Streamlit bridge does the same without cookie — st_react.py:35-39.
 3. `mine_off()` order: inside Snowflake -> off (owner's rights); `MY_ACCESS=1|0` decides; `HOST` not loopback, or `ALLOWED_HOSTS` naming any host besides loopback (a proxy or tunnel) -> off (shared server) — server.py:143-144; Snowflake mode with `SNOWFLAKE_PRIVATE_KEY_FILE` -> off (service user); else on — server.py:131-149.
 4. `load_mine`: refused -> 409 `mine_unavailable`; expired entries dropped; Snowflake: cache key `cache.name("mine", SNOWFLAKE_USER or sid, WHERE)`, `fresh` drops it, reads `a.mine(q, WHERE db or None)`; errors -> 503 `mine_unreadable`; fake: `a.only(load_shared(), DEMO_USER)` — server.py:152-172.

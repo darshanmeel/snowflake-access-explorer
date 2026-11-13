@@ -160,10 +160,10 @@
 {"from": "column:TBL_ACCESS_TAG.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2225-2241", "status": "verified"}
 {"from": "column:TBL_ACCESS_POLICY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2286-2294", "status": "verified"}
 {"from": "column:TBL_ACCESS_POLICY.TAG_NAME", "to": "column:TBL_ACCESS_TAG.TAG_NAME", "type": "fk", "evidence": "access.py:2295-2298", "status": "verified"}
-{"from": "column:TBL_ACCESS_STREAM.STREAM_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:5436", "status": "verified"}
-{"from": "column:TBL_ACCESS_STREAM.SOURCE_NAME", "to": "column:TBL_ACCESS_TAG.OBJECT_NAME", "type": "fk", "evidence": "access.py:5432-5433", "status": "verified"}
+{"from": "column:TBL_ACCESS_STREAM.STREAM_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:5442", "status": "verified"}
+{"from": "column:TBL_ACCESS_STREAM.SOURCE_NAME", "to": "column:TBL_ACCESS_TAG.OBJECT_NAME", "type": "fk", "evidence": "access.py:5438-5439", "status": "verified"}
 {"from": "column:TBL_ACCESS_OBJECT_USE.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:1088-1089", "status": "verified"}
-{"from": "column:TBL_ACCESS_OBJECT_USE.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:4732-4736", "status": "inferred"}
+{"from": "column:TBL_ACCESS_OBJECT_USE.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:4738-4742", "status": "inferred"}
 {"from": "column:TBL_ACCESS_FINDING.GRANTEE", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "sql/1_setup.sql:136-137", "status": "inferred"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:run", "type": "contains", "evidence": "sql/1_setup.sql:603", "status": "verified"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:grants", "type": "contains", "evidence": "sql/1_setup.sql:230", "status": "verified"}
@@ -337,9 +337,9 @@
 {"from": "table:TBL_ACCESS_ACTIVITY", "to": "column:TBL_ACCESS_ACTIVITY.QUERIES", "type": "contains", "evidence": "sql/1_setup.sql:118", "status": "verified"}
 {"from": "table:TBL_ACCESS_ACTIVITY", "to": "column:TBL_ACCESS_ACTIVITY.LAST_USED", "type": "contains", "evidence": "sql/1_setup.sql:119", "status": "verified"}
 {"from": "column:TBL_ACCESS_ACTIVITY.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:476", "status": "verified"}
-{"from": "column:TBL_ACCESS_ACTIVITY.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:5492", "status": "inferred"}
-{"from": "column:TBL_ACCESS_ACTIVITY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:5492", "status": "inferred"}
-{"from": "column:TBL_ACCESS_ACTIVITY.ROLE_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "access.py:4573", "status": "inferred"}
+{"from": "column:TBL_ACCESS_ACTIVITY.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:5498", "status": "inferred"}
+{"from": "column:TBL_ACCESS_ACTIVITY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:5498", "status": "inferred"}
+{"from": "column:TBL_ACCESS_ACTIVITY.ROLE_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "access.py:4579", "status": "inferred"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:activity", "type": "contains", "evidence": "sql/1_setup.sql:577", "status": "verified"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:activity_sql", "type": "contains", "evidence": "sql/1_setup.sql:536", "status": "verified"}
 {"from": "function:sql/1_setup.sql:activity", "to": "function:sql/1_setup.sql:activity_sql", "type": "calls", "evidence": "sql/1_setup.sql:596", "status": "verified"}

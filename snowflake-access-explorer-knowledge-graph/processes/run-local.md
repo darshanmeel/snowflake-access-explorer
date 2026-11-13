@@ -18,7 +18,7 @@ flowchart TD
 - Imports `access` first so `.env` values (WEB_PORT, ...) apply — run.py:16.
 - Args: `app` = `web|streamlit`, default `APP` env or `web` — run.py:29; `--fake` — run.py:30; `--port` — run.py:31; `--direct` / `--objects` set `SOURCE` — run.py:32-33.
 - `--fake` sets `FAKE=1` in the child env — run.py:36-37; source flag sets `SOURCE` — run.py:38-38.
-- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:26-42; `__main__` runs it — run.py:45-47; `test_run_address` — test_server.py:703.
+- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:26-42; `__main__` runs it — run.py:45-47; `test_run_address` — test_server.py:707.
 - Streamlit: `streamlit run app.py`, port `--port` or `STREAMLIT_PORT` (8501), `--server.address` = `HOST` (default 127.0.0.1, so Streamlit no longer listens on every address and `mine_off()` sees the same `HOST`), headless, usage stats off — run.py:33-38; a plain `streamlit run app.py` also binds 127.0.0.1 via `.streamlit/config.toml:4-5`.
 - Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:39-41; server listens on `HOST` (default 127.0.0.1) — server.py:2425.
 - Child runs in the repo folder; exit code passed through — run.py:47.

@@ -842,7 +842,7 @@ reaches no grant on the table now (an admin role, or the grant was removed since
 a masking or row access policy; `people[].rows` is `all`, `filtered`, `none` or `unknown`, read from the policy text.
 `mark` is `{sql, tf, ticket, tag, value}` for an object that is a table or view without a sensitive tag: text to tag
 it, which the app never runs (else null). `findings` are the rule 24-28 findings for the subject (and for `as`).
-`section_sql` is `{section key: sql}`, the query behind each section, for its SQL button (`a.activity_section_sql`; keys
+`section_sql` is `{section key: sql}`, the query behind each section, shown by the `</>` mark in its card's corner (`a.activity_section_sql`; keys
 `tiles`, `client`, `kinds`, `matrix`, `type_day`, `by_day`, `hours`, `off`, `touched`, `objects`, `who`, `ddl`); `hours` and `off`
 have `WORK_START`, `WORK_END` and `TZ_HOURS` lines for business time. The app never runs them.
 `app` is set only for a Streamlit app (else null), from `a.app_use`: `{can: {user: role holding USAGE}, opened:

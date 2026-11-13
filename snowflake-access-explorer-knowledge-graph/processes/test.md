@@ -33,7 +33,7 @@ flowchart LR
 - Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:658.
 
 ## test_server.py
-- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:800-805.
+- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:804-809.
 - Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:328, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:267; `test_same_site` — test_server.py:423; `test_bundles_fresh` — test_server.py:463.
 - Uses FastAPI TestClient via httpx — requirements-dev.txt:4.
 

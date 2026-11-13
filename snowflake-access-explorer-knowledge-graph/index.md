@@ -15,7 +15,7 @@ flowchart LR
   SQL[sql/: setup, snapshot, streamlit deploy] --> SF
 ```
 
-- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:464` snapshot, `access.py:629` live, `access.py:5086` checks, `access.py:4289` activity), cache (`cache.py`), server (`server.py:2312` make_app), two front ends (`web/src/App.tsx:253` VIEWS, `app.py:18` st_react.app).
+- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:464` snapshot, `access.py:629` live, `access.py:5092` checks, `access.py:4289` activity), cache (`cache.py`), server (`server.py:2312` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
 ## Entry points
@@ -36,7 +36,7 @@ flowchart LR
 | What does rule N check? How are paths counted, depth, what-if, graph roll-up, caching? | `logic/` (rules, activity, page-sql, walks, rbac-model, what-if, graph-input, diff, caching) |
 | What does file / module X do, what calls what? | `modules/` (access, server, cache, sf, app-and-st_react, ui, run-scripts, web, sql, tests, access-queries) |
 | Plain SQL / table functions / notebooks over ACCOUNT_USAGE without the app (user roles, user or role access, role holders, object users)? | `modules/access-queries.md` (files, CTEs, functions, notebooks, test), `flows/standalone-queries.md` (worksheet / path A / path B, example rows) |
-| Which SQL does a page show to run yourself (SQL button, right-click, per-section SQL on Activity), and where does it come from? | `flows/show-sql.md`, `logic/page-sql.md` (`access.page_sql`, `activity_section_sql`, `query_file` on `access_queries/`) |
+| Which SQL does a page show to run yourself (the `</>` mark on every card, the top-bar button, right-click), and where does it come from? | `flows/show-sql.md`, `logic/page-sql.md` (`access.page_sql`, `activity_section_sql`, `query_file` on `access_queries/`) |
 | Which checks keep `access_queries/` equal to `access.py`? | `modules/access-queries.md` > Test; `processes/test.md` |
 | Which tables, columns, joins, dict keys, DuckDB copy? | `data/` (model.md, one page per `TBL_ACCESS_*`, snapshot-dict, duckdb-copy, model.json) |
 | How to set up, run, deploy, build the web bundles, test? | `processes/` |
