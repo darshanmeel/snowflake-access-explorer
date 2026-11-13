@@ -982,6 +982,8 @@ export interface WhoPage {
     sensitive: boolean; tags: string[]; columns: number; masking: string[]; row_policies: string[]; owners: string[]; owner_note: string;
   };
   people: WhoPerson[];
+  /** A Streamlit app: it runs with its owner's rights, so viewers see what the owner role reads. */
+  app: { owner: string[]; sensitive: Record<string, string[]>; holders: Record<string, string[]>; exposed: Record<string, string[]> } | null;
   roles: WhoRole[];
   groups: { level: ObjLevel; privileges: string[]; route: string[]; names: string[] }[];
   counts: { levels: Record<ObjLevel, number>; people: number; roles: number; disabled: number; dormant: number };
@@ -1215,7 +1217,9 @@ export type ActivityKey = "user" | "role" | "client" | "type" | "object";
 export interface ActivityBy { key: string; read: number; write: number; ddl: number; last: string; daily: number[] }
 export interface ActivityRow {
   user: string; role: string; client: string; type: string; object: string; action: "READ" | "WRITE" | "DDL";
-  queries: number; days: number; last: string; daily: number[];
+  queries: number; days: number; first_day: string; last: string; daily: number[];
+  hours: number[]; weekend: number; weekend_hours: number[]; // weekday queries per UTC hour (24); weekend total and per hour
+  kind: "person" | "service" | "system"; interactive: boolean; // the user's type; run from Snowsight, SnowSQL or the CLI
 }
 /** Sensitive data of one object used: columns, policies, and per user and role used what they see. */
 export interface ActivitySensitive {
@@ -1224,10 +1228,16 @@ export interface ActivitySensitive {
 }
 export interface ActivityPage {
   view: View;
-  what: "object" | "user" | "role";
+  what: "object" | "user" | "role" | "app" | "scope" | "warehouse"; // app: a Streamlit app's queries for its viewers;
+  // scope: every object in a database or schema; warehouse: who ran queries on it (QUERY_HISTORY)
+  kind?: string | null; // the object's type (TABLE, STREAMLIT, SCHEMA, WAREHOUSE, ...)
+  app?: { can: Record<string, string>; opened: Record<string, { queries: number; last: string }>; never: string[]; saw: Record<string, string[]> } | null;
+  warehouse?: { used: { user: string; queries: number; last: string }[]; unused: string[] };
+  source?: string;
   name: string;
   user: string | null; // object page: only this user's use ("Access for")
-  days: number;
+  days?: number;
+  work?: { start: number; end: number }; // default working hours (UTC, Mon-Fri): outside them is off-hours
   available: boolean;
   reason: string | null;
   note: string | null; // read, but partly (no client)
@@ -1243,5 +1253,7 @@ export interface ActivityPage {
   gone?: { user: string; role: string; object: string; action: string }[]; // used, but that role has no grant path now
   sensitive?: ActivitySensitive[];
   mark?: { sql: string; tf: string; ticket: string; tag: string; value: string } | null; // tag text for an untagged table
+  query_sql?: string; // copy-only SQL: every query behind the tab, one by one
+  objects?: Record<string, { kind: string; sensitive: boolean }>;
   refs?: Refs;
 }

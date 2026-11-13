@@ -93,13 +93,14 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   admin role / account privilege = red. Put the legend next to each graph.
 - Keep `FAKE=1` mode on the fake data in `access.py`, so it runs without Snowflake. Fake data keeps at least
   one finding per rule.
-- UI: sections are tabs, never stacked one under the other; a long page is split into tabs. Small charts (bars, heat grid,
+- UI: sections are tabs, never stacked one under the other; a long page is split into tabs. One exception: the Activity
+  tab (`pages/Activity.tsx`) is one access log of stacked sections, shaped by the object's type. Small charts (bars, heat grid,
   overlap circles, grant links, crossed-out cuts) are plain SVG / CSS in `components/kit.tsx` and `visuals.tsx`, colours from
   the `--ae-*` tokens (light and dark). Pickers search the server (`/api/list?q=&limit=`), never download every name.
 - Short names, comments only for the non-obvious "why", no extra error handling or logging.
 
 ## Verify before saying done
-- `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists all 28 rules (each has a finding on the fake data):
+- `.venv\Scripts\python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists all 29 rules (each has a finding on the fake data):
   1 technical role on user/group · 2 direct privilege on functional · 3 READ direct + inherited · 4 OWNER on consumer ·
   5 admin role on person · 6 sensitive column unmasked · 7 dormant/disabled reads sensitive · 8 disabled holds roles ·
   9 PUBLIC grant · 10 person writes sensitive · 11 sensitive via group role · 12 admin default role · 13 orphan role ·
@@ -107,7 +108,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   18 unusual privilege set · 19 EXECUTE TASK on person/consumer · 20 task OPERATE outside owner/build ·
   21 warehouse MODIFY/OPERATE outside owner/build · 22 stream on sensitive table without table read ·
   23 schema CREATE on read-only role · 24 person changed a table · 25 service user from an interactive client ·
-  26 admin role used on data · 27 first access in 7 days · 28 unusual daily volume (24-28 from `TBL_ACCESS_ACTIVITY`).
+  26 admin role used on data · 27 first access in 7 days · 28 unusual daily volume (24-28 from `TBL_ACCESS_ACTIVITY`) · 29 Streamlit app shows its owner's sensitive data.
 - `python test_access.py` and `python test_sql.py` green (test_access runs every `test_` function, reports all failures,
   reruns itself with `ROLE_PREFIXES=ZF_,ZT_`; `PERF_SCALE` / `PERF=0` for test_perf). Test packages: `requirements-dev.txt`.
 - Spot-check paths: a user via a group role, a role reached through 2 paths, an admin holder.

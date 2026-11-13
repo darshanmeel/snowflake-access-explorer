@@ -116,8 +116,16 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_ACTIVITY (   -- table use per 
     ACTION VARCHAR(10),              -- READ (objects read), WRITE (objects modified) or DDL (created, altered, dropped)
     QUERY_TYPE VARCHAR(100),         -- QUERY_HISTORY.QUERY_TYPE: SELECT, INSERT, MERGE, DELETE, ALTER_TABLE_..., ...
     QUERIES NUMBER,
-    LAST_USED TIMESTAMP_LTZ
+    LAST_USED TIMESTAMP_LTZ,
+    HOURS VARIANT,                   -- {UTC hour of day: queries}; DAY is the UTC day too
+    APP VARCHAR(2000)                -- the Streamlit app the queries ran for (QUERY_TAG StreamlitName), else NULL
 );
+
+-- name: TABLE_ACTIVITY_HOURS (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_ACTIVITY ADD COLUMN IF NOT EXISTS HOURS VARIANT;   -- a table made before the column
+
+-- name: TABLE_ACTIVITY_APP (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_ACTIVITY ADD COLUMN IF NOT EXISTS APP VARCHAR(2000);
 
 -- name: TABLE_FINDING
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings of the last run, filled by SP_ACCESS_FINDINGS
@@ -531,30 +539,40 @@ def activity_sql(since, client=True):
     dropped) and QUERY_TYPE (SELECT, INSERT, MERGE, ...). Role and statement type come from QUERY_HISTORY, the client
     from SESSIONS (client=False: not readable, CLIENT stays empty). since: first day read ('YYYY-MM-DD'); both history
     views are cut at it, so Snowflake prunes them, and ACCESS_HISTORY is scanned once. The app's own queries (QUERY_TAG)
-    are left out. The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    are left out. DAY and HOURS are in UTC: HOURS = {hour of day: queries}, so the app can count off-hours for any
+    working hours without reading again. APP: the Streamlit app the query ran for (Snowflake tags them with
+    {"StreamlitName": ...}, older ones "streamlitName: ..."), else NULL. The same text is in access.py and
+    SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
     col = "S.CLIENT" if client else "NULL"
     join = (f"""LEFT JOIN (SELECT SESSION_ID, REGEXP_REPLACE(CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
                        FROM {AU}.SESSIONS) S ON S.SESSION_ID = Q.SESSION_ID""" if client else "")
     return f"""WITH A AS (
-            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL,
+                   CONVERT_TIMEZONE('UTC', QUERY_START_TIME) AS L
             FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::DATE),
         H AS (
-            SELECT A.QUERY_ID, A.USER_NAME, A.T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+            SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
             FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
             UNION ALL
-            SELECT A.QUERY_ID, A.USER_NAME, A.T, O.VALUE:"objectName"::STRING, 'WRITE'
+            SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING, 'WRITE'
             FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O
             UNION ALL
-            SELECT QUERY_ID, USER_NAME, T, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL'
+            SELECT QUERY_ID, USER_NAME, T, L, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL'
             FROM A WHERE OBJECT_MODIFIED_BY_DDL IS NOT NULL),
         Q AS (
-            SELECT QUERY_ID, ROLE_NAME, QUERY_TYPE, SESSION_ID FROM {AU}.QUERY_HISTORY
-            WHERE START_TIME >= '{since}'::DATE AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}')
-        SELECT H.T::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE,
-               COUNT(DISTINCT H.QUERY_ID) AS QUERIES, MAX(H.T) AS LAST_USED
-        FROM H JOIN Q ON Q.QUERY_ID = H.QUERY_ID {join}
-        WHERE H.OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6, 7"""
-
+            SELECT QUERY_ID, ROLE_NAME, QUERY_TYPE, SESSION_ID,
+                   COALESCE(TRY_PARSE_JSON(QUERY_TAG):StreamlitName::STRING,
+                            REGEXP_SUBSTR(QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP
+            FROM {AU}.QUERY_HISTORY
+            WHERE START_TIME >= '{since}'::DATE AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'),
+        G AS (
+            SELECT H.L::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE, Q.APP,
+                   HOUR(H.L) AS HR, COUNT(DISTINCT H.QUERY_ID) AS N, MAX(H.T) AS LAST_USED
+            FROM H JOIN Q ON Q.QUERY_ID = H.QUERY_ID {join}
+            WHERE H.OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9)
+        SELECT DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, SUM(N) AS QUERIES, MAX(LAST_USED) AS LAST_USED,
+               OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS, APP
+        FROM G GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP"""
 
 def activity(session, run_id, mode):
     """Table activity per day, user, role, client, object and statement (access.activity_sql has the same text). To
@@ -569,7 +587,7 @@ def activity(session, run_id, mode):
         first = session.sql("SELECT CURRENT_DATE() AS D").collect()[0]["D"] - timedelta(days=ACTIVITY_DAYS)
         last = prev and session.sql(f"SELECT MAX(DAY) AS D FROM {ACTIVITY} WHERE RUN_ID = '{prev}'").collect()[0]["D"]
         since = max(first, last - timedelta(days=1)) if last else first
-        cols = "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED"
+        cols = "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED, HOURS, APP"
         if last:
             session.sql(f"""INSERT INTO {ACTIVITY} (RUN_ID, {cols}) SELECT '{run_id}', {cols} FROM {ACTIVITY}
                             WHERE RUN_ID = '{prev}' AND DAY >= '{first}' AND DAY < '{since}'""").collect()

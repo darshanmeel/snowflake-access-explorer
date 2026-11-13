@@ -24,7 +24,7 @@ COLS = {
     "POLICY": "POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY",
     "STREAM": "STREAM_NAME, SOURCE_NAME, SOURCE_TYPE",
     "OBJECT_USE": "USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED",
-    "ACTIVITY": "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED",
+    "ACTIVITY": "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED, HOURS, APP",
 }
 
 
@@ -48,7 +48,7 @@ def write(db, d):
         types = ["BOOLEAN" if c in ("IS_FUTURE", "DISABLED") else "BIGINT" if c == "QUERIES" else "VARCHAR" for c in names]
         db.execute(f"CREATE OR REPLACE TABLE TBL_ACCESS_{t} (RUN_ID VARCHAR, "
                    + ", ".join(f"{c} {k}" for c, k in zip(names, types)) + ")")
-        data = [["run-2"] + [row.get(c) for c in names] for row in d.get(t, [])]
+        data = [["run-2"] + [json.dumps(v) if isinstance(v := row.get(c), dict) else v for c in names] for row in d.get(t, [])]
         if data:
             db.executemany(f"INSERT INTO TBL_ACCESS_{t} VALUES ({', '.join(['?'] * (len(names) + 1))})", data)
 

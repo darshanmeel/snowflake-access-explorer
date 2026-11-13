@@ -267,8 +267,8 @@ def test_rules():
     # old 9 findings for rules 1-5, + F_MARKETING READ inside WRITE (3) and OPS_01 holding SYSADMIN (5)
     assert n == {"1": 2, "2": 2, "3": 3, "4": 1, "5": 3, "6": 3, "7": 4, "8": 1, "9": 1, "10": 17, "11": 2, "12": 1,
                  "13": 1, "14": 1, "15": 1, "16": 3, "17": 4, "18": 3, "19": 2, "20": 1, "21": 1, "22": 1, "23": 4,
-                 "24": 1, "25": 1, "26": 1, "27": 1, "28": 1}
-    assert set(a.SEVERITY) == set(a.RULES) == {str(i) for i in range(1, 29)}
+                 "24": 1, "25": 1, "26": 1, "27": 1, "28": 1, "29": 1}
+    assert set(a.SEVERITY) == set(a.RULES) == {str(i) for i in range(1, 30)}
     assert all(x["severity"] == a.SEVERITY[x["num"]] for x in rows)
     assert a.BUILD == [F + "DEPLOY"] or "BUILD_ROLES" in os.environ
     by = lambda num: [x for x in rows if x["num"] == num]
@@ -1199,15 +1199,15 @@ def test_group_graph():
     assert set(next(g for g in a.group_objects(a.grants("ANALYST_01", True), "database")
                     if g["group"] == "SALES")["holders"]) == holders  # every holder, not one per row
     g = a.graph_input("SVC_DEPLOY", max_objects=40)
-    assert g["level"] == "object" and g["header"] == "34 objects" and g["kinds"] == {a.BUILTIN_NODE: "fold"}
+    assert g["level"] == "object" and g["header"] == "35 objects" and g["kinds"] == {a.BUILTIN_NODE: "fold"}
     g = a.graph_input("SVC_DEPLOY", max_objects=20)  # over the cap: grouped by schema (14 groups, under 20)
-    assert g["header"] == "34 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
+    assert g["header"] == "35 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
     assert g["kinds"]["SALES.PIPELINE"] == "schema" and "SALES" not in g["kinds"] and "WH_SALES_XS" not in g["kinds"]
     assert (T + "SALES_PIPELINE_OWNER", "SALES.PIPELINE", "own", "OWNERSHIP", 9) in g["edges"]
     assert g["info"]["SALES.PIPELINE"]["count"] == 9 and "count" not in g["info"].get("SALES", {})
     g = a.graph_input("SVC_DEPLOY")  # over a lane's 12, and 14 schema groups: grouped by database
-    assert g["header"] == "34 objects, grouped by database" and g["kinds"]["SALES"] == "database"
-    assert g["info"]["SALES"]["count"] == 20 and g["info"]["SALES"]["noun"] == "objects"
+    assert g["header"] == "35 objects, grouped by database" and g["kinds"]["SALES"] == "database"
+    assert g["info"]["SALES"]["count"] == 21 and g["info"]["SALES"]["noun"] == "objects"
     d = a.graph_input("SVC_DEPLOY", "SALES")  # a database: its schemas, its own grants as objects
     assert d["level"] == "schema" and "SALES" in d["lanes"][-1][1] and "SALES" not in d["kinds"]
     g = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE", max_objects=3)
@@ -1223,7 +1223,7 @@ def test_group_graph():
     h = a.graph_input("HR_01", "HR.PAYROLL")  # the fake data's own type boxes, at the default MAX_OBJECTS
     assert h["types"] == {"HR.PAYROLL · TABLE": "TABLE", "HR.PAYROLL · VIEW": "VIEW"}
     assert len(a.graph_input("HR_01", "HR.PAYROLL", otype="TABLE")["lanes"][-1][1]) == 13
-    e = a.graph_input("ENGINEER_01")
+    e = a.graph_input("ENGINEER_01", max_objects=40)  # object by object: the edge details below
     task = e["info"][(T + "SALES_PIPELINE_EXECUTE", "SALES.PIPELINE.TSK_LOAD_CUSTOMER", "manage")]
     assert [r[0] for r in task["rules"]] == ["18", "20"] and task["has"] == ["OPERATE"] and task["lacks"] == ["MONITOR"]
     assert e["info"][(F + "ENGINEER", T + "SALES_MART_OWNER", "inherit")]["rules"][0][:2] == ("4", "High")
@@ -1462,7 +1462,7 @@ def test_ladder():  # access ladder: highest level per object, counts at or abov
     assert a.category("USAGE", "DATABASE_ROLE") == "hold" and a.category("EXECUTE TASK", "ACCOUNT") == "account"
     o = a.access_objects(a.grants("ENGINEER_01", True), True)
     n = a.ladder_counts(o)
-    assert (n["read"], n["change"], n["own"], n["runnable"], n["account"], n["usage"]) == (6, 5, 2, 4, 3, 8), n
+    assert (n["read"], n["change"], n["own"], n["runnable"], n["account"], n["usage"]) == (6, 5, 2, 5, 3, 8), n  # runnable: the Streamlit app through the MART owner role
     mart = next(x for x in o if x["object"] == "SALES.MART")
     assert mart["level"] == "own" and mart["privileges"][0] == "OWNERSHIP"  # its USAGE folds into the owned row
     cust = next(x for x in o if x["object"] == "SALES.CORE.TBL_CUSTOMER")
@@ -1709,7 +1709,19 @@ def test_activity():  # Activity tabs and rules 24-28: ACCESS_HISTORY per day, u
     f = {c[0]: c for c in a.checks() if int(c[0]) >= 24}
     assert f["24"][4] == ["ENGINEER_01", F + "ENGINEER", "SALES.CORE.TBL_CUSTOMER"]  # SVC_DEPLOY's MERGE: a service user
     assert f["25"][2] == "SVC_DEPLOY" and f["26"][4] == ["OPS_01", "SYSADMIN"]
-    assert f["27"][4] == ["ENGINEER_01", "HR.PEOPLE.TBL_EMPLOYEE"] and "400 queries" in f["28"][3]
+    assert f["27"][4] == ["ENGINEER_01", "HR.PEOPLE.TBL_EMPLOYEE"] and "400 queries" in f["28"][3] and "19x the usual day" in f["28"][3]
+    for r in x["rows"]:  # hours of day (UTC, weekdays) plus weekend queries add up to the row's queries
+        assert sum(r["hours"]) + r["weekend"] == r["queries"] and r["first_day"] <= r["last"][:10]
+    ins = next(r for r in x["rows"] if r["type"] == "INSERT")
+    assert [h for h, v in enumerate(ins["hours"]) if v] == [13, 22]  # Snowsight use partly at 22:00 UTC: off-hours
+    assert {(r["user"], r["kind"]) for r in x["rows"] if r["interactive"]} == {("ENGINEER_01", "person"), ("SVC_DEPLOY", "service")}
+    sql = a.activity_sql("2026-01-01")
+    assert "CONVERT_TIMEZONE('UTC'" in sql and "OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS" in sql and "StreamlitName" in sql
+    assert a.activity("SALES.CORE", "scope")["by"]["object"][0]["key"].startswith("SALES.CORE.")  # a schema: all in it
+    assert "LIKE 'SALES.CORE.%'" in a.query_sql("SALES.CORE", "scope", "2026-09-04", "2026-11-02")
+    assert "O'BRIEN" not in a.query_sql("O'BRIEN", "user", "2026-09-04", "2026-11-02").replace("O''BRIEN", "")  # quoted
+    w = a.warehouse_use("WH_SALES_XS")
+    assert w["used"] and w["used"][0]["queries"] >= w["used"][-1]["queries"] and not {r["user"] for r in w["used"]} & set(w["unused"])
     g, gone = a.activity_graph("SALES.CORE.TBL_CUSTOMER", "object", x["rows"])  # the grant path behind each use
     assert not gone and g[0][0] == ("Users", ["ANALYST_01", "ENGINEER_01", "SVC_DEPLOY"]) and g[0][-1][1] == ["SALES.CORE.TBL_CUSTOMER"]
     assert ("ANALYST_01", "GRP_ANALYSTS") in g[1]
@@ -1724,6 +1736,15 @@ def test_activity():  # Activity tabs and rules 24-28: ACCESS_HISTORY per day, u
     m = a.mark_sensitive("SALES.CLEAN.TBL_ORDER")  # text only: an existing tag of the account, never run
     assert "ALTER TABLE SALES.CLEAN.TBL_ORDER SET TAG SHARED.GOVERNANCE.SENSITIVITY = 'CONFIDENTIAL';" in m["sql"]
     assert 'object_identifiers = ["\\"SALES\\".\\"CLEAN\\".\\"TBL_ORDER\\""]' in m["tf"] and "SYSTEM$CLASSIFY" in m["sql"]
+    app = "SALES.MART.ST_CUSTOMER_LOOKUP"  # a Streamlit app: who opened it, and its owner's data it shows (rule 29)
+    x = a.app_exposure(app)
+    assert x["owner"] == [T + "SALES_MART_OWNER"] and x["exposed"] == {"SUPPORT_01": ["SALES.MART.VW_CUSTOMER"]}
+    assert [b["key"] for b in a.activity(app, "app")["by"]["user"]] == ["SUPPORT_01"]
+    r29 = [c for c in a.checks() if c[0] == "29"]
+    assert [(c[2], c[4]) for c in r29] == [(T + "SALES_MART_EXECUTE", [T + "SALES_MART_EXECUTE", app])]
+    w = a.what_if([dict(op="revoke_priv", role=T + "SALES_MART_EXECUTE", privilege="USAGE", object=app)])  # its fix
+    assert ("29", "fixed") in {(f["num"], f["status"]) for f in w["findings"]}, w["findings"]
+    a.build(a.fake())
     d = a.fake()  # the same changes through a role that owns the table: not rule 24
     d["ACTIVITY"] = [dict(x, ROLE_NAME=T + "SALES_CORE_OWNER") if x["USER_NAME"] == "ENGINEER_01" and x["ACTION"] != "READ"
                      else x for x in d["ACTIVITY"]]

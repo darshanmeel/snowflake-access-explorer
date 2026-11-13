@@ -65,6 +65,7 @@ function Who({ d }: { d: WhoPage }) {
         <button type="button" className="ae-btn" onClick={save}>Export CSV</button>
       </div>
       <For d={d} />
+      {d.app && <AppNote app={d.app} />}
       <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: admin ? "Admin holders table" : "Diagram, paths & users" },
         { key: "who", label: "Who has access", count: d.counts.people },
@@ -75,6 +76,24 @@ function Who({ d }: { d: WhoPage }) {
       {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} user={c.params.as} />}
       {show === "history" && <ChangeFeed subject={o.id ?? ""} />}
     </>
+  );
+}
+
+/** A Streamlit app runs with its owner's rights: say whose data its viewers see, and who sees more than they may. */
+function AppNote({ app }: { app: NonNullable<WhoPage["app"]> }) {
+  const c = useApp();
+  const sens = Object.entries(app.sensitive);
+  const out = Object.entries(app.exposed);
+  const viewers = new Set(Object.values(app.holders).flat()).size;
+  return (
+    <Banner tone={out.length ? "bad" : "info"} title={`Viewers see the data of its owner role ${app.owner.join(", ")}, not their own`} lines={[
+      `${viewers === 1 ? "1 person" : `${viewers} people`} can open it, through ${Object.keys(app.holders).join(", ") || "no role"}.`,
+      sens.length ? `The owner reads sensitive ${sens.map(([o, cs]) => `${o}${cs.length ? ` (${cs.join(", ")})` : ""}`).join(", ")}.` : "The owner reads no sensitive data.",
+      ...(out.length ? [`${out.length === 1 ? "1 person" : `${out.length} people`} can see it here but can't read it themselves: ${out.map(([u, os]) => `${u} (${os.join(", ")})`).join("; ")}.`] : []),
+      "An app that queries with a caller's rights connection shows each viewer only their own data; the grants can't tell which one it uses.",
+    ]}>
+      <button type="button" className="ae-link" onClick={() => c.set({ show: "activity" })}>Who opened it →</button>
+    </Banner>
   );
 }
 

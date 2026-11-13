@@ -513,7 +513,7 @@ def test_who():  # screen 2: who has access to an object, the admin preset, ware
 def test_access_home():  # screens 0 and 1: one row per object at its highest level, counted once
     d = js("/api/access?user=ENGINEER_01", ["who", "counts", "objects", "heat", "why", "refs"])
     n = d["counts"]
-    assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (6, 5, 2, 3, 4, 8), n
+    assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (6, 5, 2, 3, 5, 8), n
     powers = {(x["privileges"][0], x["object"]) for x in d["objects"] if x["category"] == "account"}
     assert powers == {("EXECUTE TASK", "ACCOUNT"), ("VIEW LINEAGE", "ACCOUNT"), ("CREATE TABLE", "SALES.CORE")}, powers
     log = next(x for x in d["objects"] if x["object"] == "SHARED.LOGGING.TBL_LOGGING")
@@ -573,7 +573,7 @@ def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if
     w = js("/api/whatif?changes=" + quote(json.dumps([ch for f in fx[:3] for ch in f["changes"]])))
     assert w["counts"]["fixed"] >= 1 and w["sql"] and "REVOKE" in w["sql"]
     m = js("/api/meta")
-    assert len(m["rules"]) == 28 and all(x["meaning"] and x["fix"] and x["area"] for x in m["rules"])
+    assert len(m["rules"]) == 29 and all(x["meaning"] and x["fix"] and x["area"] for x in m["rules"])
     assert {p["key"]: p["group"] for p in m["pages"]}["whatif"] == "admin"
 
 
@@ -639,13 +639,19 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
     r = js("/api/activity?role=SYSADMIN")
     assert r["by"]["user"][0]["key"] == "OPS_01" and r["graph"] is None and r["gone"][0]["role"] == "SYSADMIN"
     assert o["graph"]["nodes"] and o["sensitive"][0]["people"] and o["mark"] is None and o["refs"]["kinds"]
-    assert len(o["rows"][0]["daily"]) == len(o["by"]["user"][0]["daily"]) == a.ACTIVITY_DAYS
+    assert len(o["rows"][0]["daily"]) == len(o["by"]["user"][0]["daily"]) == a.ACTIVITY_DAYS and o["work"] == dict(start=7, end=19)
+    assert "ACCESS_HISTORY" in o["query_sql"] and o["objects"]["SALES.CORE.TBL_CUSTOMER"] == dict(kind="table", sensitive=True)
+    assert js("/api/activity?name=SALES.CORE")["what"] == "scope" and js("/api/activity?name=WH_SALES_XS")["what"] == "warehouse"
+    assert js("/api/activity?name=SALES.MART.ST_CUSTOMER_LOOKUP")["app"]["saw"] == {"SUPPORT_01": ["SALES.MART.VW_CUSTOMER"]}
     assert "SET TAG" in js("/api/activity?name=SALES.CLEAN.TBL_ORDER")["mark"]["sql"]  # untagged: the text to tag it
+    app = js("/api/activity?name=SALES.MART.ST_CUSTOMER_LOOKUP")  # a Streamlit app: the queries it ran for its viewers
+    assert app["what"] == "app" and app["by"]["user"][0]["key"] == "SUPPORT_01" and app["graph"] is None
+    assert js("/api/who?name=SALES.MART.ST_CUSTOMER_LOOKUP")["app"]["exposed"] == {"SUPPORT_01": ["SALES.MART.VW_CUSTOMER"]}
     one = js("/api/activity?name=SALES.CORE.TBL_CUSTOMER&as=ENGINEER_01")  # the "Access for" person only
     assert one["user"] == "ENGINEER_01" and {b["key"] for b in one["by"]["user"]} == {"ENGINEER_01"}
     assert [f["num"] for f in one["findings"]] == ["24"] and sum(one["daily"]) < sum(o["daily"])
     assert not js("/api/activity?name=SALES.CORE.TBL_CUSTOMER&as=HR_01")["rows"]  # granted or not: no use
-    assert {r["area"] for r in js("/api/meta")["rules"] if int(r["num"]) >= 24} == {"Activity"}
+    assert {r["area"] for r in js("/api/meta")["rules"] if 24 <= int(r["num"]) <= 28} == {"Activity"}
 
 
 API = {"graph": "map", "whatif": 'whatif?changes=[{"op":"empty_public"}]'}  # page key -> its endpoint, when they differ

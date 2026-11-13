@@ -1,6 +1,6 @@
 // Small drawings shared by the screens: the Compare overlap, a grant as two boxes and a + / - link (What changed),
 // a path with the link a change cuts crossed out (What if, change plan). Plain SVG / CSS on the --ae-* variables.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 /** Two circles: what only A has, what both have (different / the same), what only B has. */
 export function Overlap({ a, b, onlyA, onlyB, different, same, onPick }: {
@@ -70,43 +70,83 @@ export function CutPath({ path, cuts, kinds, first, onOpen }: {
 
 const SERIES = ["e_manage", "e_write", "warn_ink", "ok_ink", "e_read"]; // up to 5 keys, then "Other"
 
-/** Queries per day as stacked bars, one colour per key (most first, the rest as Other), date axis and the top day. */
-export function DayStack({ first, series, label }: { first: string; series: { key: string; values: number[] }[]; label: string }) {
+/** Queries per day as stacked HTML bars (fixed-size text at any width), one colour per key (most first, the rest as
+ * Other), weekends shaded, the average day dashed. Above it a readout: the hovered or pinned day (else the whole window)
+ * with each key's count; click a key to show only it. Click a day to pin it (again to unpin). lanes: labelled rows under
+ * the chart with a mark on the days something happened (a DDL, a person writing, ...). */
+export function DayStack({ first, series, label, pinned = null, onPin, focus = null, onFocus, lanes = [] }: {
+  first: string; series: { key: string; values: number[] }[]; label: string; pinned?: number | null; onPin?: (i: number | null) => void;
+  focus?: string | null; onFocus?: (key: string | null) => void; lanes?: { label: string; color: string; days: boolean[] }[];
+}) {
+  const [hover, setHover] = useState<number | null>(null);
   const top = series.slice(0, SERIES.length);
   const rest = series.slice(SERIES.length);
   const parts = rest.length ? [...top, { key: `Other (${rest.length})`, values: top[0].values.map((_, i) => rest.reduce((n, s) => n + s.values[i], 0)) }] : top;
   const n = parts[0]?.values.length ?? 0;
   const tot = Array.from({ length: n }, (_, i) => parts.reduce((s, p) => s + p.values[i], 0));
-  const max = Math.max(1, ...tot), W = 600, H = 150, bw = W / Math.max(1, n);
-  const date = (i: number) => new Date(Date.parse(first) + i * 864e5).toISOString().slice(0, 10);
+  const max = Math.max(1, ...tot);
+  const avg = tot.reduce((a, v) => a + v, 0) / Math.max(1, n);
+  const day = (i: number) => new Date(Date.parse(first) + i * 864e5);
+  const short = (i: number) => day(i).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  const weekend = (i: number) => [0, 6].includes(day(i).getUTCDay());
   const color = (k: number) => k < SERIES.length ? `var(--ae-${SERIES[k]})` : "var(--ae-line_strong)";
+  const show = hover ?? pinned;
+  const sum = (p: { values: number[] }) => (show == null ? p.values.reduce((a, v) => a + v, 0) : p.values[show]);
+  const cols = { gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` };
+  const pin = (i: number) => onPin?.(pinned === i ? null : i);
+  const bg = (i: number) => (i === pinned ? "var(--ae-accent_soft)" : i === hover ? "var(--ae-sunk)" : weekend(i) ? "var(--ae-bg)" : undefined);
   return (
-    <figure className="ae-daystack">
-      <svg viewBox={`0 0 ${W} ${H + 18}`} role="img" aria-label={`${label}: queries per day, ${n} days, most ${max} on one day`}>
-        <line x1="0" x2={W} y1={H} y2={H} stroke="var(--ae-line)" />
-        <line x1="0" x2={W} y1="0.5" y2="0.5" stroke="var(--ae-line)" strokeDasharray="3 3" />
-        {tot.map((t, i) => {
-          let y = H;
-          return (
-            <g key={i}>
-              <title>{`${date(i)}: ${t} quer${t === 1 ? "y" : "ies"}\n${parts.filter((p) => p.values[i]).map((p) => `${p.key}: ${p.values[i]}`).join("\n")}`}</title>
-              {parts.map((p, k) => {
-                const h = (p.values[i] / max) * (H - 4);
-                y -= h;
-                return h > 0 ? <rect key={k} x={i * bw + 1} y={y} width={Math.max(1, bw - 2)} height={h} fill={color(k)} /> : null;
-              })}
-              <rect x={i * bw} y="0" width={bw} height={H} fill="transparent" />
-            </g>
-          );
+    <figure className="ae-ds" aria-label={`${label}: queries per day, ${n} days, most ${max} on one day, ${Math.round(avg)} on an average day`}>
+      <div className="ae-ds-read">
+        <b>{show == null ? `All ${n} days · ${tot.reduce((a, v) => a + v, 0)} queries` : `${day(show).toISOString().slice(0, 10)}${weekend(show) ? " (weekend)" : ""} · ${tot[show]} queries`}</b>
+        <span className="ae-muted">{hover != null ? (hover === pinned ? "pinned" : onPin ? "click to pin" : "") : pinned != null ? "pinned · the table shows this day" : `${short(0)} – ${short(n - 1)} · average ${Math.round(avg)} a day`}</span>
+        {pinned != null && onPin && <button type="button" className="ae-link" onClick={() => onPin(null)}>Clear day</button>}
+        {focus && onFocus && <button type="button" className="ae-link" onClick={() => onFocus(null)}>Show all</button>}
+      </div>
+      <div className="ae-ds-keys">
+        {parts.map((p, k) => {
+          const body = <><i style={{ background: color(k) }} /><span className="ae-mono">{p.key}</span><b>{sum(p)}</b></>;
+          return onFocus && k < SERIES.length
+            ? <button type="button" key={p.key} className={focus && focus !== p.key ? "off" : ""} aria-pressed={focus === p.key} onClick={() => onFocus(focus === p.key ? null : p.key)}>{body}</button>
+            : <span key={p.key}>{body}</span>;
         })}
-        <text x="2" y="12" className="ae-daystack-ax">{max}</text>
-        {[0, Math.floor(n / 2), n - 1].filter((i) => i >= 0).map((i, k) => (
-          <text key={k} x={k === 0 ? 0 : k === 1 ? i * bw + bw / 2 : W} y={H + 14} textAnchor={k === 0 ? "start" : k === 1 ? "middle" : "end"} className="ae-daystack-ax">{date(i)}</text>
-        ))}
-      </svg>
-      <figcaption className="ae-daystack-legend">
-        {parts.map((p, k) => <span key={p.key}><i style={{ background: color(k) }} />{p.key}</span>)}
-      </figcaption>
+      </div>
+      <div className="ae-ds-plot" onMouseLeave={() => setHover(null)}>
+        <div className="ae-ds-y"><span>{max}</span><span>{Math.round((max * 2) / 3)}</span><span>{Math.round(max / 3)}</span><span>0</span></div>
+        <div className="ae-ds-area">
+          <div className="ae-ds-grid" />
+          <div className="ae-ds-avg" style={{ bottom: `${(avg / max) * 100}%` }}><span>avg {Math.round(avg)}/day</span></div>
+          <div className="ae-ds-cols" style={cols}>
+            {tot.map((t, i) => (
+              <div key={i} className="ae-ds-col" style={{ background: bg(i) }} onMouseEnter={() => setHover(i)} onClick={() => pin(i)}
+                title={`${day(i).toISOString().slice(0, 10)}: ${t} quer${t === 1 ? "y" : "ies"}`}>
+                {parts.map((p, k) => p.values[i] ? (
+                  <div key={k} style={{ height: `${(p.values[i] / max) * 100}%`, background: color(k), opacity: focus && focus !== p.key ? 0.15 : 1 }} />
+                ) : null)}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="ae-ds-x" style={cols}>
+        <span style={{ gridColumn: "1 / span 12" }}>{short(0)}</span>
+        {n > 30 && <span style={{ gridColumn: `${Math.floor(n / 2) - 4} / span 10`, textAlign: "center" }}>{short(Math.floor(n / 2))}</span>}
+        <span style={{ gridColumn: `${Math.max(1, n - 11)} / span 12`, textAlign: "right" }}>{short(n - 1)}</span>
+      </div>
+      {lanes.length > 0 && (
+        <div className="ae-ds-lanes">
+          {lanes.map((l) => (
+            <div key={l.label}>
+              <div className="ae-ds-lane-h"><i style={{ background: l.color }} />{l.label}<span className="ae-muted">{l.days.filter(Boolean).length} days</span></div>
+              <div className="ae-ds-lane" style={cols}>
+                {l.days.map((on, i) => (
+                  <div key={i} style={{ background: bg(i) }} onMouseEnter={() => setHover(i)} onClick={() => pin(i)}>{on && <i style={{ background: l.color }} />}</div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </figure>
   );
 }

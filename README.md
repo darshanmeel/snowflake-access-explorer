@@ -2,7 +2,7 @@
 
 See who can access what in Snowflake, and through which roles. It runs on your own machine, only reads from Snowflake, and never changes a grant.
 
-**Full guide: [README.html](README.html)**, in this folder. It covers every screen with screenshots, how to read the graphs, all 28 rules, settings and limits. Open it in a browser: double-click it, or run `start README.html`. GitHub shows it as source code, so open your local copy.
+**Full guide: [README.html](README.html)**, in this folder. It covers every screen with screenshots, how to read the graphs, all 29 rules, settings and limits. Open it in a browser: double-click it, or run `start README.html`. GitHub shows it as source code, so open your local copy.
 
 ## What it does
 ```mermaid
@@ -16,7 +16,7 @@ Key: solid = calls · dashed = data moves · numbers = order.
 
 - **Every path, at any depth.** It walks the whole role hierarchy, database roles (`DB.ROLE`) included, so access inherited ten roles deep shows up next to direct grants, each with its full chain (`ANALYST_01 > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ > TABLE`).
 - **Who reads sensitive data.** It uses classification tags and masking or row access policies to show which columns each role sees in clear.
-- **Rule checks.** 28 checks of the role model and of what people did, such as a technical role granted to a person, an admin role held by a user, dormant users, PUBLIC grants, a person changing a table or a service user used from Snowsight. Each finding comes with the fix as infrastructure-as-code text and the matching SQL.
+- **Rule checks.** 29 checks of the role model and of what people did, such as a technical role granted to a person, an admin role held by a user, dormant users, PUBLIC grants, a person changing a table or a service user used from Snowsight. Each finding comes with the fix as infrastructure-as-code text and the matching SQL.
 - **What if.** Pick grants to take away (a role from a user or role, a privilege, a whole role, or everything on PUBLIC). See who loses what, who keeps it another way, which objects and roles are left behind, and which findings go away or appear. Fixes from the rule checks collect in one change plan. It is a simulation: it prints the REVOKE text for your infrastructure as code and never runs it.
 - **Readable graphs.** One lane per depth from the user, many database roles of one database folded into one box, huge boxes grouped by schema and type, hover explains each line in words, and each box shows its worst rule finding ("High · 3", click opens them). Snowflake's own built-in grants that every user gets through PUBLIC are one folded box, not findings.
 - **Read-only.** It only reads from Snowflake. It never runs GRANT, REVOKE, CREATE or ALTER and writes nothing to Snowflake. Locally it keeps a copy of what it read in `.cache/` (git-ignored) for a day; no passwords.
@@ -35,7 +35,7 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
 | Compare (`compare`) | Two people or roles side by side as two overlapping circles (only A, only B, both but different, the same), the differences, and the text to make them match. |
 | Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text: `GRANT ROLE x TO USER u` for a person, `GRANT ROLE x TO ROLE r` for a role (with a too broad warning). For a database role: a skeleton for a new database role in its own database (`GRANT DATABASE ROLE ... TO DATABASE ROLE ...`), or why it can't be done when the object is in another database. |
-| Risks & fixes (`rules`) | Rule checks with findings and admin holders; risks by rule, person, object or as a heat grid (grantee x rule, `by=grid`) with a change plan built from the fixes; the Rules list (`show=list`): the 28 rules by area with a severity bar per area (Home's findings-by-area bars open it at `area=`), with On/Off. |
+| Risks & fixes (`rules`) | Rule checks with findings and admin holders; risks by rule, person, object or as a heat grid (grantee x rule, `by=grid`) with a change plan built from the fixes; the Rules list (`show=list`): the 29 rules by area with a severity bar per area (Home's findings-by-area bars open it at `area=`), with On/Off. |
 | What if (`whatif`) | If we revoke this, who loses what (people who lose the same thing are one row, the removed link crossed out, a lose-vs-keep bar), who keeps it another way, and which findings go or appear. Simulation only. |
 | Review & sign-off (`review`) | The access review (CSV) and a people x objects grid with Keep / Revoke and a signed CSV. |
 | Sensitive data (`sensitive`) | Sensitive objects, who reads them, a catalog of how well each one is protected. |
@@ -140,7 +140,7 @@ python run.py --port 9000        # another port
 ```
 Both apps can run side by side to compare them: `APP=web|streamlit` picks the default, `WEB_PORT` (8000) and `STREAMLIT_PORT` (8501) the ports. Stop with Ctrl+C.
 
-The fake account has users, functional, technical and group roles, admin holders, sensitive tags, masking policies and at least one finding for each of the 28 rules. **My access** shows one demo user's slice (`ENGINEER_01`, or `DEMO_USER=<name>`).
+The fake account has users, functional, technical and group roles, admin holders, sensitive tags, masking policies and at least one finding for each of the 29 rules. **My access** shows one demo user's slice (`ENGINEER_01`, or `DEMO_USER=<name>`).
 
 ### 3. Fill in `.env` for Snowflake
 ```
@@ -399,7 +399,7 @@ The names above are the repo's fake data; use your own.
 [README.html](README.html) covers:
 - every screen, one by one, with screenshots;
 - how to read the graphs;
-- the 28 rules;
+- the 29 rules;
 - run modes and the one-time setup for snapshot tables;
 - the role model;
 - SQL functions for worksheets;

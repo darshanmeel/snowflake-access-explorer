@@ -66,6 +66,8 @@ QUERY_TAG = "access-explorer"  # set on the app's own connection; its queries ar
 INTERACTIVE = set(os.environ.get("INTERACTIVE_CLIENTS", "Snowflake UI,SnowSQL,Snowflake CLI").split(","))
 CLIENTS = {"Snowflake UI": "Snowsight", "PythonConnector": "Python", "JavaScript": "Node.js", "Go": "Go",
            "SnowSQL": "SnowSQL", "Snowflake CLI": "Snowflake CLI", "JDBC": "JDBC", "ODBC": "ODBC", ".NET": ".NET"}
+# off-hours: outside these UTC hours (start inclusive, end exclusive) or at a weekend; the Activity tab's slider starts here
+WORK_HOURS = tuple(int(x) for x in os.environ.get("WORK_HOURS", "7-19").split("-"))
 SPIKE = (3, 50)  # rule 28: a day over 3x the usual (median) day on a table, and at least 50 queries
 NEW_DAYS = 7  # rule 27: first access in the last 7 days
 # tag (last part of its name) = values that make a column/object sensitive; no "=" means any value
@@ -123,18 +125,20 @@ RULES = {  # number -> (title, why); severity in SEVERITY
     "27": (f"First access to a table in the last {NEW_DAYS} days", "New use of a table nobody expected is worth a "
                                                                     "look, most of all on sensitive data."),
     "28": ("Unusual volume on a table", "A day far above the usual can be an export, a runaway job or misuse."),
+    "29": ("Streamlit app shows its owner's sensitive data to people who cannot read it", "The app runs with its "
+           "owner's rights, so everyone who can open it sees what the owner role reads, not what their own roles read."),
 }
 SEVERITY = {"1": "Medium", "2": "Medium", "3": "Low", "4": "High", "5": "High", "6": "Medium", "7": "High", "8": "Low",
             "9": "High", "10": "Medium", "11": "Low", "12": "High", "13": "Low", "14": "Low", "15": "Medium",
             "16": "Medium", "17": "High", "18": "Low", "19": "Medium", "20": "High", "21": "Medium", "22": "High",
-            "23": "High", "24": "Medium", "25": "High", "26": "High", "27": "Low", "28": "Medium"}  # rule number ->
+            "23": "High", "24": "Medium", "25": "High", "26": "High", "27": "Low", "28": "Medium", "29": "High"}  # rule number ->
 # severity, edit freely
 
 # ---------- fake data: users -> group role -> functional roles -> technical roles -> objects ----------
 
 SCHEMAS = {
     "SALES": {"RAW": ["TBL_ORDER_RAW"], "CLEAN": ["TBL_ORDER"],
-              "CORE": ["TBL_CUSTOMER", "SP_LOAD_CUSTOMER"], "MART": ["VW_CUSTOMER"],
+              "CORE": ["TBL_CUSTOMER", "SP_LOAD_CUSTOMER"], "MART": ["VW_CUSTOMER", "ST_CUSTOMER_LOOKUP"],
               "PIPELINE": ["TSK_LOAD_CUSTOMER", "STR_CUSTOMER", "STG_LANDING", "FN_MASK_EMAIL", "SEQ_ORDER_ID",
                            "PIPE_ORDER_RAW", "DT_CUSTOMER_DAILY", "TBL_CUSTOMER_CHANGES"]},
     "SHARED": {"LOGGING": ["TBL_LOGGING"], "MONITORING": ["SP_LOG_RUN"],
@@ -150,7 +154,7 @@ FIN_USERS = [f"FIN_{i:02}" for i in range(1, 15)]  # more than 12 users in one g
 def fake():
     def kind(obj):
         return {"TBL": "TABLE", "VW": "VIEW", "SP": "PROCEDURE", "TSK": "TASK", "STR": "STREAM", "STG": "STAGE",
-                "FN": "FUNCTION", "SEQ": "SEQUENCE", "PIPE": "PIPE", "DT": "DYNAMIC TABLE"}[obj.split("_")[0]]
+                "FN": "FUNCTION", "SEQ": "SEQUENCE", "PIPE": "PIPE", "DT": "DYNAMIC TABLE", "ST": "STREAMLIT"}[obj.split("_")[0]]
 
     F, T = FUNC, TECH
     rg, ur, pv = [], [], []  # (granted role, grantee role), (role, user), (role, privilege, type, object)
@@ -173,7 +177,7 @@ def fake():
                 if k == "TABLE":  # fake: partial write set on TBL_CUSTOMER_CHANGES (rule 18, has / lacks)
                     pv += [(f"{base}_WRITE", p, k, name) for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")
                            if not (o == "TBL_CUSTOMER_CHANGES" and p in ("DELETE", "TRUNCATE"))]
-                if k in ("PROCEDURE", "FUNCTION"):
+                if k in ("PROCEDURE", "FUNCTION", "STREAMLIT"):
                     pv.append((f"{base}_EXECUTE", "USAGE", k, name))
     pv += [(f"{T}SALES_CORE_READ", "SELECT", "FUTURE TABLE", "SALES.CORE.<TABLE>"),
            (f"{T}SALES_CORE_OWNER", "OWNERSHIP", "FUTURE TABLE", "SALES.CORE.<TABLE>"),  # the IaC owner: no rule 15
@@ -212,6 +216,7 @@ def fake():
         (f"{T}SHARED_STAGE_READ", f"{F}SECURITY"),
         (f"{T}SALES_PIPELINE_EXECUTE", f"{F}ENGINEER"),
         (f"{T}SALES_PIPELINE_READ", f"{F}SUPPORT"),  # fake: reads the stream, not its sensitive table (22)
+        (f"{T}SALES_MART_EXECUTE", f"{F}SUPPORT"),  # fake: opens a Streamlit app whose owner reads sensitive data (29)
         (f"{T}WAREHOUSE_OWNER", f"{F}DEPLOY"),
         # functional -> group role (synced from the identity provider)
         (f"{F}ANALYST", "GRP_ANALYSTS"),
@@ -395,8 +400,9 @@ def fake_use(end):
 def fake_activity(end):
     """Demo of activity_sql(): ACTIVITY_DAYS of table use per day, user, role, client and statement, with one finding
     for each of rules 24-28: ENGINEER_01 changes TBL_CUSTOMER and alters it, SVC_DEPLOY from Snowsight, OPS_01 reads
-    revenue as SYSADMIN, ENGINEER_01 reads TBL_EMPLOYEE for the first time, REPORT_01's busy day on VW_CUSTOMER."""
-    e, F, n = day(end), FUNC, ACTIVITY_DAYS
+    revenue as SYSADMIN, ENGINEER_01 reads TBL_EMPLOYEE for the first time, REPORT_01's busy day on VW_CUSTOMER;
+    SUPPORT_01 opens the Streamlit app ST_CUSTOMER_LOOKUP, whose queries run as its owner role."""
+    e, F, T, n = day(end), FUNC, TECH, ACTIVITY_DAYS
     rd, wr = ("READ", "SELECT"), ("WRITE", "MERGE")
     plan = [("ENGINEER_01", F + "ENGINEER", "PythonConnector", "SALES.CORE.TBL_CUSTOMER", rd, range(n), 12),
             ("ENGINEER_01", F + "ENGINEER", "Snowflake UI", "SALES.CORE.TBL_CUSTOMER", ("WRITE", "INSERT"), range(3, n, 9), 2),
@@ -413,14 +419,18 @@ def fake_activity(end):
             ("SVC_DEPLOY", F + "DEPLOY", "PythonConnector", "SALES.CORE.TBL_CUSTOMER", wr, range(n), 24),
             ("SVC_DEPLOY", F + "DEPLOY", "PythonConnector", "SALES.RAW.TBL_ORDER_RAW", rd, range(n), 24),
             ("SVC_DEPLOY", F + "DEPLOY", "PythonConnector", "SALES.CLEAN.TBL_ORDER", ("WRITE", "INSERT"), range(n), 24),
-            ("SVC_DEPLOY", F + "DEPLOY", "Snowflake UI", "SALES.CORE.TBL_CUSTOMER", rd, [2, 9], 2)]
+            ("SVC_DEPLOY", F + "DEPLOY", "Snowflake UI", "SALES.CORE.TBL_CUSTOMER", rd, [2, 9], 2),
+            ("SUPPORT_01", T + "SALES_MART_OWNER", "Snowflake UI", "SALES.MART.VW_CUSTOMER", rd, range(0, 20, 3), 5)]
     out = []
     for u, r, cl, o, (act, qt), days, k in plan:
         for i in days:
             dd = e - timedelta(days=i)
             q = 400 if (u, o, i) == ("REPORT_01", "SALES.MART.VW_CUSTOMER", 4) else k + (i * 7 + len(o)) % 3
+            h, late = 8 + (i + len(u)) % 9, q if u == "OPS_01" else q // 3 if cl == "Snowflake UI" else 0
+            hours = {str(h): q - late, "22": late} if late else {str(h): q}
             out.append(dict(DAY=dd.isoformat(), USER_NAME=u, ROLE_NAME=r, CLIENT=cl, OBJECT_NAME=o, ACTION=act,
-                            QUERY_TYPE=qt, QUERIES=q, LAST_USED=f"{dd.isoformat()} {8 + i % 9:02}:15"))
+                            QUERY_TYPE=qt, QUERIES=q, LAST_USED=f"{dd.isoformat()} {22 if late else h:02}:15", HOURS=hours,
+                            APP="SALES.MART.ST_CUSTOMER_LOOKUP" if u == "SUPPORT_01" else None))
     return out
 
 
@@ -466,7 +476,13 @@ def snapshot(query, where):
             d[t] = query(f"SELECT * FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'")
         except Exception:
             d[t] = None
-    return d | {"run": run}
+    return d | {"run": run, "ACTIVITY": hours_of(d["ACTIVITY"])}
+
+
+def hours_of(rows):
+    """ACTIVITY rows with HOURS as a dict: a VARIANT comes back as JSON text."""
+    return rows if rows is None else [x | {"HOURS": json.loads(x["HOURS"])} if isinstance(x.get("HOURS"), str) else x
+                                      for x in rows]
 
 
 def ident(name):
@@ -885,7 +901,7 @@ def live(query, old=None):
             raise RuntimeError(why)
         keep, since = activity_start(old, now)
         cw = readable("SESSIONS")
-        d["ACTIVITY"] = keep + query(activity_sql(since.isoformat(), cw is None))
+        d["ACTIVITY"] = keep + hours_of(query(activity_sql(since.isoformat(), cw is None)))
         note("activity", "ACCOUNT_USAGE", cw and f"{cw}: no client")
     except Exception as e:
         d["ACTIVITY"] = []
@@ -924,29 +940,40 @@ def activity_sql(since, client=True):
     dropped) and QUERY_TYPE (SELECT, INSERT, MERGE, ...). Role and statement type come from QUERY_HISTORY, the client
     from SESSIONS (client=False: not readable, CLIENT stays empty). since: first day read ('YYYY-MM-DD'); both history
     views are cut at it, so Snowflake prunes them, and ACCESS_HISTORY is scanned once. The app's own queries (QUERY_TAG)
-    are left out. The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    are left out. DAY and HOURS are in UTC: HOURS = {hour of day: queries}, so the app can count off-hours for any
+    working hours without reading again. APP: the Streamlit app the query ran for (Snowflake tags them with
+    {"StreamlitName": ...}, older ones "streamlitName: ..."), else NULL. The same text is in access.py and
+    SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
     col = "S.CLIENT" if client else "NULL"
     join = (f"""LEFT JOIN (SELECT SESSION_ID, REGEXP_REPLACE(CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
                        FROM {AU}.SESSIONS) S ON S.SESSION_ID = Q.SESSION_ID""" if client else "")
     return f"""WITH A AS (
-            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL,
+                   CONVERT_TIMEZONE('UTC', QUERY_START_TIME) AS L
             FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::DATE),
         H AS (
-            SELECT A.QUERY_ID, A.USER_NAME, A.T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+            SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
             FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
             UNION ALL
-            SELECT A.QUERY_ID, A.USER_NAME, A.T, O.VALUE:"objectName"::STRING, 'WRITE'
+            SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING, 'WRITE'
             FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O
             UNION ALL
-            SELECT QUERY_ID, USER_NAME, T, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL'
+            SELECT QUERY_ID, USER_NAME, T, L, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL'
             FROM A WHERE OBJECT_MODIFIED_BY_DDL IS NOT NULL),
         Q AS (
-            SELECT QUERY_ID, ROLE_NAME, QUERY_TYPE, SESSION_ID FROM {AU}.QUERY_HISTORY
-            WHERE START_TIME >= '{since}'::DATE AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}')
-        SELECT H.T::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE,
-               COUNT(DISTINCT H.QUERY_ID) AS QUERIES, MAX(H.T) AS LAST_USED
-        FROM H JOIN Q ON Q.QUERY_ID = H.QUERY_ID {join}
-        WHERE H.OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6, 7"""
+            SELECT QUERY_ID, ROLE_NAME, QUERY_TYPE, SESSION_ID,
+                   COALESCE(TRY_PARSE_JSON(QUERY_TAG):StreamlitName::STRING,
+                            REGEXP_SUBSTR(QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP
+            FROM {AU}.QUERY_HISTORY
+            WHERE START_TIME >= '{since}'::DATE AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'),
+        G AS (
+            SELECT H.L::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE, Q.APP,
+                   HOUR(H.L) AS HR, COUNT(DISTINCT H.QUERY_ID) AS N, MAX(H.T) AS LAST_USED
+            FROM H JOIN Q ON Q.QUERY_ID = H.QUERY_ID {join}
+            WHERE H.OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9)
+        SELECT DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, SUM(N) AS QUERIES, MAX(LAST_USED) AS LAST_USED,
+               OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS, APP
+        FROM G GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP"""
 
 
 def activity_start(old, now):
@@ -4260,20 +4287,26 @@ def client_label(c):
 
 
 def activity(name, what, user=None):
-    """Activity tab: name's table use over ACTIVITY_DAYS up to the snapshot. what: object | user | role; user: only
+    """Activity tab: name's table use over ACTIVITY_DAYS up to the snapshot. what: object | user | role | app (the
+    queries a Streamlit app ran for its viewers) | scope (a database or schema: every object in it); user: only
     that user's use (the object page's "Access for").
     dict(first, last (days), daily [queries per day, oldest first], by {user|role|client|type|object: [dict(key, read,
-    write, ddl, last, daily)], most first}, rows [one per user, role, client, object, statement and action: queries,
-    days, last, daily], ddl [the DDL rows, newest first]). Counts are queries per action: a MERGE that reads and changes a table
+    write, ddl, last, daily)], most first}, rows [one per user, role, client, object, statement and action: queries, days,
+    first_day, last, daily, hours (weekday queries per UTC hour, 24), weekend (queries on Saturday or Sunday),
+    weekend_hours (those per UTC hour, 24), kind
+    (person | service | system, of the user), interactive (from Snowsight, SnowSQL, ...)], ddl [the DDL rows, newest
+    first]). Counts are queries per action: a MERGE that reads and changes a table
     counts in both."""
-    field = dict(object="OBJECT_NAME", user="USER_NAME", role="ROLE_NAME")[what]
+    field = dict(object="OBJECT_NAME", user="USER_NAME", role="ROLE_NAME", app="APP", scope="OBJECT_NAME")[what]
+    inside = (lambda v: (v or "").startswith(name + ".")) if what == "scope" else (lambda v: v == name)
     end = day(ref_time())
     first = end - timedelta(days=ACTIVITY_DAYS - 1)
     daily, by, rows = [0] * ACTIVITY_DAYS, {k: {} for k in ("user", "role", "client", "type", "object")}, {}
     for x in acts:
-        if x[field] != name or (user and x["USER_NAME"] != user):
+        if not inside(x[field]) or (user and x["USER_NAME"] != user):
             continue
         d, q, last, act = day(x["DAY"]), int(x["QUERIES"] or 0), str(x["LAST_USED"])[:16], x["ACTION"].lower()
+        hrs = x.get("HOURS") or {}  # older snapshots have none
         if 0 <= (d - first).days < ACTIVITY_DAYS:
             daily[(d - first).days] += q
         keys = dict(user=x["USER_NAME"], role=x["ROLE_NAME"] or "–", client=client_label(x["CLIENT"]),
@@ -4286,16 +4319,44 @@ def activity(name, what, user=None):
             if 0 <= i < ACTIVITY_DAYS:
                 b["daily"][i] += q
         r = rows.setdefault(tuple(keys.values()) + (x["ACTION"],),
-                            dict(keys, action=x["ACTION"], queries=0, days=set(), last="", daily=[0] * ACTIVITY_DAYS))
+                            dict(keys, action=x["ACTION"], queries=0, days=set(), last="", daily=[0] * ACTIVITY_DAYS,
+                                 hours=[0] * 24, weekend=0, weekend_hours=[0] * 24, interactive=x["CLIENT"] in INTERACTIVE,
+                                 kind="system" if x["USER_NAME"] == "SYSTEM" else "service" if is_service(x["USER_NAME"])
+                                 else "person"))
         r["queries"] += q
+        for h, n in hrs.items():
+            r["weekend_hours" if d.weekday() >= 5 else "hours"][int(h)] += int(n)
+        if d.weekday() >= 5:
+            r["weekend"] += q
         r["days"].add(d)
         r["last"] = max(r["last"], last)
         if 0 <= i < ACTIVITY_DAYS:
             r["daily"][i] += q
-    out = [dict(r, days=len(r["days"])) for r in sorted(rows.values(), key=lambda r: -r["queries"])]
+    out = [dict(r, days=len(r["days"]), first_day=min(r["days"]).isoformat())
+           for r in sorted(rows.values(), key=lambda r: -r["queries"])]
     return dict(first=first.isoformat(), last=end.isoformat(), daily=daily,
                 by={k: sorted(v.values(), key=lambda b: -(b["read"] + b["write"] + b["ddl"])) for k, v in by.items()},
                 rows=out, ddl=sorted((r for r in out if r["action"] == "DDL"), key=lambda r: r["last"], reverse=True))
+
+
+def query_sql(name, what, first, last):
+    """Copy-only SQL that lists every query behind the Activity tab, one by one (query id, time, user, role, statement,
+    client; never the query text), to run in Snowflake. The app never runs it."""
+    q = name.replace("'", "''")
+    where = {"object": f"""O.VALUE:"objectName"::STRING = '{q}'""", "user": f"A.USER_NAME = '{q}'",
+             "role": f"Q.ROLE_NAME = '{q}'", "app": f"TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING = '{q}'",
+             "scope": f"""O.VALUE:"objectName"::STRING LIKE '{q}.%'"""}[what]
+    return f"""-- Every query behind the Activity tab of {q}, one by one, {first} to {last} (UTC). Read-only.
+SELECT DISTINCT A.QUERY_ID, A.QUERY_START_TIME, A.USER_NAME, Q.ROLE_NAME, Q.QUERY_TYPE,
+       O.VALUE:"objectName"::STRING AS OBJECT_NAME, S.CLIENT_APPLICATION_ID
+FROM {AU}.ACCESS_HISTORY A
+JOIN LATERAL FLATTEN(ARRAY_CAT(ARRAY_CAT(A.DIRECT_OBJECTS_ACCESSED, A.OBJECTS_MODIFIED),
+                               ARRAY_CONSTRUCT_COMPACT(A.OBJECT_MODIFIED_BY_DDL))) O
+JOIN {AU}.QUERY_HISTORY Q ON Q.QUERY_ID = A.QUERY_ID AND Q.START_TIME >= '{first}'::DATE
+LEFT JOIN {AU}.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
+WHERE A.QUERY_START_TIME >= '{first}'::DATE AND A.QUERY_START_TIME < DATEADD(DAY, 1, '{last}'::DATE)
+  AND {where}
+ORDER BY A.QUERY_START_TIME DESC;"""
 
 
 def used_path(u, r, o, action):
@@ -4344,6 +4405,69 @@ def activity_graph(name, what, rows):
         users = sorted({p[0] for x in rs for p in x["paths"]})
         return object_graph(name, kinds.get(name, ""), rs, users), gone
     return down_graph(name, rs, user=what == "user"), gone
+
+
+def user_reads(u):
+    """Objects user u reads through any role they hold (PUBLIC too)."""
+    return cached(("user_reads", u), lambda: set().union(*(reads([u, r]) for r in roles_of.get(u, []) + ["PUBLIC"])))
+
+
+def app_exposure(app):
+    """A Streamlit app runs with its owner's rights: whoever can open it sees what the owner role reads. dict(owner
+    [roles holding OWNERSHIP], sensitive {object: sensitive columns ([] = whole object)} the owner reads, holders
+    {role holding USAGE on the app itself: [users reaching it]}, exposed {user: [sensitive objects they cannot read
+    themselves]}); None when the app has no owner in this data."""
+    owner = sorted(r for r, pv, _ in on.get(app, []) if pv == "OWNERSHIP")
+    if not owner:
+        return None
+    s = sensitive()
+    seen = {o: sensitive_cols(o) for r in owner for o in reads([r]) if o in s}
+    holders = {r: sorted(x for (x, u) in up_rows(r) if u) for r, pv, _ in on.get(app, []) if pv == "USAGE"}
+    exposed = {u: sorted(set(seen) - user_reads(u)) for us in holders.values() for u in us}
+    return dict(owner=owner, sensitive=dict(sorted(seen.items())), holders=holders,
+                exposed={u: v for u, v in sorted(exposed.items()) if v})
+
+
+def app_use(app, rows):
+    """A Streamlit app's viewers: can (users who can open it, with the role holding USAGE), opened (users with
+    activity() rows for it: queries, last), never (can open it, did not in the window), saw (opened it and can't read
+    some sensitive data its owner reads: those objects)."""
+    x = app_exposure(app) or dict(holders={}, exposed={})
+    can = {u: r for r, us in x["holders"].items() for u in us}
+    opened = {}
+    for r in rows:
+        o = opened.setdefault(r["user"], dict(queries=0, last=""))
+        o["queries"] += r["queries"]
+        o["last"] = max(o["last"], r["last"])
+    return dict(can=can, opened=opened, never=sorted(set(can) - set(opened)),
+                saw={u: x["exposed"][u] for u in opened if u in x["exposed"]})
+
+
+def warehouse_use(wh):
+    """Who ran queries on a warehouse (QUERY_HISTORY, as the snapshot read it: USAGE rows) and who can use it but did
+    not: dict(used [dict(user, queries, last)], unused [users reaching USAGE or OPERATE on it])."""
+    use = sorted((dict(user=u, queries=int(x["QUERIES"] or 0), last=str(x["LAST_USED"])[:16]) for u, xs in used.items()
+                  for x in xs if x["KIND"] == "WAREHOUSE" and x["NAME"] == wh), key=lambda r: -r["queries"])
+    can = {x for r, pv, _ in on.get(wh, []) if pv in ("USAGE", "OPERATE", "OWNERSHIP") for (x, u) in up_rows(r) if u}
+    return dict(used=use, unused=sorted(can - {r["user"] for r in use}))
+
+
+def rule29():
+    """Rule 29: a role holding USAGE on a Streamlit app lets people open it who cannot read the sensitive data its owner
+    role reads (the app runs with the owner's rights). One finding per app and role holding the grant."""
+    out = []
+    for app in sorted(o for o, k in kinds.items() if k == "STREAMLIT"):
+        x = app_exposure(app)
+        if not x or not x["sensitive"]:
+            continue
+        for h, us in sorted(x["holders"].items()):
+            hit = [u for u in us if u in x["exposed"]]
+            if hit:
+                objs = sorted({o for u in hit for o in x["exposed"][u]})
+                out.append(find("29", h, f"opens {app}; its owner {', '.join(x['owner'])} reads sensitive "
+                                + ", ".join(objs) + f"; {plural(len(hit), 'user')} can't read it themselves: "
+                                + ", ".join(hit[:5]) + (" ..." if len(hit) > 5 else ""), [h, app], [holder_edge(h, "USAGE", app)]))
+    return out
 
 
 def mark_sensitive(obj):
@@ -5187,8 +5311,8 @@ def rules_activity():
         if len(per_day) >= 5:  # a usual day needs a few days to go by
             top, usual = max(per_day.items(), key=lambda t: t[1]), statistics.median(per_day.values())
             if top[1] >= SPIKE[1] and top[1] > SPIKE[0] * usual:
-                out.append(find("28", u, f"{top[1]} queries on {o} on {top[0]}, usually {usual:g} a day", [u, o],
-                                user=True, fix=review))
+                out.append(find("28", u, f"{top[1]} queries on {o} on {top[0]}, {top[1] / usual:.0f}x the usual day "
+                                f"(median {usual:g})", [u, o], user=True, fix=review))
     for u, xs in sorted(svc.items()):
         c = Counter()
         for x in xs:
@@ -5209,5 +5333,5 @@ def findings(only=None):
     (see find()), fix, paths, affects, impact). only: {rule: users and roles it checks} for the per-grantee rules
     (SCOPED), the other rules check everything (what_if: only what a change can touch)."""
     out = (rules_model(only) + rules_admin(only) + rules_sensitive(only) + rules_users() + rule17(only) + rule18()
-           + rule19() + rules_operate() + rule22() + rule23(only) + cached("activity", rules_activity))
+           + rule19() + rules_operate() + rule22() + rule23(only) + cached("activity", rules_activity) + rule29())
     return sorted(out, key=lambda f: int(f["num"]))

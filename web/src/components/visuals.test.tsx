@@ -180,11 +180,47 @@ describe("data panel", () => {
 });
 
 describe("activity day chart", () => {
-  it("stacks the top five keys, folds the rest into Other, and labels the busiest day", () => {
+  it("stacks the top five keys, folds the rest into Other, and reads out the window", () => {
     const series = ["A", "B", "C", "D", "E", "F", "G"].map((key, k) => ({ key, values: [k, 0, 10] }));
     const { container } = render(<DayStack first="2026-11-01" label="T" series={series} />);
-    expect([...container.querySelectorAll("figcaption span")].map((s) => s.textContent)).toEqual(["A", "B", "C", "D", "E", "Other (2)"]);
-    expect(container.querySelector("svg")!.getAttribute("aria-label")).toContain("most 70 on one day");
-    expect(container.textContent).toContain("2026-11-03");
+    expect([...container.querySelectorAll(".ae-ds-keys .ae-mono")].map((s) => s.textContent)).toEqual(["A", "B", "C", "D", "E", "Other (2)"]);
+    expect(container.querySelector("figure")!.getAttribute("aria-label")).toContain("most 70 on one day");
+    expect(container.textContent).toContain("All 3 days · 91 queries");
+    expect(container.querySelector(".ae-ds-x")!.textContent).toContain("3 Nov");
+  });
+});
+
+describe("activity combinations", () => {
+  it("sums rows per combination, read / write / DDL by action, day by day", async () => {
+    const { combine } = await import("../pages/Activity");
+    const row = (role: string, client: string, type: string, action: "READ" | "WRITE" | "DDL", queries: number, daily: number[]) =>
+      ({ user: "U", role, client, type, object: "T", action, queries, days: daily.filter(Boolean).length, first_day: "2026-11-01", last: `2026-11-0${queries % 9}`, daily,
+        hours: Array.from({ length: 24 }, (_, h) => (h === 7 ? 1 : h === 9 ? queries - 1 : 0)), weekend: 0, weekend_hours: Array(24).fill(0), kind: "person" as const, interactive: false });
+    const got = combine([row("R1", "JDBC", "SELECT", "READ", 5, [2, 3]), row("R1", "JDBC", "MERGE", "WRITE", 4, [4, 0]),
+      row("R2", "Snowsight", "ALTER_TABLE", "DDL", 1, [0, 1])], ["role", "client"]);
+    expect(got.map((b) => [b.key, b.read, b.write, b.ddl, b.daily])).toEqual([["R1 · JDBC", 5, 4, 0, [6, 3]], ["R2 · Snowsight", 0, 0, 1, [0, 1]]]);
+    const day1 = combine([row("R1", "JDBC", "SELECT", "READ", 5, [2, 3]), row("R1", "JDBC", "MERGE", "WRITE", 4, [4, 0])], ["role"], 1);
+    expect(day1.map((b) => [b.key, b.read, b.write])).toEqual([["R1", 3, 0]]); // one pinned day: that day's counts only
+    const { offOf } = await import("../pages/Activity");  // off-hours follow the working-hours slider
+    const r = { hours: Array.from({ length: 24 }, (_, h) => (h === 7 || h === 20 ? 2 : h === 12 ? 5 : 0)), weekend: 3 };
+    expect([offOf(r, { start: 8, end: 18, tz: 0 }), offOf(r, { start: 7, end: 21, tz: 0 }), offOf(r, { start: 8, end: 18, tz: 2 })]).toEqual([7, 3, 5]); // tz 2: 07 and 20 UTC are 09 and 22 local
+  });
+});
+
+describe("activity day chart, pin and isolate", () => {
+  it("pins a clicked day, isolates a clicked key, shades weekends, reads out the hovered day and draws the lanes", () => {
+    const pin = vi.fn(), focus = vi.fn();
+    const { container } = render(<DayStack first="2026-11-06" label="T" series={[{ key: "A", values: [1, 2, 3] }, { key: "B", values: [1, 0, 1] }]}
+      onPin={pin} onFocus={focus} lanes={[{ label: "DDL", color: "red", days: [false, true, false] }]} />);
+    const cols = container.querySelectorAll<HTMLElement>(".ae-ds-col");
+    fireEvent.click(cols[2]);
+    expect(pin).toHaveBeenCalledWith(2);
+    fireEvent.click(screen.getByRole("button", { name: /^B/ }));
+    expect(focus).toHaveBeenCalledWith("B");
+    expect([...cols].map((c) => c.style.background)).toEqual(["", "var(--ae-bg)", "var(--ae-bg)"]); // Sat 7, Sun 8 Nov
+    fireEvent.mouseEnter(cols[0]);
+    expect(container.querySelector(".ae-ds-read")!.textContent).toContain("2026-11-06 · 2 queries");
+    expect(container.textContent).toContain("avg 3/day");
+    expect(container.querySelectorAll(".ae-ds-lane i").length).toBe(1);
   });
 });
