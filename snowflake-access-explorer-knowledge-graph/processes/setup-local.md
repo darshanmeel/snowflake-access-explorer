@@ -17,10 +17,10 @@ flowchart LR
 ```
 
 ## Steps
-- Needs Python 3.10+ and git, no Node or npm (web app comes built) — README.md:72, README.md:122.
-- Create and activate venv: `python -m venv .venv; .venv\Scripts\activate` — README.md:126. Execution-policy hint if `activate` is blocked — README.md:129.
-- Install the web version: `pip install -r requirements-web.txt` — README.md:127.
-- Update later: `git pull; pip install -r requirements-web.txt` — README.md:130.
+- Needs Python 3.10+ and git, no Node or npm (web app comes built) — README.md:72, README.md:141.
+- Create and activate venv: `python -m venv .venv; .venv\Scripts\activate` — README.md:145. Execution-policy hint if `activate` is blocked — README.md:148.
+- Install the web version: `pip install -r requirements-web.txt` — README.md:146.
+- Update later: `git pull; pip install -r requirements-web.txt` — README.md:149.
 - Try without Snowflake: `python run.py --fake` — README.md:78.
 
 ## Requirements files
@@ -34,7 +34,7 @@ flowchart LR
 - duckdb is only in requirements-web.txt; without it the app runs and notes why there is no SQL copy — CLAUDE.md:14-15.
 
 ## `.env` (from `.env.example`, git-ignored)
-- Copy: `copy .env.example .env` — README.md:147. `.env` is git-ignored — .gitignore:3.
+- Copy: `copy .env.example .env` — README.md:166. `.env` is git-ignored — .gitignore:3.
 - Rules: `NAME=value`, no comment after a value; empty/missing name falls back to env var; a shell variable wins — .env.example:1; loader uses `os.environ.setdefault` — access.py:19-26.
 - Names only (values never stored here):
   - Source/data: `FAKE`, `SOURCE`, `ACCESS_SNAPSHOT`, `CACHE_HOURS` — .env.example:4-10.
@@ -44,10 +44,10 @@ flowchart LR
   - Secret refs: `SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD` (key pair; else browser SSO) — .env.example:28-29, sf.py:36-41.
   - Optional: `ROLE_PREFIXES` (and others listed in README.html > Settings) — .env.example:31-32.
 - Missing `SNOWFLAKE_ACCOUNT` outside Snowflake raises "copy .env.example to .env" — sf.py:23-25.
-- Settings table with defaults — README.md:160-174.
+- Settings table with defaults — README.md:179-193.
 
 ## `settings.local.sql` (from `settings.sql`, git-ignored)
-- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:223.
+- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:242.
 - Names: `DB`, `SCHEMA`, `WH`, `DEV_ROLE`, `APP_ROLE`, `HERE` (SnowSQL only; run_sql.py fills it) — settings.sql:5-14, run_sql.py:19.
 - git-ignored — .gitignore:4.
 - run_sql.py falls back to settings.sql if no local file, then stops if any `<placeholder>` is left — run_sql.py:17, run_sql.py:22-27.

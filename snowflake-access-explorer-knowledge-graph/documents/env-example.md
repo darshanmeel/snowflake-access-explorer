@@ -21,4 +21,4 @@ flowchart LR
 - `ROLE_PREFIXES` (commented) — .env.example:31-32.
 
 ## Relates to
-- access.py:19-26 (loader), sf.py:19-42, cache.py:27-39, run.py:29-41, server.py:131-147, server.py:2289-2293; README.md:145-174; processes/setup-local.md.
+- access.py:19-26 (loader), sf.py:19-42, cache.py:27-39, run.py:29-41, server.py:131-147, server.py:2289-2293; README.md:164-193; processes/setup-local.md.

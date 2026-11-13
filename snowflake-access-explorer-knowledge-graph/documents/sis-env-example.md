@@ -18,4 +18,4 @@ flowchart LR
 - Pick one source — sis.env.example:6: `SOURCE=objects` + `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` (recommended for a team) — sis.env.example:7-10; `SOURCE=direct` (commented; owner role needs IMPORTED PRIVILEGES or SECURITY_VIEWER + GOVERNANCE_VIEWER; SHOW may be refused -> Incomplete) — sis.env.example:11-15.
 
 ## Relates to
-- sql/4_streamlit.sql:58-59 (PUT), run_sql.py:52-55 (missing-file hint), .gitignore:8 (`sis/`), access.py:34-35 (INSIDE), README.md:282-291, web/ST.md:67.
+- sql/4_streamlit.sql:58-59 (PUT), run_sql.py:52-55 (missing-file hint), .gitignore:8 (`sis/`), access.py:34-35 (INSIDE), README.md:301-310, web/ST.md:67.

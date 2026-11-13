@@ -16,9 +16,9 @@ flowchart LR
 - How a snapshot is built and read — README.html:156 (generated, `<!--map:flow-->` README.html:159).
 - Finding your way — README.html:172; How to read a graph — README.html:196.
 - Screens: Home 232, A person or role 251 (Activity tab 267), Who has access 274 ("Access for" use line 287, Activity tab 292), Can they? 299, Request access 323, Access graph 343, What they see 364, Compare 384, Risks & fixes 400 (29 rules 421, `<!--map:rules-->` 422; rules 24-28 in group Activity), What if 428, Review & sign-off 448, Sensitive data 469, Sensitive data flow 489, Granted vs used 503, What changed 523, User/Role paths 543, Big accounts 569, My access 588 — README.html line numbers as listed.
-- Run modes and what you need — README.html:610; one-time snapshot setup + daily task `TSK_ACCESS_SNAPSHOT` + roles table — README.html:637-646.
-- Streamlit in Snowflake: two options — README.html:652; Query with SQL (DuckDB) — README.html:666; Role model — README.html:683; SQL without the app — README.html:691; Data sources — README.html:704-707; Settings (env vars, `WORK_HOURS` business hours, local time, shifted from UTC by the Activity tab's slider) — README.html:712-714; Limits — README.html:715.
+- Run modes and what you need — README.html:610; one-time snapshot setup + daily task `TSK_ACCESS_SNAPSHOT` + roles table — README.html:645-654.
+- Streamlit in Snowflake: two options — README.html:660; Query with SQL (DuckDB) — README.html:674; Role model — README.html:691; SQL without the app — README.html:699; Data sources — README.html:712-715; Settings (env vars, `WORK_HOURS` business hours, local time, shifted from UTC by the Activity tab's slider) — README.html:720-722; Limits — README.html:723.
 
 ## Relates to
 - Generated parts: docs/make_readme.py — docs/make_readme.py:148-155; checked by test_readme_rules — test_access.py:1788-1798.
-- Only place the daily task SQL is written — README.html:642-644.
+- Only place the daily task SQL is written — README.html:650-652.

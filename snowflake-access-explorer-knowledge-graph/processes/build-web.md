@@ -14,7 +14,7 @@ flowchart LR
 ```
 
 ## Steps
-- Needs Node 20+; `cd web; npm ci; npm run build; npm run build:st`, then commit — README.md:131.
+- Needs Node 20+; `cd web; npm ci; npm run build; npm run build:st`, then commit — README.md:150.
 - Rule: after any change in `web/src`, rebuild both and commit them; users only run Python — CLAUDE.md:33-34.
 - Scripts: `dev` = vite, `build` = `vite build`, `build:st` = `vite build --mode st`, `typecheck` = `tsc --noEmit`, `test` = `vitest run` — web/package.json:6-12.
 - Dependencies pinned exactly: @xyflow/react, elkjs, react, react-dom — web/package.json:13-18.

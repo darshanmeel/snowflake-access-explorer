@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-13",
- "commit": "c031252d0e29da5967a03702abd68ba274d008ed",
+ "commit": "73706e3efeb0d24a367812c1cdbfda44a1e029aa",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -135,8 +135,8 @@
   "CLAUDE.md": "25ea59e7891e7b0a46305b0545561674d7c39c84ac798f3c5842578aa30cce3d",
   "LICENSE-APACHE": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
   "LICENSE-MIT": "ca553b75fe9ff718aee4e5c37cbd1505626ebe66ed23ed9eee0abfdd3a5e2d49",
-  "README.html": "f22727b7363f9b872bfcea763879294414af856d478d2eddc886c3b9a5830a98",
-  "README.md": "c7f511ca80a02f389f5701ef704d2273c169e102dc6a2edc7a79dd6a91b5eae1",
+  "README.html": "2ec331871ddd91d5350264bf40156da5f3d8425a527bd9f327a7c9bcff65fd9d",
+  "README.md": "1dbd5518f14049b9a4ee2d916f8b180cee2685168dfc3e19518ed95a2f0fcbde",
   "THIRD_PARTY.md": "c948d1fcd2941f071b9c71bde325bd4871d6150346a589f8af49cc3e415d66dc",
   "access.py": "0a2a2cf9ec9c4d03be4732abf8af259ab3ec5f7ae1f77d3f9a9bb3504b1a73b1",
   "access_queries/1_user_roles.sql": "978d262ea4c3b4b9d7749142baa784963e114c4cd2bdbf85ef6036baaa8fbafc",
@@ -317,5 +317,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-13 20:48 UTC"
+ "updated": "2026-11-13 20:54 UTC"
 }

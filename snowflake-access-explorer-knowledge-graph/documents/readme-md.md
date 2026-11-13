@@ -5,7 +5,7 @@ README.md (412 lines): the entry doc — what the app does, quick start, every r
 flowchart TD
   A[What it does, mermaid 7-24] --> B[Questions it answers 25-70]
   B --> C[Quick start 71-80]
-  C --> D[Run each mode table 82-103]
+  C --> D[Which way to run it 82-99 · Run each mode table 101-122]
   D --> E[Run it: install, start, .env, Settings, DuckDB, role, objects 105-232]
   E --> F[Deploy: own machine, shared server, SiS, Streamlit elsewhere, Container Services 234-325]
   F --> G[Data sources 327-331 / Queries without the app 333-348 / Also in repo 350-354 / More 356-365 / License 367-370]
@@ -14,13 +14,13 @@ flowchart TD
 ## Sections (verified headings)
 - Title + summary; full guide link to README.html — README.md:1-5.
 - What it does (mermaid) — README.md:7; Questions it answers — README.md:25.
-- Quick start — README.md:71-80; Run each mode — README.md:82-103.
-- Run it (direct vs objects table) — README.md:105-120; Install — README.md:122-131; Start — README.md:133-143; `.env` — README.md:145-158; Settings — README.md:160-174; DuckDB SQL copy — README.md:176; role-based visibility — README.md:207-218; Objects in Snowflake — README.md:220-232.
-- Deploy — README.md:234-242; own machine — README.md:244; shared server — README.md:248-265; SiS — README.md:267-307; Streamlit elsewhere — README.md:309-319; Container Services — README.md:321-325.
-- Data sources — README.md:327-337; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:330-336; Activity tabs on the access and object pages — README.md:31-32; `ACTIVITY` in the DuckDB tables — README.md:180.
-- Use the queries without the app — README.md:339-391: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:342-350; Run (worksheet or notebook path A / B) — README.md:352; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:390; Check (`test_queries.py`) — README.md:391. See modules/access-queries.md, flows/standalone-queries.md.
-- Also in this repo — README.md:393-397: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:394; sf.py CLI — README.md:395; tests incl. `access_queries/test_queries.py` — README.md:396; IaC — README.md:397.
-- Where to find more — README.md:399-408; License (MIT or Apache-2.0) — README.md:410-413.
+- Quick start — README.md:71-80; Which way to run it (by what the role can do: local or Streamlit in Snowflake) — README.md:82-99; Run each mode — README.md:101-122.
+- Run it (direct vs objects table) — README.md:124-139; Install — README.md:141-150; Start — README.md:152-162; `.env` — README.md:164-177; Settings — README.md:179-193; DuckDB SQL copy — README.md:195; role-based visibility — README.md:226-237; Objects in Snowflake — README.md:239-251.
+- Deploy — README.md:253-261; own machine — README.md:263; shared server — README.md:267-284; SiS — README.md:286-326; Streamlit elsewhere — README.md:328-338; Container Services — README.md:340-344.
+- Data sources — README.md:346-356; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:349-355; Activity tabs on the access and object pages — README.md:31-32; `ACTIVITY` in the DuckDB tables — README.md:199.
+- Use the queries without the app — README.md:358-410: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:361-369; Run (worksheet or notebook path A / B) — README.md:371; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:409; Check (`test_queries.py`) — README.md:410. See modules/access-queries.md, flows/standalone-queries.md.
+- Also in this repo — README.md:412-416: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:413; sf.py CLI — README.md:414; tests incl. `access_queries/test_queries.py` — README.md:415; IaC — README.md:416.
+- Where to find more — README.md:418-427; License (MIT or Apache-2.0) — README.md:429-432.
 
 ## Relates to
 - Processes: setup-local, run-local, deploy-snowflake, build-web, test, container-services.

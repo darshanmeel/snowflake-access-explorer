@@ -24,7 +24,7 @@ flowchart TD
 - Stops on unfilled `<placeholders>` — run_sql.py:22-27; on unknown `&NAME` — run_sql.py:30-35; on missing PUT files (hint for `sis/.env`) before any statement — run_sql.py:38-40, run_sql.py:52-55.
 - Session setup: `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, `USE WAREHOUSE &WH`, `USE DATABASE &DB` — run_sql.py:58-59.
 - `(expect N)` row-count check — run_sql.py:62, run_sql.py:72.
-- SnowSQL alternative: `!source sql/<file>` from the repo folder; each file starts with `!source settings.local.sql` — sql/1_setup.sql:5-6, README.md:232. SnowSQL needs `HERE` filled by hand — settings.sql:13-14.
+- SnowSQL alternative: `!source sql/<file>` from the repo folder; each file starts with `!source settings.local.sql` — sql/1_setup.sql:5-6, README.md:251. SnowSQL needs `HERE` filled by hand — settings.sql:13-14.
 
 ## Step 1: sql/1_setup.sql (SOURCE=objects only)
 - Purpose: the 10 snapshot tables (TBL_ACCESS_ACTIVITY included) + findings table, snapshot procedure, findings stage/procedure, table functions, app-role read access; safe to rerun — sql/1_setup.sql:1-5.
@@ -38,11 +38,11 @@ flowchart TD
 ## Step 2: sql/2_snapshot.sql
 - `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')`; `AUTO` / `ACCOUNT_USAGE` / `SHOW`; ACCOUNT_USAGE lags ~2 h — sql/2_snapshot.sql:1-12.
 - Verify: last run OK, one run in data, counts per table, OBJECT_USE and ACTIVITY (may fail) — sql/2_snapshot_verify.sql:4-42.
-- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:642-644; not in any sql/ file (only dropped in 3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:230.
+- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:650-652; not in any sql/ file (only dropped in 3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:249.
 
 ## Step 3 (numbered 4): sql/4_streamlit.sql
 - Two options: `SOURCE=objects` (run 1 + 2 first) or `SOURCE=direct` (this file only; owner role needs IMPORTED PRIVILEGES) — sql/4_streamlit.sql:2-7.
-- Prereq `sis/.env` (required, git-ignored, template `sis.env.example`): `mkdir sis; copy sis.env.example sis\.env` — README.md:282-291, sql/4_streamlit.sql:9-10, .gitignore:8.
+- Prereq `sis/.env` (required, git-ignored, template `sis.env.example`): `mkdir sis; copy sis.env.example sis\.env` — README.md:301-310, sql/4_streamlit.sql:9-10, .gitignore:8.
 - Stage `STG_ACCESS_APP` — sql/4_streamlit.sql:19-20.
 - PUT `app.py`, `access.py`, `cache.py`, `server.py`, `sf.py`, `st_react.py`, `ui.py` — sql/4_streamlit.sql:22-41.
 - PUT `environment.yml` — sql/4_streamlit.sql:45-46; `.streamlit/config.toml` not uploaded — sql/4_streamlit.sql:44.
@@ -50,7 +50,7 @@ flowchart TD
 - PUT `sis/.env` as the app's `.env` — sql/4_streamlit.sql:58-59.
 - `CREATE OR REPLACE STREAMLIT ST_ACCESS_EXPLORER ... MAIN_FILE='app.py' QUERY_WAREHOUSE=&WH` — sql/4_streamlit.sql:61-67.
 - Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:69-80.
-- Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:300.
+- Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:319.
 - Verify: Streamlit exists (expect 1), stage files, exactly 4 assets, grants on the app — sql/4_streamlit_verify.sql:3-15.
 - Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:690-697, web/ST.md:54-55.
 - Manual check in Snowsight: hint disappears, Home shows data, no CSP errors — web/ST.md:45-50.
@@ -58,10 +58,10 @@ flowchart TD
 ## Roles and grants needed
 | Role | Needs | Evidence |
 |---|---|---|
-| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:229, README.html:646 |
+| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:248, README.html:654 |
 | `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:918-922 |
-| `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:290-291, sql/4_streamlit.sql:5-7 |
-| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:861-861, README.html:646 |
+| `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:309-310, sql/4_streamlit.sql:5-7 |
+| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:861-861, README.html:654 |
 | `APP_ROLE`, SiS | USAGE on `ST_ACCESS_EXPLORER` (+ DB/schema/WH) | sql/4_streamlit.sql:69-80 |
 - How these grants are given in practice: see access-requests.md.
 

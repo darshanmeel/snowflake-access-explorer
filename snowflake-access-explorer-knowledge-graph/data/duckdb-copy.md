@@ -44,7 +44,7 @@ flowchart LR
 - `sql_wanted`: never inside Snowflake or with `DUCKDB=0`; fake data only with `DUCKDB=1`; Snowflake reads when a local copy may be kept (`CACHE_HOURS > 0`) (`cache.py:193-198`).
 - Called from `cache.get` only on a fresh read, before the `.pkl` write (`cache.py:122-125`).
 - UI info: `sql_info` (`cache.py:265-273`), sent by `server.py:2149,2108`.
-- Example queries (EXCEPT against `_PREV`): `README.md:190-205`.
+- Example queries (EXCEPT against `_PREV`): `README.md:209-224`.
 
 ## Unclear
 
