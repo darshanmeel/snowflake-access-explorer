@@ -6,3 +6,6 @@ local.ps1
 web/node_modules/
 .cache/
 sis/
+
+# knowledge-graph update scratch (worklist, previous state): rebuilt on every update
+/snowflake-access-explorer-knowledge-graph/_update/
