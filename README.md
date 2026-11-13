@@ -28,8 +28,8 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 | Screen (`?page=`) | Question |
 |---|---|
 | Home (`home`) | Search a person, role, table or screen, or type "can X read Y". Your access, account risks, data protection. |
-| A person or role (`access`) | What can they reach, through every role? Role hierarchy diagram and privilege tabs first, then one row per object at the most it allows. |
-| Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. |
+| A person or role (`access`) | What can they reach, through every role? Role hierarchy diagram and privilege tabs first, then one row per object at the most it allows. An Activity tab shows which tables they used in the last 60 days, with which role and client. |
+| Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. An Activity tab shows who used the table in the last 60 days, with which role and client. |
 | Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. For a database role: ways in only from database roles of its own database, and no USE ROLE line (a database role can't be activated). |
 | Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
@@ -177,7 +177,7 @@ More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, `MAX_PATHS`, ...): README.html. 
 After each read from Snowflake (shared data and My access) the app also writes what it read to `.cache/access.duckdb`, a
 local [DuckDB](https://duckdb.org) file you can query with SQL. The app itself keeps using its `.pkl` copy; this file is
 only for you. It holds the `TBL_ACCESS_` tables of `sql/1_setup.sql` with the same names and columns (`RUN`, `GRANT`,
-`USER_ROLE`, `USER`, `USAGE`, `TAG`, `POLICY`, `STREAM`, `OBJECT_USE`):
+`USER_ROLE`, `USER`, `USAGE`, `TAG`, `POLICY`, `STREAM`, `OBJECT_USE`, `ACTIVITY`):
 - one **schema per account + source** (and per user for My access), named after the copy in `.cache/`, for example
   `myorg_myacct_direct_jdoe_analyst`; the table `COPIES` lists them (`SCHEMA_NAME`, `CACHE_KEY`, `RUN_ID`, `READ_AT`, `PREV_RUN_ID`);
 - each new read **replaces** that schema's tables, and the read before stays as `TBL_ACCESS_<name>_PREV` (a read of the same

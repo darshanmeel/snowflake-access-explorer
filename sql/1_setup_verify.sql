@@ -1,7 +1,7 @@
 -- Verification of 1_setup.sql: each "-- name:" check prints OK, MISSING, WRONG (row count, "(expect N)") or SKIPPED ("(may fail)"),
 -- then VERIFIED or NOT VERIFIED. SnowSQL: !source sql/1_setup_verify.sql (shows the rows; no verdict).
 
--- name: TABLES (expect 10)
+-- name: TABLES (expect 11)
 SHOW TABLES LIKE 'TBL_ACCESS_%' IN SCHEMA &DB.&SCHEMA;
 
 -- name: PROCEDURE

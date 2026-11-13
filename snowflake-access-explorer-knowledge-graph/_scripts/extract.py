@@ -1,15 +1,18 @@
-"""Structure extractor: git-tracked and untracked-not-ignored files -> graph/parts/structure.nodes.jsonl + structure.edges.jsonl.
-Stdlib only, rerunnable: python snowflake-access-explorer-knowledge-graph/_scripts/extract.py
+"""Structure extractor: git-tracked and untracked-not-ignored files -> <out>/graph/parts/structure.nodes.jsonl +
+structure.edges.jsonl, then merge.py adds the hand-written parts (_scripts/parts/) -> <out>/graph/nodes.jsonl + edges.jsonl.
+Stdlib only, rerunnable: python _scripts/extract.py [<repo> <out>] (default: this repo, this graph folder).
 Every node/edge cites path:line taken from the source; validate() re-opens each cited line."""
 import ast
 import json
 import re
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 
-KG = Path(__file__).resolve().parents[1]
-ROOT = KG.parent
+HERE = Path(__file__).resolve().parent
+KG = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else HERE.parent
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HERE.parents[1]
 OUT = KG / "graph" / "parts"
 REPO = ROOT.name
 
@@ -751,6 +754,7 @@ def main():
     print("nodes by type:", dict(Counter(n["type"] for n in nodes.values())))
     print("edges by type:", dict(Counter(e["type"] for e in edges.values())))
     print("status:", dict(Counter(n["status"] for n in nodes.values())), dict(Counter(e["status"] for e in edges.values())))
+    subprocess.run([sys.executable, str(HERE / "merge.py"), str(ROOT), str(KG)], check=True)
 
 
 if __name__ == "__main__":

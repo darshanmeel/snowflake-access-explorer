@@ -1,4 +1,4 @@
--- 1 · setup (developer role): the 9 snapshot tables, the snapshot procedure, the findings table, stage and procedure,
+-- 1 · setup (developer role): the 10 snapshot tables, the snapshot procedure, the findings table, stage and procedure,
 -- the worksheet table functions TF_ACCESS_OF / TF_WHO_CAN / TF_CAN, read access for the app role. Safe to run again.
 -- run_sql.py runs each "-- name:" statement in order; "(may fail)" = skipped on error.
 -- Names marked with & come from settings.local.sql. Real set-up: schema, roles and grants via infrastructure as code.

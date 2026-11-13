@@ -778,6 +778,50 @@ boxes and a + or crossed-out link; `privilege` is `role` for a role grant). With
 `{"new": {"High": 4, ...}, "fixed": {...}}` for the strip of new against fixed findings (`null` with `subject`). Watched
 questions are kept in the browser (localStorage `ae-watch`) and asked again through `/api/check` and `/api/who`.
 
+### GET /api/activity?view=&name=|user=|role=&as=
+
+Activity tab of an object (`name`), a person (`user`) or a role (`role`): table use over the last `days` (60,
+`ACTIVITY_DAYS`) from `TBL_ACCESS_ACTIVITY` (ACCESS_HISTORY, QUERY_HISTORY, SESSIONS: query metadata, never query
+text). Producers: `a.activity(name, what, user)`, `a.activity_graph`, `a.activity_sensitive`, `a.mark_sensitive`; the
+findings are the rule 24-28 rows of `a.rule_rows` for the subject. `as` (object only) keeps one person's use: the
+object page's "Access for"; without it the tab shows all users. `available` false (with `reason`) when the data has no
+activity: no Enterprise edition, a snapshot made before the table existed, or My access (it reads no ACCESS_HISTORY).
+`note` says when only part of it was read.
+
+```json
+{"view": "shared", "what": "object", "name": "SALES.CORE.TBL_CUSTOMER", "user": null, "days": 60,
+ "available": true, "reason": null, "note": null, "first": "2026-09-04", "last": "2026-11-02",
+ "daily": [38, 36, 51, "... 60 numbers, oldest first"],
+ "by": {"user": [{"key": "SVC_DEPLOY", "read": 7, "write": 1500, "ddl": 0, "last": "2026-11-02 08:15", "daily": [25, 24, "..."]}],
+        "role": [], "client": [], "type": [], "object": []},
+ "rows": [{"user": "SVC_DEPLOY", "role": "F_DEPLOY", "client": "Python", "type": "MERGE", "object": "SALES.CORE.TBL_CUSTOMER",
+           "action": "WRITE", "queries": 1500, "days": 60, "last": "2026-11-02 08:15", "daily": [25, 24, "..."]}],
+ "total": 6,
+ "ddl": [{"user": "ENGINEER_01", "role": "F_ENGINEER", "client": "Snowsight", "type": "ALTER_TABLE_ADD_COLUMN",
+          "object": "SALES.CORE.TBL_CUSTOMER", "action": "DDL", "queries": 3, "days": 1, "last": "2026-10-21 11:15", "daily": [0, "..."]}],
+ "findings": [{"num": "24", "title": "Person changed data or a table's definition", "severity": "Medium",
+               "grantee": "ENGINEER_01", "detail": "INSERT 28, ALTER_TABLE_ADD_COLUMN 3 on SALES.CORE.TBL_CUSTOMER as F_ENGINEER, last 2026-10-30"}],
+ "graph": {"title": "Who used it, through which grant", "header": "User, role used, then the grant path it has now", "lanes": [], "nodes": [], "edges": []},
+ "gone": [],
+ "sensitive": [{"object": "SALES.CORE.TBL_CUSTOMER", "sensitive": true, "columns": ["BIRTH_DATE", "EMAIL", "PHONE"], "whole": false,
+                "masking": {"EMAIL": ["SHARED.GOVERNANCE.MP_EMAIL"]}, "row_policies": [],
+                "people": [{"user": "ANALYST_01", "role": "GRP_ANALYSTS", "read": true, "clear": ["BIRTH_DATE", "PHONE"],
+                            "masked": ["EMAIL"], "rows": "all"}]}],
+ "mark": null, "refs": {}}
+```
+
+`by` has the five groupings (`user`, `role`, `client`, `type` = statement type, `object`), most queries first; `read`,
+`write` and `ddl` are query counts per action (a MERGE that reads and changes a table counts in both) and `daily` is
+one number per day, oldest first, ending at `last`. `rows` is one row per user, role, client, object, statement type
+and action, the first 500 (`MAX_ACTIVITY`); `total` counts all of them. `ddl` lists the DDL rows. `graph` is a Graph
+(see Shared shapes): user, role used, then the grant path that role has now, then the table (a person or role page:
+role used first, top `MAX_OBJECTS` tables); `gone` holds the rows whose role reaches no grant on the table now (an
+admin role, or the grant was removed since). `sensitive` has one entry per used table that carries a sensitive tag or
+a masking or row access policy; `people[].rows` is `all`, `filtered`, `none` or `unknown`, read from the policy text.
+`mark` is `{sql, tf, ticket, tag, value}` for an object that is a table or view without a sensitive tag: text to tag
+it, which the app never runs (else null). `findings` are the rule 24-28 findings for the subject (and for `as`).
+When `available` is false, only the head fields are returned (`view` to `note`).
+
 ### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0
 
 Graph alone (the page answers already hold their main graph; this one serves tab diagrams and `full=1` / filter

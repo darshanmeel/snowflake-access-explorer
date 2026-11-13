@@ -1,7 +1,10 @@
-"""Merge graph/parts/*.jsonl into graph/nodes.jsonl + graph/edges.jsonl and validate."""
-import json, glob, os, re, random, subprocess, collections, sys
-G = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-R = os.path.dirname(G)
+"""Merge <out>/graph/parts/structure.* (extract.py) and the hand-written _scripts/parts/*.jsonl into <out>/graph/nodes.jsonl +
+edges.jsonl. Usage: merge.py [<repo> <out>]. Checks: validate.py."""
+import json, glob, os, re, subprocess, sys
+HERE = os.path.dirname(os.path.abspath(__file__))
+R = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(HERE))
+G = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(HERE)
+KG = 'snowflake-access-explorer-knowledge-graph'
 
 
 def load(p):
@@ -13,20 +16,13 @@ def rich(n):
 
 
 tracked = [f for f in subprocess.run(['git', '-C', R, 'ls-files', '--cached', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.split('\n') if f and os.path.isfile(os.path.join(R, f)) and not f.startswith('snowflake-access-explorer-knowledge-graph/')]
-_lines = {}
-
-
-def nlines(p):
-    if p not in _lines:
-        fp = os.path.join(R, p)
-        _lines[p] = len(open(fp, encoding='utf8', errors='replace').read().split('\n')) if os.path.isfile(fp) else None
-    return _lines[p]
 
 
 nodes, edges = {}, {}
-order = ['structure'] + sorted(os.path.basename(p).split('.')[0] for p in glob.glob(G + '/graph/parts/*.nodes.jsonl') if 'structure' not in p)
+order = ['structure'] + sorted(os.path.basename(p).split('.')[0] for p in glob.glob(HERE + '/parts/*.nodes.jsonl'))
+part = lambda k, x: f'{G}/graph/parts/{k}.{x}.jsonl' if k == 'structure' else f'{HERE}/parts/{k}.{x}.jsonl'  # noqa: E731
 for k in order:
-    for n in load(f'{G}/graph/parts/{k}.nodes.jsonl'):
+    for n in load(part(k, 'nodes')):
         o = nodes.get(n['id'])
         if o is None:
             nodes[n['id']] = n
@@ -62,21 +58,18 @@ def norm(i):
 
 
 for k in order:
-    for e in load(f'{G}/graph/parts/{k}.edges.jsonl'):
+    for e in load(part(k, 'edges')):
         e['from'], e['to'] = norm(e['from']), norm(e['to'])
         key = (e['from'], e['to'], e['type'], e.get('evidence'))
         if key not in edges or e.get('status') == 'verified':
             edges[key] = e
-
-KG = os.path.basename(G)
-
 
 def fix_ev(ev):
     ev = (ev or '').split(';')[0].strip()
     m = re.match(r'^(.+?):(\d+(?:-\d+)?)(?:,.*)?$', ev)
     if m:
         return f'{m.group(1)}:{m.group(2)}'
-    if os.path.isfile(os.path.join(G, ev)):
+    if os.path.isfile(os.path.join(R, KG, ev)):
         return f'{KG}/{ev}:1'
     return ev
 
@@ -107,85 +100,4 @@ with open(G + '/graph/nodes.jsonl', 'w', encoding='utf8') as f:
 with open(G + '/graph/edges.jsonl', 'w', encoding='utf8') as f:
     for e in sorted(edges.values(), key=lambda e: (e['from'], e['to'], e['type'], e.get('evidence') or '')):
         f.write(json.dumps(e, ensure_ascii=False) + '\n')
-
-bad = []
-
-
-def chk_ev(ev, who):
-    m = re.match(r'^(.+?):(\d+)(?:-(\d+))?$', (ev or '').strip())
-    if not m:
-        bad.append(f'{who}: bad/missing evidence {ev!r}')
-        return
-    p, a, b = m.group(1), int(m.group(2)), int(m.group(3) or m.group(2))
-    n = nlines(p)
-    if n is None:
-        bad.append(f'{who}: file missing {p}')
-    elif a < 1 or b > n or a > b:
-        bad.append(f'{who}: line out of range {ev} (len {n})')
-
-
-noev = []
-for n in nodes.values():
-    if n['id'] in stubs:
-        continue
-    p = n.get('path')
-    if not p:
-        noev.append(n['id'])
-        continue
-    ln = nlines(p)
-    if ln is None:
-        if not os.path.isdir(os.path.join(R, p)):
-            bad.append(f"node {n['id']}: path missing {p}")
-        continue
-    if n.get('line') is not None and not (1 <= n['line'] <= ln):
-        bad.append(f"node {n['id']}: line {n['line']} > {ln}")
-    if isinstance(n.get('line_end'), int) and n['line_end'] > ln:
-        bad.append(f"node {n['id']}: line_end {n['line_end']} > {ln}")
-for e in edges.values():
-    w = f"edge {e['from']}->{e['to']} {e['type']}"
-    if e['type'] not in ET:
-        bad.append(w + ': bad type')
-    if e['from'] not in nodes or e['to'] not in nodes:
-        bad.append('dangling ' + w)
-    chk_ev(e.get('evidence'), w)
-
-random.seed(7)
-print('--- spot check (20) ---')
-for e in random.sample(list(edges.values()), 20):
-    p, _, rng = (e.get('evidence') or ':0').rpartition(':')
-    try:
-        txt = open(os.path.join(R, p), encoding='utf8', errors='replace').read().split('\n')[int(rng.split('-')[0]) - 1].strip()[:100]
-    except Exception as x:
-        txt = str(x)
-    print(f"{e['type']} {e['from'].split(':',1)[1][:38]} -> {e['to'].split(':',1)[1][:38]} | {e['evidence']} | {txt}")
-
-pat = re.compile(r'(password\s*[:=]\s*[\'"]?[^\s\'"`|)]{4,}|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}|[a-z0-9-]+\.snowflakecomputing\.com|xox[bp]-|ghp_[A-Za-z0-9]{20,})', re.I)
-hits = []
-for root, _, fs in os.walk(G):
-    for fn in fs:
-        if fn.endswith('.pyc') or fn == 'merge.py':
-            continue
-        p = os.path.join(root, fn)
-        for i, l in enumerate(open(p, encoding='utf8', errors='replace'), 1):
-            m = pat.search(l)
-            if m:
-                hits.append(f'{os.path.relpath(p, G)}:{i}: {m.group(0)[:60]}')
-
-mapped = {n.get('path') for n in nodes.values() if n.get('path')}
-unm = [f for f in tracked if f not in mapped]
-nt = collections.Counter(n['type'] for n in nodes.values())
-et = collections.Counter(e['type'] for e in edges.values())
-print('--- coverage ---')
-print(f'tracked files mapped: {len(tracked)-len(unm)}/{len(tracked)}; unmapped: {unm[:40]}')
-print('nodes', len(nodes), 'stubs', len(stubs), 'edges', len(edges), 'aliases', len(alias))
-print('nodes without path:', len(noev), noev[:15])
-print('node types', dict(nt))
-print('edge types', dict(et))
-print('stubs:', sorted(stubs)[:40])
-print('--- problems:', len(bad))
-print('\n'.join(bad[:40]))
-print('--- secret hits:', len(hits))
-print('\n'.join(hits[:20]))
-json.dump({'tracked': tracked, 'unmapped': unm, 'noev': len(noev), 'stubs': len(stubs), 'ntypes': nt, 'etypes': et,
-           'nodes': len(nodes), 'edges': len(edges), 'problems': len(bad), 'secrets': len(hits)}, open(G + '/graph/.stats.json', 'w'))
-sys.exit(1 if bad or hits else 0)
+print('merged:', len(nodes), 'nodes,', len(edges), 'edges,', len(stubs), 'stubs')

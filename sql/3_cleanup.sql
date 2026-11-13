@@ -1,4 +1,4 @@
--- 3 · cleanup (developer role): deletes the Streamlit app and its stage (4_streamlit.sql, if made), the snapshot task (README, if made), the procedures, table functions, code stage and the 10 TBL_ACCESS_ tables with their
+-- 3 · cleanup (developer role): deletes the Streamlit app and its stage (4_streamlit.sql, if made), the snapshot task (README, if made), the procedures, table functions, code stage and the 11 TBL_ACCESS_ tables with their
 -- data. The schema stays.
 -- SnowSQL: !source sql/3_cleanup.sql (from the repo folder)
 !source settings.local.sql

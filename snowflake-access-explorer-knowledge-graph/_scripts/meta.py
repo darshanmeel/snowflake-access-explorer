@@ -6,8 +6,9 @@ date = sys.argv[2] if len(sys.argv) > 2 else __import__('datetime').date.today()
 files = [f for f in subprocess.run(['git', '-C', R, 'ls-files', '--cached', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.split('\n') if f and os.path.isfile(os.path.join(R, f)) and not f.startswith('snowflake-access-explorer-knowledge-graph/')]
 load = lambda p: [json.loads(l) for l in open(os.path.join(G, p), encoding='utf8') if l.strip()]
 nodes, edges = load('graph/nodes.jsonl'), load('graph/edges.jsonl')
-meta = {'built_at': date, 'commit': commit,
-        'files': {f: hashlib.sha256(open(os.path.join(R, f), 'rb').read()).hexdigest() for f in files},
+old = json.load(open(os.path.join(G, 'meta.json'), encoding='utf8')) if os.path.isfile(os.path.join(G, 'meta.json')) else {}
+meta = {**old, 'built_at': date, 'commit': commit,  # keeps update.py's keys (pending, scripts_hash, ...)
+        'file_hashes': {f: hashlib.sha256(open(os.path.join(R, f), 'rb').read()).hexdigest() for f in files},
         'generated_by': {'flows/': 'model', 'logic/': 'model', 'processes/': 'model', 'documents/': 'model', 'modules/': 'model',
                          'data/model.json': 'model', 'graph/parts/structure.*': 'script'},
         'counts': {'nodes': len(nodes), 'edges': len(edges),

@@ -117,7 +117,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <ul class="lead">
   <li><b>Who has what:</b> everything a person or role can reach, and everyone who can reach an object, with the role path that gives it, at any depth.</li>
   <li><b>Can they?</b> One person or role, one privilege, one object: Yes, Partly or No, every path, where to cut it, and the nearest way in with the request text.</li>
-  <li><b>What is wrong:</b> 23 rule checks with a change plan, who reads sensitive data and whether it is masked, a review grid to sign off, granted against used, and what changed since the last snapshot.</li>
+  <li><b>What is wrong:</b> 28 rule checks with a change plan, what people did on tables (Activity), who reads sensitive data and whether it is masked, a review grid to sign off, granted against used, and what changed since the last snapshot.</li>
 </ul>
 <nav class="toc">
   <a href="#overview">Overview</a><a href="#flow">Process</a><a href="#layout">Finding your way</a><a href="#graph">Reading a graph</a>
@@ -139,7 +139,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   </div>
   <div class="two" style="margin-top:18px">
     <ul>
-      <li>1–3: the procedure reads grants, users, query history, tags, policies, streams and (optional) object usage with its owner's rights, then writes one run (<code>RUN_ID</code>) into the snapshot tables.</li>
+      <li>1–3: the procedure reads grants, users, query history, tags, policies, streams and (optional) object usage and table activity with its owner's rights, then writes one run (<code>RUN_ID</code>) into the snapshot tables.</li>
       <li>The app's <b>Rebuild snapshot</b> button (top bar, <code>SOURCE=objects</code>) runs the same CALL, still with the owner's rights.</li>
     </ul>
     <ul>
@@ -161,7 +161,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <!--/map:flow-->
   </div>
   <ul style="margin-top:14px">
-    <li>Core datasets: grants, future grants, role → user, users. If one fails the run is FAILED and its rows deleted; tags, policies, streams or usage failing only marks that source <code>UNAVAILABLE</code>.</li>
+    <li>Core datasets: grants, future grants, role → user, users. If one fails the run is FAILED and its rows deleted; tags, policies, streams, usage or activity failing only marks that source <code>UNAVAILABLE</code>.</li>
     <li><b>Rebuild snapshot</b> also drops the app's copy, so the new run shows at once; otherwise <b>↻</b> (Read Snowflake again) reads the last OK run, or the copy is read again after <code>CACHE_HOURS</code> (24 h).</li>
     <li>When a new read replaces the copy in <code>.cache/</code>, the older one stays as <code>&lt;name&gt;.prev.pkl</code>: the previous snapshot that <a href="#changes">What changed</a> compares with.</li>
   </ul>
@@ -264,6 +264,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
     <div><h3>Tabs</h3><dl class="nums">
       <dt>Diagram &amp; privileges</dt><dd>For a role: Diagram, held by &amp; holds. The full detail page (<a href="#detail">User / Role paths</a>): filters, profile, KPIs, rule findings, the role hierarchy by depth, privilege tabs</dd>
       <dt>One row per object</dt><dd>Each object at the most it allows, with the role it comes through. Chips All / Read only / Can change / Owns / More than one way; Group by Schema or Type; sort Riskiest first or Name</dd>
+      <dt>Activity</dt><dd>The tables this person or role used in the last 60 days, with the role and client used: the same sub-tabs as the object page (Per day &amp; by, Paths, Who, role, client, Sensitive, DDL changes), here by table. Needs Enterprise edition</dd>
       <dt>History</dt><dd>The <a href="#changes">What changed</a> feed for this subject</dd>
     </dl></div>
   </div>
@@ -283,10 +284,12 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li>Levels: Admin, Owns, Can change, Read only, Can use, Can see names. Disabled and dormant rows are tinted; "N disabled still hold access" is called out.</li>
       <li>Click a row: <b>How X gets in</b> lists all paths (to Can they?) and What if revoked?. <b>Group people with the same path</b> (on for warehouses) reads "23 people via PUBLIC (everyone)".</li>
       <li>A red banner lists users who reach it only through admin roles.</li>
+      <li>The <b>Access for</b> strip also shows what that person used: "Used: N queries in 60 days as ROLE (clients), last DATE" or "Not used in 60 days". Picking a person narrows the Activity tab to their use (<code>&amp;as=</code> in the address); by default it shows all users.</li>
     </ul></div>
     <div><h3>Tabs</h3><dl class="nums">
       <dt>Diagram, paths &amp; users</dt><dd>Paths into the object graph, KPIs (people, admin, read / write / own, roles on the way, longest chain) and sub-tabs Who has access, Users × privileges (links the review grid), What each role sees, Sensitivity (tags and their origin, masking per column, policy text)</dd>
       <dt>Who has access</dt><dd>People or Roles, grouped by level, with status, last login, path chips, privileges and path count</dd>
+      <dt>Activity</dt><dd>Who used this table in the last 60 days, with which role and client: query metadata from ACCESS_HISTORY, QUERY_HISTORY and SESSIONS, never query text (Enterprise edition; without it the tab says why). Findings of rules 24–28 for the table show as chips above the sub-tabs. Sub-tabs: Per day &amp; by (stacked daily chart by user, role, client, statement or table, and a table with 60-day mini bars), Paths (user → role used → the grant path that role has now → table; uses with no grant path now are listed apart), Who, role, client (one row per combination, with per-day mini bars), Sensitive (sensitive columns, masking and row access policies, and per user and role used the sensitive columns seen in clear; for an untagged table, SQL, Terraform and ticket text to tag it, which the app never runs), DDL changes. The app's own queries are left out; Snowflake does not log result downloads from Snowsight or drivers</dd>
       <dt>History</dt><dd>What changed on this object</dd>
     </dl></div>
   </div>
