@@ -95,17 +95,25 @@ function Activity({ d }: { d: ActivityPage }) {
     </div>
   );
   const objs = d.by!.object.length, total = d.daily!.reduce((a, v) => a + v, 0);
+  const one = d.what === "object" || d.what === "app";
   return (
     <div className="ae-log">
       {d.note && <Banner title="Activity partly read" lines={[d.note]} />}
-      {d.what !== "user" && d.what !== "role" && <div className="ae-row"><Pick label="Change object" value={d.name} width={320} what="objects" onPick={(v) => c.nav("object", { name: v, show: "activity" })} /></div>}
+      <div className="ae-log-bar-top">
+        {d.what !== "user" && d.what !== "role" && <Pick label="Change object" value={d.name} width={320} what="objects" onPick={(v) => c.nav("object", { name: v, show: "activity" })} />}
+        <label className="ae-log-slide ae-log-biz"><span className="ae-log-tl">Business time</span><b>{tzl(work)}</b>
+          <input type="range" min={-12} max={14} value={work.tz} aria-label="Business time, hours from UTC" onChange={(e) => setWork({ ...work, tz: +e.target.value })} />
+          <span className="ae-muted">{hh(work.start)}–{hh(work.end)} local, Monday to Friday · hours are stored in UTC</span></label>
+      </div>
       <p className="ae-log-lead">{lead(d, objs, total)}</p>
       <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} (UTC) · reads, writes and DDL · no query text
         {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}</p>
       {d.what === "app" ? <AppViewers d={d} /> : <Tiles d={d} work={work} />}
-      <OffHours d={d} work={work} open={open} />
-      <Touched d={d} work={work} open={open} />
-      <Hours d={d} work={work} setWork={setWork} />
+      {!one && <>  {/* one table, view or app: the PDF's one-object layout, without the overview sections */}
+        <OffHours d={d} work={work} open={open} />
+        <Touched d={d} work={work} open={open} />
+        <Hours d={d} work={work} />
+      </>}
       <Detail d={d} work={work} open={open} />
       <WhoUsed d={d} work={work} open={open} />
       <Sensitive d={d} />
@@ -234,7 +242,7 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
   const [by, setBy] = useState<"user" | "object">("user");
   const [more, setMore] = useState(false);
   const rows = d.rows!.filter((r) => offOf(r, work) > 0);
-  const sub = `Queries at weekends or outside ${biz(work)} (change it under Hours of use) · service users and pipelines left in`;
+  const sub = `Queries at weekends or outside ${biz(work)} (business time at the top) · service users and pipelines left in`;
   if (!rows.length) return <Sec title="Off-hours use by people" sub={sub}><p className="ae-muted">No off-hours use in this window.</p></Sec>;
   const group = (k: "user" | "object") => {
     const m = new Map<string, ActivityRow[]>();
@@ -361,7 +369,7 @@ function Touched({ d, work, open }: { d: ActivityPage; work: Work; open: Open })
 
 /** Queries by UTC hour of day per user (or object): one column per hour, business hours shaded, each bar weekday
  * (on or off hours) and weekend (off) queries stacked; then the on / off split and off per 1 on. */
-function Hours({ d, work, setWork }: { d: ActivityPage; work: Work; setWork: (w: Work) => void }) {
+function Hours({ d, work }: { d: ActivityPage; work: Work }) {
   const [by, setBy] = useState<"user" | "object">("user");
   const m = new Map<string, { hours: number[]; we: number[]; n: number; sens: Set<string> }>();
   d.rows!.forEach((r) => { const k = r[by]; const x = m.get(k) ?? { hours: Array(24).fill(0), we: Array(24).fill(0), n: 0, sens: new Set<string>() };
@@ -373,10 +381,8 @@ function Hours({ d, work, setWork }: { d: ActivityPage; work: Work; setWork: (w:
   const inside = (h: number) => h >= work.start && h < work.end;
   const utc = (l: number) => (l - work.tz + 48) % 24;  // the stored UTC hour shown at local hour l
   return (
-    <Sec title="Hours of use" sub={`Queries by hour of day, ${tzl(work)} (stored in UTC; slide to your business time: ${hh(work.start)}–${hh(work.end)} local, Monday to Friday) · business hours ${hh(work.start)}–${hh(work.end)} shaded · weekends count as off hours · most off-hours first · drag to set the business hours`}
+    <Sec title="Hours of use" sub={`Queries by hour of day, ${tzl(work)} (stored in UTC; slide to your business time: ${hh(work.start)}–${hh(work.end)} local, Monday to Friday) · business hours ${hh(work.start)}–${hh(work.end)} shaded · weekends count as off hours · most off-hours first · business time at the top`}
       right={<div className="ae-row">
-        <label className="ae-log-slide">Business time <input type="range" min={-12} max={14} value={work.tz} aria-label="Business time, hours from UTC"
-          onChange={(e) => setWork({ ...work, tz: +e.target.value })} /> <b>{tzl(work)}</b></label>
         <Seg label="Hours of use by" value={by} items={[["user", "Users"], ["object", "Objects"]]} onPick={setBy} />
       </div>}>
       <div className="ae-log-hours">
@@ -484,7 +490,7 @@ function ObjTiles({ rows }: { rows: ActivityRow[] }) {
 /** Queries per client (or role, user, action): writes, reads and DDL summed, most first; under each name its objects
  * and roles (or users). */
 function ByClient({ rows }: { rows: ActivityRow[] }) {
-  const [k, setK] = useState<"client" | "role" | "user" | "action">("user");
+  const [k, setK] = useState<"client" | "role" | "user" | "action">("client");
   const m = new Map<string, { n: Record<"WRITE" | "READ" | "DDL", number>; objs: Set<string>; via: Set<string> }>();
   rows.forEach((r) => { const x = m.get(r[k]) ?? { n: { WRITE: 0, READ: 0, DDL: 0 }, objs: new Set<string>(), via: new Set<string>() };
     x.n[r.action] += r.queries; x.objs.add(r.object); x.via.add(k === "role" ? r.user : `${r.role}`); if (k === "user" || k === "action") x.via.add(r.client); m.set(r[k], x); });
