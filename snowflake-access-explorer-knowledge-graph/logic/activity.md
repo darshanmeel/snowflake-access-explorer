@@ -11,9 +11,9 @@ flowchart LR
   SQLA --> T[(TBL_ACCESS_ACTIVITY<br/>or ACTIVITY key<br/>HOURS, APP)]
   T --> HO["hours_of()<br/>access.py:482-485"]
   HO --> ACTS["build(): acts<br/>access.py:1090"]
-  ACTS --> TAB["activity() / query_sql() / activity_graph() / activity_sensitive()<br/>access.py:4289-4726"]
-  ACTS --> R["rules_activity() 24-28<br/>access.py:5482-5533"]
-  G[grants: OWNERSHIP / USAGE on a STREAMLIT] --> AX["app_exposure() / rule29()<br/>access.py:4620-4675"]
+  ACTS --> TAB["activity() / query_sql() / activity_graph() / activity_sensitive()<br/>access.py:4289-4728"]
+  ACTS --> R["rules_activity() 24-28<br/>access.py:5484-5535"]
+  G[grants: OWNERSHIP / USAGE on a STREAMLIT] --> AX["app_exposure() / rule29()<br/>access.py:4622-4677"]
 ```
 
 ## Read window (incremental)
@@ -36,10 +36,11 @@ flowchart LR
 
 ## Business hours and off-hours
 - Stored in UTC; `WORK_HOURS` (env, default `7-19`, end exclusive) is the default business-hours window — `access.py:69-70`; `activity_page` sends it as `work` — `server.py:1674`.
-- The Activity tab keeps `{start, end, tz}`; the "Business time" slider sets `tz` from UTC-12 to UTC+14, and a stored UTC hour `h` counts as local hour `(h + tz) mod 24` — `web/src/pages/Activity.tsx:22`, `web/src/pages/Activity.tsx:87`, `web/src/pages/Activity.tsx:389-396`.
-- Off-hours queries of a row = its weekend queries + weekday queries whose local hour is outside `[start, end)` (`offOf`) — `web/src/pages/Activity.tsx:25-26`. Weekend = Saturday or Sunday of the UTC day (`access.py:4327-4330`).
+- The Activity tab keeps `{start, end, tz}`; the "Business time" slider sets `tz` from UTC-12 to UTC+14, and a stored UTC hour `h` counts as local hour `(h + tz) mod 24` — `web/src/pages/Activity.tsx:22`, `web/src/pages/Activity.tsx:106`, `web/src/pages/Activity.tsx:417-424`.
+- Business time: `activity()` also sends each row's `dh` = [day index, UTC hour, queries] (`access.py:4329-4334`); the tab moves every query to its local day and hour (UTC + the slider, `localize`), weekends by the local day, before any section draws, so per-day charts, day grids, active and busiest days, hours of use and off-hours all follow the slider — `web/src/pages/Activity.tsx:49-64`, `web/src/pages/Activity.tsx:136-142`.
+- Off-hours queries of a row (already in business time) = its weekend queries + weekday queries whose hour is outside `[start, end)` (`offOf`) — `web/src/pages/Activity.tsx:25-26`. The section SQL's `TZ_HOURS` shifts day and hour the same way; the card fills in the slider's value — `access.py:4405`, `web/src/pages/Activity.tsx:143-144`.
 - Example (`test_access.py:1714-1716`): every row's `sum(hours) + weekend == queries`; ENGINEER_01's INSERT rows sit at UTC hours 13 and 22 (22:00 = off-hours at UTC+0).
-- Rows from a snapshot without `HOURS` keep all-zero hours (`access.py:4309`), so only their weekend queries count as off-hours.
+- Rows from a snapshot without `HOURS` keep all-zero hours (`access.py:4310`), so only their weekend queries count as off-hours.
 
 ## Availability (`act_state`)
 - OK when there are rows or the source is ACCOUNT_USAGE (`access.py:4277-4278`).
@@ -47,11 +48,11 @@ flowchart LR
 - Else the run note (e.g. ACCESS_HISTORY not readable) (`access.py:4282`). My access never reads ACCESS_HISTORY: `activity_page` says so (`server.py:1666-1667`). Health notes: `server.py:403-406`.
 
 ## Activity tab numbers (`activity(name, what, user)`)
-- `what`: object (`OBJECT_NAME`), user (`USER_NAME`), role (`ROLE_NAME`), app (`APP`: the queries a Streamlit app ran for its viewers), scope (`OBJECT_NAME` starting with `name + "."`: every object in a database or schema); `user`: only that user's rows (Object page "Access for", `as=`) — `access.py:4300-4301`, `access.py:4306`.
-- Days: `ACTIVITY_DAYS` ending at the snapshot day `ref_time()`; `daily[i]` = queries on day `first + i` — `access.py:4302-4311`.
-- `by` user / role / client (label, `client_label`) / type / object: read, write, ddl totals, last, daily — `access.py:4312-4320`; empty role or type shows "–".
-- `rows`: one per user + role + client + type + object + action with queries, distinct days, `first_day`, last, daily, `hours` (weekday queries per UTC hour), `weekend`, `weekend_hours`, `kind` (system for `SYSTEM`, service for `is_service`, else person), `interactive` (client in `INTERACTIVE`); most queries first; `ddl` = the DDL rows newest first — `access.py:4321-4339`.
-- Counts are per action: a MERGE that reads and changes a table counts in both READ and WRITE (`access.py:4296-4299`).
+- `what`: object (`OBJECT_NAME`), user (`USER_NAME`), role (`ROLE_NAME`), app (`APP`: the queries a Streamlit app ran for its viewers), scope (`OBJECT_NAME` starting with `name + "."`: every object in a database or schema); `user`: only that user's rows (Object page "Access for", `as=`) — `access.py:4301-4302`, `access.py:4307`.
+- Days: `ACTIVITY_DAYS` ending at the snapshot day `ref_time()`; `daily[i]` = queries on day `first + i` — `access.py:4303-4312`.
+- `by` user / role / client (label, `client_label`) / type / object: read, write, ddl totals, last, daily — `access.py:4313-4321`; empty role or type shows "–".
+- `rows`: one per user + role + client + type + object + action with queries, distinct days, `first_day`, last, daily, `hours` (weekday queries per UTC hour), `weekend`, `weekend_hours`, `kind` (system for `SYSTEM`, service for `is_service`, else person), `interactive` (client in `INTERACTIVE`); most queries first; `ddl` = the DDL rows newest first — `access.py:4322-4342`.
+- Counts are per action: a MERGE that reads and changes a table counts in both READ and WRITE (`access.py:4296-4300`).
 - Example (`test_access.py:1720`): `activity("SALES.CORE", "scope")` -> the busiest object starts with `SALES.CORE.`.
 
 ## View by object type (`activity_page`)
@@ -59,50 +60,50 @@ flowchart LR
 |---|---|---|---|
 | STREAMLIT | app | `activity(name, "app")` + `app_use` (who can open, opened, never, saw); no grant-path graph | `server.py:1661-1662`, `server.py:1691` |
 | DATABASE, SCHEMA | scope | every object under the name; no grant-path graph | `server.py:1662`, `server.py:1679` |
-| WAREHOUSE | warehouse | no ACCESS_HISTORY rows: `warehouse_use(name)` from the usage read (QUERY_HISTORY `USAGE` rows, KIND WAREHOUSE), source and reason of `usage` | `server.py:1668-1672`, `access.py:4651-4657` |
+| WAREHOUSE | warehouse | no ACCESS_HISTORY rows: `warehouse_use(name)` from the usage read (QUERY_HISTORY `USAGE` rows, KIND WAREHOUSE), source and reason of `usage` | `server.py:1668-1672`, `access.py:4653-4659` |
 | anything else | object | `activity(name, "object")`, graph, sensitive, mark text | `server.py:1679-1690` |
 
 - Every view also gets `query_sql`, `objects` ({object: kind, sensitive}) and the rule >= 24 findings that name it — `server.py:1686-1694`.
-- `warehouse_use(wh)`: used = users with queries on it, most first; unused = users reaching USAGE, OPERATE or OWNERSHIP on it with no queries — `access.py:4651-4657`. Example (`test_access.py:1723-1724`): WH_SALES_XS -> used sorted by queries, used and unused disjoint.
+- `warehouse_use(wh)`: used = users with queries on it, most first; unused = users reaching USAGE, OPERATE or OWNERSHIP on it with no queries — `access.py:4653-4659`. Example (`test_access.py:1723-1724`): WH_SALES_XS -> used sorted by queries, used and unused disjoint.
 
 ## Streamlit app exposure (`app_exposure`, `app_use`)
-- A Streamlit app runs with its owner's rights, so whoever opens it sees what the owner role reads (`access.py:4620-4623`).
-- `app_exposure(app)`: owner = roles holding OWNERSHIP on it; sensitive = objects the owner reads that are sensitive, with their sensitive columns; holders = roles holding USAGE on it -> users reaching them; exposed = per user the sensitive objects they cannot read through their own roles (`user_reads`, PUBLIC included); `None` without an owner — `access.py:4620-4633`, `access.py:4615-4617`.
-- `app_use(app, rows)`: can (user -> role holding USAGE), opened (users with activity rows: queries, last), never, saw (opened and exposed) — `access.py:4636-4648`.
+- A Streamlit app runs with its owner's rights, so whoever opens it sees what the owner role reads (`access.py:4622-4625`).
+- `app_exposure(app)`: owner = roles holding OWNERSHIP on it; sensitive = objects the owner reads that are sensitive, with their sensitive columns; holders = roles holding USAGE on it -> users reaching them; exposed = per user the sensitive objects they cannot read through their own roles (`user_reads`, PUBLIC included); `None` without an owner — `access.py:4622-4635`, `access.py:4617-4619`.
+- `app_use(app, rows)`: can (user -> role holding USAGE), opened (users with activity rows: queries, last), never, saw (opened and exposed) — `access.py:4638-4650`.
 - Who has access page of an app carries `app = app_exposure(o)` — `server.py:1394`; the Object page shows it in `AppNote` — `web/src/pages/Object.tsx:68`, `web/src/pages/Object.tsx:83-98`.
 - Example (`test_access.py:1739-1742`): ST_CUSTOMER_LOOKUP -> owner T_SALES_MART_OWNER, exposed `{SUPPORT_01: [SALES.MART.VW_CUSTOMER]}`, app view `by.user = [SUPPORT_01]`.
 
 ## Copy-only SQL (`query_sql`)
-- `query_sql(name, what, first, last)`: read-only SELECT over ACCESS_HISTORY (all three object lists via `ARRAY_CAT`) x QUERY_HISTORY x SESSIONS, every query id, start time, user, role, statement, object and client in the window, newest first; no query text; filter per `what` (object name, user, role, app by `StreamlitName`, scope by `LIKE '<name>.%'`); single quotes doubled — `access.py:4342-4359`. The app never runs it; the tab offers it to copy (`web/src/pages/Activity.tsx:790-799`).
+- `query_sql(name, what, first, last)`: read-only SELECT over ACCESS_HISTORY (all three object lists via `ARRAY_CAT`) x QUERY_HISTORY x SESSIONS, every query id, start time, user, role, statement, object and client in the window, newest first; no query text; filter per `what` (object name, user, role, app by `StreamlitName`, scope by `LIKE '<name>.%'`); single quotes doubled — `access.py:4345-4362`. The app never runs it; the tab offers it to copy (`web/src/pages/Activity.tsx:818-827`).
 - Example (`test_access.py:1721-1722`): scope SALES.CORE -> `LIKE 'SALES.CORE.%'`; user `O'BRIEN` -> `O''BRIEN`.
-- Per section: `activity_section_sql(name, what, first, last, key)` gives the SQL behind each Activity section (`ACT_SECTIONS`), sent as `section_sql` and shown on each section's SQL button — `access.py:4459-4469`, `server.py:1687`; details in [page-sql.md](page-sql.md).
+- Per section: `activity_section_sql(name, what, first, last, key)` gives the SQL behind each Activity section (`ACT_SECTIONS`), sent as `section_sql` and shown on each section's SQL button — `access.py:4461-4471`, `server.py:1687`; details in [page-sql.md](page-sql.md).
 
 ## Grant path behind a use (`used_path`, `activity_graph`)
-- `used_path(u, r, o, action)`: `u` -> shortest `data_use` chain from a role the user holds (or PUBLIC) to the role used `r` -> shortest chain from `r` to a holder of a privilege on `o` that fits the action (READ: `READ_PRIVS`; WRITE/DDL: `WRITE_PRIVS` or OWNERSHIP) -> `o` — `access.py:4567-4585`. `None` when the role reaches no such grant now (an admin role, or the grant is gone).
-- `activity_graph`: at most `MAX_OBJECTS` objects (most queries first), one path per (user, role, object, action); object page -> `object_graph`, person / role page -> `down_graph`; uses without a path go to `gone` (shown in the Paths section) — `access.py:4588-4612`. Not built for app and scope views (`server.py:1679`).
+- `used_path(u, r, o, action)`: `u` -> shortest `data_use` chain from a role the user holds (or PUBLIC) to the role used `r` -> shortest chain from `r` to a holder of a privilege on `o` that fits the action (READ: `READ_PRIVS`; WRITE/DDL: `WRITE_PRIVS` or OWNERSHIP) -> `o` — `access.py:4569-4587`. `None` when the role reaches no such grant now (an admin role, or the grant is gone).
+- `activity_graph`: at most `MAX_OBJECTS` objects (most queries first), one path per (user, role, object, action); object page -> `object_graph`, person / role page -> `down_graph`; uses without a path go to `gone` (shown in the Paths section) — `access.py:4590-4614`. Not built for app and scope views (`server.py:1679`).
 - Example (`test_access.py:1725-1730`): TBL_CUSTOMER -> users ANALYST_01, ENGINEER_01, SVC_DEPLOY, no gone rows; SYSADMIN role page -> no graph, gone = OPS_01 read of TBL_REVENUE.
 
 ## Sensitive view (`activity_sensitive`, `mark_sensitive`)
-- Per data object used that is sensitive or has a masking / row policy: sensitive columns, masking per column, row policies; per user and role used: can read, sensitive columns in clear, masked columns, row state, from `data_view(role, obj)` — `access.py:4703-4726`.
-- An untagged data object gets text to tag it (never run): `ALTER <kind> <obj> SET TAG <tag> = '<value>'`, Terraform `snowflake_tag_association`, a ticket; tag = first `SENSITIVE_TAGS` rule other than Snowflake's own categories, as tagged in the account — `access.py:4678-4700`, sent by `server.py:1690`.
+- Per data object used that is sensitive or has a masking / row policy: sensitive columns, masking per column, row policies; per user and role used: can read, sensitive columns in clear, masked columns, row state, from `data_view(role, obj)` — `access.py:4705-4728`.
+- An untagged data object gets text to tag it (never run): `ALTER <kind> <obj> SET TAG <tag> = '<value>'`, Terraform `snowflake_tag_association`, a ticket; tag = first `SENSITIVE_TAGS` rule other than Snowflake's own categories, as tagged in the account — `access.py:4680-4702`, sent by `server.py:1690`.
 
-## Rules 24-28 (`rules_activity`, `access.py:5482-5533`)
-All per user and object unless noted; fix is a review ("Ask the user and the role's owner why ..."), no SQL (`access.py:5485`). Added to `findings()` through `cached("activity", rules_activity)` (`access.py:5540`).
+## Rules 24-28 (`rules_activity`, `access.py:5484-5535`)
+All per user and object unless noted; fix is a review ("Ask the user and the role's owner why ..."), no SQL (`access.py:5487`). Added to `findings()` through `cached("activity", rules_activity)` (`access.py:5542`).
 
 | # | Sev. | Input -> output | Code | Fake-data finding |
 |---|---|---|---|---|
-| 24 | Medium | A person (in USER, not `is_service`) has WRITE or DDL rows on a known object with a role whose `data_use` reach lacks "own" on it -> statement counts, the most used role, last day | `access.py:5497-5507` | ENGINEER_01 as F_ENGINEER on SALES.CORE.TBL_CUSTOMER (`test_access.py:1710`) |
-| 25 | High | A service user has rows from a client in `INTERACTIVE` (Snowflake UI, SnowSQL, Snowflake CLI; env INTERACTIVE_CLIENTS) -> queries per client, tables, last day; one per service user | `access.py:5492-5493`, `access.py:5521-5527` | SVC_DEPLOY from Snowsight (`test_access.py:1711`) |
-| 26 | High | Rows with a role in `ADMIN` on a known object -> objects read and changed; one per user and admin role | `access.py:5494-5495`, `access.py:5528-5532` | OPS_01 as SYSADMIN (`test_access.py:1711`) |
-| 27 | Low | First day on the object within the last `NEW_DAYS` (7) days and the user's first row more than `NEW_DAYS` days before that window (not a new user) -> first day, queries, "sensitive" if tagged | `access.py:5486`, `access.py:5508-5512` | ENGINEER_01 on HR.PEOPLE.TBL_EMPLOYEE (`test_access.py:1712`) |
-| 28 | Medium | At least 5 active days; busiest day >= `SPIKE[1]` (50) and > `SPIKE[0]` (3) x the median day -> queries that day, how many times the usual day, the median | `access.py:5513-5520` | REPORT_01: 400 queries on VW_CUSTOMER, 19x the usual day (`test_access.py:1712`) |
+| 24 | Medium | A person (in USER, not `is_service`) has WRITE or DDL rows on a known object with a role whose `data_use` reach lacks "own" on it -> statement counts, the most used role, last day | `access.py:5499-5509` | ENGINEER_01 as F_ENGINEER on SALES.CORE.TBL_CUSTOMER (`test_access.py:1710`) |
+| 25 | High | A service user has rows from a client in `INTERACTIVE` (Snowflake UI, SnowSQL, Snowflake CLI; env INTERACTIVE_CLIENTS) -> queries per client, tables, last day; one per service user | `access.py:5494-5495`, `access.py:5523-5529` | SVC_DEPLOY from Snowsight (`test_access.py:1711`) |
+| 26 | High | Rows with a role in `ADMIN` on a known object -> objects read and changed; one per user and admin role | `access.py:5496-5497`, `access.py:5530-5534` | OPS_01 as SYSADMIN (`test_access.py:1711`) |
+| 27 | Low | First day on the object within the last `NEW_DAYS` (7) days and the user's first row more than `NEW_DAYS` days before that window (not a new user) -> first day, queries, "sensitive" if tagged | `access.py:5488`, `access.py:5510-5514` | ENGINEER_01 on HR.PEOPLE.TBL_EMPLOYEE (`test_access.py:1712`) |
+| 28 | Medium | At least 5 active days; busiest day >= `SPIKE[1]` (50) and > `SPIKE[0]` (3) x the median day -> queries that day, how many times the usual day, the median | `access.py:5515-5522` | REPORT_01: 400 queries on VW_CUSTOMER, 19x the usual day (`test_access.py:1712`) |
 
 - Titles and why: `access.py:119-127`; severity `access.py:131-134`; UI area "Activity", plain-word text and fix hint: `server.py:357-371`; short labels `server.py:970-971`.
 - Owner role on the table -> no rule 24 (`test_access.py:1748-1752`).
 - Activity tab findings: rows with number >= 24 whose grantee or path names the page (`server.py:1691-1694`), so rule 29 shows on the app's tab.
 
-## Rule 29 (`rule29`, `access.py:4660-4675`)
-Grant-based, from `app_exposure`: per Streamlit app with sensitive owner data, one finding per role holding USAGE on it whose users include someone who cannot read that data themselves; drawn on the USAGE edge, so the What-if fix is revoking that USAGE (`access.py:4674`). Details in [rules.md](rules.md).
+## Rule 29 (`rule29`, `access.py:4662-4677`)
+Grant-based, from `app_exposure`: per Streamlit app with sensitive owner data, one finding per role holding USAGE on it whose users include someone who cannot read that data themselves; drawn on the USAGE edge, so the What-if fix is revoking that USAGE (`access.py:4676`). Details in [rules.md](rules.md).
 
 ## Fake data
 `fake_activity(end)` plans 17 streams of rows over `ACTIVITY_DAYS` so each of rules 24-28 has one finding, and SUPPORT_01's reads of VW_CUSTOMER as T_SALES_MART_OWNER through the app ST_CUSTOMER_LOOKUP (`APP`); `HOURS` puts part of OPS_01's and the Snowsight queries at 22:00 UTC (`access.py:400-434`); `fake()` and `fake_previous()` attach it (`access.py:371`, `access.py:461`). The app itself: `SCHEMAS` SALES.MART (`access.py:141`), kind `ST` -> STREAMLIT (`access.py:157`), USAGE through T_SALES_MART_EXECUTE (`access.py:180-181`), held by F_SUPPORT (`access.py:219`).

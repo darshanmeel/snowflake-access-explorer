@@ -84,27 +84,27 @@
 {"from": "module:access.py", "to": "function:access.py:search", "type": "contains", "evidence": "access.py:3972", "status": "verified"}
 {"from": "module:access.py", "to": "function:access.py:changes_of", "type": "contains", "evidence": "access.py:3993", "status": "verified"}
 {"from": "module:access.py", "to": "function:access.py:what_if", "type": "contains", "evidence": "access.py:4078", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:granted_used", "type": "contains", "evidence": "access.py:4751", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:state", "type": "contains", "evidence": "access.py:4799", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:restore", "type": "contains", "evidence": "access.py:4805", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:loaded", "type": "contains", "evidence": "access.py:4819", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:facts", "type": "contains", "evidence": "access.py:4831", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:diff", "type": "contains", "evidence": "access.py:4959", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rule_rows", "type": "contains", "evidence": "access.py:5068", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:checks", "type": "contains", "evidence": "access.py:5092", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:find", "type": "contains", "evidence": "access.py:5097", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:findings", "type": "contains", "evidence": "access.py:5536", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:readonly_writes", "type": "contains", "evidence": "access.py:5141", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rules_model", "type": "contains", "evidence": "access.py:5184", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rules_admin", "type": "contains", "evidence": "access.py:5237", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rules_sensitive", "type": "contains", "evidence": "access.py:5262", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rules_users", "type": "contains", "evidence": "access.py:5320", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rule17", "type": "contains", "evidence": "access.py:5335", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rule18", "type": "contains", "evidence": "access.py:5383", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rule19", "type": "contains", "evidence": "access.py:5399", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rules_operate", "type": "contains", "evidence": "access.py:5421", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rule22", "type": "contains", "evidence": "access.py:5435", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:rule23", "type": "contains", "evidence": "access.py:5455", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:granted_used", "type": "contains", "evidence": "access.py:4753", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:state", "type": "contains", "evidence": "access.py:4801", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:restore", "type": "contains", "evidence": "access.py:4807", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:loaded", "type": "contains", "evidence": "access.py:4821", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:facts", "type": "contains", "evidence": "access.py:4833", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:diff", "type": "contains", "evidence": "access.py:4961", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rule_rows", "type": "contains", "evidence": "access.py:5070", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:checks", "type": "contains", "evidence": "access.py:5094", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:find", "type": "contains", "evidence": "access.py:5099", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:findings", "type": "contains", "evidence": "access.py:5538", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:readonly_writes", "type": "contains", "evidence": "access.py:5143", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rules_model", "type": "contains", "evidence": "access.py:5186", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rules_admin", "type": "contains", "evidence": "access.py:5239", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rules_sensitive", "type": "contains", "evidence": "access.py:5264", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rules_users", "type": "contains", "evidence": "access.py:5322", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rule17", "type": "contains", "evidence": "access.py:5337", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rule18", "type": "contains", "evidence": "access.py:5385", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rule19", "type": "contains", "evidence": "access.py:5401", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rules_operate", "type": "contains", "evidence": "access.py:5423", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rule22", "type": "contains", "evidence": "access.py:5437", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:rule23", "type": "contains", "evidence": "access.py:5457", "status": "verified"}
 {"from": "module:access.py", "to": "function:access.py:role_stats", "type": "contains", "evidence": "access.py:2795", "status": "verified"}
 {"from": "module:access.py", "to": "function:access.py:reach_counts", "type": "contains", "evidence": "access.py:1320", "status": "verified"}
 {"from": "module:access.py", "to": "function:access.py:access_objects", "type": "contains", "evidence": "access.py:1240", "status": "verified"}
@@ -115,39 +115,39 @@
 {"from": "module:access.py", "to": "function:access.py:losers", "type": "contains", "evidence": "access.py:3322", "status": "verified"}
 {"from": "module:access.py", "to": "function:access.py:sensitive_reach", "type": "contains", "evidence": "access.py:2527", "status": "verified"}
 {"from": "module:access.py", "to": "function:access.py:valid_privs", "type": "contains", "evidence": "access.py:2830", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "business_rule:rule_1", "type": "implements", "evidence": "access.py:5189", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "business_rule:rule_2", "type": "implements", "evidence": "access.py:5195", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "business_rule:rule_3", "type": "implements", "evidence": "access.py:5207", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "business_rule:rule_4", "type": "implements", "evidence": "access.py:5211", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "business_rule:rule_13", "type": "implements", "evidence": "access.py:5219", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "business_rule:rule_14", "type": "implements", "evidence": "access.py:5231", "status": "verified"}
-{"from": "function:access.py:rules_admin", "to": "business_rule:rule_5", "type": "implements", "evidence": "access.py:5246", "status": "verified"}
-{"from": "function:access.py:rules_admin", "to": "business_rule:rule_9", "type": "implements", "evidence": "access.py:5249", "status": "verified"}
-{"from": "function:access.py:rules_admin", "to": "business_rule:rule_12", "type": "implements", "evidence": "access.py:5256", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_6", "type": "implements", "evidence": "access.py:5271", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_7", "type": "implements", "evidence": "access.py:5283", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_10", "type": "implements", "evidence": "access.py:5297", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_11", "type": "implements", "evidence": "access.py:5306", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_15", "type": "implements", "evidence": "access.py:5315", "status": "verified"}
-{"from": "function:access.py:rules_users", "to": "business_rule:rule_8", "type": "implements", "evidence": "access.py:5325", "status": "verified"}
-{"from": "function:access.py:rules_users", "to": "business_rule:rule_16", "type": "implements", "evidence": "access.py:5330", "status": "verified"}
-{"from": "function:access.py:rule17", "to": "business_rule:rule_17", "type": "implements", "evidence": "access.py:5349", "status": "verified"}
-{"from": "function:access.py:rule18", "to": "business_rule:rule_18", "type": "implements", "evidence": "access.py:5393", "status": "verified"}
-{"from": "function:access.py:rule19", "to": "business_rule:rule_19", "type": "implements", "evidence": "access.py:5410", "status": "verified"}
-{"from": "function:access.py:rules_operate", "to": "business_rule:rule_20", "type": "implements", "evidence": "access.py:5425", "status": "verified"}
-{"from": "function:access.py:rules_operate", "to": "business_rule:rule_21", "type": "implements", "evidence": "access.py:5425", "status": "verified"}
-{"from": "function:access.py:rule22", "to": "business_rule:rule_22", "type": "implements", "evidence": "access.py:5450", "status": "verified"}
-{"from": "function:access.py:rule23", "to": "business_rule:rule_23", "type": "implements", "evidence": "access.py:5477", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rule17", "type": "calls", "evidence": "access.py:5540", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rule18", "type": "calls", "evidence": "access.py:5540", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rule19", "type": "calls", "evidence": "access.py:5541", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rule22", "type": "calls", "evidence": "access.py:5541", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rule23", "type": "calls", "evidence": "access.py:5541", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rules_admin", "type": "calls", "evidence": "access.py:5540", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rules_model", "type": "calls", "evidence": "access.py:5540", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rules_operate", "type": "calls", "evidence": "access.py:5541", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rules_sensitive", "type": "calls", "evidence": "access.py:5540", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:rules_users", "type": "calls", "evidence": "access.py:5540", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "business_rule:rule_1", "type": "implements", "evidence": "access.py:5191", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "business_rule:rule_2", "type": "implements", "evidence": "access.py:5197", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "business_rule:rule_3", "type": "implements", "evidence": "access.py:5209", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "business_rule:rule_4", "type": "implements", "evidence": "access.py:5213", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "business_rule:rule_13", "type": "implements", "evidence": "access.py:5221", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "business_rule:rule_14", "type": "implements", "evidence": "access.py:5233", "status": "verified"}
+{"from": "function:access.py:rules_admin", "to": "business_rule:rule_5", "type": "implements", "evidence": "access.py:5248", "status": "verified"}
+{"from": "function:access.py:rules_admin", "to": "business_rule:rule_9", "type": "implements", "evidence": "access.py:5251", "status": "verified"}
+{"from": "function:access.py:rules_admin", "to": "business_rule:rule_12", "type": "implements", "evidence": "access.py:5258", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_6", "type": "implements", "evidence": "access.py:5273", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_7", "type": "implements", "evidence": "access.py:5285", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_10", "type": "implements", "evidence": "access.py:5299", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_11", "type": "implements", "evidence": "access.py:5308", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "business_rule:rule_15", "type": "implements", "evidence": "access.py:5317", "status": "verified"}
+{"from": "function:access.py:rules_users", "to": "business_rule:rule_8", "type": "implements", "evidence": "access.py:5327", "status": "verified"}
+{"from": "function:access.py:rules_users", "to": "business_rule:rule_16", "type": "implements", "evidence": "access.py:5332", "status": "verified"}
+{"from": "function:access.py:rule17", "to": "business_rule:rule_17", "type": "implements", "evidence": "access.py:5351", "status": "verified"}
+{"from": "function:access.py:rule18", "to": "business_rule:rule_18", "type": "implements", "evidence": "access.py:5395", "status": "verified"}
+{"from": "function:access.py:rule19", "to": "business_rule:rule_19", "type": "implements", "evidence": "access.py:5412", "status": "verified"}
+{"from": "function:access.py:rules_operate", "to": "business_rule:rule_20", "type": "implements", "evidence": "access.py:5427", "status": "verified"}
+{"from": "function:access.py:rules_operate", "to": "business_rule:rule_21", "type": "implements", "evidence": "access.py:5427", "status": "verified"}
+{"from": "function:access.py:rule22", "to": "business_rule:rule_22", "type": "implements", "evidence": "access.py:5452", "status": "verified"}
+{"from": "function:access.py:rule23", "to": "business_rule:rule_23", "type": "implements", "evidence": "access.py:5479", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rule17", "type": "calls", "evidence": "access.py:5542", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rule18", "type": "calls", "evidence": "access.py:5542", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rule19", "type": "calls", "evidence": "access.py:5543", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rule22", "type": "calls", "evidence": "access.py:5543", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rule23", "type": "calls", "evidence": "access.py:5543", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rules_admin", "type": "calls", "evidence": "access.py:5542", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rules_model", "type": "calls", "evidence": "access.py:5542", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rules_operate", "type": "calls", "evidence": "access.py:5543", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rules_sensitive", "type": "calls", "evidence": "access.py:5542", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:rules_users", "type": "calls", "evidence": "access.py:5542", "status": "verified"}
 {"from": "function:access.py:fake_previous", "to": "function:access.py:fake", "type": "calls", "evidence": "access.py:451", "status": "verified"}
 {"from": "function:access.py:live", "to": "function:access.py:snapshot", "type": "calls", "evidence": "access.py:632", "status": "verified"}
 {"from": "function:access.py:live", "to": "function:access.py:use_sql", "type": "calls", "evidence": "access.py:893", "status": "verified"}
@@ -256,50 +256,50 @@
 {"from": "function:access.py:what_if", "to": "function:access.py:restore", "type": "calls", "evidence": "access.py:4178", "status": "verified"}
 {"from": "function:access.py:what_if", "to": "function:access.py:status", "type": "calls", "evidence": "access.py:4203", "status": "verified"}
 {"from": "function:access.py:what_if", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:4212", "status": "verified"}
-{"from": "function:access.py:granted_used", "to": "function:access.py:what_if", "type": "calls", "evidence": "access.py:4754", "status": "verified"}
-{"from": "function:access.py:granted_used", "to": "function:access.py:grants", "type": "calls", "evidence": "access.py:4756", "status": "verified"}
-{"from": "function:access.py:granted_used", "to": "function:access.py:access_objects", "type": "calls", "evidence": "access.py:4761", "status": "verified"}
-{"from": "function:access.py:state", "to": "function:access.py:build", "type": "calls", "evidence": "access.py:4800", "status": "verified"}
-{"from": "function:access.py:state", "to": "function:access.py:restore", "type": "calls", "evidence": "access.py:4800", "status": "verified"}
-{"from": "function:access.py:loaded", "to": "function:access.py:state", "type": "calls", "evidence": "access.py:4821", "status": "verified"}
-{"from": "function:access.py:loaded", "to": "function:access.py:build", "type": "calls", "evidence": "access.py:4823", "status": "verified"}
-{"from": "function:access.py:loaded", "to": "function:access.py:restore", "type": "calls", "evidence": "access.py:4826", "status": "verified"}
-{"from": "function:access.py:facts", "to": "function:access.py:build", "type": "calls", "evidence": "access.py:4833", "status": "verified"}
-{"from": "function:access.py:facts", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:4855", "status": "verified"}
-{"from": "function:access.py:facts", "to": "function:access.py:status", "type": "calls", "evidence": "access.py:4856", "status": "verified"}
-{"from": "function:access.py:diff", "to": "function:access.py:facts", "type": "calls", "evidence": "access.py:4966", "status": "verified"}
-{"from": "function:access.py:diff", "to": "function:access.py:loaded", "type": "calls", "evidence": "access.py:4968", "status": "verified"}
-{"from": "function:access.py:rule_rows", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:5075", "status": "verified"}
-{"from": "function:access.py:rule_rows", "to": "function:access.py:fix_text", "type": "calls", "evidence": "access.py:5076", "status": "verified"}
-{"from": "function:access.py:rule_rows", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5084", "status": "verified"}
-{"from": "function:access.py:checks", "to": "function:access.py:findings", "type": "calls", "evidence": "access.py:5094", "status": "verified"}
-{"from": "function:access.py:find", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5104", "status": "verified"}
-{"from": "function:access.py:findings", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5538", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5188", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5189", "status": "verified"}
-{"from": "function:access.py:rules_model", "to": "function:access.py:bfs", "type": "calls", "evidence": "access.py:5203", "status": "verified"}
-{"from": "function:access.py:rules_admin", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5246", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "function:access.py:sensitive", "type": "calls", "evidence": "access.py:5264", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5271", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "function:access.py:is_dormant", "type": "calls", "evidence": "access.py:5280", "status": "verified"}
-{"from": "function:access.py:rules_sensitive", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5300", "status": "verified"}
-{"from": "function:access.py:rules_users", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5325", "status": "verified"}
-{"from": "function:access.py:rules_users", "to": "function:access.py:is_dormant", "type": "calls", "evidence": "access.py:5328", "status": "verified"}
-{"from": "function:access.py:rule17", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:5339", "status": "verified"}
-{"from": "function:access.py:rule17", "to": "function:access.py:readonly_writes", "type": "calls", "evidence": "access.py:5339", "status": "verified"}
-{"from": "function:access.py:rule17", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5349", "status": "verified"}
-{"from": "function:access.py:rule18", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:5385", "status": "verified"}
-{"from": "function:access.py:rule18", "to": "function:access.py:valid_privs", "type": "calls", "evidence": "access.py:5387", "status": "verified"}
-{"from": "function:access.py:rule18", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5393", "status": "verified"}
-{"from": "function:access.py:rule19", "to": "function:access.py:up_walk", "type": "calls", "evidence": "access.py:5406", "status": "verified"}
-{"from": "function:access.py:rule19", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5407", "status": "verified"}
-{"from": "function:access.py:rule19", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5410", "status": "verified"}
-{"from": "function:access.py:rules_operate", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5430", "status": "verified"}
-{"from": "function:access.py:rule22", "to": "function:access.py:sensitive", "type": "calls", "evidence": "access.py:5437", "status": "verified"}
-{"from": "function:access.py:rule22", "to": "function:access.py:who_can", "type": "calls", "evidence": "access.py:5442", "status": "verified"}
-{"from": "function:access.py:rule22", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5445", "status": "verified"}
-{"from": "function:access.py:rule22", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5450", "status": "verified"}
-{"from": "function:access.py:rule23", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5477", "status": "verified"}
+{"from": "function:access.py:granted_used", "to": "function:access.py:what_if", "type": "calls", "evidence": "access.py:4756", "status": "verified"}
+{"from": "function:access.py:granted_used", "to": "function:access.py:grants", "type": "calls", "evidence": "access.py:4758", "status": "verified"}
+{"from": "function:access.py:granted_used", "to": "function:access.py:access_objects", "type": "calls", "evidence": "access.py:4763", "status": "verified"}
+{"from": "function:access.py:state", "to": "function:access.py:build", "type": "calls", "evidence": "access.py:4802", "status": "verified"}
+{"from": "function:access.py:state", "to": "function:access.py:restore", "type": "calls", "evidence": "access.py:4802", "status": "verified"}
+{"from": "function:access.py:loaded", "to": "function:access.py:state", "type": "calls", "evidence": "access.py:4823", "status": "verified"}
+{"from": "function:access.py:loaded", "to": "function:access.py:build", "type": "calls", "evidence": "access.py:4825", "status": "verified"}
+{"from": "function:access.py:loaded", "to": "function:access.py:restore", "type": "calls", "evidence": "access.py:4828", "status": "verified"}
+{"from": "function:access.py:facts", "to": "function:access.py:build", "type": "calls", "evidence": "access.py:4835", "status": "verified"}
+{"from": "function:access.py:facts", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:4857", "status": "verified"}
+{"from": "function:access.py:facts", "to": "function:access.py:status", "type": "calls", "evidence": "access.py:4858", "status": "verified"}
+{"from": "function:access.py:diff", "to": "function:access.py:facts", "type": "calls", "evidence": "access.py:4968", "status": "verified"}
+{"from": "function:access.py:diff", "to": "function:access.py:loaded", "type": "calls", "evidence": "access.py:4970", "status": "verified"}
+{"from": "function:access.py:rule_rows", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:5077", "status": "verified"}
+{"from": "function:access.py:rule_rows", "to": "function:access.py:fix_text", "type": "calls", "evidence": "access.py:5078", "status": "verified"}
+{"from": "function:access.py:rule_rows", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5086", "status": "verified"}
+{"from": "function:access.py:checks", "to": "function:access.py:findings", "type": "calls", "evidence": "access.py:5096", "status": "verified"}
+{"from": "function:access.py:find", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5106", "status": "verified"}
+{"from": "function:access.py:findings", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5540", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5190", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5191", "status": "verified"}
+{"from": "function:access.py:rules_model", "to": "function:access.py:bfs", "type": "calls", "evidence": "access.py:5205", "status": "verified"}
+{"from": "function:access.py:rules_admin", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5248", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "function:access.py:sensitive", "type": "calls", "evidence": "access.py:5266", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5273", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "function:access.py:is_dormant", "type": "calls", "evidence": "access.py:5282", "status": "verified"}
+{"from": "function:access.py:rules_sensitive", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5302", "status": "verified"}
+{"from": "function:access.py:rules_users", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5327", "status": "verified"}
+{"from": "function:access.py:rules_users", "to": "function:access.py:is_dormant", "type": "calls", "evidence": "access.py:5330", "status": "verified"}
+{"from": "function:access.py:rule17", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:5341", "status": "verified"}
+{"from": "function:access.py:rule17", "to": "function:access.py:readonly_writes", "type": "calls", "evidence": "access.py:5341", "status": "verified"}
+{"from": "function:access.py:rule17", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5351", "status": "verified"}
+{"from": "function:access.py:rule18", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:5387", "status": "verified"}
+{"from": "function:access.py:rule18", "to": "function:access.py:valid_privs", "type": "calls", "evidence": "access.py:5389", "status": "verified"}
+{"from": "function:access.py:rule18", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5395", "status": "verified"}
+{"from": "function:access.py:rule19", "to": "function:access.py:up_walk", "type": "calls", "evidence": "access.py:5408", "status": "verified"}
+{"from": "function:access.py:rule19", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5409", "status": "verified"}
+{"from": "function:access.py:rule19", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5412", "status": "verified"}
+{"from": "function:access.py:rules_operate", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5432", "status": "verified"}
+{"from": "function:access.py:rule22", "to": "function:access.py:sensitive", "type": "calls", "evidence": "access.py:5439", "status": "verified"}
+{"from": "function:access.py:rule22", "to": "function:access.py:who_can", "type": "calls", "evidence": "access.py:5444", "status": "verified"}
+{"from": "function:access.py:rule22", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:5447", "status": "verified"}
+{"from": "function:access.py:rule22", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5452", "status": "verified"}
+{"from": "function:access.py:rule23", "to": "function:access.py:find", "type": "calls", "evidence": "access.py:5479", "status": "verified"}
 {"from": "function:access.py:role_stats", "to": "function:access.py:held", "type": "calls", "evidence": "access.py:2798", "status": "verified"}
 {"from": "function:access.py:role_stats", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:2800", "status": "verified"}
 {"from": "function:access.py:role_stats", "to": "function:access.py:grants", "type": "calls", "evidence": "access.py:2800", "status": "verified"}
@@ -621,7 +621,7 @@
 {"from": "function:server.py:changes_page", "to": "function:access.py:uid", "type": "calls", "evidence": "server.py:1721", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:cached", "type": "calls", "evidence": "server.py:1737", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:diff", "type": "calls", "evidence": "server.py:1737", "status": "verified"}
-{"from": "module:access.py", "to": "function:access.py:event_counts", "type": "contains", "evidence": "access.py:4945", "status": "verified"}
+{"from": "module:access.py", "to": "function:access.py:event_counts", "type": "contains", "evidence": "access.py:4947", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:event_counts", "type": "calls", "evidence": "server.py:1739", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:node_kind", "type": "calls", "evidence": "server.py:1740", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:node_name", "type": "calls", "evidence": "server.py:1742", "status": "verified"}
@@ -956,9 +956,9 @@
 {"from": "file:sql/3_cleanup_verify.sql", "to": "module:sql/3_cleanup_verify.sql", "type": "contains", "evidence": "sql/3_cleanup_verify.sql:1", "status": "verified"}
 {"from": "file:sql/4_streamlit_verify.sql", "to": "module:sql/4_streamlit_verify.sql", "type": "contains", "evidence": "sql/4_streamlit_verify.sql:1", "status": "verified"}
 {"from": "file:settings.sql", "to": "module:settings.sql", "type": "contains", "evidence": "settings.sql:1", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "endpoint:GET /api/activity", "type": "calls", "evidence": "web/src/pages/Activity.tsx:37", "status": "verified"}
-{"from": "component:web/src/pages/Activity.tsx:ActivityTab", "to": "endpoint:GET /api/activity", "type": "calls", "evidence": "web/src/pages/Activity.tsx:37", "status": "verified"}
-{"from": "component:web/src/pages/Activity.tsx:UseLine", "to": "endpoint:GET /api/activity", "type": "calls", "evidence": "web/src/pages/Activity.tsx:55", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "endpoint:GET /api/activity", "type": "calls", "evidence": "web/src/pages/Activity.tsx:56", "status": "verified"}
+{"from": "component:web/src/pages/Activity.tsx:ActivityTab", "to": "endpoint:GET /api/activity", "type": "calls", "evidence": "web/src/pages/Activity.tsx:56", "status": "verified"}
+{"from": "component:web/src/pages/Activity.tsx:UseLine", "to": "endpoint:GET /api/activity", "type": "calls", "evidence": "web/src/pages/Activity.tsx:74", "status": "verified"}
 {"from": "ui_screen:object", "to": "ui_screen:Activity tab", "type": "contains", "evidence": "web/src/pages/Object.tsx:72-76", "status": "verified"}
 {"from": "ui_screen:access", "to": "ui_screen:Activity tab", "type": "contains", "evidence": "web/src/pages/Access.tsx:106-110", "status": "verified"}
 {"from": "endpoint:GET /api/activity", "to": "function:server.py:activity_page", "type": "calls", "evidence": "server.py:2271", "status": "verified"}
@@ -970,45 +970,45 @@
 {"from": "function:server.py:read_shared", "to": "function:cache.py:last", "type": "calls", "evidence": "server.py:91", "status": "verified"}
 {"from": "function:access.py:live", "to": "function:access.py:activity_start", "type": "calls", "evidence": "access.py:902", "status": "verified"}
 {"from": "function:access.py:live", "to": "function:access.py:activity_sql", "type": "calls", "evidence": "access.py:904", "status": "verified"}
-{"from": "function:access.py:activity_graph", "to": "function:access.py:used_path", "type": "calls", "evidence": "access.py:4598", "status": "verified"}
+{"from": "function:access.py:activity_graph", "to": "function:access.py:used_path", "type": "calls", "evidence": "access.py:4600", "status": "verified"}
 {"from": "test_case:test_server.py:test_activity", "to": "endpoint:GET /api/activity", "type": "illustrates", "evidence": "test_server.py:635", "status": "verified"}
 {"from": "test_case:test_server.py:test_activity", "to": "function:server.py:activity_page", "type": "illustrates", "evidence": "test_server.py:635-654", "status": "verified"}
 {"from": "test_case:test_sql.py:test_activity", "to": "function:sql/1_setup.sql:activity", "type": "illustrates", "evidence": "test_sql.py:308-311", "status": "verified"}
 {"from": "test_case:test_sql.py:test_activity", "to": "function:access.py:activity_sql", "type": "illustrates", "evidence": "test_sql.py:302", "status": "verified"}
 {"from": "file:web/src/pages/Object.tsx", "to": "component:web/src/pages/Object.tsx:AppNote", "type": "contains", "evidence": "web/src/pages/Object.tsx:83", "status": "verified"}
 {"from": "component:web/src/pages/Object.tsx:AppNote", "to": "endpoint:GET /api/who", "type": "reads", "evidence": "web/src/pages/Object.tsx:68", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "contains", "evidence": "web/src/pages/Activity.tsx:185", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "contains", "evidence": "web/src/pages/Activity.tsx:218", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:247", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "contains", "evidence": "web/src/pages/Activity.tsx:334", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:378", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "contains", "evidence": "web/src/pages/Activity.tsx:427", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "contains", "evidence": "web/src/pages/Activity.tsx:681", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "contains", "evidence": "web/src/pages/Activity.tsx:790", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "calls", "evidence": "web/src/pages/Activity.tsx:116", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "calls", "evidence": "web/src/pages/Activity.tsx:88", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:117", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "calls", "evidence": "web/src/pages/Activity.tsx:118", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:119", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "calls", "evidence": "web/src/pages/Activity.tsx:122", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "calls", "evidence": "web/src/pages/Activity.tsx:123", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "calls", "evidence": "web/src/pages/Activity.tsx:132", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "contains", "evidence": "web/src/pages/Activity.tsx:213", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "contains", "evidence": "web/src/pages/Activity.tsx:246", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:275", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "contains", "evidence": "web/src/pages/Activity.tsx:362", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:406", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "contains", "evidence": "web/src/pages/Activity.tsx:455", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "contains", "evidence": "web/src/pages/Activity.tsx:709", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "contains", "evidence": "web/src/pages/Activity.tsx:818", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "calls", "evidence": "web/src/pages/Activity.tsx:144", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "calls", "evidence": "web/src/pages/Activity.tsx:116", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:145", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "calls", "evidence": "web/src/pages/Activity.tsx:146", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:147", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "calls", "evidence": "web/src/pages/Activity.tsx:150", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "calls", "evidence": "web/src/pages/Activity.tsx:151", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "calls", "evidence": "web/src/pages/Activity.tsx:160", "status": "verified"}
 {"from": "component:web/src/App.tsx:App", "to": "component:web/src/pages/common.tsx:SqlPanel", "type": "calls", "evidence": "web/src/App.tsx:338", "status": "verified"}
 {"from": "component:web/src/pages/common.tsx:SqlPanel", "to": "component:web/src/pages/common.tsx:SqlBox", "type": "calls", "evidence": "web/src/pages/common.tsx:122", "status": "verified"}
-{"from": "component:web/src/pages/Activity.tsx:Sec", "to": "component:web/src/pages/common.tsx:SqlBox", "type": "calls", "evidence": "web/src/pages/Activity.tsx:74", "status": "verified"}
-{"from": "component:web/src/pages/Activity.tsx:Sec", "to": "component:web/src/pages/Activity.tsx:SectionSql", "type": "depends_on", "evidence": "web/src/pages/Activity.tsx:74", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:SectionSql", "type": "depends_on", "evidence": "web/src/pages/Activity.tsx:104", "status": "verified"}
-{"from": "function:access.py:activity_section_sql", "to": "config:access.py:ACT_SECTIONS", "type": "depends_on", "evidence": "access.py:4461", "status": "verified"}
-{"from": "function:access.py:activity_section_sql", "to": "config:access.py:ACT_FILTER", "type": "depends_on", "evidence": "access.py:4462", "status": "verified"}
-{"from": "function:access.py:activity_section_sql", "to": "config:access.py:ACT_BASE", "type": "depends_on", "evidence": "access.py:4469", "status": "verified"}
-{"from": "function:access.py:activity_section_sql", "to": "function:access.py:plain", "type": "calls", "evidence": "access.py:4466", "status": "verified"}
-{"from": "config:access.py:ACT_SECTIONS", "to": "config:access.py:OFF", "type": "depends_on", "evidence": "access.py:4437", "status": "verified"}
-{"from": "function:access.py:plain", "to": "config:access.py:NEEDS", "type": "depends_on", "evidence": "access.py:4391", "status": "verified"}
-{"from": "function:access.py:query_file", "to": "config:access.py:QUERIES", "type": "depends_on", "evidence": "access.py:4380", "status": "verified"}
-{"from": "function:access.py:page_sql", "to": "config:access.py:DAYS_USAGE", "type": "depends_on", "evidence": "access.py:4487", "status": "verified"}
-{"from": "function:access.py:page_sql", "to": "file:access_queries/5_object_users.sql", "type": "reads", "evidence": "access.py:4507", "status": "verified"}
-{"from": "function:access.py:page_sql", "to": "file:access_queries/2_user_access.sql", "type": "reads", "evidence": "access.py:4501", "status": "verified"}
-{"from": "function:access.py:page_sql", "to": "file:access_queries/1_user_roles.sql", "type": "reads", "evidence": "access.py:4502", "status": "verified"}
-{"from": "function:access.py:page_sql", "to": "file:access_queries/3_role_access.sql", "type": "reads", "evidence": "access.py:4504", "status": "verified"}
-{"from": "function:access.py:page_sql", "to": "file:access_queries/4_role_holders.sql", "type": "reads", "evidence": "access.py:4505", "status": "verified"}
+{"from": "component:web/src/pages/Activity.tsx:Sec", "to": "component:web/src/pages/common.tsx:SqlBox", "type": "calls", "evidence": "web/src/pages/Activity.tsx:93", "status": "verified"}
+{"from": "component:web/src/pages/Activity.tsx:Sec", "to": "component:web/src/pages/Activity.tsx:SectionSql", "type": "depends_on", "evidence": "web/src/pages/Activity.tsx:93", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:SectionSql", "type": "depends_on", "evidence": "web/src/pages/Activity.tsx:132", "status": "verified"}
+{"from": "function:access.py:activity_section_sql", "to": "config:access.py:ACT_SECTIONS", "type": "depends_on", "evidence": "access.py:4463", "status": "verified"}
+{"from": "function:access.py:activity_section_sql", "to": "config:access.py:ACT_FILTER", "type": "depends_on", "evidence": "access.py:4464", "status": "verified"}
+{"from": "function:access.py:activity_section_sql", "to": "config:access.py:ACT_BASE", "type": "depends_on", "evidence": "access.py:4471", "status": "verified"}
+{"from": "function:access.py:activity_section_sql", "to": "function:access.py:plain", "type": "calls", "evidence": "access.py:4468", "status": "verified"}
+{"from": "config:access.py:ACT_SECTIONS", "to": "config:access.py:OFF", "type": "depends_on", "evidence": "access.py:4439", "status": "verified"}
+{"from": "function:access.py:plain", "to": "config:access.py:NEEDS", "type": "depends_on", "evidence": "access.py:4394", "status": "verified"}
+{"from": "function:access.py:query_file", "to": "config:access.py:QUERIES", "type": "depends_on", "evidence": "access.py:4383", "status": "verified"}
+{"from": "function:access.py:page_sql", "to": "config:access.py:DAYS_USAGE", "type": "depends_on", "evidence": "access.py:4489", "status": "verified"}
+{"from": "function:access.py:page_sql", "to": "file:access_queries/5_object_users.sql", "type": "reads", "evidence": "access.py:4509", "status": "verified"}
+{"from": "function:access.py:page_sql", "to": "file:access_queries/2_user_access.sql", "type": "reads", "evidence": "access.py:4503", "status": "verified"}
+{"from": "function:access.py:page_sql", "to": "file:access_queries/1_user_roles.sql", "type": "reads", "evidence": "access.py:4504", "status": "verified"}
+{"from": "function:access.py:page_sql", "to": "file:access_queries/3_role_access.sql", "type": "reads", "evidence": "access.py:4506", "status": "verified"}
+{"from": "function:access.py:page_sql", "to": "file:access_queries/4_role_holders.sql", "type": "reads", "evidence": "access.py:4507", "status": "verified"}
 {"from": "task:sql/4_streamlit.sql:PUT_QUERIES", "to": "folder:access_queries", "type": "deploys", "evidence": "sql/4_streamlit.sql:46", "status": "verified"}

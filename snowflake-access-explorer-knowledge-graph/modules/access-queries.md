@@ -79,7 +79,7 @@ Example (test data of test_queries.py): `1_user_roles.sql` for `ANALYST_01` give
 
 ## Used by the app's SQL panel
 
-- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:4377-4386`, `access.py:4500-4527`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
+- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:4380-4389`, `access.py:4502-4529`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
 
 ## Unclear
 

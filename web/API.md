@@ -829,7 +829,7 @@ activity: no Enterprise edition, a snapshot made before the table existed, or My
 one number per day, oldest first, ending at `last`. `rows` is one row per user, role, client, object, statement type
 and action, the first 2000 (`MAX_ACTIVITY`); `total` counts all of them. `ddl` lists the DDL rows. In a row, `days` is
 the number of active days and `first_day` the first of them; `hours` is the weekday queries per UTC hour (24 numbers),
-`weekend` the queries on a Saturday or Sunday (by the UTC day) and `weekend_hours` those per UTC hour; `kind` is the
+`weekend` the queries on a Saturday or Sunday (by the UTC day) and `weekend_hours` those per UTC hour; `dh` is `[[day index, UTC hour, queries], ...]`, from which the page moves every query to its local day and hour for the business-time slider; `kind` is the
 user's `person`, `service` or `system`; `interactive` is true for a client where people type queries (Snowsight,
 SnowSQL, ...). The page counts off-hours from these: `work` is `WORK_HOURS` (default 7-19, local time, start inclusive,
 end exclusive, Monday to Friday), and the UI shifts it from UTC with a business-time slider (UTC-12 to UTC+14). Nothing

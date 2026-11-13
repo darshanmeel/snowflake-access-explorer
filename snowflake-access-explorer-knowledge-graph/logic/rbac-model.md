@@ -24,7 +24,7 @@ flowchart LR
 ## Role links
 - A GRANT row with `GRANTED_ON` in `ROLE_ON` = (`ROLE`, `DATABASE_ROLE`) and `PRIVILEGE = USAGE` is a role link (`access.py:1013`, `920-924`).
 - OWNERSHIP on a role is a privilege, not a link; the role stays a role, not an object (`access.py:1054`, `928-929`).
-- Links granted to admin roles are dropped ("every custom role is also granted to SYSADMIN") (`access.py:1055-1058`); same in `facts()` (`access.py:4851-4852`).
+- Links granted to admin roles are dropped ("every custom role is also granted to SYSADMIN") (`access.py:1055-1058`); same in `facts()` (`access.py:4853-4854`).
 
 ## Database roles
 - Named `DB.ROLE`; added to `db_roles` when granted on (`GRANTED_ON = DATABASE_ROLE`) or when a grantee has a dot (`access.py:1064-1067`).
@@ -35,7 +35,7 @@ flowchart LR
 ## Default links / technical roles
 - Schema roles `<TECH><DB>_<SCHEMA>_OWNER|READ|WRITE|EXECUTE`, DB `<TECH><DB>_OWNER`; default links OWNER -> DB OWNER, READ -> WRITE (CLAUDE.md; fake schemas `access.py:139-147`). The link logic itself is data, not code: unclear where fake() builds the default links (not opened: `access.py:154-373`).
 - Rule 18 maps the capability suffix to standard privileges `CAP_PRIVS` (`access.py:85-89`).
-- Never parse names for DB/schema: rule 3 uses grant data only (`access.py:5197-5198`).
+- Never parse names for DB/schema: rule 3 uses grant data only (`access.py:5199-5200`).
 
 ## Admin roles and account privileges (red)
 - `ADMIN = {ACCOUNTADMIN, SECURITYADMIN, SYSADMIN, USERADMIN, ORGADMIN}` (`access.py:45`).

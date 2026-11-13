@@ -27,9 +27,9 @@ sequenceDiagram
 
 ## Simulation and restore
 - `without_cuts(d, cut)`: data set minus removed GRANT / USER_ROLE rows (`access.py:4040-4048`).
-- `state()` copies every name in `STATE` (`access.py:3987-3990`, `4210-4213`); `restore()` puts them back in place; `REBOUND` names are rebound (`access.py:4805-4815`).
+- `state()` copies every name in `STATE` (`access.py:3987-3990`, `4210-4213`); `restore()` puts them back in place; `REBOUND` names are rebound (`access.py:4807-4817`).
 - Rebuild in `try`, `restore(saved)` in `finally` (`access.py:4135-4181`), so the loaded data set and its cached results (`memo`) come back.
-- `built` (the `KEEP_BUILT` sets) is copied first and put back after (`built.clear(); built.update(was)`, `access.py:4133`, `4045-4046`): the simulated build stores the loaded set in `built`, which would otherwise keep a stale or simulated entry. `loaded(d)` does the same (`access.py:4821`, `4238-4239`).
+- `built` (the `KEEP_BUILT` sets) is copied first and put back after (`built.clear(); built.update(was)`, `access.py:4133`, `4045-4046`): the simulated build stores the loaded set in `built`, which would otherwise keep a stale or simulated entry. `loaded(d)` does the same (`access.py:4823`, `4238-4239`).
 - Rules recheck only scoped names: `only` built from `SCOPED`/`GROW` and touched grantees (`access.py:4118-4125`, `4018`).
 
 ## Output
@@ -43,5 +43,5 @@ sequenceDiagram
 - Summary: `1 user loses access to 9 objects; 1 keeps access through another path (most via PUBLIC); 1 finding fixed, 0 new`
 - SQL: `REVOKE ROLE GRP_ANALYSTS FROM USER ANALYST_01;`
 - IaC: `Remove in the infrastructure-as-code repo: role GRP_ANALYSTS granted to user ANALYST_01`
-- Finding fixes feed What if via `fix_changes(edges)` (`access.py:5050-5059`).
+- Finding fixes feed What if via `fix_changes(edges)` (`access.py:5052-5061`).
 - Tests: `test_access.py:1002-1038` (what_if calls).

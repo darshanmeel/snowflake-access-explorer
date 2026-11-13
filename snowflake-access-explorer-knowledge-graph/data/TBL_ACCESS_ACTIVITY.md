@@ -34,4 +34,4 @@ DDL: `sql/1_setup.sql:108-122`; older tables get `HOURS` and `APP` from `ALTER T
 - Read as optional table (None if missing): `access.py:60-61`, `access.py:474-478`; lookup `acts` `access.py:1010`, `access.py:1090`; Direct mode builds the same rows in memory (`access.py:899-908`).
 - Granted to `&APP_ROLE` (may fail): `sql/1_setup.sql:898-899`. Verify: `sql/2_snapshot_verify.sql:39-42`. Dropped: `sql/3_cleanup.sql:65-66`.
 - DuckDB copy: same columns (`HOURS JSON`, `APP VARCHAR`), `cache.py:177-179`; DuckDB test of the procedure step: `test_sql.py:298-311`.
-- Readers: `activity()` (APP for the app view), `query_sql()`, `activity_graph()`, `activity_sensitive()`, `rules_activity()` (`access.py:4289-4726`, `access.py:5482-5533`) — see [logic/activity.md](../logic/activity.md).
+- Readers: `activity()` (APP for the app view), `query_sql()`, `activity_graph()`, `activity_sensitive()`, `rules_activity()` (`access.py:4289-4728`, `access.py:5484-5535`) — see [logic/activity.md](../logic/activity.md).
