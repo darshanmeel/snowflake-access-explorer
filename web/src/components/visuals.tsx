@@ -67,3 +67,46 @@ export function CutPath({ path, cuts, kinds, first, onOpen }: {
     </span>
   );
 }
+
+const SERIES = ["e_manage", "e_write", "warn_ink", "ok_ink", "e_read"]; // up to 5 keys, then "Other"
+
+/** Queries per day as stacked bars, one colour per key (most first, the rest as Other), date axis and the top day. */
+export function DayStack({ first, series, label }: { first: string; series: { key: string; values: number[] }[]; label: string }) {
+  const top = series.slice(0, SERIES.length);
+  const rest = series.slice(SERIES.length);
+  const parts = rest.length ? [...top, { key: `Other (${rest.length})`, values: top[0].values.map((_, i) => rest.reduce((n, s) => n + s.values[i], 0)) }] : top;
+  const n = parts[0]?.values.length ?? 0;
+  const tot = Array.from({ length: n }, (_, i) => parts.reduce((s, p) => s + p.values[i], 0));
+  const max = Math.max(1, ...tot), W = 600, H = 150, bw = W / Math.max(1, n);
+  const date = (i: number) => new Date(Date.parse(first) + i * 864e5).toISOString().slice(0, 10);
+  const color = (k: number) => k < SERIES.length ? `var(--ae-${SERIES[k]})` : "var(--ae-line_strong)";
+  return (
+    <figure className="ae-daystack">
+      <svg viewBox={`0 0 ${W} ${H + 18}`} role="img" aria-label={`${label}: queries per day, ${n} days, most ${max} on one day`}>
+        <line x1="0" x2={W} y1={H} y2={H} stroke="var(--ae-line)" />
+        <line x1="0" x2={W} y1="0.5" y2="0.5" stroke="var(--ae-line)" strokeDasharray="3 3" />
+        {tot.map((t, i) => {
+          let y = H;
+          return (
+            <g key={i}>
+              <title>{`${date(i)}: ${t} quer${t === 1 ? "y" : "ies"}\n${parts.filter((p) => p.values[i]).map((p) => `${p.key}: ${p.values[i]}`).join("\n")}`}</title>
+              {parts.map((p, k) => {
+                const h = (p.values[i] / max) * (H - 4);
+                y -= h;
+                return h > 0 ? <rect key={k} x={i * bw + 1} y={y} width={Math.max(1, bw - 2)} height={h} fill={color(k)} /> : null;
+              })}
+              <rect x={i * bw} y="0" width={bw} height={H} fill="transparent" />
+            </g>
+          );
+        })}
+        <text x="2" y="12" className="ae-daystack-ax">{max}</text>
+        {[0, Math.floor(n / 2), n - 1].filter((i) => i >= 0).map((i, k) => (
+          <text key={k} x={k === 0 ? 0 : k === 1 ? i * bw + bw / 2 : W} y={H + 14} textAnchor={k === 0 ? "start" : k === 1 ? "middle" : "end"} className="ae-daystack-ax">{date(i)}</text>
+        ))}
+      </svg>
+      <figcaption className="ae-daystack-legend">
+        {parts.map((p, k) => <span key={p.key}><i style={{ background: color(k) }} />{p.key}</span>)}
+      </figcaption>
+    </figure>
+  );
+}

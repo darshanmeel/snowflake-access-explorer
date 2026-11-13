@@ -7,7 +7,7 @@ import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantee
 import { download } from "../components/table";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
-import { ActivityTab } from "./Activity";
+import { ActivityTab, UseLine } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { remember } from "./Home";
 import { AdminTable } from "./Rules";
@@ -72,7 +72,7 @@ function Who({ d }: { d: WhoPage }) {
       ]} />
       {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} />)}
       {show === "who" && <List d={d} />}
-      {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} />}
+      {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} user={c.params.as} />}
       {show === "history" && <ChangeFeed subject={o.id ?? ""} />}
     </>
   );
@@ -99,6 +99,7 @@ function For({ d }: { d: WhoPage }) {
         )}
         <button type="button" className="ae-link" onClick={() => c.set({ show: "who", sel: x.name, by: null })}>How?</button>
       </>}
+      {who && d.object.id && <UseLine name={d.object.id} user={who} />}
     </section>
   );
 }

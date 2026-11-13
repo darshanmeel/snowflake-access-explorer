@@ -636,7 +636,15 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
     assert o["what"] == "object" and o["available"] and len(o["daily"]) == o["days"] == a.ACTIVITY_DAYS
     assert [f["num"] for f in o["findings"]] == ["24"] and o["ddl"][0]["type"] == "ALTER_TABLE_ADD_COLUMN"
     assert {f["num"] for f in js("/api/activity?user=ENGINEER_01")["findings"]} == {"24", "27"}
-    assert js("/api/activity?role=SYSADMIN")["by"]["user"][0]["key"] == "OPS_01"
+    r = js("/api/activity?role=SYSADMIN")
+    assert r["by"]["user"][0]["key"] == "OPS_01" and r["graph"] is None and r["gone"][0]["role"] == "SYSADMIN"
+    assert o["graph"]["nodes"] and o["sensitive"][0]["people"] and o["mark"] is None and o["refs"]["kinds"]
+    assert len(o["rows"][0]["daily"]) == len(o["by"]["user"][0]["daily"]) == a.ACTIVITY_DAYS
+    assert "SET TAG" in js("/api/activity?name=SALES.CLEAN.TBL_ORDER")["mark"]["sql"]  # untagged: the text to tag it
+    one = js("/api/activity?name=SALES.CORE.TBL_CUSTOMER&as=ENGINEER_01")  # the "Access for" person only
+    assert one["user"] == "ENGINEER_01" and {b["key"] for b in one["by"]["user"]} == {"ENGINEER_01"}
+    assert [f["num"] for f in one["findings"]] == ["24"] and sum(one["daily"]) < sum(o["daily"])
+    assert not js("/api/activity?name=SALES.CORE.TBL_CUSTOMER&as=HR_01")["rows"]  # granted or not: no use
     assert {r["area"] for r in js("/api/meta")["rules"] if int(r["num"]) >= 24} == {"Activity"}
 
 

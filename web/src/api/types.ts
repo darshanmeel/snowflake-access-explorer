@@ -1212,15 +1212,21 @@ export interface ChangesPage {
 
 /** Activity tab (/api/activity): table use per day of an object, a person or a role (ACCESS_HISTORY). */
 export type ActivityKey = "user" | "role" | "client" | "type" | "object";
-export interface ActivityBy { key: string; read: number; write: number; ddl: number; last: string }
+export interface ActivityBy { key: string; read: number; write: number; ddl: number; last: string; daily: number[] }
 export interface ActivityRow {
   user: string; role: string; client: string; type: string; object: string; action: "READ" | "WRITE" | "DDL";
-  queries: number; days: number; last: string;
+  queries: number; days: number; last: string; daily: number[];
+}
+/** Sensitive data of one object used: columns, policies, and per user and role used what they see. */
+export interface ActivitySensitive {
+  object: string; sensitive: boolean; columns: string[]; whole: boolean; masking: Record<string, string[]>; row_policies: string[];
+  people: { user: string; role: string; read: boolean; clear: string[]; masked: string[]; rows: "all" | "filtered" | "none" | "unknown" }[];
 }
 export interface ActivityPage {
   view: View;
   what: "object" | "user" | "role";
   name: string;
+  user: string | null; // object page: only this user's use ("Access for")
   days: number;
   available: boolean;
   reason: string | null;
@@ -1233,4 +1239,9 @@ export interface ActivityPage {
   total?: number;
   ddl?: ActivityRow[];
   findings?: { num: string; title: string; severity: Severity; grantee: string; detail: string }[];
+  graph?: Graph | null; // user / role used -> grant path it has now -> object
+  gone?: { user: string; role: string; object: string; action: string }[]; // used, but that role has no grant path now
+  sensitive?: ActivitySensitive[];
+  mark?: { sql: string; tf: string; ticket: string; tag: string; value: string } | null; // tag text for an untagged table
+  refs?: Refs;
 }

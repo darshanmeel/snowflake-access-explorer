@@ -4259,37 +4259,142 @@ def client_label(c):
     return CLIENTS.get(c, c) if c else "–"
 
 
-def activity(name, what):
-    """Activity tab: name's table use over ACTIVITY_DAYS up to the snapshot. what: object | user | role.
+def activity(name, what, user=None):
+    """Activity tab: name's table use over ACTIVITY_DAYS up to the snapshot. what: object | user | role; user: only
+    that user's use (the object page's "Access for").
     dict(first, last (days), daily [queries per day, oldest first], by {user|role|client|type|object: [dict(key, read,
-    write, ddl, last)], most first}, rows [one per user, role, client, object, statement and action: queries, days,
-    last], ddl [the DDL rows, newest first]). Counts are queries per action: a MERGE that reads and changes a table
+    write, ddl, last, daily)], most first}, rows [one per user, role, client, object, statement and action: queries,
+    days, last, daily], ddl [the DDL rows, newest first]). Counts are queries per action: a MERGE that reads and changes a table
     counts in both."""
     field = dict(object="OBJECT_NAME", user="USER_NAME", role="ROLE_NAME")[what]
     end = day(ref_time())
     first = end - timedelta(days=ACTIVITY_DAYS - 1)
     daily, by, rows = [0] * ACTIVITY_DAYS, {k: {} for k in ("user", "role", "client", "type", "object")}, {}
     for x in acts:
-        if x[field] != name:
+        if x[field] != name or (user and x["USER_NAME"] != user):
             continue
         d, q, last, act = day(x["DAY"]), int(x["QUERIES"] or 0), str(x["LAST_USED"])[:16], x["ACTION"].lower()
         if 0 <= (d - first).days < ACTIVITY_DAYS:
             daily[(d - first).days] += q
         keys = dict(user=x["USER_NAME"], role=x["ROLE_NAME"] or "–", client=client_label(x["CLIENT"]),
                     type=x["QUERY_TYPE"] or "–", object=x["OBJECT_NAME"])
+        i = (d - first).days
         for k, v in keys.items():
-            b = by[k].setdefault(v, dict(key=v, read=0, write=0, ddl=0, last=""))
+            b = by[k].setdefault(v, dict(key=v, read=0, write=0, ddl=0, last="", daily=[0] * ACTIVITY_DAYS))
             b[act] += q
             b["last"] = max(b["last"], last)
+            if 0 <= i < ACTIVITY_DAYS:
+                b["daily"][i] += q
         r = rows.setdefault(tuple(keys.values()) + (x["ACTION"],),
-                            dict(keys, action=x["ACTION"], queries=0, days=set(), last=""))
+                            dict(keys, action=x["ACTION"], queries=0, days=set(), last="", daily=[0] * ACTIVITY_DAYS))
         r["queries"] += q
         r["days"].add(d)
         r["last"] = max(r["last"], last)
+        if 0 <= i < ACTIVITY_DAYS:
+            r["daily"][i] += q
     out = [dict(r, days=len(r["days"])) for r in sorted(rows.values(), key=lambda r: -r["queries"])]
     return dict(first=first.isoformat(), last=end.isoformat(), daily=daily,
                 by={k: sorted(v.values(), key=lambda b: -(b["read"] + b["write"] + b["ddl"])) for k, v in by.items()},
                 rows=out, ddl=sorted((r for r in out if r["action"] == "DDL"), key=lambda r: r["last"], reverse=True))
+
+
+def used_path(u, r, o, action):
+    """The grant path behind one use: u (None for a role page) -> ... -> r, the role used -> ... -> the holder of a
+    privilege on o that fits the action (READ: a read privilege, else a write or OWNERSHIP) -> o, shortest first.
+    (path, privilege) or None when that role reaches no such grant now (an admin role, or the grant is gone)."""
+    if u is None:
+        head = [r]
+    else:
+        ups_ = [data_use(s)[0].get(r) for s in roles_of.get(u, []) + ["PUBLIC"]]
+        ups_ = [x for x in ups_ if x]
+        if not ups_:
+            return None
+        head = [u] + min(ups_, key=len)
+    best = data_use(r)[0]
+    fit = READ_PRIVS if action == "READ" else WRITE_PRIVS | {"OWNERSHIP"}
+    hits = [(len(best[h]), best[h], pv) for h, pv, _ in on.get(o, []) if h in best and pv in fit]
+    if not hits:
+        return None
+    _, p, pv = min(hits, key=lambda t: (t[0], t[2]))
+    return head + p[1:] + [o], pv
+
+
+def activity_graph(name, what, rows):
+    """Paths diagram of the Activity tab: activity() rows as grant paths (used_path), at most MAX_OBJECTS objects
+    (most queries first) on a person or role page. ((lanes, edges, notes) or None, [rows with no grant path now])."""
+    objs = list(dict.fromkeys(r["object"] for r in rows))[:MAX_OBJECTS]
+    shown, gone, seen = {}, [], set()
+    for r in rows:
+        k = (r["user"], r["role"], r["object"], r["action"])
+        if r["object"] not in objs or r["role"] == "–" or k in seen:
+            continue
+        seen.add(k)
+        hit = used_path(None if what == "role" else r["user"], r["role"], r["object"], r["action"])
+        if not hit:
+            gone.append(dict(user=r["user"], role=r["role"], object=r["object"], action=r["action"]))
+            continue
+        x = shown.setdefault((r["object"], hit[1]), dict(object=r["object"], privilege=hit[1], type=kinds.get(r["object"], ""),
+                                                         kind="user", paths=[]))
+        if hit[0] not in x["paths"]:
+            x["paths"].append(hit[0])
+    rs = list(shown.values())
+    if not rs:
+        return None, gone
+    if what == "object":
+        users = sorted({p[0] for x in rs for p in x["paths"]})
+        return object_graph(name, kinds.get(name, ""), rs, users), gone
+    return down_graph(name, rs, user=what == "user"), gone
+
+
+def mark_sensitive(obj):
+    """Text to tag obj as sensitive yourself (the app never runs it): sql, tf, ticket. The tag is the first
+    SENSITIVE_TAGS rule other than Snowflake's own categories, as tagged in this account (else <DB>.<SCHEMA>.NAME)."""
+    rules = [(t, v) for t, v in tag_rules().items() if t not in ("PRIVACY_CATEGORY", "SEMANTIC_CATEGORY")]
+    t, vals = rules[0] if rules else ("SENSITIVITY", {"CONFIDENTIAL"})
+    value = sorted(vals)[0] if vals else "SENSITIVE"
+    tag = next((x["TAG_NAME"] for x in tags if x["TAG_NAME"].split(".")[-1].upper() == t), f"<DB>.<SCHEMA>.{t}")
+    k = kinds.get(obj, "TABLE")
+    what = k if k in ("VIEW", "MATERIALIZED VIEW", "DYNAMIC TABLE", "EXTERNAL TABLE") else "TABLE"
+    hcl = lambda n: ".".join(r'\"' + x + r'\"' for x in n.split("."))  # noqa: E731  "DB"."S"."T" in an HCL string
+    sql = (f"-- Mark {obj} as sensitive: the app counts {t} = '{value}' as sensitive (SENSITIVE_TAGS)\n"
+           f"ALTER {what} {obj} SET TAG {tag} = '{value}';\n\n"
+           "-- Or let Snowflake classify its columns and set SEMANTIC_CATEGORY / PRIVACY_CATEGORY on them\n"
+           "-- (needs the role that owns the schema):\n"
+           f"-- CALL SYSTEM$CLASSIFY('{obj}', {{'auto_tag': true}});\n")
+    tf = (f'resource "snowflake_tag_association" "sensitive_{re.sub(r"[^a-z0-9]+", "_", obj.lower())}" {{\n'
+          f'  object_identifiers = ["{hcl(obj)}"]\n'
+          f'  object_type        = "{what}"\n'
+          f'  tag_id             = "{hcl(tag)}"\n'
+          f'  tag_value          = "{value}"\n}}\n')
+    ticket = (f"Request: mark {obj} as sensitive\nTag: {tag} = '{value}' on the {what.lower()}\n"
+              "Reason: (fill in, e.g. holds personal or confidential data)\n")
+    return dict(sql=sql, tf=tf, ticket=ticket, tag=tag, value=value)
+
+
+def activity_sensitive(name, what, rows):
+    """Sensitive data in the Activity tab. Per object used: sensitive (tags), sensitive columns, masked columns, row
+    policies; per user and role used on it: the sensitive columns that role sees in clear and the rows it sees
+    (data_view of the role used, from the policy text). Objects with nothing sensitive and no policy are left out."""
+    out, views = [], {}
+    for o in dict.fromkeys(r["object"] for r in rows):
+        if o not in kinds or not is_data(kinds[o]):
+            continue
+        ps, sc = policies_of(o), sensitive_cols(o)
+        if o not in sens and not ps["columns"] and not ps["rows"]:
+            continue
+        people = []
+        for r in rows:
+            if r["object"] != o or r["role"] == "–" or any(x["user"] == r["user"] and x["role"] == r["role"] for x in people):
+                continue
+            v = views.get((r["role"], o)) or views.setdefault((r["role"], o), data_view(r["role"], o, False))
+            people.append(dict(user=r["user"], role=r["role"], read=v["can_read"],
+                               clear=[c["column"] for c in v["columns"] if c["sensitive"] and c["state"] == "clear"],
+                               masked=[c["column"] for c in v["columns"] if c["state"] == "masked"],
+                               rows=v["rows"]["state"]))
+        out.append(dict(object=o, sensitive=o in sens, columns=sc, whole=o in sens and not sc,
+                        masking={c: [x["name"] for x in v] for c, v in ps["columns"].items()},
+                        row_policies=[x["name"] for x in ps["rows"]], people=people))
+    return out
 
 
 def weeks_of(days):

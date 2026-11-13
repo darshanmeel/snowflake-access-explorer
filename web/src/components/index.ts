@@ -17,5 +17,5 @@ export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind,
 export { tabGraph, tabPaths } from "./tabgraph";
 export { cellText, filterRows, sortRows, toCsv } from "./table";
 export { AccessPill, CodeOutput, copyText, EmptyState, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, MaskDots, MiniBar, PathChips, SensitiveCell, StackBar, Toggle, type Art, type BarPart, type FilterItem } from "./kit";
-export { CutPath, GrantLink, Overlap } from "./visuals";
+export { CutPath, DayStack, GrantLink, Overlap } from "./visuals";
 export { expiryOf, newRoleOf, sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";

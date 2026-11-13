@@ -10,7 +10,7 @@ import { startView } from "./Graph";
 import { copyText, MiniBar, StackBar } from "./kit";
 import { Legend } from "./Legend";
 import { subLines } from "./layout";
-import { Overlap } from "./visuals";
+import { DayStack, Overlap } from "./visuals";
 import { DataTable } from "./DataTable";
 
 const lost = (object: string, privileges: string[]): WhatIfObjectRow =>
@@ -176,5 +176,15 @@ describe("data panel", () => {
     const { container } = render(<DataInfo meta={meta as never} />);
     expect(container.textContent).toContain("no local disk");
     expect(container.textContent).toContain("the app owner's role");
+  });
+});
+
+describe("activity day chart", () => {
+  it("stacks the top five keys, folds the rest into Other, and labels the busiest day", () => {
+    const series = ["A", "B", "C", "D", "E", "F", "G"].map((key, k) => ({ key, values: [k, 0, 10] }));
+    const { container } = render(<DayStack first="2026-11-01" label="T" series={series} />);
+    expect([...container.querySelectorAll("figcaption span")].map((s) => s.textContent)).toEqual(["A", "B", "C", "D", "E", "Other (2)"]);
+    expect(container.querySelector("svg")!.getAttribute("aria-label")).toContain("most 70 on one day");
+    expect(container.textContent).toContain("2026-11-03");
   });
 });

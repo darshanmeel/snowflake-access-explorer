@@ -1654,17 +1654,27 @@ def activity_page(p, view):
     by user, role, client and statement, DDL changes and the rule 24-28 findings on it; else why there is none."""
     what = "object" if p.get("name") else "user" if p.get("user") else "role"
     name = p.get("name") or p.get("user") or p.get("role") or ""
+    who = p.get("as") if what == "object" else None  # the object page's "Access for": one user's use
     ok, why = a.act_state()
     if view == "mine" and not ok:
         why = "My access reads no ACCESS_HISTORY: open Activity on the shared data."
-    out = dict(view=view, what=what, name=name, days=a.ACTIVITY_DAYS, available=ok, reason=why,
+    out = dict(view=view, what=what, name=name, user=who, days=a.ACTIVITY_DAYS, available=ok, reason=why,
                note=(a.run.get("NOTES") or {}).get("activity"))
     if not ok:
         return out
-    x = a.activity(name, what)
-    return out | x | dict(total=len(x["rows"]), rows=x["rows"][:MAX_ACTIVITY], findings=[
+    x = a.activity(name, what, who)
+    g, gone = a.activity_graph(name, what, x["rows"])
+    data = what == "object" and a.is_data(a.kinds.get(name, ""))
+    return out | x | dict(
+        total=len(x["rows"]), rows=x["rows"][:MAX_ACTIVITY], gone=gone,
+        graph=g and build_graph("Who used it, through which grant", g[0], g[1], g[2],
+                                header=f"Role used, then the grant path it has now · top {a.MAX_OBJECTS} objects"
+                                if what != "object" else "User, role used, then the grant path it has now"),
+        sensitive=a.activity_sensitive(name, what, x["rows"]),
+        mark=a.mark_sensitive(name) if data and name not in a.sens else None, findings=[
         dict(num=r["num"], title=r["title"], severity=r["severity"], grantee=r["grantee"], detail=r["detail"])
-        for r in S["rows"] if int(r["num"]) >= 24 and (r["grantee"] == name or name in r["path"])])
+        for r in S["rows"] if int(r["num"]) >= 24 and (r["grantee"] == name or name in r["path"])
+        and (not who or r["grantee"] == who)])
 
 
 def usage_page(p, view):
@@ -2238,7 +2248,7 @@ ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": r
           "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page,
           "activity": activity_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
-             "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes"}
+             "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 

@@ -1710,6 +1710,20 @@ def test_activity():  # Activity tabs and rules 24-28: ACCESS_HISTORY per day, u
     assert f["24"][4] == ["ENGINEER_01", F + "ENGINEER", "SALES.CORE.TBL_CUSTOMER"]  # SVC_DEPLOY's MERGE: a service user
     assert f["25"][2] == "SVC_DEPLOY" and f["26"][4] == ["OPS_01", "SYSADMIN"]
     assert f["27"][4] == ["ENGINEER_01", "HR.PEOPLE.TBL_EMPLOYEE"] and "400 queries" in f["28"][3]
+    g, gone = a.activity_graph("SALES.CORE.TBL_CUSTOMER", "object", x["rows"])  # the grant path behind each use
+    assert not gone and g[0][0] == ("Users", ["ANALYST_01", "ENGINEER_01", "SVC_DEPLOY"]) and g[0][-1][1] == ["SALES.CORE.TBL_CUSTOMER"]
+    assert ("ANALYST_01", "GRP_ANALYSTS") in g[1]
+    assert a.used_path("ENGINEER_01", F + "ENGINEER", "SALES.CORE.TBL_CUSTOMER", "WRITE")[1] in a.WRITE_PRIVS
+    g, gone = a.activity_graph("SYSADMIN", "role", a.activity("SYSADMIN", "role")["rows"])
+    assert g is None and gone == [dict(user="OPS_01", role="SYSADMIN", object="FINANCE.REPORT.TBL_REVENUE", action="READ")]
+    s = a.activity_sensitive("SALES.CORE.TBL_CUSTOMER", "object", x["rows"])[0]  # what each role used sees
+    who = {(p["user"], p["role"]): p for p in s["people"]}
+    assert s["columns"] == ["BIRTH_DATE", "EMAIL", "PHONE"] and list(s["masking"]) == ["EMAIL"]
+    assert who[("ENGINEER_01", F + "ENGINEER")]["clear"] == ["BIRTH_DATE", "EMAIL", "PHONE"]
+    assert who[("ANALYST_01", "GRP_ANALYSTS")]["masked"] == ["EMAIL"]
+    m = a.mark_sensitive("SALES.CLEAN.TBL_ORDER")  # text only: an existing tag of the account, never run
+    assert "ALTER TABLE SALES.CLEAN.TBL_ORDER SET TAG SHARED.GOVERNANCE.SENSITIVITY = 'CONFIDENTIAL';" in m["sql"]
+    assert 'object_identifiers = ["\\"SALES\\".\\"CLEAN\\".\\"TBL_ORDER\\""]' in m["tf"] and "SYSTEM$CLASSIFY" in m["sql"]
     d = a.fake()  # the same changes through a role that owns the table: not rule 24
     d["ACTIVITY"] = [dict(x, ROLE_NAME=T + "SALES_CORE_OWNER") if x["USER_NAME"] == "ENGINEER_01" and x["ACTION"] != "READ"
                      else x for x in d["ACTIVITY"]]
