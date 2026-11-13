@@ -21,5 +21,5 @@ DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROU
 
 - SQL: `sql/1_setup.sql:503-517`, same text as `access.py:920-934`; window `USE_DAYS=180` (`sql/1_setup.sql:177`, `access.py:62`).
 - Written: `sql/1_setup.sql:520-533`; not readable -> UNAVAILABLE, no fallback, run stays OK.
-- Read as optional table (None if missing): `access.py:61,411-415`; lookups `access.py:1088-1089`; `used_on` `access.py:4528-4539`.
+- Read as optional table (None if missing): `access.py:61,411-415`; lookups `access.py:1088-1089`; `used_on` `access.py:4726-4737`.
 - `mine()` returns no OBJECT_USE key (`access.py:620-622`); `build` tolerates it (`access.py:1088`).

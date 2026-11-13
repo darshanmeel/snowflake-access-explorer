@@ -4408,11 +4408,12 @@ H AS (   -- each object a query read (READ), changed (WRITE) or created, altered
     UNION ALL
     SELECT QUERY_ID, USER_NAME, T, L, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL' FROM A WHERE OBJECT_MODIFIED_BY_DDL IS NOT NULL),
 X AS (   -- with the role, statement type, Streamlit app (query tag) and client of each query
-    SELECT H.*, Q.ROLE_NAME, Q.QUERY_TYPE, TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING AS APP,
+    SELECT H.*, Q.ROLE_NAME, Q.QUERY_TYPE, COALESCE(TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING,
+                                                   REGEXP_SUBSTR(Q.QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP,
            REGEXP_REPLACE(S.CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
     FROM H JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY Q ON Q.QUERY_ID = H.QUERY_ID AND Q.START_TIME >= $FROM_DAY::DATE
     LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
-    WHERE H.OBJECT_NAME IS NOT NULL AND {where})
+    WHERE H.OBJECT_NAME IS NOT NULL AND COALESCE(Q.QUERY_TAG, '') <> '{tag}' AND {where})
 """
 OFF = ("(DAYOFWEEKISO(DATEADD(HOUR, $TZ_HOURS, L)) > 5 OR HOUR(DATEADD(HOUR, $TZ_HOURS, L)) < $WORK_START "
        "OR HOUR(DATEADD(HOUR, $TZ_HOURS, L)) >= $WORK_END)")
@@ -4465,7 +4466,7 @@ def activity_section_sql(name, what, first, last, key, work=WORK_HOURS):
     return plain(f"{title}: {name}", [f"{title} for {name} ({what}), {first} to {last} (UTC days). {about}.",
                                       "Change the SET lines for another one or another window." +
                                       (" TZ_HOURS shifts UTC to your business time (e.g. 2 for UTC+2)." if key in ("hours", "off") else "")],
-                 sets, ACT_BASE.format(where=where) + select)
+                 sets, ACT_BASE.format(where=where, tag=QUERY_TAG) + select)
 
 
 def page_sql(page, p, first=None, last=None):

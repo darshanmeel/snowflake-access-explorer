@@ -61,8 +61,8 @@ erDiagram
 - Role link: `GRANTED_ON IN ('ROLE','DATABASE_ROLE') AND PRIVILEGE='USAGE'`, grantee not an admin role: `sql/1_setup.sql:691-695`, `access.py:1054-1058`.
 - Tag inheritance: a tag row counts for an object when its `OBJECT_NAME` equals the object (own or column tag), or equals the object's `DB.SCHEMA` (SCHEMA row) or `DB` (DATABASE row) from `split_name(obj)`: exact matches, not a prefix match (`access.py:2225-2241`).
 - Tag-based policy (`OBJECT_NAME` empty) joins by `TAG_NAME`: `access.py:2295-2298`.
-- Stream → sensitive source (rule 22): `access.py:5230-5242`.
-- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:5293`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:4374-4376`).
+- Stream → sensitive source (rule 22): `access.py:5428-5440`.
+- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:5491`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:4572-4574`).
 - Full list with evidence: `data/model.json` → `relationships`.
 
 ## Versioning
@@ -83,7 +83,7 @@ erDiagram
 | snapshot dict (`access.py:464-479`) | TBL_ACCESS_* of last OK run, or live / mine / fake | one list of row dicts per table + `run` |
 | DuckDB `TBL_ACCESS_*` (`cache.py:237-251`) | snapshot dict of one read | same as the Snowflake table |
 | DuckDB `TBL_ACCESS_*_PREV` (`cache.py:239-241`) | DuckDB tables of the read before | same as the Snowflake table |
-| `.cache/<key>.prev.pkl` (`cache.py:72-90`) | replaced `.pkl` of another run | whole dict (What changed, `server.py:1722`) |
+| `.cache/<key>.prev.pkl` (`cache.py:72-90`) | replaced `.pkl` of another run | whole dict (What changed, `server.py:1728`) |
 
 ## Pages
 

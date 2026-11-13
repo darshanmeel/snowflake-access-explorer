@@ -14,7 +14,7 @@ flowchart LR
     SM --> APP
     CL -->|component value| STR[st_react.py] --> SRV2[server.serve]
   end
-  APP[App.tsx] --> V[VIEWS page -> component<br/>App.tsx:249-254]
+  APP[App.tsx] --> V[VIEWS page -> component<br/>App.tsx:253-258]
   V --> P[pages/*.tsx] --> CL[api/client.ts get / post / download / useApi]
 ```
 
@@ -22,7 +22,7 @@ flowchart LR
 
 | Piece | Does | path:line |
 |---|---|---|
-| `SHARED_ONLY`, `viewPage(page, mine)` | Pages about everyone (review, flow, changes; `server.SHARED_ONLY`): switching to My access on one of them opens access; home stays (used by `setView`, web/src/App.tsx:277) | web/src/App.tsx:27-30 |
+| `SHARED_ONLY`, `viewPage(page, mine)` | Pages about everyone (review, flow, changes; `server.SHARED_ONLY`): switching to My access on one of them opens access; home stays (used by `setView`, web/src/App.tsx:278) | web/src/App.tsx:27-30 |
 | `PAGES`, `LABEL`, `GROUPS` | 17 page keys, labels, nav groups (answers / admin / detail) | web/src/App.tsx:31-38 |
 | `redirect(page, params)` | Old links to new screens; unknown page -> home | web/src/App.tsx:41-95 |
 | `read()` / `url()` / `useLoc()` | URL `?page=&data=mine&...` <-> location; pushState / popstate | web/src/App.tsx:107-130 |
@@ -30,7 +30,8 @@ flowchart LR
 | `Find` | Top-bar search -> `GET /api/find` | web/src/App.tsx:142-151 |
 | `Side`, `DataInfo`, `DataTime` | Side nav, "Data from" box (SQL copy), refresh | web/src/App.tsx:166-251 |
 | `VIEWS` | page key -> page component | web/src/App.tsx:253-258 |
-| `App` | `GET /api/meta` (web/src/App.tsx:268), `POST mine/load` (web/src/App.tsx:289), `POST reload` page / load (web/src/App.tsx:290-291), rebuild (web/src/App.tsx:293) | web/src/App.tsx:261 |
+| `App` | `GET /api/meta` (web/src/App.tsx:269), `POST mine/load` (web/src/App.tsx:290), `POST reload` page / load (web/src/App.tsx:291-292), rebuild (web/src/App.tsx:294) | web/src/App.tsx:261 |
+| SQL behind this page | State `sql` (web/src/App.tsx:266); top-bar "SQL" button (web/src/App.tsx:325) and a right-click on `<main>` (Shift + right-click keeps the browser menu) open `SqlPanel` for the current page and params (web/src/App.tsx:332-333); flow in [flows/show-sql.md](../flows/show-sql.md) | web/src/App.tsx:325-333 |
 
 ## API client (web/src/api/client.ts)
 
@@ -61,9 +62,10 @@ flowchart LR
 | usage | pages/Usage.tsx | Granted vs used (ACCESS_HISTORY) | usage (Usage.tsx:25) |
 | changes | pages/Changes.tsx | Gained / lost access, new / fixed findings, watched questions | changes (Changes.tsx:32), list (Changes.tsx:115), check / who (Changes.tsx:156) |
 
-- pages/Activity.tsx: `ActivityTab` (Activity.tsx:35-39) and `UseLine` (Activity.tsx:53-67) call `/api/activity`; `Activity` (Activity.tsx:81-124) is one access log of stacked sections (the CLAUDE.md exception to the tabs rule), shaped by `what`: `Warehouse` (Activity.tsx:204-230) for a warehouse; tiles (`Tiles`, Activity.tsx:134-157) or `AppViewers` for a Streamlit app (Activity.tsx:171-201); `OffHours` (Activity.tsx:233-280); `Touched` heat grid (`Heat`, Activity.tsx:284-360); `Hours` (hours shifted by the business-time slider at the top of the tab; overview pages only) (Activity.tsx:364-412); `Detail` (objects busiest first, then `ObjTiles`, `ByClient`, `Kinds`, `Matrix`, `ByType` and `ByDay`, Activity.tsx:415-462); `ByType` (DML / Read / DDL per day in their own colours, with `DayPanel`: busiest or pinned day, average a day, active days, Activity.tsx:580-630); `ByDay` (queries per day by user, role, client, statement, R / W / DDL or object kind, or any combination via `combine`, top 4 and Other, with a day-by-day table view, Activity.tsx:564-577, Activity.tsx:634-666); `WhoUsed` (Activity.tsx:669-712); `Sensitive` (Activity.tsx:748-775); `Paths` (Activity.tsx:726-745); DDL changes; `QuerySql` (Activity.tsx:778-787); `Checks` (Activity.tsx:789-802). Exports `offOf` (off-hours of a row after the UTC offset, Activity.tsx:25-26) and `combine` (rows summed per combination of dimensions, Activity.tsx:562-575). Types `ActivityPage` etc. (web/src/api/types.ts:1216-1259). Flow: [flows/activity-tab.md](../flows/activity-tab.md).
+- pages/Activity.tsx: `ActivityTab` (Activity.tsx:35-39) and `UseLine` (Activity.tsx:53-67) call `/api/activity`; `Activity` (Activity.tsx:93-146) is one access log of stacked sections (the CLAUDE.md exception to the tabs rule), shaped by `what`, inside a `SectionSql` context holding `section_sql` (Activity.tsx:70, Activity.tsx:112); each section is a `Sec` card whose `sql` key adds a SQL button that opens `SqlBox` with that section's query (Activity.tsx:73-83): `Warehouse` (Activity.tsx:226-252) for a warehouse; tiles (`Tiles`, Activity.tsx:156-179) or `AppViewers` for a Streamlit app (Activity.tsx:193-223); `OffHours` (sql=off, Activity.tsx:255-302); `Touched` heat grid (`Heat`, sql=touched, Activity.tsx:306-382); `Hours` (sql=hours; hours shifted by the business-time slider at the top of the tab; overview pages only) (Activity.tsx:386-432); `Detail` (objects busiest first, sql=objects, then `ObjTiles`, `ByClient` (sql=client), `Kinds` (sql=kinds), `Matrix` (sql=matrix), `ByType` (sql=type_day) and `ByDay` (sql=by_day), Activity.tsx:435-482); `ByType` (DML / Read / DDL per day in their own colours, with `DayPanel`: busiest or pinned day, average a day, active days, Activity.tsx:600-650); `ByDay` (queries per day by user, role, client, statement, R / W / DDL or object kind, or any combination via `combine`, top 4 and Other, with a day-by-day table view, Activity.tsx:654-686); `WhoUsed` (sql=who, Activity.tsx:689-732); `Sensitive` (Activity.tsx:768-795); `Paths` (Activity.tsx:746-765); DDL changes (sql=ddl, Activity.tsx:134-138); `QuerySql` (Activity.tsx:798-807); `Checks` (Activity.tsx:809-822). Exports `offOf` (off-hours of a row after the UTC offset, Activity.tsx:25-26) and `combine` (rows summed per combination of dimensions, Activity.tsx:584-597). Types `ActivityPage` etc. (web/src/api/types.ts:1216-1260). Flow: [flows/activity-tab.md](../flows/activity-tab.md).
 - pages/Object.tsx: `AppNote` banner on a Streamlit app's Who has access page: viewers see the owner role's data; who sees sensitive data they can't read (Object.tsx:68, Object.tsx:83-98; `WhoPage.app`, web/src/api/types.ts:985-986).
 - Pickers search the server: `Pick` -> `GET /api/list?q=&limit=50` (web/src/pages/common.tsx:54-71).
+- SQL to run yourself (pages/common.tsx): `SqlBox` shows one query in a `<pre>` with a Copy SQL button (`copyText`) (web/src/pages/common.tsx:98-107); `SqlPanel` asks `GET /api/sql` with the page and its params, closes on Escape, and lists every query as a `SqlBox` (web/src/pages/common.tsx:111-122); styles `.ae-sqlpanel`, `.ae-sqlbox` (web/src/app.css:732-738). Never runs the SQL.
 - Page helpers without UI: changeplan.ts, history.ts, signoff.ts, verdict.ts, who.ts, screens.ts (imports at web/src/pages/Plan.tsx:9, web/src/pages/Changes.tsx:11, web/src/pages/Catalog.tsx:7, web/src/pages/Check.tsx:10, web/src/pages/Object.tsx:15, web/src/pages/Map.tsx:9).
 - The change plan is saved in this browser (`useSaved`, web/src/pages/Risks.tsx:9) (inferred from name; see changeplan.ts).
 
@@ -90,7 +92,7 @@ flowchart LR
 | | `npm run build` -> web/dist | `npm run build:st` -> web/dist-st |
 |---|---|---|
 | Entry | web/index.html -> src/main.tsx | web/st/index.html -> src/st/main.tsx (web/st/index.html:10) |
-| Served by | server.py `spa` (server.py:26, server.py:2394-2404) | st_react.py component (st_react.py:12-13) |
+| Served by | server.py `spa` (server.py:26, server.py:2400-2410) | st_react.py component (st_react.py:12-13) |
 | Assets | inline limit 4096, ELK own chunk | no inlined assets, one JS (inlineDynamicImports) + one CSS (web/vite.config.ts:37-39) |
 | Stamp | src-hash.txt of web/src (web/vite.config.ts:10-20), checked by `test_bundles_fresh` (test_server.py:463) | same |
 

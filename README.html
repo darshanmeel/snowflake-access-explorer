@@ -177,6 +177,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li><b>Find</b>: any person, role or object; a user and a role with the same name are two hits. Find and every picker search on the server as you type: arrow keys and Enter pick, Escape or a click elsewhere closes the list.</li>
       <li><b>Shared snapshot</b> / <b>My access</b>: the whole account, or only your own access read live with your rights (<a href="#mine">My access</a>).</li>
       <li><b>Data from &lt;time&gt;</b> and <b>↻</b> (Read Snowflake again); with <code>SOURCE=objects</code> also <b>Rebuild snapshot</b>, which CALLs the procedure. <b>Demo data</b> marks fake data; <b>Dark</b> switches the theme.</li>
+      <li><b>SQL</b>: the read-only queries behind the page you are on (see below).</li>
       <li><b>Incomplete · N sources</b> (side menu): what could not be read, why, and the grant that fixes it.</li>
       <li><b>Data from &lt;time&gt;</b> (side menu): where the data came from, how long it is kept, and the file and schema of its <a href="#duckdb">SQL copy</a> (or why there is none).</li>
     </ul></div>
@@ -189,6 +190,8 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li>Change plan, rule On/Off and mutes, review decisions and watched questions are saved in this browser only.</li>
     </ul></div>
   </div>
+  <h3>SQL behind this page</h3>
+  <p>Every page has an <b>SQL</b> button in the top bar; a right-click anywhere on a page opens the same panel (Shift + right-click keeps the browser's own menu). The panel lists the read-only queries behind what the page shows, over <code>SNOWFLAKE.ACCOUNT_USAGE</code> with full names and a comment on each. The <code>SET</code> lines at the top are already filled in for the user, role, object, Streamlit app, schema or warehouse on screen. Copy one, change the <code>SET</code> values and run it in a worksheet with your own role; without access Snowflake says the view does not exist. The app never runs them. A person gets everything they can reach and every role they hold; a role, what it grants and who holds it; an object, who can reach it plus its tags and policies; Risks &amp; fixes, What if and Home, grants to PUBLIC, admin roles held by users and dormant or disabled users. On the Activity tab each section has its own <b>SQL</b> button; the hours-of-use and off-hours queries also have <code>WORK_START</code>, <code>WORK_END</code> and <code>TZ_HOURS</code> lines for business time. You need <code>IMPORTED PRIVILEGES</code> on the database <code>SNOWFLAKE</code>, or the database roles <code>SNOWFLAKE.SECURITY_VIEWER</code> and <code>SNOWFLAKE.GOVERNANCE_VIEWER</code>; ACCESS_HISTORY needs Enterprise edition. In Streamlit in Snowflake it works too: <code>sql/4_streamlit.sql</code> uploads <code>access_queries/*.sql</code>.</p>
 </section>
 
 <section class="card" id="graph">

@@ -5,7 +5,7 @@
 
 ```mermaid
 sequenceDiagram
-  participant S as server.what_if<br/>server.py:1921-1932
+  participant S as server.what_if<br/>server.py:1927-1938
   participant W as access.what_if<br/>access.py:4078-4256
   participant L as lookups (build)
   S->>W: changes JSON list
@@ -23,13 +23,13 @@ sequenceDiagram
 - `revoke_priv` (role, privilege, object) (`access.py:4016-4022`).
 - `drop_role` (role): refused for PUBLIC and admin roles (`access.py:4023-4028`).
 - `empty_public`: every grant to PUBLIC (`access.py:4029-4033`).
-- Unknown op or missing grant -> `ValueError` (`access.py:4007`, `3862`, `3867`, `3877`); server answers 400 `bad_change` (`server.py:1929-1932`).
+- Unknown op or missing grant -> `ValueError` (`access.py:4007`, `3862`, `3867`, `3877`); server answers 400 `bad_change` (`server.py:1935-1938`).
 
 ## Simulation and restore
 - `without_cuts(d, cut)`: data set minus removed GRANT / USER_ROLE rows (`access.py:4040-4048`).
-- `state()` copies every name in `STATE` (`access.py:3987-3990`, `4210-4213`); `restore()` puts them back in place; `REBOUND` names are rebound (`access.py:4600-4610`).
+- `state()` copies every name in `STATE` (`access.py:3987-3990`, `4210-4213`); `restore()` puts them back in place; `REBOUND` names are rebound (`access.py:4798-4808`).
 - Rebuild in `try`, `restore(saved)` in `finally` (`access.py:4135-4181`), so the loaded data set and its cached results (`memo`) come back.
-- `built` (the `KEEP_BUILT` sets) is copied first and put back after (`built.clear(); built.update(was)`, `access.py:4133`, `4045-4046`): the simulated build stores the loaded set in `built`, which would otherwise keep a stale or simulated entry. `loaded(d)` does the same (`access.py:4616`, `4238-4239`).
+- `built` (the `KEEP_BUILT` sets) is copied first and put back after (`built.clear(); built.update(was)`, `access.py:4133`, `4045-4046`): the simulated build stores the loaded set in `built`, which would otherwise keep a stale or simulated entry. `loaded(d)` does the same (`access.py:4814`, `4238-4239`).
 - Rules recheck only scoped names: `only` built from `SCOPED`/`GROW` and touched grantees (`access.py:4118-4125`, `4018`).
 
 ## Output
@@ -43,5 +43,5 @@ sequenceDiagram
 - Summary: `1 user loses access to 9 objects; 1 keeps access through another path (most via PUBLIC); 1 finding fixed, 0 new`
 - SQL: `REVOKE ROLE GRP_ANALYSTS FROM USER ANALYST_01;`
 - IaC: `Remove in the infrastructure-as-code repo: role GRP_ANALYSTS granted to user ANALYST_01`
-- Finding fixes feed What if via `fix_changes(edges)` (`access.py:4845-4854`).
+- Finding fixes feed What if via `fix_changes(edges)` (`access.py:5043-5052`).
 - Tests: `test_access.py:1002-1038` (what_if calls).

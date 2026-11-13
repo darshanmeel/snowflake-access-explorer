@@ -38,7 +38,7 @@ sequenceDiagram
 7. `server.py` import: `MODE, SOURCE, WHERE = cache.config()`, `DIRECT`, `KEY`, `DEMO_USER`, `TTL`, `DIST` — server.py:21-26.
 8. `cache.config(env)`: `FAKE=1` -> `('fake','fake','')`; source = `SOURCE` or `objects` if `ACCESS_SNAPSHOT` else `direct`; bad value -> ValueError; objects location from `ACCESS_SNAPSHOT` or `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA`, must be `DB.SCHEMA` — cache.py:27-40.
 9. Cache settings: `CACHE_HOURS` (24, 0 = memory only) and memory `TTL` 24 h — cache.py:20-24; `DUCKDB` (0 off, 1 also fake) — cache.py:158.
-10. Web server: `uvicorn.run(make_app(), host=HOST (127.0.0.1), port=WEB_PORT (8000))` — server.py:2417-2419.
+10. Web server: `uvicorn.run(make_app(), host=HOST (127.0.0.1), port=WEB_PORT (8000))` — server.py:2423-2425.
 11. Streamlit: `app.py` -> `st_react.app()` which imports `server` on the first API call — app.py:18, st_react.py:24.
 12. Role naming read at import: `ROLE_PREFIXES` -> `FUNC`, `TECH` (default `F_`, `T_`) — access.py:57.
 13. Nothing is read from Snowflake at startup: shared data loads on the first page (objects) or on a click (direct) — server.py:96-100.
@@ -52,4 +52,4 @@ sequenceDiagram
 | `python run.py --objects --port 9000` | `SOURCE=objects WEB_PORT=9000 python server.py` | http://localhost:9000 |
 
 - With `FAKE=1`: `cache.config()` -> `('fake', 'fake', '')`, `server.KEY` -> `local_fake`, `a.INSIDE` -> `False`, `server.mine_off()` -> `None`.
-- `meta` on fake data: `mode=fake, source=fake, run.run_id=fake, run.finished_at=2026-11-02 07:00, cache_hours=24` (`cache.HOURS` when `cache.local()`, else 0 — server.py:2148, cache.py:51-53; fake data itself is never written to `.cache/`, server.py:103).
+- `meta` on fake data: `mode=fake, source=fake, run.run_id=fake, run.finished_at=2026-11-02 07:00, cache_hours=24` (`cache.HOURS` when `cache.local()`, else 0 — server.py:2154, cache.py:51-53; fake data itself is never written to `.cache/`, server.py:103).

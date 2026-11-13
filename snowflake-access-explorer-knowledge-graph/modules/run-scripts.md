@@ -20,7 +20,7 @@ flowchart LR
 | `import access` loads `.env` (so ports can live there) | run.py:16 |
 | Args: `app` (web / streamlit, default `APP` or web), `--fake`, `--port`, `--direct`, `--objects` | run.py:28-34 |
 | `--fake` -> `FAKE=1`; source -> `SOURCE` | run.py:35-35 |
-| `command(argv, env)` builds `(cmd, env)` (testable; `test_run_address`, test_server.py:682) | run.py:26-42 |
+| `command(argv, env)` builds `(cmd, env)` (testable; `test_run_address`, test_server.py:703) | run.py:26-42 |
 | streamlit: `python -m streamlit run app.py --server.port N --server.address $HOST --server.headless true` (HOST default 127.0.0.1) | run.py:33-38 |
 | web: `WEB_PORT` then `python server.py` | run.py:39-41 |
 | `__main__`: runs the command as a subprocess in the repo folder | run.py:45-47 |

@@ -19,6 +19,7 @@ Key: solid = calls · dashed = data moves · numbers = order.
 - **Rule checks.** 29 checks of the role model and of what people did, such as a technical role granted to a person, an admin role held by a user, dormant users, PUBLIC grants, a person changing a table or a service user used from Snowsight. Each finding comes with the fix as infrastructure-as-code text and the matching SQL.
 - **What if.** Pick grants to take away (a role from a user or role, a privilege, a whole role, or everything on PUBLIC). See who loses what, who keeps it another way, which objects and roles are left behind, and which findings go away or appear. Fixes from the rule checks collect in one change plan. It is a simulation: it prints the REVOKE text for your infrastructure as code and never runs it.
 - **Readable graphs.** One lane per depth from the user, many database roles of one database folded into one box, huge boxes grouped by schema and type, hover explains each line in words, and each box shows its worst rule finding ("High · 3", click opens them). Snowflake's own built-in grants that every user gets through PUBLIC are one folded box, not findings.
+- **SQL behind every page.** The **SQL** button in the top bar (or a right-click on the page; Shift + right-click keeps the browser menu) lists the read-only queries behind what the page shows, over `SNOWFLAKE.ACCOUNT_USAGE`, with the user, role or object already filled in. Copy one and run it in a worksheet with your own role; the app never runs them. On the Activity tab each section has its own SQL button.
 - **Read-only.** It only reads from Snowflake. It never runs GRANT, REVOKE, CREATE or ALTER and writes nothing to Snowflake. Locally it keeps a copy of what it read in `.cache/` (git-ignored) for a day; no passwords.
 - **Works with what you have.** It shows the whole account if your role can read it, and only your own access if not (My access).
 
@@ -356,7 +357,7 @@ and leaves them out. Snowflake does not log result downloads from Snowsight or d
 is in [README.html](README.html) > Data sources.
 
 ## Use the queries without the app
-Only want the answers, not the app? [`access_queries/`](access_queries/README.md) holds plain SQL over `SNOWFLAKE.ACCOUNT_USAGE`:
+Only want the answers, not the app? [`access_queries/`](access_queries/README.md) holds plain SQL over `SNOWFLAKE.ACCOUNT_USAGE`. The app's **SQL** button shows the ones behind the page you are on, already filled in for the user, role or object on screen:
 
 | File | Answers |
 |---|---|

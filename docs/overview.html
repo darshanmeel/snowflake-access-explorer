@@ -146,6 +146,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>"What if" shows who would lose access before anything is changed.</li>
 <li>Sensitive data view: who reads labelled columns, and which are hidden (masked).</li>
 <li>Activity tab on a table, a person or a role: who used which tables in the last 60 days, with which role and client, and how much of it outside business hours; query metadata only, never the query text. It follows the object: for a Streamlit app, who opened it and who saw data they cannot read themselves; for a database or schema, everything in it; for a warehouse, who ran queries on it and who can use it but did not.</li>
+<li>SQL behind every page: an SQL button in the top bar (or a right-click) lists the read-only queries behind what the page shows, ready to copy and run in Snowflake with your own role; the app never runs them.</li>
 </ul>
 <p class="src">README.md:3, 17-23, 32-41 · CLAUDE.md:3, 6, 57, 86 · server.py:126-143 · access_queries/README.md:3-4</p></section>
 

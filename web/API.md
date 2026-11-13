@@ -842,6 +842,9 @@ reaches no grant on the table now (an admin role, or the grant was removed since
 a masking or row access policy; `people[].rows` is `all`, `filtered`, `none` or `unknown`, read from the policy text.
 `mark` is `{sql, tf, ticket, tag, value}` for an object that is a table or view without a sensitive tag: text to tag
 it, which the app never runs (else null). `findings` are the rule 24-28 findings for the subject (and for `as`).
+`section_sql` is `{section key: sql}`, the query behind each section, for its SQL button (`a.activity_section_sql`; keys
+`tiles`, `client`, `kinds`, `matrix`, `type_day`, `by_day`, `hours`, `off`, `touched`, `objects`, `who`, `ddl`); `hours` and `off`
+have `WORK_START`, `WORK_END` and `TZ_HOURS` lines for business time. The app never runs them.
 `app` is set only for a Streamlit app (else null), from `a.app_use`: `{can: {user: role holding USAGE}, opened:
 {user: {queries, last}}, never: [users who can open it and did not], saw: {user: [sensitive objects they opened it for
 but cannot read themselves]}}`. Opening an app without a table query leaves no row, so `opened` only has users whose
@@ -852,6 +855,30 @@ For a warehouse (`kind` `WAREHOUSE`) there are no ACCESS_HISTORY rows: the answe
 user: null, available, reason, warehouse: {used: [{user, queries, last}], unused: [users who can use or operate it and
 did not]}, source}`. It comes from the query-history read (`USAGE` rows; `source` is its state, `demo values` for fake
 data); `available` is false when that source is `UNAVAILABLE`, with `reason`.
+
+### GET /api/sql?view=&page=&<the page's own parameters>
+
+The SQL behind a page ("SQL behind this page": the top-bar **SQL** button, or a right-click on the page). `page` is a
+page key (`home`, `access`, `object`, `usage`, `sensitive`, `flow`, `review`, `rules`, `whatif`, ...; default `home`);
+the other parameters are the page's own (`user=`, `role=`, `name=`, `show=activity`). Producer: `a.page_sql`, which fills
+the `SET` lines of the `access_queries/` files, or of a query of its own, for what the page shows. The app never runs
+the queries; the viewer copies one into a worksheet and needs IMPORTED PRIVILEGES on database `SNOWFLAKE` (or the
+database roles `SNOWFLAKE.SECURITY_VIEWER` and `SNOWFLAKE.GOVERNANCE_VIEWER`); ACCESS_HISTORY needs Enterprise edition.
+
+```json
+{"page": "access",
+ "queries": [{"title": "Everything ANALYST_01 can reach, through which roles", "sql": "-- ...
+SET USER_NAME = 'ANALYST_01';
+..."},
+             {"title": "Every role ANALYST_01 holds", "sql": "..."}]}
+```
+
+`queries` are most useful first, each `{title, sql}`: a person has `2_user_access.sql` and `1_user_roles.sql`; a role
+`3_role_access.sql` and `4_role_holders.sql`; an object `5_object_users.sql` and its tags and policies. With
+`show=activity`: one query per Activity section plus "Every query, one by one"; for a warehouse, queries per user and
+role from QUERY_HISTORY and who can use it. `usage` adds the objects used per week; `sensitive`, `flow` and `review` the
+sensitive tags; `rules`, `whatif`, `review` and `home` grants to PUBLIC, admin roles held by users and dormant or
+disabled users with roles.
 
 ### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0
 

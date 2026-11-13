@@ -25,11 +25,11 @@ flowchart TD
 - `local()`: file only when `CACHE_HOURS > 0` and not inside Snowflake (`cache.py:51-53`).
 - `get()`: memory checked first without the lock, so a page whose data is in memory never waits for another key's read (`cache.py:109-111`); then under one `RLock` memory again (another thread may have read it), file, `fn()`, stores both (`cache.py:24`, `98-119`); fake mode passes `disk=False` (`server.py:103`).
 - `ready()`: answers without reading the source (`cache.py:136-143`); used to require a click before a direct read (`server.py:99-100`).
-- `drop()`: under `LOCK`, out of memory, file set aside as `.old.pkl` (`cache.py:146-154`); the lock stops a read still running from storing its older data after the drop (`cache.py:149`); called on refresh (`server.py:2216`, `2149`) and fresh My access (`server.py:163-164`).
+- `drop()`: under `LOCK`, out of memory, file set aside as `.old.pkl` (`cache.py:146-154`); the lock stops a read still running from storing its older data after the drop (`cache.py:149`); called on refresh (`server.py:2222`, `2149`) and fresh My access (`server.py:163-164`).
 
 ## Previous snapshot (`.prev.pkl`)
 - `keep_prev(f, new)`: the replaced file (or `.old.pkl`) becomes `<key>.prev.pkl` unless it is the same run (`run_of`: RUN_ID, FINISHED_AT) (`cache.py:67-81`).
-- `prev(key)`: returns it with its mtime, or None (`cache.py:84-90`); used by What changed (`server.py:1722`).
+- `prev(key)`: returns it with its mtime, or None (`cache.py:84-90`); used by What changed (`server.py:1728`).
 
 ## Built data sets (`access.py`)
 - `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1014`, `974-978`).

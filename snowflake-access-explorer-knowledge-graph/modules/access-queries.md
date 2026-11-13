@@ -77,6 +77,10 @@ Example (test data of test_queries.py): `1_user_roles.sql` for `ANALYST_01` give
 - `sql/1_setup.sql` has the same walks as `TF_ACCESS_OF` (sql/1_setup.sql:672) and `TF_WHO_CAN` (sql/1_setup.sql:733), but over the `TBL_ACCESS_` snapshot tables (edges marked inferred).
 - `access_queries/` reads ACCOUNT_USAGE directly: no future grants, up to about 2 hours behind (access_queries/README.md:85-91, 124-131).
 
+## Used by the app's SQL panel
+
+- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:4377-4386`, `access.py:4493-4520`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
+
 ## Unclear
 
 - Snowflake acceptance of a recursive CTE inside a SQL table function is not tested (DuckDB only); functions.sql says to fall back to the files (access_queries/functions.sql:6-7).

@@ -21,8 +21,8 @@ flowchart LR
 - What if prints REVOKE / IaC text, never runs it — CLAUDE.md:64.
 
 ## App roles (who needs what)
-- `DEV_ROLE`, `APP_ROLE` privileges: see deploy-snowflake.md > Roles and grants needed (README.md:248, README.html:654, sql/1_setup.sql:861-861, sql/4_streamlit.sql:69-80).
-- The setup scripts do issue `GRANT ... TO ROLE &APP_ROLE` on the app's own DB/schema/WH/tables/functions/procedure/Streamlit, all `(may fail)` except `GRANT_STREAMLIT` — sql/1_setup.sql:861-916, sql/4_streamlit.sql:69-80. POC note: app role may equal developer role, so they are skipped or no-ops — sql/1_setup.sql:861.
+- `DEV_ROLE`, `APP_ROLE` privileges: see deploy-snowflake.md > Roles and grants needed (README.md:248, README.html:654, sql/1_setup.sql:861-861, sql/4_streamlit.sql:72-83).
+- The setup scripts do issue `GRANT ... TO ROLE &APP_ROLE` on the app's own DB/schema/WH/tables/functions/procedure/Streamlit, all `(may fail)` except `GRANT_STREAMLIT` — sql/1_setup.sql:861-916, sql/4_streamlit.sql:72-83. POC note: app role may equal developer role, so they are skipped or no-ops — sql/1_setup.sql:861.
 - Developer account-read grants (`IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS`) are given as comments only, not executed — sql/1_setup.sql:918-922.
 - Optional admin step `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE` (login reuse ~4 h) — README.md:177, README.html:650.
 - Viewers only need `APP_ROLE` — README.md:248.

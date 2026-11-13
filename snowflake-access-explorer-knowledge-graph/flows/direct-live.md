@@ -39,8 +39,8 @@ sequenceDiagram
 
 1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:31-36; `DIRECT = SOURCE == "direct"` — server.py:22.
 2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` — server.py:96-100, cache.py:136-143.
-3. `meta()` catches it and sends `error` so the UI shows the load card — server.py:2162-2178; React: `needShared` and the "Load shared data" button — web/src/App.tsx:305, web/src/App.tsx:348, `post("reload", {what:"load"})` — web/src/App.tsx:291.
-4. `reload({"what":"load"})` -> `load_shared()` — server.py:2220-2222; refresh `{what:"page"}` / `rebuild` drop the cache and read again at once in direct mode — server.py:2216-2226.
+3. `meta()` catches it and sends `error` so the UI shows the load card — server.py:2168-2184; React: `needShared` and the "Load shared data" button — web/src/App.tsx:306, web/src/App.tsx:352, `post("reload", {what:"load"})` — web/src/App.tsx:292.
+4. `reload({"what":"load"})` -> `load_shared()` — server.py:2226-2228; refresh `{what:"page"}` / `rebuild` drop the cache and read again at once in direct mode — server.py:2222-2232.
 5. `read_shared()` -> `with_query(lambda q: a.live(q, old))` with `old` = the ACTIVITY rows of `cache.last(KEY)` (memory, `.pkl`, `.old.pkl`, `.prev.pkl`) — server.py:87-93, cache.py:93-104, server.py:71-84.
 6. `live(query)` setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` (may be refused -> `None`) — access.py:653-662.
 7. Grants: ACCOUNT_USAGE `GRANTS_TO_ROLES` / `GRANTS_TO_USERS` if both readable (database role grantee qualified as `DB.ROLE`), else `SHOW ROLES` + `SHOW GRANTS TO/OF ROLE` per role and database roles per database; skipped roles land in notes — access.py:669-714.

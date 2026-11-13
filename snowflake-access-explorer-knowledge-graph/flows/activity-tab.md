@@ -28,7 +28,7 @@ sequenceDiagram
             S->>A: activity_sensitive(name, what, rows), query_sql(name, what, first, last)
             S->>A: app_use(name, rows) (app only), mark_sensitive(name) (untagged data object only)
             S->>S: rule rows num >= 24 naming it (rules_activity, rule29)
-            S-->>T: daily, by, rows (2000), ddl, graph, gone, sensitive, objects, query_sql, app, work, mark, findings
+            S-->>T: daily, by, rows (2000), ddl, graph, gone, sensitive, objects, query_sql, section_sql, app, work, mark, findings
         end
     end
     T-->>U: access log: tiles / app viewers, off-hours, who touched what, hours of use, objects, who used, sensitive, paths, DDL, SQL, checks
@@ -40,28 +40,28 @@ sequenceDiagram
 2. Access page (person or role): tab "Activity" — `web/src/pages/Access.tsx:106`; `ActivityTab what={user ? "user" : "role"}` — `web/src/pages/Access.tsx:110`.
 3. "Access for" strip on the Object page: `UseLine` for the picked user — `web/src/pages/Object.tsx:121`; it asks the same endpoint with `as=` and shows queries, roles, clients and last day, or "Not used in N days"; a click sets `show=activity, as=<user>` — `web/src/pages/Activity.tsx:53-67`.
 4. `ActivityTab` calls `useApi("activity", {view, name|user|role, as})` — `web/src/pages/Activity.tsx:35-39`, `web/src/api/client.ts:69`; with `as` set it shows "Only X's use" and an "All users" button that clears `as` — `web/src/pages/Activity.tsx:42-50`.
-5. Route: `GET /api/activity` -> `serve("activity")` -> `ROUTES["activity"] = activity_page`; in WITH_REFS, so `refs` (kinds, labels) come along — `server.py:2381-2382`, `server.py:2265-2267`. Inside Snowflake the same handler answers through the st_react bridge (`flows/streamlit-in-snowflake.md`).
+5. Route: `GET /api/activity` -> `serve("activity")` -> `ROUTES["activity"] = activity_page`; in WITH_REFS, so `refs` (kinds, labels) come along — `server.py:2387-2388`, `server.py:2271-2273`. Inside Snowflake the same handler answers through the st_react bridge (`flows/streamlit-in-snowflake.md`).
 6. `activity_page(p, view)`: `what` = object (name=), user (user=) or role (role=); an object of kind STREAMLIT becomes `app`, DATABASE or SCHEMA becomes `scope`; `as=` only on an object or app — `server.py:1659-1665`.
-7. Warehouse: no ACCESS_HISTORY rows, so the answer is `warehouse_use(name)` (users with queries from the usage read, and users who can use it but did not), `available` unless the usage source is UNAVAILABLE — `server.py:1668-1672`, `access.py:4446-4452`.
+7. Warehouse: no ACCESS_HISTORY rows, so the answer is `warehouse_use(name)` (users with queries from the usage read, and users who can use it but did not), `available` unless the usage source is UNAVAILABLE — `server.py:1668-1672`, `access.py:4644-4650`.
 8. `act_state()`; My access without activity -> reason "open Activity on the shared data" — `server.py:1665-1667`, `access.py:4275-4282`. Not available -> `available=false, reason`, plus `work` and `note` — `server.py:1673-1677`.
 9. `activity(name, what, who)` -> first, last, daily, by, rows (with hours, weekend, first_day, kind, interactive), ddl — `server.py:1678`, `access.py:4289-4339`.
-10. `activity_graph(name, what, rows)` -> graph built by `build_graph("Who used it, through which grant", ...)` and `gone` (uses with no grant path now); skipped for app and scope — `server.py:1679`, `server.py:1683-1685`, `access.py:4383-4407`.
-11. `activity_sensitive(name, what, rows)`, `query_sql(name, what, first, last)`, `objects` (kind and sensitive flag of each object in the rows), for an untagged data object `mark_sensitive(name)`, for an app `app_use(name, rows)` — `server.py:1686-1690`, `access.py:4342-4359`, `access.py:4431-4443`.
-12. Findings: rule rows (`S["rows"]`, from `findings()`: rules 24-28 via `rules_activity`, 29 via `rule29`) with number >= 24 whose grantee is the name or whose path names it, narrowed to `as` — `server.py:1690-1693`, `access.py:5335-5336`.
+10. `activity_graph(name, what, rows)` -> graph built by `build_graph("Who used it, through which grant", ...)` and `gone` (uses with no grant path now); skipped for app and scope — `server.py:1679`, `server.py:1683-1685`, `access.py:4581-4605`.
+11. `activity_sensitive(name, what, rows)`, `query_sql(name, what, first, last)`, `section_sql` (the SQL behind each section, `activity_section_sql` per `ACT_SECTIONS` key, server.py:1687; [show-sql.md](show-sql.md)), `objects` (kind and sensitive flag of each object in the rows), for an untagged data object `mark_sensitive(name)`, for an app `app_use(name, rows)` — `server.py:1686-1691`, `access.py:4342-4359`, `access.py:4629-4641`.
+12. Findings: rule rows (`S["rows"]`, from `findings()`: rules 24-28 via `rules_activity`, 29 via `rule29`) with number >= 24 whose grantee is the name or whose path names it, narrowed to `as` — `server.py:1691-1694`, `access.py:5533-5534`.
 13. Rows sent: first `MAX_ACTIVITY` (2000), `total` = all — `server.py:1653`, `server.py:1682`. Business hours: `work = {start, end}` from `WORK_HOURS` — `server.py:1674`, `access.py:70`.
-14. Screen (`Activity`): warehouse -> `Warehouse` panel; not available -> empty state; no rows -> "No activity" (an app still shows its viewers) — `web/src/pages/Activity.tsx:81-97`, `web/src/pages/Activity.tsx:212-238`.
-15. Access log, top to bottom — `web/src/pages/Activity.tsx:99-132`:
-    - lead sentence per `what` and the source line (UTC window, no query text) — `web/src/pages/Activity.tsx:134-140`, `web/src/pages/Activity.tsx:108-109`;
-    - tiles (reads / writes / DDL / clients for an object; objects touched / busiest / sensitive otherwise; people off-hours; warnings) or, for an app, `AppViewers` (opened, can open never did, saw data they can't read, opened without access now, and the table of who can and who did) — `web/src/pages/Activity.tsx:142-165`, `web/src/pages/Activity.tsx:179-209`;
-    - top bar: Change object picker and the business-time slider UTC-12..+14 (shared by every section) — `web/src/pages/Activity.tsx:102-108`;
-    - overview sections only on a database, schema, person or role page (a table, view or app shows the one-object sections) — `web/src/pages/Activity.tsx:112-116`:
-    - `OffHours`: people or objects with weekend or outside-business-hours queries — `web/src/pages/Activity.tsx:241-288`;
-    - `Touched`: heat grid (`Heat`) of rows x columns or days, last 30 days or the window, all or off-hours, all or sensitive objects — `web/src/pages/Activity.tsx:292-318`, `web/src/pages/Activity.tsx:328-368`;
-    - `Hours`: queries per hour of day per user or object, business hours shaded, hours shifted by the business-time slider — `web/src/pages/Activity.tsx:372-418`;
-    - `Detail`: objects busiest first (search, sensitive filter), then the picked object: `ObjTiles`, `ByClient`, `Kinds`, `Matrix`, `ByType` (DML / Read / DDL per day as `DayStack`, `DayPanel` for the busiest or pinned day), `ByDay` (per day by user, role, client, statement, R / W / DDL or object kind, top 4 and Other, or a day-by-day table; combinations by `combine`) — `web/src/pages/Activity.tsx:421-468`, `web/src/pages/Activity.tsx:570-672`, `web/src/components/visuals.tsx:77-153`;
-    - `WhoUsed`, `Sensitive`, `Paths` (object / user / role only), DDL changes, `QuerySql` (copy button), `Checks` (findings with "Open finding and fix") — `web/src/pages/Activity.tsx:675-808`.
-16. Off-hours everywhere use `offOf(row, work)`: weekend queries plus weekday hours outside `[start, end)` after the UTC offset — `web/src/pages/Activity.tsx:25-26`. Names link to the Object or Access page with `show=activity` — `web/src/pages/Activity.tsx:87-88`.
-17. Types: `ActivityPage` (what incl. app / scope / warehouse, kind, app, warehouse, work, query_sql, objects), `ActivityBy`, `ActivityRow` (hours, weekend, weekend_hours, first_day, kind, interactive), `ActivitySensitive`, `ActivityKey`; `WhoPage.app` — `web/src/api/types.ts:1216-1259`, `web/src/api/types.ts:985-986`.
+14. Screen (`Activity`): warehouse -> `Warehouse` panel; not available -> empty state; no rows -> "No activity" (an app still shows its viewers) — `web/src/pages/Activity.tsx:93-109`, `web/src/pages/Activity.tsx:226-252`.
+15. Access log, top to bottom — `web/src/pages/Activity.tsx:111-146`:
+    - lead sentence per `what` and the source line (UTC window, no query text) — `web/src/pages/Activity.tsx:148-154`, `web/src/pages/Activity.tsx:121-122`;
+    - tiles (reads / writes / DDL / clients for an object; objects touched / busiest / sensitive otherwise; people off-hours; warnings) or, for an app, `AppViewers` (opened, can open never did, saw data they can't read, opened without access now, and the table of who can and who did) — `web/src/pages/Activity.tsx:156-179`, `web/src/pages/Activity.tsx:193-223`;
+    - top bar: Change object picker and the business-time slider UTC-12..+14 (shared by every section) — `web/src/pages/Activity.tsx:115-121`;
+    - overview sections only on a database, schema, person or role page (a table, view or app shows the one-object sections) — `web/src/pages/Activity.tsx:125-129`:
+    - `OffHours`: people or objects with weekend or outside-business-hours queries — `web/src/pages/Activity.tsx:255-302`;
+    - `Touched`: heat grid (`Heat`) of rows x columns or days, last 30 days or the window, all or off-hours, all or sensitive objects — `web/src/pages/Activity.tsx:306-332`, `web/src/pages/Activity.tsx:342-382`;
+    - `Hours`: queries per hour of day per user or object, business hours shaded, hours shifted by the business-time slider — `web/src/pages/Activity.tsx:386-432`;
+    - `Detail`: objects busiest first (search, sensitive filter), then the picked object: `ObjTiles`, `ByClient`, `Kinds`, `Matrix`, `ByType` (DML / Read / DDL per day as `DayStack`, `DayPanel` for the busiest or pinned day), `ByDay` (per day by user, role, client, statement, R / W / DDL or object kind, top 4 and Other, or a day-by-day table; combinations by `combine`) — `web/src/pages/Activity.tsx:435-482`, `web/src/pages/Activity.tsx:584-686`, `web/src/components/visuals.tsx:77-153`;
+    - `WhoUsed`, `Sensitive`, `Paths` (object / user / role only), DDL changes, `QuerySql` (copy button); each `Sec` card with a `sql` key has its own SQL button (`SectionSql` context, `web/src/pages/Activity.tsx:70-83`), `Checks` (findings with "Open finding and fix") — `web/src/pages/Activity.tsx:689-822`.
+16. Off-hours everywhere use `offOf(row, work)`: weekend queries plus weekday hours outside `[start, end)` after the UTC offset — `web/src/pages/Activity.tsx:25-26`. Names link to the Object or Access page with `show=activity` — `web/src/pages/Activity.tsx:99-100`.
+17. Types: `ActivityPage` (what incl. app / scope / warehouse, kind, app, warehouse, work, query_sql, objects), `ActivityBy`, `ActivityRow` (hours, weekend, weekend_hours, first_day, kind, interactive), `ActivitySensitive`, `ActivityKey`; `WhoPage.app` — `web/src/api/types.ts:1216-1260`, `web/src/api/types.ts:985-986`.
 
 ## Example (fake data, `test_server.test_activity`, `test_server.py:634-654`)
 

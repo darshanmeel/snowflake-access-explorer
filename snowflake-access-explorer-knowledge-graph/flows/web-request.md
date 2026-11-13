@@ -30,17 +30,17 @@ sequenceDiagram
 
 ## Steps
 
-1. Server start: `uvicorn.run(make_app(), host=HOST or 127.0.0.1, port=WEB_PORT or 8000)` — server.py:2417-2419; `uvicorn server:app` builds lazily — server.py:2409-2414.
-2. `make_app()` adds gzip (`minimum_size=2000`) and computes `hosts = allowed_hosts()` once — server.py:2306-2314.
-3. `allowed_hosts()`: loopback + `ALLOWED_HOSTS` (comma list, `*` = any); `HOST=0.0.0.0`/`::` adds hostname, FQDN and IPs; other HOST adds itself — server.py:2289-2303, `LOOPBACK` — server.py:128.
-4. `served(host)` strips the port / IPv6 brackets — server.py:2316-2319.
-5. Middleware `same_site`: Host not served -> 400 `bad_host` (DNS rebinding) — server.py:2321-2329.
-6. Cross-site refusal -> 403 `cross_site`: a non-GET/HEAD whose `Origin` host is not served, or any `/api/` call with `Sec-Fetch-Site` not `same-origin`/`none` (default same-origin when absent) — server.py:2330-2336.
-7. Exception handlers: `ApiError` -> its status + `{detail, message}`; anything else -> 500 `{detail:"error", message:"Type: text"}` — server.py:2339-2345, `ApiError` — server.py:58-61.
-8. Session id from cookie `ae_sid` — server.py:2347-2348.
-9. Routes: `/api/meta`, `POST /api/reload`, `POST /api/mine/load`, `/api/mine`, one GET per page name, `/api/<rules|review|whatif>.csv`, SPA fallback serving `web/dist` (path kept inside DIST) — server.py:2350-2404.
-10. `route(name)` returns `JSONResponse(serve(...))` (FastAPI encoder skipped for speed) — server.py:2376-2383.
-11. `serve()`: params to str, `session()`, `ROUTES[name](p, view)`, `refs` for `WITH_REFS`, `clean()` — server.py:2271-2278; tables — server.py:2261-2268.
+1. Server start: `uvicorn.run(make_app(), host=HOST or 127.0.0.1, port=WEB_PORT or 8000)` — server.py:2423-2425; `uvicorn server:app` builds lazily — server.py:2415-2420.
+2. `make_app()` adds gzip (`minimum_size=2000`) and computes `hosts = allowed_hosts()` once — server.py:2312-2320.
+3. `allowed_hosts()`: loopback + `ALLOWED_HOSTS` (comma list, `*` = any); `HOST=0.0.0.0`/`::` adds hostname, FQDN and IPs; other HOST adds itself — server.py:2295-2309, `LOOPBACK` — server.py:128.
+4. `served(host)` strips the port / IPv6 brackets — server.py:2322-2325.
+5. Middleware `same_site`: Host not served -> 400 `bad_host` (DNS rebinding) — server.py:2327-2335.
+6. Cross-site refusal -> 403 `cross_site`: a non-GET/HEAD whose `Origin` host is not served, or any `/api/` call with `Sec-Fetch-Site` not `same-origin`/`none` (default same-origin when absent) — server.py:2336-2342.
+7. Exception handlers: `ApiError` -> its status + `{detail, message}`; anything else -> 500 `{detail:"error", message:"Type: text"}` — server.py:2345-2351, `ApiError` — server.py:58-61.
+8. Session id from cookie `ae_sid` — server.py:2353-2354.
+9. Routes: `/api/meta`, `POST /api/reload`, `POST /api/mine/load`, `/api/mine`, one GET per page name, `/api/<rules|review|whatif>.csv`, SPA fallback serving `web/dist` (path kept inside DIST) — server.py:2356-2410.
+10. `route(name)` returns `JSONResponse(serve(...))` (FastAPI encoder skipped for speed) — server.py:2382-2389.
+11. `serve()`: params to str, `session()`, `ROUTES[name](p, view)`, `refs` for `WITH_REFS`, `clean()` — server.py:2277-2284; tables — server.py:2267-2274.
 12. `session()`: view must be `shared|mine` (else 400 `bad_param`); shared -> `load_shared(ask=True)`; mine -> `mine_entry(sid)` or 409 `mine_not_loaded`; then under `LOCK` `a.build`, clears `a.capped`, caches `sens`, `rows` (rule rows), `breaks` — server.py:182-202.
 13. Page names / labels `PAGES`, nav groups `GROUP`, shared-only `SHARED_ONLY = {review, flow, changes}` — server.py:28-37.
 14. Client side: `get()` memoises per URL, `check()` turns non-2xx into `ApiFail(status, detail, message)` — web/src/api/client.ts:28-44; `post()` sends JSON with `credentials: "same-origin"` — web/src/api/client.ts:46-53.

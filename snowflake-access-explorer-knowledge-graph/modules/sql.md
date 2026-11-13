@@ -73,7 +73,7 @@ flowchart TD
 ## sql/2_snapshot.sql
 
 - `SNAPSHOT`: `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')` (sql/2_snapshot.sql:11-12). P_SOURCE AUTO / ACCOUNT_USAGE / SHOW (sql/2_snapshot.sql:2-3).
-- The app's "rebuild" sends the same CALL (server.py:2208).
+- The app's "rebuild" sends the same CALL (server.py:2214).
 
 ## sql/3_cleanup.sql
 
@@ -85,11 +85,12 @@ flowchart TD
 |---|---|---|
 | STAGE_APP | app stage | sql/4_streamlit.sql:19 |
 | PUT_APP, PUT_ACCESS, PUT_CACHE, PUT_SERVER, PUT_SF, PUT_ST_REACT, PUT_UI | Python files | sql/4_streamlit.sql:22-40 |
-| PUT_ENVIRONMENT | environment.yml (sql/4_streamlit.sql:46) | sql/4_streamlit.sql:45 |
-| PUT_WEB_INDEX, CLEAR_WEB_ASSETS (may fail), PUT_WEB_ASSETS | web/dist-st | sql/4_streamlit.sql:48-55 |
-| PUT_SETTINGS | sis/.env as the app's .env (sql/4_streamlit.sql:59) | sql/4_streamlit.sql:58 |
-| STREAMLIT | `CREATE OR REPLACE STREAMLIT ST_ACCESS_EXPLORER`, `MAIN_FILE = 'app.py'` | sql/4_streamlit.sql:61-67 |
-| GRANT_DATABASE / SCHEMA / WAREHOUSE_APP (may fail), GRANT_STREAMLIT | app role access | sql/4_streamlit.sql:70-79 |
+| PUT_QUERIES | access_queries/*.sql to `STG_ACCESS_APP/access_queries`, read by `access.query_file` for the SQL panel (sql/4_streamlit.sql:46) | sql/4_streamlit.sql:45 |
+| PUT_ENVIRONMENT | environment.yml (sql/4_streamlit.sql:49) | sql/4_streamlit.sql:48 |
+| PUT_WEB_INDEX, CLEAR_WEB_ASSETS (may fail), PUT_WEB_ASSETS | web/dist-st | sql/4_streamlit.sql:51-58 |
+| PUT_SETTINGS | sis/.env as the app's .env (sql/4_streamlit.sql:62) | sql/4_streamlit.sql:61 |
+| STREAMLIT | `CREATE OR REPLACE STREAMLIT ST_ACCESS_EXPLORER`, `MAIN_FILE = 'app.py'` | sql/4_streamlit.sql:64-70 |
+| GRANT_DATABASE / SCHEMA / WAREHOUSE_APP (may fail), GRANT_STREAMLIT | app role access | sql/4_streamlit.sql:73-82 |
 
 - Two options: SOURCE=objects (needs 1 and 2 first) or SOURCE=direct (owner role reads ACCOUNT_USAGE live) (sql/4_streamlit.sql:2-7).
 

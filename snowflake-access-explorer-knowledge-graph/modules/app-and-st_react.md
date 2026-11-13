@@ -35,5 +35,5 @@ sequenceDiagram
 
 - `mine/load` makes a new sid and drops the old MINE entry, as the local server does (st_react.py:35-39).
 - Unknown endpoint -> 404 `not_found` (st_react.py:44).
-- Inside Snowflake: deployed by sql/4_streamlit.sql (`MAIN_FILE = 'app.py'`, sql/4_streamlit.sql:62-67); My access hidden there (server.py:136-138).
+- Inside Snowflake: deployed by sql/4_streamlit.sql (`MAIN_FILE = 'app.py'`, sql/4_streamlit.sql:65-70); My access hidden there (server.py:136-138).
 - Tests: `test_pages` hands every page to the component (test_access.py:657), `test_streamlit_bridge` (test_server.py:267).

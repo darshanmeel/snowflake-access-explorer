@@ -51,7 +51,7 @@ flowchart LR
 
 - Memory `cache.MEM`, 24 h (`TTL`): `cache.py:22-23,95-98`.
 - `.cache/<key>.pkl` for `CACHE_HOURS` (24, 0 = memory only), not inside Snowflake: `cache.py:21,51-57,99-114`.
-- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:67-81`; read by `cache.prev` `cache.py:84-90` for What changed `server.py:1722`.
+- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:67-81`; read by `cache.prev` `cache.py:84-90` for What changed `server.py:1728`.
 - `drop` sets the file aside as `.old.pkl` (Read again): `cache.py:146-154`.
 - Cache key = account, source/what, snapshot location, user, role: `cache.py:43-48`; server `KEY` `server.py:23`.
 - `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:1017-1018,903-909`.

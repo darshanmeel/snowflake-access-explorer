@@ -45,11 +45,11 @@ flowchart TD
 - Prereq `sis/.env` (required, git-ignored, template `sis.env.example`): `mkdir sis; copy sis.env.example sis\.env` — README.md:301-310, sql/4_streamlit.sql:9-10, .gitignore:8.
 - Stage `STG_ACCESS_APP` — sql/4_streamlit.sql:19-20.
 - PUT `app.py`, `access.py`, `cache.py`, `server.py`, `sf.py`, `st_react.py`, `ui.py` — sql/4_streamlit.sql:22-41.
-- PUT `environment.yml` — sql/4_streamlit.sql:45-46; `.streamlit/config.toml` not uploaded — sql/4_streamlit.sql:44.
-- PUT `web/dist-st/index.html`, `REMOVE` old assets `(may fail)`, PUT assets — sql/4_streamlit.sql:48-56.
-- PUT `sis/.env` as the app's `.env` — sql/4_streamlit.sql:58-59.
-- `CREATE OR REPLACE STREAMLIT ST_ACCESS_EXPLORER ... MAIN_FILE='app.py' QUERY_WAREHOUSE=&WH` — sql/4_streamlit.sql:61-67.
-- Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:69-80.
+- PUT `environment.yml` — sql/4_streamlit.sql:48-49; `.streamlit/config.toml` not uploaded — sql/4_streamlit.sql:44.
+- PUT `web/dist-st/index.html`, `REMOVE` old assets `(may fail)`, PUT assets — sql/4_streamlit.sql:51-59.
+- PUT `sis/.env` as the app's `.env` — sql/4_streamlit.sql:61-62.
+- `CREATE OR REPLACE STREAMLIT ST_ACCESS_EXPLORER ... MAIN_FILE='app.py' QUERY_WAREHOUSE=&WH` — sql/4_streamlit.sql:64-70.
+- Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:72-83.
 - Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:319.
 - Verify: Streamlit exists (expect 1), stage files, exactly 4 assets, grants on the app — sql/4_streamlit_verify.sql:3-15.
 - Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:690-697, web/ST.md:54-55.
@@ -62,13 +62,13 @@ flowchart TD
 | `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:918-922 |
 | `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:309-310, sql/4_streamlit.sql:5-7 |
 | `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:861-861, README.html:654 |
-| `APP_ROLE`, SiS | USAGE on `ST_ACCESS_EXPLORER` (+ DB/schema/WH) | sql/4_streamlit.sql:69-80 |
+| `APP_ROLE`, SiS | USAGE on `ST_ACCESS_EXPLORER` (+ DB/schema/WH) | sql/4_streamlit.sql:72-83 |
 - How these grants are given in practice: see access-requests.md.
 
 ## Rollback / removal
 - No step-wise rollback is defined. Only full removal: `python run_sql.py sql/3_cleanup.sql` drops Streamlit, app stage, task, both procedures, 3 functions, code stage and the `TBL_ACCESS_` tables with data; schema stays; "Cannot be undone" — sql/3_cleanup.sql:1-69.
 - Verify removal: `sql/3_cleanup_verify.sql` (every check expect 0) — sql/3_cleanup_verify.sql:3-25.
-- Redeploy of the app = rerun 4_streamlit.sql (replaces app) — sql/4_streamlit.sql:11. Previous app version is not kept (inferred from `CREATE OR REPLACE`, sql/4_streamlit.sql:62).
+- Redeploy of the app = rerun 4_streamlit.sql (replaces app) — sql/4_streamlit.sql:11. Previous app version is not kept (inferred from `CREATE OR REPLACE`, sql/4_streamlit.sql:65).
 
 ## Unclear / inconsistent
 - Grants created by 1_setup.sql / 4_streamlit.sql are not revoked by 3_cleanup.sql (inferred: dropping the objects removes their grants; DB/schema/WH USAGE grants remain) — sql/3_cleanup.sql:11-69.
