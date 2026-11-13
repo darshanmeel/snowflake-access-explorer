@@ -609,6 +609,14 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <div class="eyebrow">Side view · setup</div>
   <h2>Run modes and what you need</h2>
   <p class="key">Set the mode in <code>.env</code> (or <code>run.py --fake | --direct | --objects</code>); then <code>python run.py</code> (local web app, http://localhost:8000) or <code>python run.py streamlit</code> (http://localhost:8501). Install steps: README.md.</p>
+  <h3>Which way to run it</h3>
+  <p class="key">Pick by what your role can do. When in doubt, run it locally first: the side menu's <b>Incomplete</b> box lists what your role could not read and which grant would add it.</p>
+<table><thead><tr><th>Your role has</th><th>Run</th><th>You get</th></tr></thead><tbody>
+<tr><td>Only a warehouse</td><td>Locally, <code>python run.py</code></td><td><b>My access</b>: your own roles and everything they reach</td></tr>
+<tr><td><code>MANAGE GRANTS</code></td><td>Locally</td><td>The whole account's grants, read with <code>SHOW</code> (slow)</td></tr>
+<tr><td><code>IMPORTED PRIVILEGES</code> on DB <code>SNOWFLAKE</code>, or <code>SNOWFLAKE.SECURITY_VIEWER</code> + <code>SNOWFLAKE.GOVERNANCE_VIEWER</code></td><td>Locally</td><td>The whole account, including tags, policies, query history and the Activity tab (ACCESS_HISTORY, Enterprise edition)</td></tr>
+<tr><td>The above, plus <code>CREATE STAGE</code> and <code>CREATE STREAMLIT</code> on a schema (and <code>CREATE TABLE</code>, <code>PROCEDURE</code>, <code>FUNCTION</code>, <code>TASK</code> for snapshot mode)</td><td>Streamlit in Snowflake (<code>sql/4_streamlit.sql</code>)</td><td>One shared app in Snowsight; viewers need only <code>USAGE</code> on it. It runs with its owner role's rights, so every viewer sees what that role reads; My access is hidden there</td></tr>
+</tbody></table>
 <table><thead><tr><th>Mode</th><th>Set in <code>.env</code></th><th>Needs in Snowflake</th><th>You see</th></tr></thead><tbody>
 <tr><td><b>Fake data</b></td><td><code>FAKE=1</code> (<code>run.py --fake</code>)</td><td>Nothing</td><td>The demo account used in these screenshots</td></tr>
 <tr><td><b>My access</b></td><td>Snowflake settings below; <b>My access</b> in the top bar, then <b>Load my access</b></td><td>A warehouse; for the 7-day query history also a database (<code>SNOWFLAKE_DATABASE</code> or your default namespace)</td><td>Your own roles and everything they reach</td></tr>

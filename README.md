@@ -79,6 +79,25 @@ python run.py --fake                                  # try it on fake data: ope
 ```
 For your own account: `copy .env.example .env` (macOS/Linux: `cp`), fill in account, user, role and warehouse (step 3 below), then `python run.py`. A browser tab opens for the Snowflake login. The details follow.
 
+## Which way to run it
+Pick by what your Snowflake role can do. When in doubt, start locally: run `python run.py`, and the side menu's
+**Incomplete** box lists what your role could not read and which grant would add it.
+
+| Your role has | Run | You get |
+|---|---|---|
+| Only a warehouse | Locally: `python run.py` | **My access**: your own roles and everything they reach, on almost every screen |
+| `MANAGE GRANTS` | Locally | The whole account's grants, read with `SHOW` (slow: one query per role) |
+| `IMPORTED PRIVILEGES` on DB `SNOWFLAKE`, or the database roles `SNOWFLAKE.SECURITY_VIEWER` + `SNOWFLAKE.GOVERNANCE_VIEWER` | Locally | The whole account: grants, users, tags, policies, query history and the **Activity** tab (ACCESS_HISTORY, Enterprise edition) |
+| The above, plus `CREATE STAGE` and `CREATE STREAMLIT` on a schema (and `CREATE TABLE`, `PROCEDURE`, `FUNCTION`, `TASK` for snapshot mode) | **Streamlit in Snowflake** ([steps](#streamlit-in-snowflake-sis)) | One shared app in Snowsight; viewers only need `USAGE` on it (`APP_ROLE`) |
+
+- Locally the app reads with **your** login and role and creates nothing in Snowflake (direct mode).
+- In Snowflake the app runs with its **owner role's rights**: every viewer sees what the owner role reads, not their
+  own access, so My access is hidden there. The owner role needs `IMPORTED PRIVILEGES` on the role itself, not through a
+  secondary role.
+- A setup made before the Activity tab: run `sql/1_setup.sql` again; it adds the new columns (`HOURS`, `APP`).
+- If the account blocks Streamlit custom components, the app in Snowflake shows "the React component did not load":
+  use the local version.
+
 ## Run each mode
 Every mode after install ([step 1](#1-install-once-powershell-needs-python-310-and-git-no-node-or-npm)). Commands are PowerShell; on macOS/Linux write
 `NAME=value python run.py` instead of `$env:NAME="value"; python run.py`. Stop with Ctrl+C.
