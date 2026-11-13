@@ -35,10 +35,10 @@ sequenceDiagram
 3. `SqlPanel` calls `useApi("sql", {...params, page})` -> `GET /api/sql?...` (inside Snowflake the same call goes through the st_react bridge, [streamlit-in-snowflake.md](streamlit-in-snowflake.md)); Escape closes it — `web/src/pages/common.tsx:111-114`, `web/src/api/client.ts:69`.
 4. Route: `GET /api/sql` -> `serve("sql")` -> `ROUTES["sql"] = sql_page`; not in `WITH_REFS`, so no `refs` — `server.py:2386-2388`, `server.py:2271-2273`, `server.py:2277-2284`.
 5. `sql_page(p, view)` returns `{page, queries}` = `a.page_sql(page or "home", p)` without empty entries — `server.py:1697-1699`.
-6. `page_sql(page, p)` picks names from `user` / `a`, `role`, `name` / `obj` / `table`, sets the activity window, and builds the list per page ([logic/page-sql.md](../logic/page-sql.md)) — `access.py:4471-4558`:
-    - `show=activity`: warehouse -> QUERY_HISTORY by warehouse + `5_object_users.sql` (`access.py:4478-4485`); otherwise one `activity_section_sql` per section plus `query_sql` (`access.py:4486-4492`);
-    - user / role / object: `query_file` on `2_user_access`, `1_user_roles`, `3_role_access`, `4_role_holders`, `5_object_users` with `USER_NAME` / `ROLE_NAME` / `OBJECT_NAME` set, and tags and policies on the object (`access.py:4493-4520`);
-    - usage, sensitive / flow / review, rules / home / whatif / review and the fallback add their own `plain` queries (`access.py:4521-4557`).
+6. `page_sql(page, p)` picks names from `user` / `a`, `role`, `name` / `obj` / `table`, sets the activity window, and builds the list per page ([logic/page-sql.md](../logic/page-sql.md)) — `access.py:4472-4559`:
+    - `show=activity`: warehouse -> QUERY_HISTORY by warehouse + `5_object_users.sql` (`access.py:4479-4486`); otherwise one `activity_section_sql` per section plus `query_sql` (`access.py:4487-4493`);
+    - user / role / object: `query_file` on `2_user_access`, `1_user_roles`, `3_role_access`, `4_role_holders`, `5_object_users` with `USER_NAME` / `ROLE_NAME` / `OBJECT_NAME` set, and tags and policies on the object (`access.py:4494-4521`);
+    - usage, sensitive / flow / review, rules / home / whatif / review and the fallback add their own `plain` queries (`access.py:4522-4558`).
 7. `query_file` reads `access_queries/<file>` and rewrites its `SET` lines with `lit()` values; inside Snowflake the files are on the app stage from `PUT_QUERIES` — `access.py:4377-4386`, `sql/4_streamlit.sql:45-46`.
 8. The panel shows a header (read-only, change the SET lines, run with your own role, the app never runs them), a Close button and one `SqlBox` per query: title, Copy SQL (`copyText`, "Copied" or "Select and copy"), and the SQL in a `<pre>` — `web/src/pages/common.tsx:115-121`, `web/src/pages/common.tsx:98-107`.
 

@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-13",
- "commit": "19a7da381809cb1bac27b9b44d4befa318c95f50",
+ "commit": "8e4e792fd9a82a5ee9ac8854da724cdb152d2794",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -80,7 +80,7 @@
   "README.html": "06af02b884c6ca731859e4433c33a7b2b2631b280c6e6a088ec9983aa6af19e6",
   "README.md": "1784a541c18c99aead9fad8492da2a6a8ca0cc2d6ea61bfc7e370adb80d21034",
   "THIRD_PARTY.md": "c948d1fcd2941f071b9c71bde325bd4871d6150346a589f8af49cc3e415d66dc",
-  "access.py": "eb90a67eeb0305195b6507e2a9a88405bf40ce93e5b580894c2617090c029808",
+  "access.py": "53cdbae19fae79ba8433d8d72a43910c8b0381f851bedcab389d6ab08e840307",
   "access_queries/1_user_roles.sql": "978d262ea4c3b4b9d7749142baa784963e114c4cd2bdbf85ef6036baaa8fbafc",
   "access_queries/2_user_access.sql": "1ca7eb90434bde09852d534b0d46a876ee1d321c35099040680882d5a86e923d",
   "access_queries/3_role_access.sql": "6a53393e6b4a68ee184908f791b077701d09b69b8253e588d86353319fc4073b",
@@ -259,5 +259,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-13 21:20 UTC"
+ "updated": "2026-11-13 21:31 UTC"
 }

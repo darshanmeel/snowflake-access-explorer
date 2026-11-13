@@ -61,8 +61,8 @@ erDiagram
 - Role link: `GRANTED_ON IN ('ROLE','DATABASE_ROLE') AND PRIVILEGE='USAGE'`, grantee not an admin role: `sql/1_setup.sql:691-695`, `access.py:1054-1058`.
 - Tag inheritance: a tag row counts for an object when its `OBJECT_NAME` equals the object (own or column tag), or equals the object's `DB.SCHEMA` (SCHEMA row) or `DB` (DATABASE row) from `split_name(obj)`: exact matches, not a prefix match (`access.py:2225-2241`).
 - Tag-based policy (`OBJECT_NAME` empty) joins by `TAG_NAME`: `access.py:2295-2298`.
-- Stream → sensitive source (rule 22): `access.py:5428-5440`.
-- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:5491`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:4572-4574`).
+- Stream → sensitive source (rule 22): `access.py:5429-5441`.
+- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:5492`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:4573-4575`).
 - Full list with evidence: `data/model.json` → `relationships`.
 
 ## Versioning

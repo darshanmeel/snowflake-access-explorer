@@ -15,7 +15,7 @@ flowchart LR
   SQL[sql/: setup, snapshot, streamlit deploy] --> SF
 ```
 
-- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:464` snapshot, `access.py:629` live, `access.py:5085` checks, `access.py:4289` activity), cache (`cache.py`), server (`server.py:2312` make_app), two front ends (`web/src/App.tsx:253` VIEWS, `app.py:18` st_react.app).
+- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:464` snapshot, `access.py:629` live, `access.py:5086` checks, `access.py:4289` activity), cache (`cache.py`), server (`server.py:2312` make_app), two front ends (`web/src/App.tsx:253` VIEWS, `app.py:18` st_react.app).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
 ## Entry points

@@ -50,10 +50,10 @@ flowchart LR
 | What they see (screen 7) | access.py:3838-3862 | `seen` |
 | Compare / review / search | access.py:3863-3983 | `compare` (access.py:3879-3933; `match` / `extras` pass through `with_sql`, access.py:3932-3933), `review` (access.py:3936-3969), `search` (access.py:3972-3981) |
 | What if | access.py:3984-4258 | `WHAT_IF_OPS` (access.py:3986), `changes_of`, `without_cuts`, `what_if` (access.py:4078-4256) |
-| Granted vs used and Activity | access.py:4259-4789 | `use_state`; Activity tab: `act_state`, `client_label`, `activity`, `used_path`, `query_sql`, `activity_graph`, `user_reads`, `app_exposure`, `app_use`, `warehouse_use`, `rule29`, `mark_sensitive`, `activity_sensitive` (access.py:4275-4719); `used_on`, `granted_used` (access.py:4744-4787) |
-| SQL to run yourself | access.py:4362-4558 | `DAYS_USAGE`, `QUERIES` (access_queries folder), `NEEDS` (privilege comment) (access.py:4362-4368); `lit`, `query_file`, `plain` (access.py:4371-4392); Activity section queries `ACT_FILTER`, `ACT_BASE`, `OFF`, `ACT_SECTIONS` (access.py:4395-4455), `activity_section_sql` (access.py:4458-4468); `page_sql` (access.py:4471-4558); logic in [logic/page-sql.md](../logic/page-sql.md) |
-| What changed | access.py:4790-5036 | `state` / `restore` / `loaded` (access.py:4792-4819), `facts` (access.py:4824-4850), `diff` (access.py:4952-5034) |
-| Rules | access.py:5037-5535 | `rule_rows`, `checks`, `find`, `rules_model` ... `rule23`, `rules_activity` 24-28 (access.py:5475-5526), `rule29` (access.py:4653-4668), `findings` (access.py:5529-5535) |
+| Granted vs used and Activity | access.py:4259-4790 | `use_state`; Activity tab: `act_state`, `client_label`, `activity`, `used_path`, `query_sql`, `activity_graph`, `user_reads`, `app_exposure`, `app_use`, `warehouse_use`, `rule29`, `mark_sensitive`, `activity_sensitive` (access.py:4275-4720); `used_on`, `granted_used` (access.py:4745-4788) |
+| SQL to run yourself | access.py:4362-4559 | `DAYS_USAGE`, `QUERIES` (access_queries folder), `NEEDS` (privilege comment) (access.py:4362-4368); `lit`, `query_file`, `plain` (access.py:4371-4392); Activity section queries `ACT_FILTER`, `ACT_BASE`, `OFF`, `ACT_SECTIONS` (access.py:4395-4456), `activity_section_sql` (access.py:4459-4469); `page_sql` (access.py:4472-4559); logic in [logic/page-sql.md](../logic/page-sql.md) |
+| What changed | access.py:4791-5037 | `state` / `restore` / `loaded` (access.py:4793-4820), `facts` (access.py:4825-4851), `diff` (access.py:4953-5035) |
+| Rules | access.py:5038-5536 | `rule_rows`, `checks`, `find`, `rules_model` ... `rule23`, `rules_activity` 24-28 (access.py:5476-5527), `rule29` (access.py:4654-4669), `findings` (access.py:5530-5536) |
 
 ## Load and build
 
@@ -76,21 +76,21 @@ sequenceDiagram
 
 | Rules | Function | Lines |
 |---|---|---|
-| 1, 2, 3, 4, 13, 14 | `rules_model` | access.py:5177-5227 |
-| 5, 9, 12 | `rules_admin` | access.py:5230-5252 |
-| 6, 7, 10, 11, 15 | `rules_sensitive` | access.py:5255-5310 |
-| 8, 16 | `rules_users` | access.py:5313-5325 |
-| 17 | `rule17` (+ `readonly_writes` access.py:5134-5165) | access.py:5328-5344 |
-| 18 | `rule18` (+ `unusual` access.py:5347-5373) | access.py:5376-5389 |
-| 19 | `rule19` | access.py:5392-5406 |
-| 20, 21 | `rules_operate` | access.py:5414-5425 |
-| 22 | `rule22` | access.py:5428-5445 |
-| 23 | `rule23` | access.py:5448-5472 |
-| 24, 25, 26, 27, 28 | `rules_activity` (table activity, [logic/activity.md](../logic/activity.md)) | access.py:5475-5526 |
-| 29 | `rule29` (Streamlit app exposure, via `app_exposure`) | access.py:4653-4668 |
+| 1, 2, 3, 4, 13, 14 | `rules_model` | access.py:5178-5228 |
+| 5, 9, 12 | `rules_admin` | access.py:5231-5253 |
+| 6, 7, 10, 11, 15 | `rules_sensitive` | access.py:5256-5311 |
+| 8, 16 | `rules_users` | access.py:5314-5326 |
+| 17 | `rule17` (+ `readonly_writes` access.py:5135-5166) | access.py:5329-5345 |
+| 18 | `rule18` (+ `unusual` access.py:5348-5374) | access.py:5377-5390 |
+| 19 | `rule19` | access.py:5393-5407 |
+| 20, 21 | `rules_operate` | access.py:5415-5426 |
+| 22 | `rule22` | access.py:5429-5446 |
+| 23 | `rule23` | access.py:5449-5473 |
+| 24, 25, 26, 27, 28 | `rules_activity` (table activity, [logic/activity.md](../logic/activity.md)) | access.py:5476-5527 |
+| 29 | `rule29` (Streamlit app exposure, via `app_exposure`) | access.py:4654-4669 |
 
-- `findings()` concatenates all (rules 24-28 through `cached("activity", rules_activity)`, access.py:5533; then `rule29()`, access.py:5534) and sorts by rule number (access.py:5529-5535); `checks()` gives `(num, title, grantee, detail, path)` rows (access.py:5085-5087).
-- `SCOPED` rules check only names passed in `only` (what_if rechecks only what a change touches) (access.py:5168-5169).
+- `findings()` concatenates all (rules 24-28 through `cached("activity", rules_activity)`, access.py:5534; then `rule29()`, access.py:5535) and sorts by rule number (access.py:5530-5536); `checks()` gives `(num, title, grantee, detail, path)` rows (access.py:5086-5088).
+- `SCOPED` rules check only names passed in `only` (what_if rechecks only what a change touches) (access.py:5169-5170).
 
 ## Key functions
 
@@ -132,17 +132,17 @@ sequenceDiagram
 | `act_state` / `activity` | Activity tab: available or why not; per-day, by-key and per-use numbers for an object, user, role, app or scope, with UTC hours, weekend, kind | access.py:4275-4282, access.py:4289-4339 |
 | `query_sql` | Copy-only SQL listing every query behind the tab (never run) | access.py:4342-4359 |
 | `lit` / `plain` / `query_file` | SQL literal for a SET line; a query of our own (comments, NEEDS, SET lines, SELECT); an `access_queries/` file with its SET lines filled in (None when the file is missing) | access.py:4371-4374, access.py:4389-4392, access.py:4377-4386 |
-| `activity_section_sql` | SQL behind one Activity section (`ACT_SECTIONS` key) for an object, user, role, app or scope (never run) | access.py:4458-4468 |
-| `page_sql` | SQL to run yourself behind a page: list of `{title, sql}`, most useful first (never run) | access.py:4471-4558 |
-| `used_path` / `activity_graph` | Grant path behind each use; the Paths diagram | access.py:4560-4578, access.py:4581-4605 |
-| `user_reads` / `app_exposure` / `app_use` | Objects a user reads; what a Streamlit app shows its viewers with its owner's rights; who can open it, who did, who saw data they can't read | access.py:4608-4610, access.py:4613-4626, access.py:4629-4641 |
-| `warehouse_use` | Who ran queries on a warehouse (usage read) and who can but did not | access.py:4644-4650 |
-| `activity_sensitive` / `mark_sensitive` | Sensitive columns each user + role used sees; tag text for an untagged table (never run) | access.py:4696-4719, access.py:4671-4693 |
-| `granted_used` | Screen 13; also `sql`: the trim of unused grants joined from `changes_of(changes)`, as What if writes it (access.py:4787) | access.py:4744-4787 |
-| `facts` / `diff` | Screen 14 | access.py:4824-4850, access.py:4952-5034 |
-| `rule_rows` / `checks` / `findings` | Rule output for pages and tests | access.py:5061-5087, access.py:5529-5535 |
-| `rules_activity` | Rules 24-28 on table activity | access.py:5475-5526 |
-| `rule29` | Rule 29: Streamlit app shows its owner's sensitive data | access.py:4653-4668 |
+| `activity_section_sql` | SQL behind one Activity section (`ACT_SECTIONS` key) for an object, user, role, app or scope (never run) | access.py:4459-4469 |
+| `page_sql` | SQL to run yourself behind a page: list of `{title, sql}`, most useful first (never run) | access.py:4472-4559 |
+| `used_path` / `activity_graph` | Grant path behind each use; the Paths diagram | access.py:4561-4579, access.py:4582-4606 |
+| `user_reads` / `app_exposure` / `app_use` | Objects a user reads; what a Streamlit app shows its viewers with its owner's rights; who can open it, who did, who saw data they can't read | access.py:4609-4611, access.py:4614-4627, access.py:4630-4642 |
+| `warehouse_use` | Who ran queries on a warehouse (usage read) and who can but did not | access.py:4645-4651 |
+| `activity_sensitive` / `mark_sensitive` | Sensitive columns each user + role used sees; tag text for an untagged table (never run) | access.py:4697-4720, access.py:4672-4694 |
+| `granted_used` | Screen 13; also `sql`: the trim of unused grants joined from `changes_of(changes)`, as What if writes it (access.py:4788) | access.py:4745-4788 |
+| `facts` / `diff` | Screen 14 | access.py:4825-4851, access.py:4953-5035 |
+| `rule_rows` / `checks` / `findings` | Rule output for pages and tests | access.py:5062-5088, access.py:5530-5536 |
+| `rules_activity` | Rules 24-28 on table activity | access.py:5476-5527 |
+| `rule29` | Rule 29: Streamlit app shows its owner's sensitive data | access.py:4654-4669 |
 
 - Graph fragment: `function:access.py:<name>` nodes, `implements` edges to `business_rule:rule_N` (_scripts/parts/modules.*.jsonl).
 - unclear: `fake()` has no docstring; its content was not inspected line by line here.
