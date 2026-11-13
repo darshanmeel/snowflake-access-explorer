@@ -44,7 +44,7 @@ flowchart LR
 
 ## Code vs docs
 
-- Business hours: README.html calls `WORK_HOURS` local time shifted from UTC by the Activity tab's slider (`README.html:713`), and the tab does shift them (`web/src/pages/Activity.tsx:22-26`); the comments at `access.py:69`, `web/src/api/types.ts:1240` and the `offOf` doc line (`web/src/pages/Activity.tsx:24`) still say UTC hours.
+- Business hours: README.html calls `WORK_HOURS` local time shifted from UTC by the Activity tab's slider (`README.html:714`), and the tab does shift them (`web/src/pages/Activity.tsx:22-26`); the comments at `access.py:69`, `web/src/api/types.ts:1240` and the `offOf` doc line (`web/src/pages/Activity.tsx:24`) still say UTC hours.
 
 ## Known gaps
 

@@ -56,8 +56,8 @@ sequenceDiagram
     - `OffHours`: people or objects with weekend or outside-business-hours queries — `web/src/pages/Activity.tsx:233-280`;
     - `Touched`: heat grid (`Heat`) of rows x columns or days, last 30 days or the window, all or off-hours, all or sensitive objects — `web/src/pages/Activity.tsx:284-310`, `web/src/pages/Activity.tsx:320-360`;
     - `Hours`: queries per hour of day per user or object, business hours shaded, business-time slider UTC-12..+14 — `web/src/pages/Activity.tsx:364-412`;
-    - `Detail`: objects busiest first (search, sensitive filter), then the picked object: `ObjTiles`, `ByClient`, `Kinds`, `Matrix`, `ByType` (per day as `DayStack`, combinations by `combine`) — `web/src/pages/Activity.tsx:415-462`, `web/src/pages/Activity.tsx:472-623`, `web/src/components/visuals.tsx:77-152`;
-    - `WhoUsed`, `Sensitive`, `Paths` (object / user / role only), DDL changes, `QuerySql` (copy button), `Checks` (findings with "Open finding and fix") — `web/src/pages/Activity.tsx:626-759`.
+    - `Detail`: objects busiest first (search, sensitive filter), then the picked object: `ObjTiles`, `ByClient`, `Kinds`, `Matrix`, `ByType` (DML / Read / DDL per day as `DayStack`, `DayPanel` for the busiest or pinned day), `ByDay` (per day by user, role, client, statement, R / W / DDL or object kind, top 4 and Other, or a day-by-day table; combinations by `combine`) — `web/src/pages/Activity.tsx:415-462`, `web/src/pages/Activity.tsx:564-666`, `web/src/components/visuals.tsx:77-153`;
+    - `WhoUsed`, `Sensitive`, `Paths` (object / user / role only), DDL changes, `QuerySql` (copy button), `Checks` (findings with "Open finding and fix") — `web/src/pages/Activity.tsx:669-802`.
 16. Off-hours everywhere use `offOf(row, work)`: weekend queries plus weekday hours outside `[start, end)` after the UTC offset — `web/src/pages/Activity.tsx:25-26`. Names link to the Object or Access page with `show=activity` — `web/src/pages/Activity.tsx:87-88`.
 17. Types: `ActivityPage` (what incl. app / scope / warehouse, kind, app, warehouse, work, query_sql, objects), `ActivityBy`, `ActivityRow` (hours, weekend, weekend_hours, first_day, kind, interactive), `ActivitySensitive`, `ActivityKey`; `WhoPage.app` — `web/src/api/types.ts:1216-1259`, `web/src/api/types.ts:985-986`.
 
@@ -76,6 +76,6 @@ sequenceDiagram
 | `...TBL_CUSTOMER&as=ENGINEER_01` | `user=ENGINEER_01`, only that user in `by.user`, findings `[24]`, fewer queries |
 | `...TBL_CUSTOMER&as=HR_01` | no rows (granted or not, no use) |
 
-Front end: `visuals.test.tsx` "activity day chart" / "activity combinations" / "pin and isolate" check `DayStack` (top five keys plus Other, readout, pin, key focus, weekend shading, lanes) and `combine` — `web/src/components/visuals.test.tsx:182-226`.
+Front end: `visuals.test.tsx` "activity day chart" / "activity combinations" / "pin and isolate" check `DayStack` (top five keys plus Other, readout, pin, key focus, weekend shading, lanes) and `combine` — `web/src/components/visuals.test.tsx:182-228`.
 
 Related: [activity logic](../logic/activity.md) · [activity read](activity-read.md) · [web request](web-request.md).

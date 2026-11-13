@@ -15,24 +15,24 @@ flowchart LR
 
 ## Rules
 - App is read-only; never runs GRANT, REVOKE, CREATE, ALTER or DROP; RBAC changes go through IaC; manual grants get removed by reconciliation — CLAUDE.md:6-7.
-- Roles and grants are managed as IaC; the app only reads them — README.md:396.
+- Roles and grants are managed as IaC; the app only reads them — README.md:397.
 - "Real set-up: schema, roles and grants via infrastructure as code" — sql/1_setup.sql:4; what DEV_ROLE needs "(real set-up: infrastructure as code)" — sql/1_setup.sql:918.
-- Grant `APP_ROLE` to people who use the app "through your infrastructure as code" — README.html:641.
+- Grant `APP_ROLE` to people who use the app "through your infrastructure as code" — README.html:642.
 - What if prints REVOKE / IaC text, never runs it — CLAUDE.md:64.
 
 ## App roles (who needs what)
-- `DEV_ROLE`, `APP_ROLE` privileges: see deploy-snowflake.md > Roles and grants needed (README.md:229, README.html:645, sql/1_setup.sql:861-861, sql/4_streamlit.sql:69-80).
+- `DEV_ROLE`, `APP_ROLE` privileges: see deploy-snowflake.md > Roles and grants needed (README.md:229, README.html:646, sql/1_setup.sql:861-861, sql/4_streamlit.sql:69-80).
 - The setup scripts do issue `GRANT ... TO ROLE &APP_ROLE` on the app's own DB/schema/WH/tables/functions/procedure/Streamlit, all `(may fail)` except `GRANT_STREAMLIT` — sql/1_setup.sql:861-916, sql/4_streamlit.sql:69-80. POC note: app role may equal developer role, so they are skipped or no-ops — sql/1_setup.sql:861.
 - Developer account-read grants (`IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS`) are given as comments only, not executed — sql/1_setup.sql:918-922.
-- Optional admin step `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE` (login reuse ~4 h) — README.md:158, README.html:641.
+- Optional admin step `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE` (login reuse ~4 h) — README.md:158, README.html:642.
 - Viewers only need `APP_ROLE` — README.md:229.
 
 ## Request access page (in-app, text only)
-- Answers: which existing role to ask for, who approves, what text goes in the PR or ticket — README.html:323-324.
-- Person: `GRANT ROLE x TO USER u`; role: `GRANT ROLE x TO ROLE r` with too-broad and rule 1 warnings; database role: skeleton or why not — README.html:330-331.
-- Approver from the object's owner tag (`OWNER_TAGS`), else blank; expiry and reason go into comments; output is SQL, Terraform or ticket text, never run — README.html:334-337.
-- API: `GET /api/request` uses `a.need_privs`, `a.suggest`, `a.approver`, `a.object_stats`; text built in `codegen.ts` — web/API.md:487-504.
+- Answers: which existing role to ask for, who approves, what text goes in the PR or ticket — README.html:324-325.
+- Person: `GRANT ROLE x TO USER u`; role: `GRANT ROLE x TO ROLE r` with too-broad and rule 1 warnings; database role: skeleton or why not — README.html:331-332.
+- Approver from the object's owner tag (`OWNER_TAGS`), else blank; expiry and reason go into comments; output is SQL, Terraform or ticket text, never run — README.html:335-338.
+- API: `GET /api/request` uses `a.need_privs`, `a.suggest`, `a.approver`, `a.object_stats`; text built in `codegen.ts` — web/API.md:491-508.
 
 ## Unclear
-- The IaC tool/repo and reconciliation job are not in this repo (unclear which tool; Terraform text is offered — README.html:337).
+- The IaC tool/repo and reconciliation job are not in this repo (unclear which tool; Terraform text is offered — README.html:338).
 - No approval workflow is defined in source beyond the approver field.

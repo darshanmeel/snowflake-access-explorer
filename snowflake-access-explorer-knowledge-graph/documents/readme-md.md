@@ -17,10 +17,10 @@ flowchart TD
 - Quick start — README.md:71-80; Run each mode — README.md:82-103.
 - Run it (direct vs objects table) — README.md:105-120; Install — README.md:122-131; Start — README.md:133-143; `.env` — README.md:145-158; Settings — README.md:160-174; DuckDB SQL copy — README.md:176; role-based visibility — README.md:207-218; Objects in Snowflake — README.md:220-232.
 - Deploy — README.md:234-242; own machine — README.md:244; shared server — README.md:248-265; SiS — README.md:267-307; Streamlit elsewhere — README.md:309-319; Container Services — README.md:321-325.
-- Data sources — README.md:327-336; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:330-335; Activity tabs on the access and object pages — README.md:31-32; `ACTIVITY` in the DuckDB tables — README.md:180.
-- Use the queries without the app — README.md:338-390: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:341-349; Run (worksheet or notebook path A / B) — README.md:351; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:389; Check (`test_queries.py`) — README.md:390. See modules/access-queries.md, flows/standalone-queries.md.
-- Also in this repo — README.md:392-396: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:393; sf.py CLI — README.md:394; tests incl. `access_queries/test_queries.py` — README.md:395; IaC — README.md:396.
-- Where to find more — README.md:398-407; License (MIT or Apache-2.0) — README.md:409-412.
+- Data sources — README.md:327-337; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:330-336; Activity tabs on the access and object pages — README.md:31-32; `ACTIVITY` in the DuckDB tables — README.md:180.
+- Use the queries without the app — README.md:339-391: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:342-350; Run (worksheet or notebook path A / B) — README.md:352; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:390; Check (`test_queries.py`) — README.md:391. See modules/access-queries.md, flows/standalone-queries.md.
+- Also in this repo — README.md:393-397: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:394; sf.py CLI — README.md:395; tests incl. `access_queries/test_queries.py` — README.md:396; IaC — README.md:397.
+- Where to find more — README.md:399-408; License (MIT or Apache-2.0) — README.md:410-413.
 
 ## Relates to
 - Processes: setup-local, run-local, deploy-snowflake, build-web, test, container-services.
