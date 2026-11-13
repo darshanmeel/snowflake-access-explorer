@@ -90,6 +90,20 @@ def prev(key):
     return (d, f.stat().st_mtime) if d is not None else None
 
 
+def last(key):
+    """The newest data kept for key (memory, the local file, the one drop() set aside, the previous one), else None:
+    Direct mode then reads only the activity days it lacks."""
+    m = MEM.get(key)
+    if m:
+        return m[0]
+    f = file(key)
+    for x in (f, f.with_suffix(".old.pkl"), f.with_suffix(".prev.pkl")):
+        d = load(x) if local() and x.is_file() else None
+        if d is not None:
+            return d
+    return None
+
+
 def get(key, fn, disk=True):
     """(data, fetched_at): from memory, else the local file, else fn() (stored in both)."""
     m = MEM.get(key)  # before the lock: a page whose data is in memory never waits for another key's read
@@ -160,6 +174,8 @@ COLUMNS = {
     "STREAM": "RUN_ID VARCHAR, STREAM_NAME VARCHAR, SOURCE_NAME VARCHAR, SOURCE_TYPE VARCHAR",
     "OBJECT_USE": "RUN_ID VARCHAR, USER_NAME VARCHAR, OBJECT_NAME VARCHAR, WEEK DATE, ACTION VARCHAR, QUERIES BIGINT, "
                   "LAST_USED TIMESTAMPTZ",
+    "ACTIVITY": "RUN_ID VARCHAR, DAY DATE, USER_NAME VARCHAR, ROLE_NAME VARCHAR, CLIENT VARCHAR, OBJECT_NAME VARCHAR, "
+                "ACTION VARCHAR, QUERY_TYPE VARCHAR, QUERIES BIGINT, LAST_USED TIMESTAMPTZ",
 }
 SQL = {}  # cache key -> what the last copy in this process did: at and run_id, or a note
 

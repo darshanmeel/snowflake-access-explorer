@@ -266,8 +266,9 @@ def test_rules():
         n[x["num"]] = n.get(x["num"], 0) + 1
     # old 9 findings for rules 1-5, + F_MARKETING READ inside WRITE (3) and OPS_01 holding SYSADMIN (5)
     assert n == {"1": 2, "2": 2, "3": 3, "4": 1, "5": 3, "6": 3, "7": 4, "8": 1, "9": 1, "10": 17, "11": 2, "12": 1,
-                 "13": 1, "14": 1, "15": 1, "16": 3, "17": 4, "18": 3, "19": 2, "20": 1, "21": 1, "22": 1, "23": 4}
-    assert set(a.SEVERITY) == set(a.RULES) == {str(i) for i in range(1, 24)}
+                 "13": 1, "14": 1, "15": 1, "16": 3, "17": 4, "18": 3, "19": 2, "20": 1, "21": 1, "22": 1, "23": 4,
+                 "24": 1, "25": 1, "26": 1, "27": 1, "28": 1}
+    assert set(a.SEVERITY) == set(a.RULES) == {str(i) for i in range(1, 29)}
     assert all(x["severity"] == a.SEVERITY[x["num"]] for x in rows)
     assert a.BUILD == [F + "DEPLOY"] or "BUILD_ROLES" in os.environ
     by = lambda num: [x for x in rows if x["num"] == num]
@@ -397,6 +398,8 @@ def fake_snowflake(d, au):
                 raise RuntimeError("Object does not exist or not authorized.")
             if "LIMIT 1" in s:
                 return [{"1": 1}]
+            if "OBJECT_MODIFIED_BY_DDL" in s:  # activity_sql: before QUERY_HISTORY, which it joins
+                return [dict(x) for x in d["ACTIVITY"]]
             if "ACCOUNT_USAGE.GRANTS_TO_ROLES " in s + " ":
                 return au_grants(s, plain)
             for view, rows in (("GRANTS_TO_USERS", d["USER_ROLE"]), ("USERS", d["USER"]),
@@ -484,7 +487,15 @@ def test_live():
         else:
             assert s["TAG"] == d["TAG"] and s["POLICY"] == d["POLICY"] and s["USAGE"] == d["USAGE"]
             assert s["OBJECT_USE"] == d["OBJECT_USE"] and src["object_use"] == "ACCOUNT_USAGE"
-        assert au or (src["object_use"] == "UNAVAILABLE" and s["OBJECT_USE"] == [])  # no fallback: Granted vs used says why
+            assert s["ACTIVITY"] == d["ACTIVITY"] and src["activity"] == "ACCOUNT_USAGE"
+            sql = next(c for c in calls if "OBJECT_MODIFIED_BY_DDL" in c)
+            assert f"'{a.QUERY_TAG}'" in sql and "'2026-09-04'::DATE" in sql and "SESSIONS" in sql  # 60 days before 11-03
+            calls.clear()
+            old = [x for x in d["ACTIVITY"] if x["DAY"] < "2026-10-20"]  # an earlier read: only the days it lacks
+            s = a.live(query, old)
+            sql = next(c for c in calls if "OBJECT_MODIFIED_BY_DDL" in c)
+            assert "'2026-10-18'::DATE" in sql and s["ACTIVITY"][:3] == [x for x in old if x["DAY"] < "2026-10-18"][:3]
+        assert au or (src["object_use"] == src["activity"] == "UNAVAILABLE" and s["OBJECT_USE"] == s["ACTIVITY"] == [])
     # SP_ACCESS_SNAPSHOT's copy of that SELECT (sql/1_setup.sql grants()) qualifies the same way
     setup = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql", "1_setup.sql"), encoding="utf-8").read()
     sel = re.search(r"SELECT '\{run_id\}', (IFF\(GRANTED_TO = 'DATABASE_ROLE'.*?GRANTED_TO IN \('ROLE', 'DATABASE_ROLE'\))",
@@ -803,7 +814,7 @@ def test_cap():
 def test_new_rules():
     rows = a.rule_rows()
     by = lambda num: {x["grantee"]: x for x in rows if x["num"] == num}
-    assert all("edge" in x for x in rows) and all(x["edge"] for x in rows if int(x["num"]) >= 18)
+    assert all("edge" in x for x in rows) and all(x["edge"] for x in rows if 18 <= int(x["num"]) <= 23)  # 24-28: what was done, on no grant
     r18 = by("18")
     assert set(r18) == {T + "SHARED_LOGGING_READ", T + "SALES_PIPELINE_EXECUTE", T + "SALES_PIPELINE_WRITE"}
     assert r18[T + "SALES_PIPELINE_WRITE"]["detail"].endswith("missing DELETE, TRUNCATE")
@@ -1685,6 +1696,32 @@ def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), w
     assert a.use_state()[0] and a.granted_used("ENGINEER_01")["rows"]
     a.build(dict(a.fake(), OBJECT_USE=None))
     assert a.use_state()[0] is False
+
+
+def test_activity():  # Activity tabs and rules 24-28: ACCESS_HISTORY per day, user, role, client and statement
+    assert a.act_state() == (True, None)
+    x = a.activity("SALES.CORE.TBL_CUSTOMER", "object")
+    assert len(x["daily"]) == a.ACTIVITY_DAYS and x["last"] == "2026-11-02" and sum(x["daily"]) == sum(r["queries"] for r in x["rows"])
+    assert {b["key"] for b in x["by"]["client"]} == {"Python", "JDBC", "Snowsight"}
+    assert [(r["user"], r["type"]) for r in x["ddl"]] == [("ENGINEER_01", "ALTER_TABLE_ADD_COLUMN")]
+    assert [b["key"] for b in a.activity("SYSADMIN", "role")["by"]["user"]] == ["OPS_01"]
+    assert a.activity("NOBODY", "user")["rows"] == []
+    f = {c[0]: c for c in a.checks() if int(c[0]) >= 24}
+    assert f["24"][4] == ["ENGINEER_01", F + "ENGINEER", "SALES.CORE.TBL_CUSTOMER"]  # SVC_DEPLOY's MERGE: a service user
+    assert f["25"][2] == "SVC_DEPLOY" and f["26"][4] == ["OPS_01", "SYSADMIN"]
+    assert f["27"][4] == ["ENGINEER_01", "HR.PEOPLE.TBL_EMPLOYEE"] and "400 queries" in f["28"][3]
+    d = a.fake()  # the same changes through a role that owns the table: not rule 24
+    d["ACTIVITY"] = [dict(x, ROLE_NAME=T + "SALES_CORE_OWNER") if x["USER_NAME"] == "ENGINEER_01" and x["ACTION"] != "READ"
+                     else x for x in d["ACTIVITY"]]
+    a.build(d)
+    assert "24" not in {c[0] for c in a.checks()}
+    a.build(dict(a.fake(), ACTIVITY=None))
+    assert a.act_state()[0] is False and "TBL_ACCESS_ACTIVITY" in a.act_state()[1] and not a.rules_activity()
+    old = [dict(DAY="2026-08-01"), dict(DAY="2026-10-20"), dict(DAY="2026-10-30"), dict(DAY="2026-10-31")]
+    keep, since = a.activity_start(old, "2026-11-02 07:00")  # kept up to the day before the last, older than 60 days dropped
+    assert keep == old[1:2] and since.isoformat() == "2026-10-30"
+    assert a.activity_start(None, "2026-11-02") == ([], a.day("2026-09-03"))
+    assert a.activity_start(old[:1], "2026-11-02")[1] == a.day("2026-09-03")  # a read older than the window: all again
 
 
 def test_review_fixes():  # service users are never dormant on the new screens, search answers, row policies, subjects

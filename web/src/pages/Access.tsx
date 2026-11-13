@@ -5,6 +5,7 @@ import type { AccessObject, AccessPage, ListItem } from "../api/types";
 import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, StackBar, Toggle, toCsv } from "../components";
 import { download } from "../components/table";
 import { AppCtx, useApp, useOpen } from "../ctx";
+import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
@@ -60,7 +61,7 @@ function Body({ d }: { d: AccessPage }) {
   const [cell, setCell] = useState<{ schema: string; min: string } | null>(null);
   const w = d.who, n = d.counts, user = w.kind === "user";
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
-  const show = c.params.show === "summary" || c.params.show === "history" ? c.params.show : "detail"; // the diagram first
+  const show = c.params.show === "summary" || c.params.show === "history" || c.params.show === "activity" ? c.params.show : "detail"; // the diagram first
   const data = d.objects.filter((x) => x.category === "data" || (usage && x.category === "names"));
   const kept = data.filter((x) =>
     (lvl === "all" || (lvl === "read" ? x.level === "read" : lvl === "change" ? at(x, "change") && x.level !== "own" : lvl === "own" ? at(x, "own") : lvl === "multi" ? x.ways > 1 : true))
@@ -102,9 +103,11 @@ function Body({ d }: { d: AccessPage }) {
       <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: user ? "Diagram & privileges" : "Diagram, held by & holds" },
         { key: "summary", label: "One row per object", count: data.length },
+        { key: "activity", label: "Activity" },
         { key: "history", label: "History" },
       ]} />
       {show === "detail" && <Detail name={w.name} user={user} />}
+      {show === "activity" && <ActivityTab what={user ? "user" : "role"} name={w.name} />}
       {show === "history" && <ChangeFeed subject={w.id} />}
       {show === "summary" && <>
       <div className="ae-two">

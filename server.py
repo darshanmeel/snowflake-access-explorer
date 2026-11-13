@@ -85,7 +85,12 @@ def with_query(fn):
 
 
 def read_shared():
-    return (a.fake() if MODE == "fake" else with_query(a.live) if DIRECT else with_query(lambda q: a.snapshot(q, WHERE)))
+    if MODE == "fake":
+        return a.fake()
+    if DIRECT:
+        old = cache.last(KEY)
+        return with_query(lambda q: a.live(q, (old or {}).get("ACTIVITY")))
+    return with_query(lambda q: a.snapshot(q, WHERE))
 
 
 def load_shared(ask=False):
@@ -349,6 +354,16 @@ RULE_INFO = {
     "8": ("user", "Users and hygiene", "A disabled user still has roles granted.", "Revoke the roles or drop the user."),
     "16": ("user", "Users and hygiene", f"A person with no login for {a.DORMANT_DAYS} days (or never) still holds "
            "roles.", "Revoke the roles or disable the user."),
+    "24": ("user", "Activity", "A person (not a service user) ran INSERT, UPDATE, DELETE, MERGE or DDL on a table, "
+           "with a role that does not own it.", "Move the change into the build or a pipeline; give the person READ."),
+    "25": ("user", "Activity", "A service user ran queries from Snowsight, SnowSQL or the Snowflake CLI.",
+           "Give the person their own user; keep the service user's key in the pipeline only."),
+    "26": ("admin", "Activity", "Someone read or changed a table with an admin role (ACCOUNTADMIN, SYSADMIN, ...).",
+           "Do data work with a functional role; keep admin roles for account tasks."),
+    "27": ("object", "Activity", f"A user who was active before touched a table for the first time in the last "
+           f"{a.NEW_DAYS} days.", "Confirm the new use with the user or the table's owner."),
+    "28": ("object", "Activity", f"One day had over {a.SPIKE[0]} times the user's usual queries on a table (and at "
+           f"least {a.SPIKE[1]}).", "Check what ran that day: an export, a broken job or misuse."),
 }
 
 
@@ -382,6 +397,10 @@ def note_info(k, source, view):
                          ("Future grants partly read", "Future grants of the databases in the error are missing.",
                           "MANAGE GRANTS, or ownership of those schemas."),
         "streams": ("Streams unread", "The stream rule (22) can't run.", f"{IP}."),
+        "activity": ("No client in Activity", "SESSIONS is not readable: the Activity tabs show no client and rule 25 "
+                     "can't run.", f"{IP}.") if source == "ACCOUNT_USAGE" else
+                    ("No table activity", "The Activity tabs and rules 24-28 can't run: ACCESS_HISTORY is not readable "
+                     "(Enterprise edition or higher).", f"{IP}, on Enterprise edition."),
         "object_use": ("No object usage", "Granted vs used has nothing to compare: ACCESS_HISTORY is not readable "
                        "(Enterprise edition or higher).", f"{IP}, on Enterprise edition."),
         "database_roles": ("Database roles partly read", "What the database roles in the error give is missing.",
@@ -945,7 +964,8 @@ SHORT = {"1": "technical role held directly", "2": "privilege on a functional ro
          "13": "orphan role", "14": "deep chain", "15": "future grant on sensitive", "16": "dormant holds roles",
          "17": "read role can write", "18": "unusual privilege set", "19": "EXECUTE TASK on a person",
          "20": "task OPERATE outside owner", "21": "warehouse MODIFY / OPERATE", "22": "stream without table read",
-         "23": "CREATE on a read-only role"}
+         "23": "CREATE on a read-only role", "24": "person changed a table", "25": "service user in Snowsight",
+         "26": "admin role on data", "27": "first-time access", "28": "unusual volume"}
 SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
 
 
@@ -1626,6 +1646,27 @@ ENABLE_USE = ("ACCESS_HISTORY needs Enterprise edition or higher, read by the ro
               "then rebuild the snapshot.")
 
 
+MAX_ACTIVITY = 500  # rows of the Activity table sent; the counts above it cover all
+
+
+def activity_page(p, view):
+    """Activity tab of an object (name=), a person (user=) or a role (role=): table use per day over ACTIVITY_DAYS,
+    by user, role, client and statement, DDL changes and the rule 24-28 findings on it; else why there is none."""
+    what = "object" if p.get("name") else "user" if p.get("user") else "role"
+    name = p.get("name") or p.get("user") or p.get("role") or ""
+    ok, why = a.act_state()
+    if view == "mine" and not ok:
+        why = "My access reads no ACCESS_HISTORY: open Activity on the shared data."
+    out = dict(view=view, what=what, name=name, days=a.ACTIVITY_DAYS, available=ok, reason=why,
+               note=(a.run.get("NOTES") or {}).get("activity"))
+    if not ok:
+        return out
+    x = a.activity(name, what)
+    return out | x | dict(total=len(x["rows"]), rows=x["rows"][:MAX_ACTIVITY], findings=[
+        dict(num=r["num"], title=r["title"], severity=r["severity"], grantee=r["grantee"], detail=r["detail"])
+        for r in S["rows"] if int(r["num"]) >= 24 and (r["grantee"] == name or name in r["path"])])
+
+
 def usage_page(p, view):
     """Screen 13: what a person or role was granted next to what they used (ACCESS_HISTORY), days=30|90|180."""
     name, user = subject(p, view)
@@ -2194,7 +2235,8 @@ def mkrefs(out):
 ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
-          "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page}
+          "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page,
+          "activity": activity_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
              "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
@@ -2311,7 +2353,7 @@ def make_app():
         return h
 
     for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
-              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes"):
+              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

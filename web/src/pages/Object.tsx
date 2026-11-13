@@ -7,6 +7,7 @@ import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantee
 import { download } from "../components/table";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
+import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { remember } from "./Home";
 import { AdminTable } from "./Rules";
@@ -41,7 +42,7 @@ function Who({ d }: { d: WhoPage }) {
   const c = useApp();
   const o = d.object, admin = o.preset === "admin";
   useEffect(() => { if (o.id) remember({ page: "object", id: o.id, label: o.id }); }, [o.id]);
-  const show = c.params.show === "who" || (c.params.show === "history" && !admin) ? c.params.show : "detail";
+  const show = c.params.show === "who" || ((c.params.show === "history" || c.params.show === "activity") && !admin) ? c.params.show : "detail";
   const save = () => download(`${o.id ?? "admin_roles"}_who.csv`, toCsv(["User", "Status", "Last login", "Access", "Privileges", "Path", "Ways"],
     d.people.map((x) => [x.name, x.status, x.login, TITLE[x.level], x.privileges.join(" "), x.path.join(" > "), String(x.ways)])));
   return (
@@ -67,10 +68,11 @@ function Who({ d }: { d: WhoPage }) {
       <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: admin ? "Admin holders table" : "Diagram, paths & users" },
         { key: "who", label: "Who has access", count: d.counts.people },
-        ...(admin ? [] : [{ key: "history", label: "History" }]),
+        ...(admin ? [] : [{ key: "activity", label: "Activity" }, { key: "history", label: "History" }]),
       ]} />
       {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} />)}
       {show === "who" && <List d={d} />}
+      {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} />}
       {show === "history" && <ChangeFeed subject={o.id ?? ""} />}
     </>
   );

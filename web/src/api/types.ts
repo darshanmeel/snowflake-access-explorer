@@ -1209,3 +1209,28 @@ export interface ChangesPage {
   severity?: { new: Record<Severity, number>; fixed: Record<Severity, number> } | null; // the strip; null for one subject
   refs: Refs;
 }
+
+/** Activity tab (/api/activity): table use per day of an object, a person or a role (ACCESS_HISTORY). */
+export type ActivityKey = "user" | "role" | "client" | "type" | "object";
+export interface ActivityBy { key: string; read: number; write: number; ddl: number; last: string }
+export interface ActivityRow {
+  user: string; role: string; client: string; type: string; object: string; action: "READ" | "WRITE" | "DDL";
+  queries: number; days: number; last: string;
+}
+export interface ActivityPage {
+  view: View;
+  what: "object" | "user" | "role";
+  name: string;
+  days: number;
+  available: boolean;
+  reason: string | null;
+  note: string | null; // read, but partly (no client)
+  first?: string;
+  last?: string;
+  daily?: number[]; // queries per day, oldest first
+  by?: Record<ActivityKey, ActivityBy[]>;
+  rows?: ActivityRow[]; // first MAX_ACTIVITY of total
+  total?: number;
+  ddl?: ActivityRow[];
+  findings?: { num: string; title: string; severity: Severity; grantee: string; detail: string }[];
+}

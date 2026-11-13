@@ -573,7 +573,7 @@ def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if
     w = js("/api/whatif?changes=" + quote(json.dumps([ch for f in fx[:3] for ch in f["changes"]])))
     assert w["counts"]["fixed"] >= 1 and w["sql"] and "REVOKE" in w["sql"]
     m = js("/api/meta")
-    assert len(m["rules"]) == 23 and all(x["meaning"] and x["fix"] and x["area"] for x in m["rules"])
+    assert len(m["rules"]) == 28 and all(x["meaning"] and x["fix"] and x["area"] for x in m["rules"])
     assert {p["key"]: p["group"] for p in m["pages"]}["whatif"] == "admin"
 
 
@@ -629,6 +629,15 @@ def test_usage_changes():  # screens 13, 14
         server.MODE, server.cache.prev = mode, prev
     m = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
     assert m["usage"] == m["changes"] == "admin" and "changes" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
+
+
+def test_activity():  # the Activity tab of an object, a person and a role; why there is none
+    o = js("/api/activity?name=SALES.CORE.TBL_CUSTOMER", ["what", "days", "available", "daily", "by", "rows", "ddl", "findings"])
+    assert o["what"] == "object" and o["available"] and len(o["daily"]) == o["days"] == a.ACTIVITY_DAYS
+    assert [f["num"] for f in o["findings"]] == ["24"] and o["ddl"][0]["type"] == "ALTER_TABLE_ADD_COLUMN"
+    assert {f["num"] for f in js("/api/activity?user=ENGINEER_01")["findings"]} == {"24", "27"}
+    assert js("/api/activity?role=SYSADMIN")["by"]["user"][0]["key"] == "OPS_01"
+    assert {r["area"] for r in js("/api/meta")["rules"] if int(r["num"]) >= 24} == {"Activity"}
 
 
 API = {"graph": "map", "whatif": 'whatif?changes=[{"op":"empty_public"}]'}  # page key -> its endpoint, when they differ

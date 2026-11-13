@@ -105,6 +105,20 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE (   -- objects used
     LAST_USED TIMESTAMP_LTZ
 );
 
+-- name: TABLE_ACTIVITY
+CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_ACTIVITY (   -- table use per day, user, role, client and statement,
+    RUN_ID VARCHAR(36),              -- from ACCESS_HISTORY + QUERY_HISTORY + SESSIONS (Enterprise edition; empty when not readable)
+    DAY DATE,
+    USER_NAME VARCHAR(255),
+    ROLE_NAME VARCHAR(255),          -- the query's primary role
+    CLIENT VARCHAR(255),             -- SESSIONS.CLIENT_APPLICATION_ID without its version; NULL when SESSIONS is not readable
+    OBJECT_NAME VARCHAR(2000),       -- DB.SCHEMA.OBJECT as ACCESS_HISTORY names it
+    ACTION VARCHAR(10),              -- READ (objects read), WRITE (objects modified) or DDL (created, altered, dropped)
+    QUERY_TYPE VARCHAR(100),         -- QUERY_HISTORY.QUERY_TYPE: SELECT, INSERT, MERGE, DELETE, ALTER_TABLE_..., ...
+    QUERIES NUMBER,
+    LAST_USED TIMESTAMP_LTZ
+);
+
 -- name: TABLE_FINDING
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings of the last run, filled by SP_ACCESS_FINDINGS
     RUN_ID VARCHAR(36),
@@ -133,6 +147,7 @@ $$
 # Rows carry RUN_ID; the app reads the last OK run, so a running or failed CALL never shows half a snapshot.
 import json
 import uuid
+from datetime import timedelta
 
 AU = "SNOWFLAKE.ACCOUNT_USAGE"
 RUN = "&DB.&SCHEMA.TBL_ACCESS_RUN"
@@ -144,13 +159,16 @@ TAG = "&DB.&SCHEMA.TBL_ACCESS_TAG"
 POLICY = "&DB.&SCHEMA.TBL_ACCESS_POLICY"
 STREAM = "&DB.&SCHEMA.TBL_ACCESS_STREAM"
 OBJECT_USE = "&DB.&SCHEMA.TBL_ACCESS_OBJECT_USE"
-DATA = [GRANT, USER_ROLE, USER, USAGE, TAG, POLICY, STREAM, OBJECT_USE]
+ACTIVITY = "&DB.&SCHEMA.TBL_ACCESS_ACTIVITY"
+DATA = [GRANT, USER_ROLE, USER, USAGE, TAG, POLICY, STREAM, OBJECT_USE, ACTIVITY]
 GRANT_COLS = ["RUN_ID", "GRANTEE_ROLE", "PRIVILEGE", "GRANTED_ON", "OBJECT_NAME", "IS_FUTURE", "GRANT_OPTION", "GRANTED_BY"]
 TAG_COLS = ["RUN_ID", "OBJECT_NAME", "DOMAIN", "COLUMN_NAME", "TAG_NAME", "TAG_VALUE", "APPLY_METHOD"]
 POLICY_COLS = ["RUN_ID", "POLICY_NAME", "POLICY_KIND", "OBJECT_NAME", "COLUMN_NAME", "ARG_COLUMNS", "TAG_NAME", "POLICY_BODY"]
 DAYS = 30
 TAG_FALLBACK_MAX = 300  # tables/views read one by one when the ACCOUNT_USAGE views are not readable
 USE_DAYS = 180  # object usage kept from ACCESS_HISTORY
+ACTIVITY_DAYS = 60  # table activity kept (the app's ACTIVITY_DAYS)
+QUERY_TAG = "access-explorer"  # the app's own queries, left out of the activity
 
 
 def rows(session, sql):
@@ -507,6 +525,63 @@ def object_use(session, run_id, mode):
         return "UNAVAILABLE", first_line(e)
 
 
+def activity_sql(since, client=True):
+    """Table activity from ACCESS_HISTORY (query metadata, never query text or table data), aggregated in Snowflake per
+    day, user, role, client, object, ACTION (READ: objects read, WRITE: objects modified, DDL: created, altered or
+    dropped) and QUERY_TYPE (SELECT, INSERT, MERGE, ...). Role and statement type come from QUERY_HISTORY, the client
+    from SESSIONS (client=False: not readable, CLIENT stays empty). since: first day read ('YYYY-MM-DD'); both history
+    views are cut at it, so Snowflake prunes them, and ACCESS_HISTORY is scanned once. The app's own queries (QUERY_TAG)
+    are left out. The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    col = "S.CLIENT" if client else "NULL"
+    join = (f"""LEFT JOIN (SELECT SESSION_ID, REGEXP_REPLACE(CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
+                       FROM {AU}.SESSIONS) S ON S.SESSION_ID = Q.SESSION_ID""" if client else "")
+    return f"""WITH A AS (
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::DATE),
+        H AS (
+            SELECT A.QUERY_ID, A.USER_NAME, A.T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+            FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
+            UNION ALL
+            SELECT A.QUERY_ID, A.USER_NAME, A.T, O.VALUE:"objectName"::STRING, 'WRITE'
+            FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O
+            UNION ALL
+            SELECT QUERY_ID, USER_NAME, T, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL'
+            FROM A WHERE OBJECT_MODIFIED_BY_DDL IS NOT NULL),
+        Q AS (
+            SELECT QUERY_ID, ROLE_NAME, QUERY_TYPE, SESSION_ID FROM {AU}.QUERY_HISTORY
+            WHERE START_TIME >= '{since}'::DATE AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}')
+        SELECT H.T::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE,
+               COUNT(DISTINCT H.QUERY_ID) AS QUERIES, MAX(H.T) AS LAST_USED
+        FROM H JOIN Q ON Q.QUERY_ID = H.QUERY_ID {join}
+        WHERE H.OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6, 7"""
+
+
+def activity(session, run_id, mode):
+    """Table activity per day, user, role, client, object and statement (access.activity_sql has the same text). To
+    keep the cost down only the days the last OK run lacks are read: its rows are copied up to the day before its last
+    day, and that day and newer are read again (ACCESS_HISTORY lags up to 3 hours; access.activity_start does the
+    same). No fallback: UNAVAILABLE, the run stays OK and the Activity tabs explain it."""
+    try:
+        why = fallback(session, "ACCESS_HISTORY", mode)
+        if why:
+            return "UNAVAILABLE", why
+        prev = session.sql(f"SELECT MAX_BY(RUN_ID, FINISHED_AT) AS R FROM {RUN} WHERE STATUS = 'OK'").collect()[0]["R"]
+        first = session.sql("SELECT CURRENT_DATE() AS D").collect()[0]["D"] - timedelta(days=ACTIVITY_DAYS)
+        last = prev and session.sql(f"SELECT MAX(DAY) AS D FROM {ACTIVITY} WHERE RUN_ID = '{prev}'").collect()[0]["D"]
+        since = max(first, last - timedelta(days=1)) if last else first
+        cols = "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED"
+        if last:
+            session.sql(f"""INSERT INTO {ACTIVITY} (RUN_ID, {cols}) SELECT '{run_id}', {cols} FROM {ACTIVITY}
+                            WHERE RUN_ID = '{prev}' AND DAY >= '{first}' AND DAY < '{since}'""").collect()
+        no_client = fallback(session, "SESSIONS", "AUTO")
+        session.sql(f"""INSERT INTO {ACTIVITY} (RUN_ID, {cols})
+            SELECT '{run_id}', A.* FROM ({activity_sql(since.isoformat(), no_client is None)}) A""").collect()
+        return "ACCOUNT_USAGE", no_client and f"{no_client}: no client"
+    except Exception as e:
+        session.sql(f"DELETE FROM {ACTIVITY} WHERE RUN_ID = '{run_id}'").collect()
+        return "UNAVAILABLE", first_line(e)
+
+
 def run(session, p_source):
     mode = (p_source or "AUTO").upper()
     if mode not in ("AUTO", "ACCOUNT_USAGE", "SHOW"):
@@ -538,11 +613,12 @@ def run(session, p_source):
         keep("policies", *policies(session, run_id, mode))
         keep("streams", *streams(session, run_id))
         keep("object_use", *object_use(session, run_id, mode))
+        keep("activity", *activity(session, run_id, mode))
         result["status"] = "OK"
     except Exception as e:
         result["status"], result["notes"]["error"] = "FAILED", first_line(e)
     for name, t in [("grants", GRANT), ("user_roles", USER_ROLE), ("users", USER), ("usage", USAGE), ("tags", TAG),
-                    ("policies", POLICY), ("streams", STREAM), ("object_use", OBJECT_USE)]:
+                    ("policies", POLICY), ("streams", STREAM), ("object_use", OBJECT_USE), ("activity", ACTIVITY)]:
         result["row_counts"][name] = count(session, t, run_id)
     if result["status"] == "FAILED":  # drop this run's partial rows
         for t in DATA:
@@ -800,6 +876,9 @@ GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_STREAM TO ROLE &APP_ROLE;
 
 -- name: GRANT_TABLE_OBJECT_USE_APP (may fail)
 GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE TO ROLE &APP_ROLE;
+
+-- name: GRANT_TABLE_ACTIVITY_APP (may fail)
+GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_ACTIVITY TO ROLE &APP_ROLE;
 
 -- name: GRANT_TABLE_FINDING_APP (may fail)
 GRANT SELECT ON TABLE &DB.&SCHEMA.TBL_ACCESS_FINDING TO ROLE &APP_ROLE;

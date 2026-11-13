@@ -31,6 +31,7 @@ def connect():
         warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE"),
         database=os.environ.get("SNOWFLAKE_DATABASE"),
         schema=os.environ.get("SNOWFLAKE_SCHEMA"),
+        session_parameters={"QUERY_TAG": access.QUERY_TAG},  # Activity leaves the app's own queries out
     )
     key = os.environ.get("SNOWFLAKE_PRIVATE_KEY_FILE")
     if key:  # key pair (service accounts)

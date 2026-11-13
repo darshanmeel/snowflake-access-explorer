@@ -24,6 +24,7 @@ COLS = {
     "POLICY": "POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY",
     "STREAM": "STREAM_NAME, SOURCE_NAME, SOURCE_TYPE",
     "OBJECT_USE": "USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED",
+    "ACTIVITY": "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED",
 }
 
 
@@ -291,7 +292,23 @@ def test_object_use():
     assert src == "UNAVAILABLE" and "ACCESS_HISTORY" in why
     assert ns["object_use"](fake_session(con), "run-9", "SHOW")[0] == "UNAVAILABLE"
     assert not con.execute("SELECT * FROM TBL_ACCESS_OBJECT_USE WHERE RUN_ID = 'run-9'").fetchall()
-    assert "OBJECT_USE" in ns["DATA"][-1] and 'keep("object_use"' in body
+    assert "OBJECT_USE" in ns["DATA"][-2] and 'keep("object_use"' in body
+
+
+def test_activity():
+    """SP_ACCESS_SNAPSHOT's activity step: the same SELECT as access.activity_sql(); not readable (DuckDB has no
+    ACCESS_HISTORY) -> UNAVAILABLE with the reason, no rows, the run goes on."""
+    import inspect
+    assert inspect.getsource(a.activity_sql) in SETUP
+    con = load(a.fake(), build=False)
+    body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
+    ns = {}
+    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    assert ns["ACTIVITY_DAYS"] == a.ACTIVITY_DAYS and ns["QUERY_TAG"] == a.QUERY_TAG
+    src, why = ns["activity"](fake_session(con), "run-9", "AUTO")
+    assert src == "UNAVAILABLE" and "ACCESS_HISTORY" in why
+    assert not con.execute("SELECT * FROM TBL_ACCESS_ACTIVITY WHERE RUN_ID = 'run-9'").fetchall()
+    assert "ACTIVITY" in ns["DATA"][-1] and 'keep("activity"' in body
 
 
 def test_show_fallback():
@@ -383,7 +400,7 @@ def test_run_overlap():
 
     session.sql = sql
     step = lambda *x: ("SHOW", None)  # noqa: E731
-    ns.update({k: step for k in ("future", "users", "usage", "tags", "policies", "streams", "object_use")})
+    ns.update({k: step for k in ("future", "users", "usage", "tags", "policies", "streams", "object_use", "activity")})
 
     def grants(session, run_id, mode):
         con.execute(f"INSERT INTO TBL_ACCESS_GRANT (RUN_ID, GRANTEE_ROLE) VALUES ('{run_id}', 'R')")
@@ -450,7 +467,7 @@ def test_same_queries():
 
 
 if __name__ == "__main__":
-    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_show_fallback,
+    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_activity, test_show_fallback,
               test_run_overlap, test_usage_extra, test_same_queries):
         t()
         print("ok", t.__name__)
