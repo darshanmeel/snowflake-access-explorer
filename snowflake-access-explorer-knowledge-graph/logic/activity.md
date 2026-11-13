@@ -36,7 +36,7 @@ flowchart LR
 
 ## Business hours and off-hours
 - Stored in UTC; `WORK_HOURS` (env, default `7-19`, end exclusive) is the default business-hours window — `access.py:69-70`; `activity_page` sends it as `work` — `server.py:1674`.
-- The Activity tab keeps `{start, end, tz}`; the "Business time" slider sets `tz` from UTC-12 to UTC+14, and a stored UTC hour `h` counts as local hour `(h + tz) mod 24` — `web/src/pages/Activity.tsx:22`, `web/src/pages/Activity.tsx:83`, `web/src/pages/Activity.tsx:375-384`.
+- The Activity tab keeps `{start, end, tz}`; the "Business time" slider sets `tz` from UTC-12 to UTC+14, and a stored UTC hour `h` counts as local hour `(h + tz) mod 24` — `web/src/pages/Activity.tsx:22`, `web/src/pages/Activity.tsx:83`, `web/src/pages/Activity.tsx:383-390`.
 - Off-hours queries of a row = its weekend queries + weekday queries whose local hour is outside `[start, end)` (`offOf`) — `web/src/pages/Activity.tsx:25-26`. Weekend = Saturday or Sunday of the UTC day (`access.py:4327-4330`).
 - Example (`test_access.py:1714-1716`): every row's `sum(hours) + weekend == queries`; ENGINEER_01's INSERT rows sit at UTC hours 13 and 22 (22:00 = off-hours at UTC+0).
 - Rows from a snapshot without `HOURS` keep all-zero hours (`access.py:4309`), so only their weekend queries count as off-hours.
@@ -73,7 +73,7 @@ flowchart LR
 - Example (`test_access.py:1739-1742`): ST_CUSTOMER_LOOKUP -> owner T_SALES_MART_OWNER, exposed `{SUPPORT_01: [SALES.MART.VW_CUSTOMER]}`, app view `by.user = [SUPPORT_01]`.
 
 ## Copy-only SQL (`query_sql`)
-- `query_sql(name, what, first, last)`: read-only SELECT over ACCESS_HISTORY (all three object lists via `ARRAY_CAT`) x QUERY_HISTORY x SESSIONS, every query id, start time, user, role, statement, object and client in the window, newest first; no query text; filter per `what` (object name, user, role, app by `StreamlitName`, scope by `LIKE '<name>.%'`); single quotes doubled — `access.py:4342-4359`. The app never runs it; the tab offers it to copy (`web/src/pages/Activity.tsx:778-787`).
+- `query_sql(name, what, first, last)`: read-only SELECT over ACCESS_HISTORY (all three object lists via `ARRAY_CAT`) x QUERY_HISTORY x SESSIONS, every query id, start time, user, role, statement, object and client in the window, newest first; no query text; filter per `what` (object name, user, role, app by `StreamlitName`, scope by `LIKE '<name>.%'`); single quotes doubled — `access.py:4342-4359`. The app never runs it; the tab offers it to copy (`web/src/pages/Activity.tsx:784-793`).
 - Example (`test_access.py:1721-1722`): scope SALES.CORE -> `LIKE 'SALES.CORE.%'`; user `O'BRIEN` -> `O''BRIEN`.
 
 ## Grant path behind a use (`used_path`, `activity_graph`)

@@ -1804,21 +1804,21 @@
 {"from": "file:web/src/pages/Access.tsx", "to": "file:web/src/pages/common.tsx", "type": "imports", "evidence": "web/src/pages/Access.tsx:12", "status": "verified"}
 {"from": "file:web/src/pages/Access.tsx", "to": "file:web/src/pages/screens.ts", "type": "imports", "evidence": "web/src/pages/Access.tsx:14", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:ActivityTab", "type": "contains", "evidence": "web/src/pages/Activity.tsx:35", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "contains", "evidence": "web/src/pages/Activity.tsx:171", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "contains", "evidence": "web/src/pages/Activity.tsx:415", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:364", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:233", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "contains", "evidence": "web/src/pages/Activity.tsx:778", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "contains", "evidence": "web/src/pages/Activity.tsx:320", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "contains", "evidence": "web/src/pages/Activity.tsx:179", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "contains", "evidence": "web/src/pages/Activity.tsx:421", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:372", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:241", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "contains", "evidence": "web/src/pages/Activity.tsx:784", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "contains", "evidence": "web/src/pages/Activity.tsx:328", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:UseLine", "type": "contains", "evidence": "web/src/pages/Activity.tsx:53", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "contains", "evidence": "web/src/pages/Activity.tsx:204", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "contains", "evidence": "web/src/pages/Activity.tsx:669", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "contains", "evidence": "web/src/pages/Activity.tsx:212", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "contains", "evidence": "web/src/pages/Activity.tsx:675", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "file:web/src/api/client.ts", "type": "imports", "evidence": "web/src/pages/Activity.tsx:8", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "file:web/src/api/types.ts", "type": "imports", "evidence": "web/src/pages/Activity.tsx:9", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "file:web/src/components/index.ts", "type": "imports", "evidence": "web/src/pages/Activity.tsx:10", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "file:web/src/ctx.tsx", "type": "imports", "evidence": "web/src/pages/Activity.tsx:11", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "file:web/src/pages/common.tsx", "type": "imports", "evidence": "web/src/pages/Activity.tsx:12", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "function:web/src/pages/Activity.tsx:combine", "type": "contains", "evidence": "web/src/pages/Activity.tsx:564", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "function:web/src/pages/Activity.tsx:combine", "type": "contains", "evidence": "web/src/pages/Activity.tsx:570", "status": "verified"}
 {"from": "file:web/src/pages/Activity.tsx", "to": "function:web/src/pages/Activity.tsx:offOf", "type": "contains", "evidence": "web/src/pages/Activity.tsx:25", "status": "verified"}
 {"from": "file:web/src/pages/Catalog.tsx", "to": "component:web/src/pages/Catalog.tsx:Catalog", "type": "contains", "evidence": "web/src/pages/Catalog.tsx:13", "status": "verified"}
 {"from": "file:web/src/pages/Catalog.tsx", "to": "file:web/src/api/types.ts", "type": "imports", "evidence": "web/src/pages/Catalog.tsx:3", "status": "verified"}
@@ -5417,14 +5417,14 @@
 {"from": "ui_screen:Access graph", "to": "function:server.py:graph_page", "type": "calls", "evidence": "web/src/pages/Map.tsx:69", "status": "verified"}
 {"from": "ui_screen:Access graph", "to": "function:server.py:list_page", "type": "calls", "evidence": "web/src/pages/Map.tsx:25", "status": "verified"}
 {"from": "ui_screen:Access graph", "to": "function:server.py:map_page", "type": "calls", "evidence": "web/src/pages/Map.tsx:23", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "calls", "evidence": "web/src/pages/Activity.tsx:105", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "calls", "evidence": "web/src/pages/Activity.tsx:109", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:108", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:106", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "calls", "evidence": "web/src/pages/Activity.tsx:119", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "calls", "evidence": "web/src/pages/Activity.tsx:107", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "calls", "evidence": "web/src/pages/Activity.tsx:111", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "calls", "evidence": "web/src/pages/Activity.tsx:117", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:114", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:112", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "calls", "evidence": "web/src/pages/Activity.tsx:127", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "calls", "evidence": "web/src/pages/Activity.tsx:113", "status": "verified"}
 {"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "calls", "evidence": "web/src/pages/Activity.tsx:84", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "calls", "evidence": "web/src/pages/Activity.tsx:110", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "calls", "evidence": "web/src/pages/Activity.tsx:118", "status": "verified"}
 {"from": "ui_screen:Activity tab", "to": "endpoint:GET /api/activity", "type": "calls", "evidence": "web/src/pages/Activity.tsx:37", "status": "verified"}
 {"from": "ui_screen:Can they?", "to": "endpoint:GET /api/check", "type": "calls", "evidence": "web/src/pages/Check.tsx:19", "status": "verified"}
 {"from": "ui_screen:Can they?", "to": "function:server.py:check_page", "type": "calls", "evidence": "web/src/pages/Check.tsx:19", "status": "verified"}

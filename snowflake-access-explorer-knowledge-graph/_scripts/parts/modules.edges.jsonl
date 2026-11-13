@@ -977,19 +977,19 @@
 {"from": "test_case:test_sql.py:test_activity", "to": "function:access.py:activity_sql", "type": "illustrates", "evidence": "test_sql.py:302", "status": "verified"}
 {"from": "file:web/src/pages/Object.tsx", "to": "component:web/src/pages/Object.tsx:AppNote", "type": "contains", "evidence": "web/src/pages/Object.tsx:83", "status": "verified"}
 {"from": "component:web/src/pages/Object.tsx:AppNote", "to": "endpoint:GET /api/who", "type": "reads", "evidence": "web/src/pages/Object.tsx:68", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "contains", "evidence": "web/src/pages/Activity.tsx:171", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "contains", "evidence": "web/src/pages/Activity.tsx:204", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:233", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "contains", "evidence": "web/src/pages/Activity.tsx:320", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:364", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "contains", "evidence": "web/src/pages/Activity.tsx:415", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "contains", "evidence": "web/src/pages/Activity.tsx:669", "status": "verified"}
-{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "contains", "evidence": "web/src/pages/Activity.tsx:778", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "calls", "evidence": "web/src/pages/Activity.tsx:105", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "contains", "evidence": "web/src/pages/Activity.tsx:179", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "contains", "evidence": "web/src/pages/Activity.tsx:212", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:241", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "contains", "evidence": "web/src/pages/Activity.tsx:328", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "contains", "evidence": "web/src/pages/Activity.tsx:372", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "contains", "evidence": "web/src/pages/Activity.tsx:421", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "contains", "evidence": "web/src/pages/Activity.tsx:675", "status": "verified"}
+{"from": "file:web/src/pages/Activity.tsx", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "contains", "evidence": "web/src/pages/Activity.tsx:784", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:AppViewers", "type": "calls", "evidence": "web/src/pages/Activity.tsx:111", "status": "verified"}
 {"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Warehouse", "type": "calls", "evidence": "web/src/pages/Activity.tsx:84", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:106", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "calls", "evidence": "web/src/pages/Activity.tsx:107", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:108", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "calls", "evidence": "web/src/pages/Activity.tsx:109", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "calls", "evidence": "web/src/pages/Activity.tsx:110", "status": "verified"}
-{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "calls", "evidence": "web/src/pages/Activity.tsx:119", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:OffHours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:112", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Touched", "type": "calls", "evidence": "web/src/pages/Activity.tsx:113", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Hours", "type": "calls", "evidence": "web/src/pages/Activity.tsx:114", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:Detail", "type": "calls", "evidence": "web/src/pages/Activity.tsx:117", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:WhoUsed", "type": "calls", "evidence": "web/src/pages/Activity.tsx:118", "status": "verified"}
+{"from": "ui_screen:Activity tab", "to": "component:web/src/pages/Activity.tsx:QuerySql", "type": "calls", "evidence": "web/src/pages/Activity.tsx:127", "status": "verified"}
