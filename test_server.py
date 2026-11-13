@@ -663,7 +663,11 @@ def test_sql_page():  # "SQL behind this page": commented, read-only, full names
              ("object", "name=SALES.CORE&show=activity", "SET IN_SCOPE = 'SALES.CORE';"),
              ("object", "name=WH_SALES_XS&show=activity", "SET WAREHOUSE_NAME = 'WH_SALES_XS';"),
              ("access", "user=O'BRIEN&show=activity", "SET USER_NAME = 'O''BRIEN';"),
-             ("usage", "user=ENGINEER_01", "USER_NAME = $USER_NAME"), ("rules", "", "GRANTEE_NAME = 'PUBLIC'"), ("home", "", "SNOWFLAKE.ACCOUNT_USAGE")]
+             ("usage", "user=ENGINEER_01", "USER_NAME = $USER_NAME"), ("rules", "", "GRANTEE_NAME = 'PUBLIC'"), ("home", "", "SNOWFLAKE.ACCOUNT_USAGE"),
+             # names under any parameter: Can they? (a user and an object), Compare (two roles), Request (a role)
+             ("check", "name=ENGINEER_01&obj=SALES.CORE.TBL_CUSTOMER", "SET USER_NAME = 'ENGINEER_01';"),
+             ("check", "name=ENGINEER_01&obj=SALES.CORE.TBL_CUSTOMER", "SET OBJECT_NAME = 'SALES.CORE.TBL_CUSTOMER';"),
+             ("compare", "a=F_ANALYST&b=F_MARKETING", "SET ROLE_NAME = 'F_MARKETING';"), ("request", "for_role=F_MARKETING", "SET ROLE_NAME = 'F_MARKETING';")]
     for page, q, want in cases:
         qs = js(f"/api/sql?page={page}&{q}")["queries"]
         assert qs and any(want in x["sql"] for x in qs), (page, q)

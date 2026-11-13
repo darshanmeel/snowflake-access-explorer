@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearCache, get, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page } from "./api/types";
-import { Banner, Card, Combo, Root, type ThemeName } from "./components";
+import { Banner, Card, Combo, Root, SqlCtx, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -102,6 +102,9 @@ export const mineText = (hours: number | undefined) =>
     hours ? ` and in .cache/ on this machine (CACHE_HOURS=${hours})` : " only (CACHE_HOURS=0: nothing on disk)"}. Nothing is written to Snowflake.`;
 
 /** My access: ?data=mine, or the brief's ?page=me. */
+/** Pages that show the default user when the URL names nobody: their SQL is for that user. */
+const PERSON = new Set(["access", "see", "check", "usage", "user", "request"]);
+
 export const mine = (page: string | null, data: string | null) => data === "mine" || page === "me";
 
 function read(): Loc {
@@ -263,7 +266,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   useEffect(() => { onUrl?.(url(loc)); }, [loc]);
   const [theme, flip] = useTheme();
   const [busy, setBusy] = useState("");
-  const [sql, setSql] = useState(false);  // the "SQL behind this page" panel
+  const [sql, setSql] = useState<string | null>(null);  // the "SQL behind this page" panel: the card it was opened from
   const [notice, setNotice] = useState<{ tone: "info" | "bad"; title: string; text: string } | null>(null);
   const view = loc.mine ? "mine" : "shared";
   const m = useApi<Meta>("meta", { view });
@@ -306,6 +309,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const needShared = !loc.mine && meta?.error?.detail === "shared_not_loaded";
   return (
     <Root theme={theme}>
+      <SqlCtx.Provider value={setSql}>
       <div className="app">
         <header className="top">
           <button type="button" className="top-logo" onClick={() => nav("home")} aria-label="Access explorer: home">
@@ -322,15 +326,17 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           <span className="top-right">
             {meta && <DataTime meta={meta} reload={reload} busy={!!busy} />}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
-            <button className="ae-btn" onClick={() => setSql(true)} title="The SQL behind this page, to run yourself (or right-click the page)">SQL</button>
+            <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner; right-click works too">{"</>"} on any card: its SQL</span>
+            <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (or right-click the page)">{"</>"} SQL</button>
             <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           </span>
           {busy && <span className="ae-muted top-busy" role="status"><span className="ae-spin" aria-hidden />{busy}</span>}
         </header>
         {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
         {/* right-click the page: the SQL behind it (Shift + right-click keeps the browser's menu) */}
-        <main className="main" onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); setSql(true); }}>
-          {sql && <SqlPanel page={loc.page} params={{ ...loc.params, view }} onClose={() => setSql(false)} />}
+        <main className="main" onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault();
+          setSql((e.target as HTMLElement).closest(".ae-card")?.querySelector("h3")?.textContent ?? ""); }}>
+          {sql !== null && <SqlPanel page={loc.page} hint={sql} params={{ ...(PERSON.has(loc.page) && !["user", "role", "name", "a"].some((k) => loc.params[k]) ? { user: meta?.default_user ?? undefined } : {}), ...loc.params, view }} onClose={() => setSql(null)} />}
           {notice && (
             <Banner tone={notice.tone} title={notice.title} lines={[notice.text]}>
               <button type="button" className="ae-btn ae-btn-s" onClick={() => setNotice(null)}>Dismiss</button>
@@ -361,6 +367,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           )}
         </main>
       </div>
+      </SqlCtx.Provider>
     </Root>
   );
 }

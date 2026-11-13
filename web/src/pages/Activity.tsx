@@ -9,7 +9,7 @@ import { useApi } from "../api/client";
 import type { ActivityBy, ActivityKey, ActivityPage, ActivityRow, ActivitySensitive } from "../api/types";
 import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips } from "../components";
 import { useApp } from "../ctx";
-import { col, GraphCard, Load, Pick, SqlBox } from "./common";
+import { col, GraphCard, Load, Pick } from "./common";
 
 const LABEL: Record<ActivityKey, string> = { user: "User", role: "Role", client: "Client", type: "Statement", object: "Table" };
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -71,15 +71,7 @@ const SectionSql = createContext<Record<string, string>>({});
 
 /** A section card; sql: the key of the query behind it, shown on its SQL button. */
 function Sec({ title, sub, right, children, id, sql }: { title: ReactNode; sub?: ReactNode; right?: ReactNode; children: ReactNode; id?: string; sql?: string }) {
-  const text = useContext(SectionSql)[sql ?? ""];
-  const [open, setOpen] = useState(false);
-  return (
-    <div id={id}><Card title={title} sub={sub} right={<div className="ae-row">{right}{text && (
-      <button type="button" className={`ae-btn${open ? " ae-btn-primary" : ""}`} aria-pressed={open} title="The SQL behind this section, to run yourself" onClick={() => setOpen(!open)}>SQL</button>)}</div>}>
-      {open && text && <SqlBox sql={text} />}
-      {children}
-    </Card></div>
-  );
+  return <div id={id}><Card title={title} sub={sub} right={right} sql={useContext(SectionSql)[sql ?? ""]}>{children}</Card></div>;
 }
 
 function Seg<K extends string>({ value, items, onPick, label }: { value: K; items: [K, string][]; onPick: (k: K) => void; label: string }) {

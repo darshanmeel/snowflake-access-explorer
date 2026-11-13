@@ -1,12 +1,40 @@
 // Small building blocks: Card, Tabs, Chips, Banner, KpiRow. Colours only through --ae-* variables (themeVars).
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type MouseEvent, type ReactNode } from "react";
+import { copyText } from "./kit";
 import { themeVars } from "./theme";
 
-export function Card({ title, sub, right, children, scroll = false }: {
-  title?: ReactNode; sub?: ReactNode; right?: ReactNode; children?: ReactNode; scroll?: boolean;
+/** Opens the "SQL behind this page" panel with a hint (the card's title); set by the app, absent in tests. */
+export const SqlCtx = createContext<((hint: string) => void) | null>(null);
+
+/** The </> mark in a card's top-right corner: its own SQL (sql) inline, else the page's SQL panel led by this card. */
+function SqlMark({ sql, open, setOpen }: { sql?: string; open: boolean; setOpen: (v: boolean) => void }) {
+  const show = useContext(SqlCtx);
+  if (!show) return null;
+  const click = (e: MouseEvent<HTMLButtonElement>) => sql ? setOpen(!open)
+    : show(e.currentTarget.closest(".ae-card")?.querySelector("h3")?.textContent ?? "");
+  return <button type="button" className={`ae-card-sql${open ? " on" : ""}`} onClick={click} aria-pressed={sql ? open : undefined}
+    title="The SQL behind this, to run yourself in Snowflake" aria-label="Show the SQL behind this">{"</>"}</button>;
+}
+
+/** A card's own SQL, shown in the card. */
+function SqlInline({ sql }: { sql: string }) {
+  const [done, setDone] = useState("");
+  return (
+    <div className="ae-sqlbox">
+      <div className="ae-sqlbox-h"><b>SQL behind this</b><span className="ae-muted">read-only · change the SET lines · run it with your own role</span>
+        <button type="button" className="ae-btn" onClick={() => copyText(sql).then((ok) => { setDone(ok ? "Copied" : "Select and copy"); setTimeout(() => setDone(""), 1500); })}>{done || "Copy SQL"}</button></div>
+      <pre tabIndex={0}>{sql}</pre>
+    </div>
+  );
+}
+
+export function Card({ title, sub, right, children, scroll = false, sql }: {
+  title?: ReactNode; sub?: ReactNode; right?: ReactNode; children?: ReactNode; scroll?: boolean; sql?: string;
 }) {
+  const [open, setOpen] = useState(false);
   return (
     <section className="ae-card">
+      <SqlMark sql={sql} open={open} setOpen={setOpen} />
       {(title || right) && (
         <header className="ae-card-head">
           <div>
@@ -16,7 +44,7 @@ export function Card({ title, sub, right, children, scroll = false }: {
           {right && <div className="ae-card-right">{right}</div>}
         </header>
       )}
-      <div className={scroll ? "ae-card-body ae-scroll" : "ae-card-body"}>{children}</div>
+      <div className={scroll ? "ae-card-body ae-scroll" : "ae-card-body"}>{open && sql && <SqlInline sql={sql} />}{children}</div>
     </section>
   );
 }

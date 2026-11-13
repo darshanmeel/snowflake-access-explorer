@@ -108,15 +108,20 @@ export function SqlBox({ title, sql }: { title?: string; sql: string }) {
 
 /** The SQL behind a page (top bar "SQL", or a right-click on the page): every query, commented, with the SET lines
  * filled in for what the page shows, to run in Snowflake with your own role. */
-export function SqlPanel({ page, params, onClose }: { page: string; params: Record<string, string | undefined>; onClose: () => void }) {
+export function SqlPanel({ page, params, onClose, hint = "" }: { page: string; params: Record<string, string | undefined>; onClose: () => void; hint?: string }) {
   const s = useApi<{ page: string; queries: { title: string; sql: string }[] }>("sql", { ...params, page });
+  // the card it was opened from leads: queries whose title or comment share the most words with the card's title
+  const words = hint.toLowerCase().split(/[^a-z0-9_]+/).filter((w) => w.length > 3);
+  const score = (q: { title: string; sql: string }) => { const t = (q.title + " " + q.sql.slice(0, 500)).toLowerCase(); return words.filter((w) => t.includes(w)).length; };
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [onClose]);
   return (
     <div className="ae-sqlpanel" role="dialog" aria-label="SQL behind this page">
       <div className="ae-sqlpanel-h"><div><h2>SQL behind this page</h2>
         <p className="ae-muted">Read-only queries over SNOWFLAKE.ACCOUNT_USAGE. Change the SET lines and run them in a worksheet with your own role; without access Snowflake says so. The app never runs them.</p></div>
         <button type="button" className="ae-btn" onClick={onClose}>Close</button></div>
-      <Load s={s}>{(d) => <>{d.queries.map((q) => <SqlBox key={q.title} title={q.title} sql={q.sql} />)}</>}</Load>
+      {hint && <p className="ae-sqlpanel-for">For <b>{hint}</b>: the closest queries first.</p>}
+      <Load s={s}>{(d) => <>{[...d.queries].map((q, i) => ({ q, i, n: score(q) })).sort((a, b) => b.n - a.n || a.i - b.i)
+        .map(({ q }) => <SqlBox key={q.title} title={q.title} sql={q.sql} />)}</>}</Load>
     </div>
   );
 }

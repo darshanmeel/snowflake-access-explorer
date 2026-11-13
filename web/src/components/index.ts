@@ -10,7 +10,7 @@ export { PathText } from "./PathText";
 export { PathStrip, foldPath } from "./PathStrip";
 export { GroupedGrantees, groupGrantees, StatusDot } from "./Grantees";
 export { Findings as FindingList, firstTab, groupByRule, SEVERITIES } from "./Findings";
-export { Banner, Card, Chips, KpiRow, Root, Tabs, type ChipItem, type Kpi, type TabItem } from "./parts";
+export { Banner, Card, Chips, KpiRow, Root, SqlCtx, Tabs, type ChipItem, type Kpi, type TabItem } from "./parts";
 export { TOKENS, themeVars, kindStyle, KIND_LABEL, PCLASS, type ThemeName } from "./theme";
 export { TAB_ORDER, TAB_LABEL, privTab, tabList, tabRows, tabRoles, byObject } from "./tabs";
 export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind, pathGraph, related, MAX_BOXES } from "./graphs";

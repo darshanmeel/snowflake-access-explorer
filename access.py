@@ -4470,9 +4470,15 @@ def activity_section_sql(name, what, first, last, key, work=WORK_HOURS):
 
 
 def page_sql(page, p, first=None, last=None):
-    """The SQL to run yourself behind a page, for the name it shows (user=, role=, name=): [dict(title, sql)],
-    the most useful first. Grants come from the access_queries/ files; activity from activity_section_sql()."""
-    user, role, obj = p.get("user") or p.get("a") or "", p.get("role") or "", p.get("name") or p.get("obj") or p.get("table") or ""
+    """The SQL to run yourself behind a page, for every user, role and object it shows, whatever the parameter is
+    called (user=, role=, name=, obj=, a= / b= on Compare, for_role=, ...; up to 2 of each): [dict(title, sql)], the
+    most useful first. Grants come from the access_queries/ files; activity from activity_section_sql()."""
+    vals = list(dict.fromkeys(v for k, v in p.items() if k not in ("page", "view", "show", "part", "by", "sev", "days") and v))
+    rs = set(roles)
+    users_ = [v for v in vals if v in profile or v in roles_of or v == p.get("user")]
+    roles_ = [v for v in vals if v not in users_ and (v in rs or v == p.get("role"))]
+    objs_ = [v for v in vals if v not in users_ and v not in roles_ and v in kinds]
+    user, role, obj = (users_ or [""])[0], (roles_ or [""])[0], (objs_ or [""])[0]
     end = day(ref_time())
     first, last = first or (end - timedelta(days=ACTIVITY_DAYS - 1)).isoformat(), last or end.isoformat()
     out = []
@@ -4491,13 +4497,13 @@ GROUP BY 1, 2 ORDER BY 3 DESC;"""), query_file("5_object_users.sql", f"Who can u
                 else ["tiles", "off", "touched", "hours", "objects", "client", "kinds", "matrix", "type_day", "by_day", "who", "ddl"])
         return [activity_section_sql(name, what, first, last, k) for k in keys] + [dict(title=f"Every query, one by one: {name}",
                                                                                          sql=query_sql(name, what, first, last) + "\n")]
-    if user:
+    for user in users_[:2]:
         out += [query_file("2_user_access.sql", f"Everything {user} can reach, through which roles", USER_NAME=user),
                 query_file("1_user_roles.sql", f"Every role {user} holds", USER_NAME=user)]
-    if role:
+    for role in roles_[:2]:
         out += [query_file("3_role_access.sql", f"Everything {role} reaches", ROLE_NAME=role),
                 query_file("4_role_holders.sql", f"Who holds {role}, and through which roles", ROLE_NAME=role)]
-    if obj:
+    for obj in objs_[:2]:
         out += [query_file("5_object_users.sql", f"Who can reach {obj}", OBJECT_NAME=obj),
                 plain(f"Tags and policies on {obj}", [f"Tags on {obj}, its columns, its schema and its database (those apply to it too),",
                                                     "and the masking / row access policies on it; a policy attached to a tag applies to every",
