@@ -18,6 +18,6 @@ flowchart LR
 ## Relates to
 - server.py (ROUTES), access.py, web/src/api/client.ts, web/src/api/types.ts; processes/access-requests.md (request endpoint).
 
-## Possibly stale (inferred)
-- Headings say "Shared data: one copy, 1 hour" and "My access ... 1 hour" with 3600 s — web/API.md:65-68, web/API.md:72-78; code uses `TTL = 24 * 3600` — cache.py:22, server.py:25, and line 61 of the same doc says 24 h — web/API.md:61.
-- Mentions `@st.cache_data(ttl=3600)` on `app.shared` — web/API.md:68; app.py now only runs st_react.app (CLAUDE.md:31-34).
+## Caching as documented
+- Shared data and My access: 24 h in memory (`TTL`), `.cache/` for `CACHE_HOURS`, cookie `Max-Age` 86400, answers kept in `ANSWERS` — web/API.md:65-95; matches cache.py:21-22, server.py:25, server.py:56-57.
+- `/api/home` and `/api/access` have their own sections.

@@ -22,9 +22,9 @@ DDL: `sql/1_setup.sql:78-87`. Grain: run x policy x object x column, or one row 
 | TAG_NAME | VARCHAR(500) | tag of a tag-based policy | 85 |
 | POLICY_BODY | VARCHAR | policy text; role checks parsed, not evaluated | 86 |
 
-- ACCOUNT_USAGE: `sql/1_setup.sql:449-460` (LEFT JOIN MASKING_POLICIES / ROW_ACCESS_POLICIES on POLICY_ID, `DELETED IS NULL`).
-- Fallback: `sql/1_setup.sql:462-483`; body via DESCRIBE, NULL when refused (`:447-450`).
-- Error -> UNAVAILABLE: `sql/1_setup.sql:484-486`.
-- Read: `access.py:1086`; `policies_of` `access.py:2286-2299` (row / column / tag-based via TAG_NAME); `masked` `access.py:2302-2308`.
+- ACCOUNT_USAGE: `sql/1_setup.sql:450-461` (LEFT JOIN MASKING_POLICIES / ROW_ACCESS_POLICIES on POLICY_ID, `DELETED IS NULL`).
+- Fallback: `sql/1_setup.sql:463-484`; body via DESCRIBE, NULL when refused (`:447-450`).
+- Error -> UNAVAILABLE: `sql/1_setup.sql:485-487`.
+- Read: `access.py:1094`; `policies_of` `access.py:2294-2307` (row / column / tag-based via TAG_NAME); `masked` `access.py:2310-2316`.
 - POLICY_BODY may contain role names or literals; whether it can hold personal data: unclear.
-- Unclear: tag-domain rows and POLICY_STATUS marked "to verify" `sql/1_setup.sql:447-448`.
+- Unclear: tag-domain rows and POLICY_STATUS marked "to verify" `sql/1_setup.sql:448-449`.

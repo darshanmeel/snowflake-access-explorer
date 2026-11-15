@@ -15,13 +15,13 @@ flowchart LR
   SQL[sql/: setup, snapshot, streamlit deploy] --> SF
 ```
 
-- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:464` snapshot, `access.py:629` live, `access.py:5094` checks, `access.py:4289` activity), cache (`cache.py`), server (`server.py:2312` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
+- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:465` snapshot, `access.py:634` live, `access.py:5117` checks, `access.py:4297` activity), cache (`cache.py`), server (`server.py:2333` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
 ## Entry points
 
 - `run.py`: `command()` (`run.py:19-42`) starts the local web app or Streamlit, both on `HOST` (default 127.0.0.1) (`processes/run-local.md`).
-- `server.py:2312` `make_app()`: FastAPI app, 32 endpoints (`modules/server.md`).
+- `server.py:2333` `make_app()`: FastAPI app, 32 endpoints (`modules/server.md`).
 - `app.py:18`: Streamlit in Snowflake page, runs the same React app (`flows/streamlit-in-snowflake.md`).
 - `sql/1_setup.sql`: tables, `SP_ACCESS_SNAPSHOT`, table functions (`data/model.md`, `modules/sql.md`).
 - `web/src/App.tsx`: React router and page map (`modules/web.md`).
@@ -45,7 +45,7 @@ flowchart LR
 
 ## Code vs docs
 
-- Business hours: README.html calls `WORK_HOURS` local time shifted from UTC by the Activity tab's slider (`README.html:722`), and the tab does shift them (`web/src/pages/Activity.tsx:22-26`); the comments at `access.py:69`, `web/src/api/types.ts:1240` and the `offOf` doc line (`web/src/pages/Activity.tsx:24`) still say UTC hours.
+- Business hours: README.html calls `WORK_HOURS` local time shifted from UTC by the Activity tab's slider (`README.html:722`), and the tab does shift them (`web/src/pages/Activity.tsx:22-26`); the comments at `access.py:70`, `web/src/api/types.ts:1240` and the `offOf` doc line (`web/src/pages/Activity.tsx:24`) still say UTC hours.
 
 ## Known gaps
 

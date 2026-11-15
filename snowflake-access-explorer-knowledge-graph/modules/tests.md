@@ -18,46 +18,46 @@ flowchart LR
 
 | Command | What | path:line |
 |---|---|---|
-| `python test_access.py` | Every `test_` function, `test_cache` first, `a.build(a.fake())` before each, all failures reported, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (skips test_perf, test_pages, test_live there) | test_access.py:1819-1838 |
-| `python test_server.py` | Every `test_` in file order; FAKE=1 set at import; TestClient on `server.make_app()` | test_server.py:7-14, test_server.py:804-810 |
+| `python test_access.py` | Every `test_` function, `test_cache` first, `a.build(a.fake())` before each, all failures reported, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (skips test_perf, test_pages, test_live there) | test_access.py:1827-1846 |
+| `python test_server.py` | Every `test_` in file order; FAKE=1 set at import; TestClient on `server.make_app()` | test_server.py:7-14, test_server.py:809-815 |
 | `python test_sql.py` | 11 tests in a fixed list | test_sql.py:469-473 |
 | `npm test` (in web/) | `vitest run` | web/package.json:11 |
 | Rule check | `python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists 1-29 | CLAUDE.md "Verify before saying done" |
 
 - Test packages: requirements.txt + requirements-web.txt (duckdb for test_sql) + httpx for TestClient (requirements-dev.txt:1-4).
-- `PERF=0` / `PERF_SCALE` control test_perf (CLAUDE.md; budgets docstring test_access.py:1126).
+- `PERF=0` / `PERF_SCALE` control test_perf (CLAUDE.md; budgets docstring test_access.py:1134).
 
 ## test_access.py groups
 
 | Group | Tests | Lines |
 |---|---|---|
 | Walks and depth | test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_cycle, test_namespaces | test_access.py:28-158, 747, 1255 |
-| Admin paths / BFS starts | test_admin_paths (a cap per admin role: ACCOUNTADMIN not hidden behind SYSADMIN paths), test_shortest_default (a default role's longer start joins at its own hop) | test_access.py:951, 950 |
-| SQL text | test_with_sql (Compare / Request / Granted vs used SQL and role kinds come from access.py) | test_access.py:1801 |
+| Admin paths / BFS starts | test_admin_paths (a cap per admin role: ACCOUNTADMIN not hidden behind SYSADMIN paths), test_shortest_default (a default role's longer start joins at its own hop) | test_access.py:959, 950 |
+| SQL text | test_with_sql (Compare / Request / Granted vs used SQL and role kinds come from access.py) | test_access.py:1809 |
 | Sensitive data | test_sensitive, test_data_view, test_has_lacks | test_access.py:187, 1199, 1211 |
 | Users / rules | test_users, test_rule18_stable, test_rules, test_fixes_clear, test_readonly, test_public, test_new_rules, test_review_logic, test_kinds | test_access.py:235-320, 739-844 |
-| Loaders / Snowflake fakes | test_demo_db, test_each, test_live, test_live_inside, test_db_roles, test_setup_errors | test_access.py:340-657, 705 |
-| Cache | test_cache, test_duckdb | test_access.py:1396, 528 |
-| Streamlit | test_pages (every `server.PAGES` key through app.py), test_sis_upload (4_streamlit.sql uploads every import, plus environment.yml, sis/.env, web/dist-st and `access_queries/*.sql` for the SQL panel, test_access.py:708) | test_access.py:657, 690 |
-| Fast / counted walks, perf | test_cap, test_fast, test_counted, test_built, test_builtin, test_perf (on `big()` test_access.py:1073) | test_access.py:803-970, 1091 |
-| What if | test_whatif_indirect, test_whatif | test_access.py:997, 982 |
-| Graph inputs | test_group_graph, test_graph_inputs, test_summary | test_access.py:1188, 1324, 1343 |
-| Screens | test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow, test_usage_changes, test_review_fixes | test_access.py:1457-1762 |
-| Activity | test_activity: Activity tab numbers, rules 24-28 (one finding each), UTC hours and weekend add up (test_access.py:1713-1716), activity_sql UTC / HOURS / StreamlitName (test_access.py:1718-1719), scope view and query_sql (test_access.py:1720-1722), warehouse_use (test_access.py:1723-1724), grant path behind a use, sensitive view, tag text, app_exposure and rule 29 with its What-if fix (test_access.py:1739-1747), owner role -> no rule 24, no ACTIVITY -> not available, incremental window (`activity_start`) | test_access.py:1701-1759 |
-| Docs | test_readme_rules (docs/make_readme.py rule table) | test_access.py:1788 |
+| Loaders / Snowflake fakes | test_demo_db, test_each, test_live, test_live_inside, test_db_roles, test_setup_errors | test_access.py:340-665, 705 |
+| Cache | test_cache, test_duckdb | test_access.py:1404, 528 |
+| Streamlit | test_pages (every `server.PAGES` key through app.py), test_sis_upload (4_streamlit.sql uploads every import, plus environment.yml, sis/.env, web/dist-st and `access_queries/*.sql` for the SQL panel, test_access.py:716) | test_access.py:665, 690 |
+| Fast / counted walks, perf | test_cap, test_fast, test_counted, test_built, test_builtin, test_perf (on `big()` test_access.py:1081) | test_access.py:811-978, 1091 |
+| What if | test_whatif_indirect, test_whatif | test_access.py:1005, 982 |
+| Graph inputs | test_group_graph, test_graph_inputs, test_summary | test_access.py:1196, 1324, 1343 |
+| Screens | test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow, test_usage_changes, test_review_fixes | test_access.py:1465-1770 |
+| Activity | test_activity: Activity tab numbers, rules 24-28 (one finding each), UTC hours and weekend add up (test_access.py:1721-1724), activity_sql UTC / HOURS / StreamlitName (test_access.py:1726-1727), scope view and query_sql (test_access.py:1728-1730), warehouse_use (test_access.py:1731-1732), grant path behind a use, sensitive view, tag text, app_exposure and rule 29 with its What-if fix (test_access.py:1747-1755), owner role -> no rule 24, no ACTIVITY -> not available, incremental window (`activity_start`) | test_access.py:1709-1767 |
+| Docs | test_readme_rules (docs/make_readme.py rule table) | test_access.py:1796 |
 
 ## test_server.py groups
 
 | Group | Tests | Lines |
 |---|---|---|
-| Page shapes | test_frame, test_user, test_role, test_object, test_check, test_request, test_sensitive_rules_review, test_who, test_access_home, test_graph_see_compare, test_risks_plan, test_review_grid_catalog_flow, test_usage_changes, test_activity (Activity tab of an object, a person, a role, `as=`, untagged table, rules 24-28 in area Activity; test_server.py:634-654), test_sql_page (GET /api/sql per page and `section_sql`; test_server.py:657-679), test_every_page, test_review_fixes, test_step3, test_step4 | test_server.py:50-203, 459-753 |
+| Page shapes | test_frame, test_user, test_role, test_object, test_check, test_request, test_sensitive_rules_review, test_who, test_access_home, test_graph_see_compare, test_risks_plan, test_review_grid_catalog_flow, test_usage_changes, test_activity (Activity tab of an object, a person, a role, `as=`, untagged table, rules 24-28 in area Activity; test_server.py:634-654), test_sql_page (GET /api/sql per page and `section_sql`; test_server.py:657-682), test_every_page, test_review_fixes, test_step3, test_step4 | test_server.py:50-203, 459-753 |
 | Loading / My access | test_load_on_click, test_mine, test_mine_shared_server, test_rebuild_outcome | test_server.py:218, 235, 395, 376 |
 | Read-only | test_read_only: every statement via `sf.rows` must match READ_ONLY, plus the SP_ACCESS_SNAPSHOT CALL | test_server.py:328-373 |
 | Security / errors | test_same_site, test_error_text | test_server.py:423, 452 |
 | Versions | test_spa, test_streamlit_bridge, test_bundles_fresh (src-hash.txt) | test_server.py:262, 267, 463 |
 | Graph schema | `graph_ok` checks GRAPH / NODE / EDGE keys and lane bounds | test_server.py:22-25, 40-47 |
 | Other | test_whatif, test_review_check | test_server.py:285, 479 |
-| Review 2026-11-10 | test_run_address (`run.command` passes HOST as `--server.address`), test_cache_lock (`cache.get` memory hit does not wait; `drop` under the lock), test_csv_formula (CSV cells that would run as Excel formulas get `'`) | test_server.py:760, 764, 794 |
+| Review 2026-11-10 | test_run_address (`run.command` passes HOST as `--server.address`), test_cache_lock (`cache.get` memory hit does not wait; `drop` under the lock), test_csv_formula (CSV cells that would run as Excel formulas get `'`) | test_server.py:764, 764, 794 |
 
 ## test_sql.py
 

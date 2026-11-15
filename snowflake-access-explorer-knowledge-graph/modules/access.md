@@ -28,32 +28,32 @@ flowchart LR
 
 | Area | Lines | What is there |
 |---|---|---|
-| Settings and constants | access.py:1-136 | `.env` load (access.py:21), `in_snowflake` / `INSIDE` (access.py:29-43), `ADMIN` (access.py:45), `BUILTIN` patterns (access.py:52-54), `MAX_HOPS`, `FUNC`/`TECH`/`BUILD`, `TABLES` (access.py:55-61), sensitive tags, dormancy, `MAX_PATHS` (access.py:74-84), `RULES` titles (access.py:90-130), `SEVERITY` (access.py:131); activity settings `OPTIONAL`, `ACTIVITY_DAYS`, `QUERY_TAG`, `INTERACTIVE`, `CLIENTS`, `SPIKE`, `NEW_DAYS` (access.py:61-72), `WORK_HOURS` default business hours 7-19 (access.py:69-70) |
-| Fake data | access.py:137-461 | `SCHEMAS`, `CHAIN`, `FIN_USERS` (access.py:139-151), `fake()` (access.py:154-371), `fake_use()` (access.py:374-397), `fake_activity()` one finding per rule 24-28, HOURS per row, SUPPORT_01's use of the Streamlit app (access.py:400-434); the demo app SALES.MART.ST_CUSTOMER_LOOKUP (access.py:141, access.py:157, access.py:180-181, access.py:219), `fake_previous()` for What changed (access.py:450-461) |
-| Snapshot loader | access.py:464-479 | `snapshot(query, where)`: last OK run of `TBL_ACCESS_RUN`, then each `TBL_ACCESS_<t>` of that run; `OBJECT_USE`, `ACTIVITY` optional; `hours_of` parses ACTIVITY `HOURS` JSON (access.py:479-485) |
-| SHOW helpers | access.py:488-538 | `ident`, `line`, `qualify`, `each` (SHOW_THREADS at once, access.py:506-520), `held_db_roles`, `info_schema` |
-| My access | access.py:539-622 | `mine(query, db)`: the logged-in user's own access, read with their rights, writes nothing |
-| Live (SOURCE=direct) | access.py:625-998 | `live(query, old)` (access.py:629-917): same dict as `snapshot()`, ACCOUNT_USAGE else SHOW, ACTIVITY read only for the days `old` lacks (access.py:899-908); `use_sql` ACCESS_HISTORY (access.py:920-934); `activity_sql` / `activity_start` (access.py:937-986); `only()` demo slice (access.py:989-998) |
-| Lookups / build | access.py:1001-1143 | `ROLE_ON` (access.py:1013), `KEEP_BUILT` (access.py:1017), `acts` ACTIVITY rows (access.py:1010), `build()` (access.py:1030-1095), `cached()` (access.py:1109-1113), `kind_of`, `role_db`, `role_kind` (access.py:1116-1141) |
-| Names, classes, ladder | access.py:1144-1469 | `uid` / `UTAG` users vs roles (access.py:1144-1150), `priv_class`, `priv_cat`, `category`, `LEVELS` ladder (access.py:1165-1236), `access_objects`, `ladder*`, `reach_counts` (access.py:1240-1338), `who_has` (access.py:1375-1388), `split_name` (access.py:1450) |
-| Full walks | access.py:1470-1585 | `down`, `up`, `bfs`, `ups`, `best_paths`, `starts`, `walk`, `depth`, `chains` |
-| Fast walks (counted) | access.py:1586-1751 | `dag`, `loops`, `counts`, `shortest`, `listed`, `fast`, `capped_paths` |
-| Counted walks to holders | access.py:1753-1856 | `holding`, `tally`, `via_role`, `via_link`, `paths_to`, `reach_without` |
-| Walk up | access.py:1858-1914 | `users_on`, `up_walk` (access.py:1865-1897), `up_only_via` |
-| Graph inputs | access.py:1916-2136 | `down_graph`, `object_graph`, `role_graph`; `access_of`, `admin_paths`, `account_privs`, `admin_holders`, `who_users`, `who_can` (access.py:2032-2126) |
-| Users | access.py:2137-2207 | `login_days`, `is_service`, `is_disabled`, `is_dormant`, `status`, `split_users`, `used_roles` |
-| Sensitive data | access.py:2209-2703 | tags (`tag_rules`..`sensitive_cols`, access.py:2211-2253), policies and masking (`clear_for`..`col_view`, access.py:2262-2445), `data_view` (access.py:2447-2466), `governance_kpis` (access.py:2507-2514), `catalog` (access.py:2576-2589), `sens_flow` (access.py:2601-2642), `review_grid` (access.py:2655-2701) |
-| Page aggregations | access.py:2704-2951 | `grants`, `grant_rows`, `reach`, `held`, `loses`, `role_stats`, `grantees`, `valid_privs`, `admin_*`, `matrix`, `object_stats`, `has_lacks`, `privs_on` |
-| Big accounts | access.py:2952-3220 | `finding_index`, `group_objects`, `MAX_OBJECTS` 12 (access.py:3024), `graph_input` (access.py:3027-3117), `too_big`, `summary` (access.py:3137-3192), `graph_info` |
-| Removal and requests | access.py:3221-3631 | `revoke` / `fix_text` text only (access.py:3252-3283), `with_sql` (access.py:3286-3299), `losers`, `removal`, `ask_for`, `can` (access.py:3402-3435), `cut_points`, `nearest`, `suggest`, `approver` |
-| Access graph (screen 4) | access.py:3632-3837 | `access_graph` (access.py:3687-3835) |
-| What they see (screen 7) | access.py:3838-3862 | `seen` |
-| Compare / review / search | access.py:3863-3983 | `compare` (access.py:3879-3933; `match` / `extras` pass through `with_sql`, access.py:3932-3933), `review` (access.py:3936-3969), `search` (access.py:3972-3981) |
-| What if | access.py:3984-4258 | `WHAT_IF_OPS` (access.py:3986), `changes_of`, `without_cuts`, `what_if` (access.py:4078-4256) |
-| Granted vs used and Activity | access.py:4259-4798 | `use_state`; Activity tab: `act_state`, `client_label`, `activity`, `used_path`, `query_sql`, `activity_graph`, `user_reads`, `app_exposure`, `app_use`, `warehouse_use`, `rule29`, `mark_sensitive`, `activity_sensitive` (access.py:4275-4728); `used_on`, `granted_used` (access.py:4753-4796) |
-| SQL to run yourself | access.py:4365-4567 | `DAYS_USAGE`, `QUERIES` (access_queries folder), `NEEDS` (privilege comment) (access.py:4365-4371); `lit`, `query_file`, `plain` (access.py:4374-4395); Activity section queries `ACT_FILTER`, `ACT_BASE`, `OFF`, `ACT_SECTIONS` (access.py:4398-4458), `activity_section_sql` (access.py:4461-4471); `page_sql` (access.py:4474-4567); logic in [logic/page-sql.md](../logic/page-sql.md) |
-| What changed | access.py:4799-5045 | `state` / `restore` / `loaded` (access.py:4801-4828), `facts` (access.py:4833-4859), `diff` (access.py:4961-5043) |
-| Rules | access.py:5046-5544 | `rule_rows`, `checks`, `find`, `rules_model` ... `rule23`, `rules_activity` 24-28 (access.py:5484-5535), `rule29` (access.py:4662-4677), `findings` (access.py:5538-5544) |
+| Settings and constants | access.py:1-137 | `.env` load (access.py:21), `in_snowflake` / `INSIDE` (access.py:29-43), `ADMIN` (access.py:45), `BUILTIN` patterns (access.py:52-54), `MAX_HOPS`, `FUNC`/`TECH`/`BUILD`, `TABLES` (access.py:55-61), sensitive tags, dormancy, `MAX_PATHS` (access.py:75-85), `RULES` titles (access.py:91-131), `SEVERITY` (access.py:132); activity settings `OPTIONAL`, `ACTIVITY_DAYS`, `QUERY_TAG`, `INTERACTIVE`, `CLIENTS`, `SPIKE`, `NEW_DAYS` (access.py:61-73), `WORK_HOURS` default business hours 7-19 (access.py:70-71) |
+| Fake data | access.py:138-462 | `SCHEMAS`, `CHAIN`, `FIN_USERS` (access.py:140-152), `fake()` (access.py:155-372), `fake_use()` (access.py:375-398), `fake_activity()` one finding per rule 24-28, HOURS per row, SUPPORT_01's use of the Streamlit app (access.py:401-435); the demo app SALES.MART.ST_CUSTOMER_LOOKUP (access.py:142, access.py:158, access.py:181-182, access.py:220), `fake_previous()` for What changed (access.py:451-462) |
+| Snapshot loader | access.py:465-484 | `snapshot(query, where)`: last OK run of `TBL_ACCESS_RUN`, then each `TBL_ACCESS_<t>` of that run; `OBJECT_USE`, `ACTIVITY` optional; `hours_of` parses ACTIVITY `HOURS` JSON (access.py:484-490) |
+| SHOW helpers | access.py:493-543 | `ident`, `line`, `qualify`, `each` (SHOW_THREADS at once, access.py:511-525), `held_db_roles`, `info_schema` |
+| My access | access.py:544-627 | `mine(query, db)`: the logged-in user's own access, read with their rights, writes nothing |
+| Live (SOURCE=direct) | access.py:630-1006 | `live(query, old)` (access.py:634-922): same dict as `snapshot()`, ACCOUNT_USAGE else SHOW, ACTIVITY read only for the days `old` lacks (access.py:904-913); `use_sql` ACCESS_HISTORY (access.py:925-939); `activity_sql` / `activity_start` (access.py:942-994); `only()` demo slice (access.py:997-1006) |
+| Lookups / build | access.py:1009-1151 | `ROLE_ON` (access.py:1021), `KEEP_BUILT` (access.py:1025), `acts` ACTIVITY rows (access.py:1018), `build()` (access.py:1038-1103), `cached()` (access.py:1117-1121), `kind_of`, `role_db`, `role_kind` (access.py:1124-1149) |
+| Names, classes, ladder | access.py:1152-1477 | `uid` / `UTAG` users vs roles (access.py:1152-1158), `priv_class`, `priv_cat`, `category`, `LEVELS` ladder (access.py:1173-1244), `access_objects`, `ladder*`, `reach_counts` (access.py:1248-1346), `who_has` (access.py:1383-1396), `split_name` (access.py:1458) |
+| Full walks | access.py:1478-1593 | `down`, `up`, `bfs`, `ups`, `best_paths`, `starts`, `walk`, `depth`, `chains` |
+| Fast walks (counted) | access.py:1594-1759 | `dag`, `loops`, `counts`, `shortest`, `listed`, `fast`, `capped_paths` |
+| Counted walks to holders | access.py:1761-1864 | `holding`, `tally`, `via_role`, `via_link`, `paths_to`, `reach_without` |
+| Walk up | access.py:1866-1922 | `users_on`, `up_walk` (access.py:1873-1905), `up_only_via` |
+| Graph inputs | access.py:1924-2144 | `down_graph`, `object_graph`, `role_graph`; `access_of`, `admin_paths`, `account_privs`, `admin_holders`, `who_users`, `who_can` (access.py:2040-2134) |
+| Users | access.py:2145-2215 | `login_days`, `is_service`, `is_disabled`, `is_dormant`, `status`, `split_users`, `used_roles` |
+| Sensitive data | access.py:2217-2711 | tags (`tag_rules`..`sensitive_cols`, access.py:2219-2261), policies and masking (`clear_for`..`col_view`, access.py:2270-2453), `data_view` (access.py:2455-2474), `governance_kpis` (access.py:2515-2522), `catalog` (access.py:2584-2597), `sens_flow` (access.py:2609-2650), `review_grid` (access.py:2663-2709) |
+| Page aggregations | access.py:2712-2959 | `grants`, `grant_rows`, `reach`, `held`, `loses`, `role_stats`, `grantees`, `valid_privs`, `admin_*`, `matrix`, `object_stats`, `has_lacks`, `privs_on` |
+| Big accounts | access.py:2960-3228 | `finding_index`, `group_objects`, `MAX_OBJECTS` 12 (access.py:3032), `graph_input` (access.py:3035-3125), `too_big`, `summary` (access.py:3145-3200), `graph_info` |
+| Removal and requests | access.py:3229-3639 | `revoke` / `fix_text` text only (access.py:3260-3291), `with_sql` (access.py:3294-3307), `losers`, `removal`, `ask_for`, `can` (access.py:3410-3443), `cut_points`, `nearest`, `suggest`, `approver` |
+| Access graph (screen 4) | access.py:3640-3845 | `access_graph` (access.py:3695-3843) |
+| What they see (screen 7) | access.py:3846-3870 | `seen` |
+| Compare / review / search | access.py:3871-3991 | `compare` (access.py:3887-3941; `match` / `extras` pass through `with_sql`, access.py:3940-3941), `review` (access.py:3944-3977), `search` (access.py:3980-3989) |
+| What if | access.py:3992-4266 | `WHAT_IF_OPS` (access.py:3994), `changes_of`, `without_cuts`, `what_if` (access.py:4086-4264) |
+| Granted vs used and Activity | access.py:4267-4821 | `use_state`; Activity tab: `act_state`, `client_label`, `activity`, `used_path`, `query_sql`, `activity_graph`, `user_reads`, `app_exposure`, `app_use`, `warehouse_use`, `rule29`, `mark_sensitive`, `activity_sensitive` (access.py:4283-4751); `used_on`, `granted_used` (access.py:4776-4819) |
+| SQL to run yourself | access.py:4374-4590 | `DAYS_USAGE`, `QUERIES` (access_queries folder), `NEEDS` (privilege comment) (access.py:4374-4380); `lit`, `query_file`, `plain` (access.py:4395-4416); Activity section queries `ACT_FILTER`, `ACT_BASE`, `OFF`, `ACT_SECTIONS` (access.py:4419-4481), `activity_section_sql` (access.py:4484-4494); `page_sql` (access.py:4497-4590); logic in [logic/page-sql.md](../logic/page-sql.md) |
+| What changed | access.py:4822-5068 | `state` / `restore` / `loaded` (access.py:4824-4851), `facts` (access.py:4856-4882), `diff` (access.py:4984-5066) |
+| Rules | access.py:5069-5567 | `rule_rows`, `checks`, `find`, `rules_model` ... `rule23`, `rules_activity` 24-28 (access.py:5507-5558), `rule29` (access.py:4685-4700), `findings` (access.py:5561-5567) |
 
 ## Load and build
 
@@ -67,82 +67,82 @@ sequenceDiagram
   A->>A: fill roles, users, objects, lookups (keep KEEP_BUILT older sets)
 ```
 
-- `snapshot()` reads only `WHERE STATUS = 'OK'` latest run, so a half run is never shown (access.py:466-469).
-- `live()` must stay in step with `SP_ACCESS_SNAPSHOT` (docstring access.py:630-632; CLAUDE.md "Direct mode").
-- `build()` skips work when `key` matches the last build; keeps older sets in `built` up to `KEEP_BUILT` (access.py:1030-1039).
-- Example: the server calls `a.build(d, key, builtin)` under its lock (server.py:196).
+- `snapshot()` reads only `WHERE STATUS = 'OK'` latest run, so a half run is never shown (access.py:467-472).
+- `live()` must stay in step with `SP_ACCESS_SNAPSHOT` (docstring access.py:635-637; CLAUDE.md "Direct mode").
+- `build()` skips work when `key` matches the last build; keeps older sets in `built` up to `KEEP_BUILT` (access.py:1038-1047).
+- Example: the server calls `a.build(d, key, builtin)` under its lock (server.py:198).
 
 ## Rules -> functions
 
 | Rules | Function | Lines |
 |---|---|---|
-| 1, 2, 3, 4, 13, 14 | `rules_model` | access.py:5186-5236 |
-| 5, 9, 12 | `rules_admin` | access.py:5239-5261 |
-| 6, 7, 10, 11, 15 | `rules_sensitive` | access.py:5264-5319 |
-| 8, 16 | `rules_users` | access.py:5322-5334 |
-| 17 | `rule17` (+ `readonly_writes` access.py:5143-5174) | access.py:5337-5353 |
-| 18 | `rule18` (+ `unusual` access.py:5356-5382) | access.py:5385-5398 |
-| 19 | `rule19` | access.py:5401-5415 |
-| 20, 21 | `rules_operate` | access.py:5423-5434 |
-| 22 | `rule22` | access.py:5437-5454 |
-| 23 | `rule23` | access.py:5457-5481 |
-| 24, 25, 26, 27, 28 | `rules_activity` (table activity, [logic/activity.md](../logic/activity.md)) | access.py:5484-5535 |
-| 29 | `rule29` (Streamlit app exposure, via `app_exposure`) | access.py:4662-4677 |
+| 1, 2, 3, 4, 13, 14 | `rules_model` | access.py:5209-5259 |
+| 5, 9, 12 | `rules_admin` | access.py:5262-5284 |
+| 6, 7, 10, 11, 15 | `rules_sensitive` | access.py:5287-5342 |
+| 8, 16 | `rules_users` | access.py:5345-5357 |
+| 17 | `rule17` (+ `readonly_writes` access.py:5166-5197) | access.py:5360-5376 |
+| 18 | `rule18` (+ `unusual` access.py:5379-5405) | access.py:5408-5421 |
+| 19 | `rule19` | access.py:5424-5438 |
+| 20, 21 | `rules_operate` | access.py:5446-5457 |
+| 22 | `rule22` | access.py:5460-5477 |
+| 23 | `rule23` | access.py:5480-5504 |
+| 24, 25, 26, 27, 28 | `rules_activity` (table activity, [logic/activity.md](../logic/activity.md)) | access.py:5507-5558 |
+| 29 | `rule29` (Streamlit app exposure, via `app_exposure`) | access.py:4685-4700 |
 
-- `findings()` concatenates all (rules 24-28 through `cached("activity", rules_activity)`, access.py:5542; then `rule29()`, access.py:5543) and sorts by rule number (access.py:5538-5544); `checks()` gives `(num, title, grantee, detail, path)` rows (access.py:5094-5096).
-- `SCOPED` rules check only names passed in `only` (what_if rechecks only what a change touches) (access.py:5177-5178).
+- `findings()` concatenates all (rules 24-28 through `cached("activity", rules_activity)`, access.py:5565; then `rule29()`, access.py:5566) and sorts by rule number (access.py:5561-5567); `checks()` gives `(num, title, grantee, detail, path)` rows (access.py:5117-5119).
+- `SCOPED` rules check only names passed in `only` (what_if rechecks only what a change touches) (access.py:5200-5201).
 
 ## Key functions
 
 | Name | Does | path:line |
 |---|---|---|
 | `in_snowflake` | Active Snowpark session or `INSIDE=1` | access.py:29-40 |
-| `fake` | Demo data set (at least one finding per rule) | access.py:154-371 |
-| `fake_previous` | Earlier demo snapshot for What changed | access.py:450-461 |
-| `snapshot` | Last OK run of the `TBL_ACCESS_` tables | access.py:464-479 |
-| `mine` | Logged-in user's own access, live | access.py:539-622 |
-| `live` | Whole account read now (SOURCE=direct); `old` ACTIVITY rows -> incremental activity read | access.py:629-917 |
-| `activity_sql` / `activity_start` | Activity SELECT per UTC day with HOURS and APP (same text as the procedure) and its incremental window | access.py:937-976, access.py:979-986 |
-| `use_sql` | ACCESS_HISTORY usage SQL (metadata only) | access.py:920-934 |
-| `only` | One user's slice (demo My access) | access.py:989-998 |
-| `build` | Fill module lookups; memo by key | access.py:1030-1095 |
-| `cached` | `fn()` once per data set | access.py:1109-1113 |
-| `kind_of` / `role_kind` | user / admin / database / functional / technical / group / object | access.py:1116-1141 |
-| `who_has` | Screen 2 entries per user / role | access.py:1375-1388 |
-| `down` / `up` / `bfs` | Full path walks down / up, shortest by BFS | access.py:1480-1517 |
-| `dag` / `loops` | Role links minus loop back edges; role loops | access.py:1588-1653 |
-| `counts` / `shortest` / `listed` / `fast` | Exact path counts, shortest paths, capped listing | access.py:1660-1738 |
-| `up_walk` | Counted walk up to holders | access.py:1865-1897 |
-| `access_of` / `who_can` | Reference listings (TF parity) | access.py:2032-2034, access.py:2122-2126 |
-| `who_users` | Users of an object, counted | access.py:2096-2114 |
-| `admin_holders` | Users / roles holding an admin role | access.py:2054-2062 |
-| `status` / `is_dormant` | disabled / never / dormant / active | access.py:2172-2186 |
-| `sensitive` / `masked` / `data_view` | Sensitive tags, masking, what a role sees | access.py:2244-2247, access.py:2302-2308, access.py:2447-2466 |
-| `catalog` / `sens_flow` / `review_grid` | Screens 8, 16, 6 | access.py:2576-2589, access.py:2601-2642, access.py:2655-2701 |
-| `grants` / `reach` / `held` / `grantees` / `matrix` | Page rows (cached per walk) | access.py:2706-2900 |
-| `has_lacks` | Privileges held vs missing on one object | access.py:2925-2938 |
-| `graph_input` / `summary` | Big-account roll-up and fold | access.py:3027-3117, access.py:3137-3192 |
-| `revoke` / `fix_text` | IaC + SQL text for a grant edge (never run) | access.py:3252-3283 |
-| `with_sql` | A Compare / Request change dict (op grant / revoke, role or privilege + objectType + object, to, toUser) plus its `sql` (revoke via `revoke()`, grant written here with a `-- undo:` line for a role) and `roleDb` / `toDb` from `role_kind()`: the server is the only SQL writer, the web pages never write SQL or guess a role's kind from a dot (never run) | access.py:3286-3299 |
-| `can` | Can they? (count, shortest, choke, options) | access.py:3402-3435 |
-| `cut_points` / `removal` / `nearest` / `suggest` / `ask_for` | Where to cut, ways to remove, ways in, request roles | access.py:3336-3629 |
-| `access_graph` | Screen 4 graph | access.py:3687-3835 |
-| `seen` / `compare` / `review` / `search` | Screens 7, 9, review export, search ranking | access.py:3840-3981 |
-| `what_if` | Simulated revokes; restores lookups | access.py:4078-4256 |
-| `act_state` / `activity` | Activity tab: available or why not; per-day, by-key and per-use numbers for an object, user, role, app or scope, with UTC hours, weekend, kind | access.py:4275-4282, access.py:4289-4342 |
-| `query_sql` | Copy-only SQL listing every query behind the tab (never run) | access.py:4345-4362 |
-| `lit` / `plain` / `query_file` | SQL literal for a SET line; a query of our own (comments, NEEDS, SET lines, SELECT); an `access_queries/` file with its SET lines filled in (None when the file is missing) | access.py:4374-4377, access.py:4392-4395, access.py:4380-4389 |
-| `activity_section_sql` | SQL behind one Activity section (`ACT_SECTIONS` key) for an object, user, role, app or scope (never run) | access.py:4461-4471 |
-| `page_sql` | SQL to run yourself behind a page: list of `{title, sql}`, most useful first (never run) | access.py:4474-4567 |
-| `used_path` / `activity_graph` | Grant path behind each use; the Paths diagram | access.py:4569-4587, access.py:4590-4614 |
-| `user_reads` / `app_exposure` / `app_use` | Objects a user reads; what a Streamlit app shows its viewers with its owner's rights; who can open it, who did, who saw data they can't read | access.py:4617-4619, access.py:4622-4635, access.py:4638-4650 |
-| `warehouse_use` | Who ran queries on a warehouse (usage read) and who can but did not | access.py:4653-4659 |
-| `activity_sensitive` / `mark_sensitive` | Sensitive columns each user + role used sees; tag text for an untagged table (never run) | access.py:4705-4728, access.py:4680-4702 |
-| `granted_used` | Screen 13; also `sql`: the trim of unused grants joined from `changes_of(changes)`, as What if writes it (access.py:4796) | access.py:4753-4796 |
-| `facts` / `diff` | Screen 14 | access.py:4833-4859, access.py:4961-5043 |
-| `rule_rows` / `checks` / `findings` | Rule output for pages and tests | access.py:5070-5096, access.py:5538-5544 |
-| `rules_activity` | Rules 24-28 on table activity | access.py:5484-5535 |
-| `rule29` | Rule 29: Streamlit app shows its owner's sensitive data | access.py:4662-4677 |
+| `fake` | Demo data set (at least one finding per rule) | access.py:155-372 |
+| `fake_previous` | Earlier demo snapshot for What changed | access.py:451-462 |
+| `snapshot` | Last OK run of the `TBL_ACCESS_` tables | access.py:465-484 |
+| `mine` | Logged-in user's own access, live | access.py:544-627 |
+| `live` | Whole account read now (SOURCE=direct); `old` ACTIVITY rows -> incremental activity read | access.py:634-922 |
+| `activity_sql` / `activity_start` | Activity SELECT per UTC day with HOURS and APP (same text as the procedure) and its incremental window | access.py:942-984, access.py:987-994 |
+| `use_sql` | ACCESS_HISTORY usage SQL (metadata only) | access.py:925-939 |
+| `only` | One user's slice (demo My access) | access.py:997-1006 |
+| `build` | Fill module lookups; memo by key | access.py:1038-1103 |
+| `cached` | `fn()` once per data set | access.py:1117-1121 |
+| `kind_of` / `role_kind` | user / admin / database / functional / technical / group / object | access.py:1124-1149 |
+| `who_has` | Screen 2 entries per user / role | access.py:1383-1396 |
+| `down` / `up` / `bfs` | Full path walks down / up, shortest by BFS | access.py:1488-1525 |
+| `dag` / `loops` | Role links minus loop back edges; role loops | access.py:1596-1661 |
+| `counts` / `shortest` / `listed` / `fast` | Exact path counts, shortest paths, capped listing | access.py:1668-1746 |
+| `up_walk` | Counted walk up to holders | access.py:1873-1905 |
+| `access_of` / `who_can` | Reference listings (TF parity) | access.py:2040-2042, access.py:2130-2134 |
+| `who_users` | Users of an object, counted | access.py:2104-2122 |
+| `admin_holders` | Users / roles holding an admin role | access.py:2062-2070 |
+| `status` / `is_dormant` | disabled / never / dormant / active | access.py:2180-2194 |
+| `sensitive` / `masked` / `data_view` | Sensitive tags, masking, what a role sees | access.py:2252-2255, access.py:2310-2316, access.py:2455-2474 |
+| `catalog` / `sens_flow` / `review_grid` | Screens 8, 16, 6 | access.py:2584-2597, access.py:2609-2650, access.py:2663-2709 |
+| `grants` / `reach` / `held` / `grantees` / `matrix` | Page rows (cached per walk) | access.py:2714-2908 |
+| `has_lacks` | Privileges held vs missing on one object | access.py:2933-2946 |
+| `graph_input` / `summary` | Big-account roll-up and fold | access.py:3035-3125, access.py:3145-3200 |
+| `revoke` / `fix_text` | IaC + SQL text for a grant edge (never run) | access.py:3260-3291 |
+| `with_sql` | A Compare / Request change dict (op grant / revoke, role or privilege + objectType + object, to, toUser) plus its `sql` (revoke via `revoke()`, grant written here with a `-- undo:` line for a role) and `roleDb` / `toDb` from `role_kind()`: the server is the only SQL writer, the web pages never write SQL or guess a role's kind from a dot (never run) | access.py:3294-3307 |
+| `can` | Can they? (count, shortest, choke, options) | access.py:3410-3443 |
+| `cut_points` / `removal` / `nearest` / `suggest` / `ask_for` | Where to cut, ways to remove, ways in, request roles | access.py:3344-3637 |
+| `access_graph` | Screen 4 graph | access.py:3695-3843 |
+| `seen` / `compare` / `review` / `search` | Screens 7, 9, review export, search ranking | access.py:3848-3989 |
+| `what_if` | Simulated revokes; restores lookups | access.py:4086-4264 |
+| `act_state` / `activity` | Activity tab: available or why not; per-day, by-key and per-use numbers for an object, user, role, app or scope, with UTC hours, weekend, kind | access.py:4283-4290, access.py:4297-4350 |
+| `query_sql` | Copy-only SQL listing every query behind the tab (never run) | access.py:4353-4371 |
+| `lit` / `plain` / `query_file` | SQL literal for a SET line; a query of our own (comments, NEEDS, SET lines, SELECT); an `access_queries/` file with its SET lines filled in (None when the file is missing) | access.py:4395-4398, access.py:4413-4416, access.py:4401-4410 |
+| `activity_section_sql` | SQL behind one Activity section (`ACT_SECTIONS` key) for an object, user, role, app or scope (never run) | access.py:4484-4494 |
+| `page_sql` | SQL to run yourself behind a page: list of `{title, sql}`, most useful first (never run) | access.py:4497-4590 |
+| `used_path` / `activity_graph` | Grant path behind each use; the Paths diagram | access.py:4592-4610, access.py:4613-4637 |
+| `user_reads` / `app_exposure` / `app_use` | Objects a user reads; what a Streamlit app shows its viewers with its owner's rights; who can open it, who did, who saw data they can't read | access.py:4640-4642, access.py:4645-4658, access.py:4661-4673 |
+| `warehouse_use` | Who ran queries on a warehouse (usage read) and who can but did not | access.py:4676-4682 |
+| `activity_sensitive` / `mark_sensitive` | Sensitive columns each user + role used sees; tag text for an untagged table (never run) | access.py:4728-4751, access.py:4703-4725 |
+| `granted_used` | Screen 13; also `sql`: the trim of unused grants joined from `changes_of(changes)`, as What if writes it (access.py:4819) | access.py:4776-4819 |
+| `facts` / `diff` | Screen 14 | access.py:4856-4882, access.py:4984-5066 |
+| `rule_rows` / `checks` / `findings` | Rule output for pages and tests | access.py:5093-5119, access.py:5561-5567 |
+| `rules_activity` | Rules 24-28 on table activity | access.py:5507-5558 |
+| `rule29` | Rule 29: Streamlit app shows its owner's sensitive data | access.py:4685-4700 |
 
 - Graph fragment: `function:access.py:<name>` nodes, `implements` edges to `business_rule:rule_N` (_scripts/parts/modules.*.jsonl).
 - unclear: `fake()` has no docstring; its content was not inspected line by line here.

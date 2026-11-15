@@ -33,21 +33,21 @@ sequenceDiagram
 1. `App` keeps `sql` state for the panel — `web/src/App.tsx:269`. The top bar has a "SQL" button that sets it — `web/src/App.tsx:329`. A right-click anywhere on `<main>` does the same and suppresses the browser menu unless Shift is held — `web/src/App.tsx:337`.
 2. While open, `SqlPanel` renders at the top of `<main>` with `page = loc.page` and `params = {...loc.params, view}` — `web/src/App.tsx:338`.
 3. `SqlPanel` calls `useApi("sql", {...params, page})` -> `GET /api/sql?...` (inside Snowflake the same call goes through the st_react bridge, [streamlit-in-snowflake.md](streamlit-in-snowflake.md)); Escape closes it — `web/src/pages/common.tsx:111-117`, `web/src/api/client.ts:69`.
-4. Route: `GET /api/sql` -> `serve("sql")` -> `ROUTES["sql"] = sql_page`; not in `WITH_REFS`, so no `refs` — `server.py:2386-2388`, `server.py:2271-2273`, `server.py:2277-2284`.
-5. `sql_page(p, view)` returns `{page, queries}` = `a.page_sql(page or "home", p)` without empty entries — `server.py:1697-1699`.
-6. `page_sql(page, p)` picks names from `user` / `a`, `role`, `name` / `obj` / `table`, sets the activity window, and builds the list per page ([logic/page-sql.md](../logic/page-sql.md)) — `access.py:4474-4567`:
-    - `show=activity`: warehouse -> QUERY_HISTORY by warehouse + `5_object_users.sql` (`access.py:4487-4494`); otherwise one `activity_section_sql` per section plus `query_sql` (`access.py:4495-4501`);
-    - user / role / object: `query_file` on `2_user_access`, `1_user_roles`, `3_role_access`, `4_role_holders`, `5_object_users` with `USER_NAME` / `ROLE_NAME` / `OBJECT_NAME` set, and tags and policies on the object (`access.py:4502-4529`);
-    - usage, sensitive / flow / review, rules / home / whatif / review and the fallback add their own `plain` queries (`access.py:4530-4566`).
-7. `query_file` reads `access_queries/<file>` and rewrites its `SET` lines with `lit()` values; inside Snowflake the files are on the app stage from `PUT_QUERIES` — `access.py:4380-4389`, `sql/4_streamlit.sql:45-46`.
+4. Route: `GET /api/sql` -> `serve("sql")` -> `ROUTES["sql"] = sql_page`; not in `WITH_REFS`, so no `refs` — `server.py:2407-2409`, `server.py:2273-2275`, `server.py:2288-2300`.
+5. `sql_page(p, view)` returns `{page, queries}` = `a.page_sql(page or "home", p)` without empty entries — `server.py:1699-1701`.
+6. `page_sql(page, p)` picks names from `user` / `a`, `role`, `name` / `obj` / `table`, sets the activity window, and builds the list per page ([logic/page-sql.md](../logic/page-sql.md)) — `access.py:4497-4590`:
+    - `show=activity`: warehouse -> QUERY_HISTORY by warehouse + `5_object_users.sql` (`access.py:4510-4517`); otherwise one `activity_section_sql` per section plus `query_sql` (`access.py:4518-4524`);
+    - user / role / object: `query_file` on `2_user_access`, `1_user_roles`, `3_role_access`, `4_role_holders`, `5_object_users` with `USER_NAME` / `ROLE_NAME` / `OBJECT_NAME` set, and tags and policies on the object (`access.py:4525-4552`);
+    - usage, sensitive / flow / review, rules / home / whatif / review and the fallback add their own `plain` queries (`access.py:4553-4589`).
+7. `query_file` reads `access_queries/<file>` and rewrites its `SET` lines with `lit()` values; inside Snowflake the files are on the app stage from `PUT_QUERIES` — `access.py:4401-4410`, `sql/4_streamlit.sql:45-46`.
 8. The panel shows a header (read-only, change the SET lines, run with your own role, the app never runs them), a Close button and one `SqlBox` per query: title, Copy SQL (`copyText`, "Copied" or "Select and copy"), and the SQL in a `<pre>` — `web/src/pages/common.tsx:118-126`, `web/src/pages/common.tsx:98-107`.
 
 ### Per-section SQL on the Activity tab
-9. `activity_page` adds `section_sql = {key: activity_section_sql(name, what, first, last, key).sql for key in ACT_SECTIONS}` — `server.py:1687`; type `ActivityPage.section_sql` — `web/src/api/types.ts:1257`.
+9. `activity_page` adds `section_sql = {key: activity_section_sql(name, what, first, last, key).sql for key in ACT_SECTIONS}` — `server.py:1689`; type `ActivityPage.section_sql` — `web/src/api/types.ts:1257`.
 10. `Activity` puts it in the `SectionSql` context — `web/src/pages/Activity.tsx:89`, `web/src/pages/Activity.tsx:132`.
 11. `Sec` reads its `sql` key from the context; when there is text, a SQL toggle button sits next to the section's own controls and opens a `SqlBox` above the section body — `web/src/pages/Activity.tsx:92-94`. Keys used: off, touched, hours, objects, client, kinds, matrix, type_day, by_day, who, ddl — `web/src/pages/Activity.tsx:290`, `web/src/pages/Activity.tsx:390`, `web/src/pages/Activity.tsx:418`, `web/src/pages/Activity.tsx:469`, `web/src/pages/Activity.tsx:535`, `web/src/pages/Activity.tsx:558`, `web/src/pages/Activity.tsx:588`, `web/src/pages/Activity.tsx:657`, `web/src/pages/Activity.tsx:691`, `web/src/pages/Activity.tsx:727`, `web/src/pages/Activity.tsx:155`. The `tiles` key is in `section_sql` and `page_sql` but no section card uses it.
 
-## Example (fake data, `test_server.test_sql_page`, `test_server.py:657-679`)
+## Example (fake data, `test_server.test_sql_page`, `test_server.py:657-682`)
 
 | Request | Answer holds |
 |---|---|
@@ -57,6 +57,6 @@ sequenceDiagram
 | `/api/sql?page=home` | `SNOWFLAKE.ACCOUNT_USAGE` |
 | `/api/activity?name=SALES.CORE.TBL_CUSTOMER` | `section_sql` keys include client, kinds, matrix, type_day, by_day, who, hours, off, touched, ddl; `hours` holds `$TZ_HOURS` |
 
-Every answer: starts with a comment, reads ACCOUNT_USAGE, no write keyword outside comments — `test_server.py:674-677`.
+Every answer: starts with a comment, reads ACCOUNT_USAGE, no write keyword outside comments — `test_server.py:677-680`.
 
 Related: [page SQL logic](../logic/page-sql.md) · [activity tab](activity-tab.md) · [web request](web-request.md) · [standalone queries](standalone-queries.md).

@@ -20,5 +20,5 @@ flowchart LR
 - Streamlit in Snowflake: two options — README.html:660; Query with SQL (DuckDB) — README.html:674; Role model — README.html:691; SQL without the app — README.html:699; Data sources — README.html:712-715; Settings (env vars, `WORK_HOURS` business hours, local time, shifted from UTC by the Activity tab's slider) — README.html:720-722; Limits — README.html:723.
 
 ## Relates to
-- Generated parts: docs/make_readme.py — docs/make_readme.py:148-155; checked by test_readme_rules — test_access.py:1788-1798.
-- Only place the daily task SQL is written — README.html:650-652.
+- Generated parts: docs/make_readme.py — docs/make_readme.py:148-155; checked by test_readme_rules — test_access.py:1796-1806.
+- The daily task SQL is in README.html:650-652 and README.md (Objects in Snowflake); no setup script creates the task.

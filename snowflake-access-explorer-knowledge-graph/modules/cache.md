@@ -24,7 +24,7 @@ flowchart TD
 | `file(key)` | `.cache/<safe key>.pkl` | cache.py:56-57 |
 | `keep_prev(f, new)` | Old file of another run becomes `.prev.pkl` (What changed) | cache.py:72-81 |
 | `prev(key)` | Previous snapshot `(data, mtime)` or None | cache.py:84-90 |
-| `last(key)` | Newest data kept for the key: memory, `.pkl`, `.old.pkl` (set aside by `drop`), `.prev.pkl`; Direct mode hands its ACTIVITY rows to `live()` so only the missing days are read (server.py:90-92) | cache.py:93-104 |
+| `last(key)` | Newest data kept for the key: memory, `.pkl`, `.old.pkl` (set aside by `drop`), `.prev.pkl`; Direct mode hands its ACTIVITY rows to `live()` so only the missing days are read (server.py:92-94) | cache.py:93-104 |
 | `get(key, fn, disk)` | Memory, else local file, else `fn()` stored in both | cache.py:107-133 |
 | `ready(key)` | Would `get` answer without reading the source | cache.py:136-143 |
 | `drop(key)` | Out of memory; file set aside as `.old.pkl` | cache.py:146-154 |

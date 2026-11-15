@@ -5,32 +5,32 @@ What changed compares the loaded snapshot with the previous one: `facts()` per d
 
 ```mermaid
 flowchart LR
-  CP["server.changes_page<br/>server.py:1719-1740"] -->|FAKE| FP["a.fake_previous()<br/>access.py:450-461"]
+  CP["server.changes_page<br/>server.py:1721-1742"] -->|FAKE| FP["a.fake_previous()<br/>access.py:451-462"]
   CP -->|snowflake, local| PR["cache.prev(KEY)<br/>cache.py:84-90"]
-  CP --> D["a.diff(prev)<br/>access.py:4961-5043"]
-  D --> FN["facts() now<br/>access.py:4833-4859"]
-  D --> LD["loaded(prev): facts() old<br/>access.py:4820-4828"]
-  D --> GE["grant_events()<br/>access.py:4921-4944"]
+  CP --> D["a.diff(prev)<br/>access.py:4984-5066"]
+  D --> FN["facts() now<br/>access.py:4856-4882"]
+  D --> LD["loaded(prev): facts() old<br/>access.py:4843-4851"]
+  D --> GE["grant_events()<br/>access.py:4944-4967"]
   D --> EV[events + counts]
 ```
 
-## facts() (`access.py:4833-4859`)
-- `access {(user, object): (level, privileges)}` on tables/views, merging per granted role `table_reach()`; users with the same granted roles share the work (`access.py:4839-4851`).
-- `table_reach(r)` / `own_tables(h)` cached per role (`access.py:4862-4884`); `table_level()` gives the ladder level (`access.py:4892-4899`).
-- `grants` keyed `(grantee, privilege, granted on, object)` -> `GRANTED_BY`; admin role links and hidden built-ins left out (`access.py:4853-4854`).
-- `user_roles`, `findings` (keyed num, grantee, user, detail), `status`, `sens`, `run` (`access.py:4855-4858`).
+## facts() (`access.py:4856-4882`)
+- `access {(user, object): (level, privileges)}` on tables/views, merging per granted role `table_reach()`; users with the same granted roles share the work (`access.py:4862-4874`).
+- `table_reach(r)` / `own_tables(h)` cached per role (`access.py:4885-4907`); `table_level()` gives the ladder level (`access.py:4915-4922`).
+- `grants` keyed `(grantee, privilege, granted on, object)` -> `GRANTED_BY`; admin role links and hidden built-ins left out (`access.py:4876-4877`).
+- `user_roles`, `findings` (keyed num, grantee, user, detail), `status`, `sens`, `run` (`access.py:4878-4881`).
 
-## diff(prev) (`access.py:4961-5043`)
-- Old side built with `loaded(prev)` (save, build, restore) (`access.py:4970`, `4203-4211`).
-- Gained / lost = new pair or higher level on `LEVELS` (`access.py:4972-4975`, `LEVELS` `access.py:1206`).
-- Findings: same (rule, grantee, user) counts as the same finding (`access.py:4976-4978`).
-- Grant events for removed and added grants and user-role links (`access.py:4979-4984`), each with impact text (`impact_text`, `access.py:4910-4918`).
-- User status changes (new, gone, dormant, disabled) (`access.py:5008-5018`); new/fixed findings not tied to a grant event (`access.py:5019-5033`).
-- Sort `risk, gain, lose, user, fixed` (`access.py:5034-5035`); counts per filter `event_counts()` (`access.py:4947-4951`); severity strips (`access.py:5038-5040`).
-- Server caches per previous run: `a.cached(("diff", cache.run_of(prev)), ...)` (`server.py:1737`).
-- Not available on My access view, inside Snowflake, or with `CACHE_HOURS=0` (`server.py:1723-1735`).
+## diff(prev) (`access.py:4984-5066`)
+- Old side built with `loaded(prev)` (save, build, restore) (`access.py:4993`, `4203-4211`).
+- Gained / lost = new pair or higher level on `LEVELS` (`access.py:4995-4998`, `LEVELS` `access.py:1214`).
+- Findings: same (rule, grantee, user) counts as the same finding (`access.py:4999-5001`).
+- Grant events for removed and added grants and user-role links (`access.py:5002-5007`), each with impact text (`impact_text`, `access.py:4933-4941`).
+- User status changes (new, gone, dormant, disabled) (`access.py:5031-5041`); new/fixed findings not tied to a grant event (`access.py:5042-5056`).
+- Sort `risk, gain, lose, user, fixed` (`access.py:5057-5058`); counts per filter `event_counts()` (`access.py:4970-4974`); severity strips (`access.py:5061-5063`).
+- Server caches per previous run: `a.cached(("diff", cache.run_of(prev)), ...)` (`server.py:1739`).
+- Not available on My access view, inside Snowflake, or with `CACHE_HOURS=0` (`server.py:1725-1737`).
 
 ## Example (fake data, verified)
-- `fake_previous()`: a week earlier, GRP_ANALYSTS without F_ANALYST, READ role without INSERT, F_MARKETING with SALES.CORE write, F_ANALYST with an OWNER role, ANALYST_02 not dormant (`access.py:450-461`).
+- `fake_previous()`: a week earlier, GRP_ANALYSTS without F_ANALYST, READ role without INSERT, F_MARKETING with SALES.CORE write, F_ANALYST with an OWNER role, ANALYST_02 not dormant (`access.py:451-462`).
 - `diff(fake_previous())` -> counts `all 11, gain 2, lose 2, risk 6, sensitive 7`; new 9, fixed 2; runs `2026-10-26 07:00` -> `2026-11-02 07:00`.
 - First event: `risk` - `New high finding · #7 Dormant or disabled person can read sensitive data: ANALYST_02`.

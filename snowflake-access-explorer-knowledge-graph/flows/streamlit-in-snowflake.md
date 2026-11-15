@@ -41,15 +41,15 @@ sequenceDiagram
 7. Frame side: `startApp` installs a transport that queues `{id, method, url, body}`; `flush` sends the full open list; `answer` resolves/rejects by id (`ApiFail`) — web/src/st/main.tsx:17-41; `draw` renders `<App>` once — web/src/st/main.tsx:45-49; client switches from `fetch` to the transport — web/src/api/client.ts:23-26, web/src/api/client.ts:39, web/src/api/client.ts:47.
 8. `answer()` maps the URL to server functions: `meta`, `mine`, `reload`, `mine/load` (new random sid, drops the previous MINE entry), `*.csv` -> `serve_csv`, `ROUTES` -> `serve`, else 404 `not_found` — st_react.py:22-44.
 9. Errors as in the web version: `ApiError` -> its status, other exceptions -> 500 `{detail:"error"}` — st_react.py:45-48; `_js` escapes `</` — st_react.py:17-19.
-10. Connection: `sf.connect()` returns the app's own session when `INSIDE` — sf.py:19-22; `sf.owned()` is False inside, so `with_query` never closes it — sf.py:45-47, server.py:83-84.
+10. Connection: `sf.connect()` returns the app's own session when `INSIDE` — sf.py:19-22; `sf.owned()` is False inside, so `with_query` never closes it — sf.py:45-47, server.py:85-86.
 11. No disk inside: `cache.local()` False -> memory only; no DuckDB copy — cache.py:51-53, cache.py:193-198.
-12. My access hidden: `mine_off()` returns the "not available inside Snowflake" reason first — server.py:136-138; `meta.mine_available=False` hides the button — server.py:2154, web/src/App.tsx:322.
-13. What changed has no previous snapshot inside (memory only) — server.py:1728-1732.
-14. Direct inside: `live()` with the owner role; `USE SECONDARY ROLES` and `CURRENT_DATABASE` may be refused — access.py:654-662.
-15. Tests: `test_streamlit_bridge` (same answers as HTTP) — test_server.py:267; `test_pages` (every page key handed to the component) — test_access.py:657.
+12. My access hidden: `mine_off()` returns the "not available inside Snowflake" reason first — server.py:138-140; `meta.mine_available=False` hides the button — server.py:2156, web/src/App.tsx:322.
+13. What changed has no previous snapshot inside (memory only) — server.py:1730-1734.
+14. Direct inside: `live()` with the owner role; `USE SECONDARY ROLES` and `CURRENT_DATABASE` may be refused — access.py:659-667.
+15. Tests: `test_streamlit_bridge` (same answers as HTTP) — test_server.py:267; `test_pages` (every page key handed to the component) — test_access.py:665.
 
 ## Example (FAKE=1, local, no Snowflake)
 
 - `st_react.answer("GET", "/api/home?view=shared", None, None)` -> status `200` (same body as `GET /api/home`).
 - `st_react.answer("GET", "/api/nope", None, None)` -> `(404, {"detail": "not_found", "message": "No such endpoint."}, None)`.
-- Inside Snowflake, `GET /api/meta` answers `inside: true`, `mine_available: false`, `cache_hours: 0` (inferred from server.py:2154-2155 and cache.py:51-53; not run here).
+- Inside Snowflake, `GET /api/meta` answers `inside: true`, `mine_available: false`, `cache_hours: 0` (inferred from server.py:2156-2157 and cache.py:51-53; not run here).

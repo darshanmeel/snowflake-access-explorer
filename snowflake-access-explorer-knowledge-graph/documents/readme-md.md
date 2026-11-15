@@ -15,12 +15,12 @@ flowchart TD
 - Title + summary; full guide link to README.html — README.md:1-5.
 - What it does (mermaid) — README.md:7; Questions it answers — README.md:25.
 - Quick start — README.md:71-80; Which way to run it (by what the role can do: local or Streamlit in Snowflake) — README.md:82-99; Run each mode — README.md:101-122.
-- Run it (direct vs objects table) — README.md:124-139; Install — README.md:141-150; Start — README.md:152-162; `.env` — README.md:164-177; Settings — README.md:179-193; DuckDB SQL copy — README.md:195; role-based visibility — README.md:226-237; Objects in Snowflake — README.md:239-251.
-- Deploy — README.md:253-261; own machine — README.md:263; shared server — README.md:267-284; SiS — README.md:286-326; Streamlit elsewhere — README.md:328-338; Container Services — README.md:340-344.
-- Data sources — README.md:346-356; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:349-355; Activity tabs on the access and object pages — README.md:31-32; `ACTIVITY` in the DuckDB tables — README.md:199.
-- Use the queries without the app — README.md:358-410: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:361-369; Run (worksheet or notebook path A / B) — README.md:371; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:409; Check (`test_queries.py`) — README.md:410. See modules/access-queries.md, flows/standalone-queries.md.
-- Also in this repo — README.md:412-416: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:413; sf.py CLI — README.md:414; tests incl. `access_queries/test_queries.py` — README.md:415; IaC — README.md:416.
-- Where to find more — README.md:418-427; License (MIT or Apache-2.0) — README.md:429-432.
+- Run it (direct vs objects table) — README.md:124-139; Install — README.md:141-150; Start — README.md:152-162; `.env` — README.md:164-177; Settings — README.md:179-193; DuckDB SQL copy — README.md:195; role-based visibility — README.md:226-237; Objects in Snowflake — README.md:239-257.
+- Deploy — README.md:259-267; own machine — README.md:269; shared server — README.md:273-290; SiS — README.md:292-332; Streamlit elsewhere — README.md:334-344; Container Services — README.md:346-353.
+- Data sources — README.md:355-365; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:358-364; Activity tabs on the access and object pages — README.md:31-32; `ACTIVITY` in the DuckDB tables — README.md:199.
+- Use the queries without the app — README.md:368-420: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:371-379; Run (worksheet or notebook path A / B) — README.md:381; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:419; Check (`test_queries.py`) — README.md:420. See modules/access-queries.md, flows/standalone-queries.md.
+- Also in this repo — README.md:422-426: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:423; sf.py CLI — README.md:424; tests incl. `access_queries/test_queries.py` — README.md:425; IaC — README.md:426.
+- Where to find more — README.md:428-437; License (MIT or Apache-2.0) — README.md:439-442.
 
 ## Relates to
 - Processes: setup-local, run-local, deploy-snowflake, build-web, test, container-services.

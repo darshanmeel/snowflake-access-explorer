@@ -15,15 +15,15 @@
 {"from": "process:deploy_snowflake", "to": "file:sql/1_setup_verify.sql", "type": "calls", "evidence": "README.md:243", "status": "verified"}
 {"from": "process:deploy_snowflake", "to": "file:sql/2_snapshot.sql", "type": "calls", "evidence": "README.md:244", "status": "verified"}
 {"from": "process:deploy_snowflake", "to": "file:sql/2_snapshot_verify.sql", "type": "calls", "evidence": "README.md:244", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit.sql", "type": "calls", "evidence": "README.md:313", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit_verify.sql", "type": "calls", "evidence": "README.md:313", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit.sql", "type": "calls", "evidence": "README.md:319", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit_verify.sql", "type": "calls", "evidence": "README.md:319", "status": "verified"}
 {"from": "process:deploy_snowflake", "to": "process:snapshot_task", "type": "triggers", "evidence": "README.md:249", "status": "verified"}
 {"from": "process:deploy_snowflake", "to": "process:sis_manual_check", "type": "triggers", "evidence": "web/ST.md:47", "status": "verified"}
-{"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup.sql", "type": "calls", "evidence": "README.md:251", "status": "verified"}
+{"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup.sql", "type": "calls", "evidence": "README.md:257", "status": "verified"}
 {"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup_verify.sql", "type": "calls", "evidence": "sql/3_cleanup_verify.sql:1", "status": "verified"}
 {"from": "file:sql/2_snapshot.sql", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "calls", "evidence": "sql/2_snapshot.sql:12", "status": "verified"}
 {"from": "file:sql/1_setup.sql", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "deploys", "evidence": "sql/1_setup.sql:144", "status": "verified"}
-{"from": "file:sql/1_setup.sql", "to": "role:APP_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:861-916", "status": "verified"}
+{"from": "file:sql/1_setup.sql", "to": "role:APP_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:865-920", "status": "verified"}
 {"from": "file:sql/4_streamlit.sql", "to": "stage:STG_ACCESS_APP", "type": "deploys", "evidence": "sql/4_streamlit.sql:20", "status": "verified"}
 {"from": "file:sql/4_streamlit.sql", "to": "streamlit:ST_ACCESS_EXPLORER", "type": "deploys", "evidence": "sql/4_streamlit.sql:65", "status": "verified"}
 {"from": "file:sql/4_streamlit.sql", "to": "role:APP_ROLE", "type": "grants", "evidence": "sql/4_streamlit.sql:72-83", "status": "verified"}
@@ -45,12 +45,12 @@
 {"from": "process:test", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:11", "status": "verified"}
 {"from": "process:test", "to": "dir:web/dist", "type": "reads", "evidence": "test_server.py:463-475", "status": "verified"}
 {"from": "process:test", "to": "dir:web/dist-st", "type": "reads", "evidence": "test_server.py:463-475", "status": "verified"}
-{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:1788-1798", "status": "verified"}
-{"from": "process:test", "to": "file:sql/4_streamlit.sql", "type": "reads", "evidence": "test_access.py:690-697", "status": "verified"}
+{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:1796-1806", "status": "verified"}
+{"from": "process:test", "to": "file:sql/4_streamlit.sql", "type": "reads", "evidence": "test_access.py:698-705", "status": "verified"}
 {"from": "process:access_requests", "to": "role:APP_ROLE", "type": "grants", "evidence": "README.html:650", "status": "verified"}
-{"from": "process:access_requests", "to": "role:DEV_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:918-922", "status": "verified"}
-{"from": "process:container_services", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:342", "status": "verified"}
-{"from": "process:container_services", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:343-344", "status": "verified"}
+{"from": "process:access_requests", "to": "role:DEV_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:922-926", "status": "verified"}
+{"from": "process:container_services", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:348", "status": "verified"}
+{"from": "process:container_services", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:349-353", "status": "verified"}
 {"from": "config:.env.example", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "configures", "evidence": ".env.example:28", "status": "verified"}
 {"from": "config:.env.example", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_PWD", "type": "configures", "evidence": ".env.example:29", "status": "verified"}
 {"from": "config:.env.example", "to": "secret_ref:.env", "type": "configures", "evidence": ".env.example:1", "status": "verified"}
@@ -66,11 +66,11 @@
 {"from": "script:docs/make_readme.py", "to": "module:server.py", "type": "imports", "evidence": "docs/make_readme.py:13", "status": "verified"}
 {"from": "document:README.md", "to": "process:setup_local", "type": "documents", "evidence": "README.md:141-150", "status": "verified"}
 {"from": "document:README.md", "to": "process:run_local", "type": "documents", "evidence": "README.md:101-122", "status": "verified"}
-{"from": "document:README.md", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.md:239-251", "status": "verified"}
+{"from": "document:README.md", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.md:239-257", "status": "verified"}
 {"from": "document:README.md", "to": "process:build_web", "type": "documents", "evidence": "README.md:150", "status": "verified"}
-{"from": "document:README.md", "to": "process:test", "type": "documents", "evidence": "README.md:415", "status": "verified"}
-{"from": "document:README.md", "to": "process:access_requests", "type": "documents", "evidence": "README.md:416", "status": "verified"}
-{"from": "document:README.md", "to": "process:container_services", "type": "documents", "evidence": "README.md:340-344", "status": "verified"}
+{"from": "document:README.md", "to": "process:test", "type": "documents", "evidence": "README.md:425", "status": "verified"}
+{"from": "document:README.md", "to": "process:access_requests", "type": "documents", "evidence": "README.md:426", "status": "verified"}
+{"from": "document:README.md", "to": "process:container_services", "type": "documents", "evidence": "README.md:346-353", "status": "verified"}
 {"from": "document:README.md", "to": "document:README.html", "type": "depends_on", "evidence": "README.md:5", "status": "verified"}
 {"from": "document:README.html", "to": "process:snapshot_task", "type": "documents", "evidence": "README.html:650-652", "status": "verified"}
 {"from": "document:README.html", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.html:645-654", "status": "verified"}
@@ -82,7 +82,7 @@
 {"from": "document:CLAUDE.md", "to": "process:run_local", "type": "documents", "evidence": "CLAUDE.md:28-30", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "process:container_services", "type": "documents", "evidence": "CLAUDE.md:42", "status": "verified"}
 {"from": "document:web/API.md", "to": "module:server.py", "type": "documents", "evidence": "web/API.md:1-5", "status": "verified"}
-{"from": "document:web/API.md", "to": "endpoint:GET /api/request", "type": "documents", "evidence": "web/API.md:491", "status": "verified"}
+{"from": "document:web/API.md", "to": "endpoint:GET /api/request", "type": "documents", "evidence": "web/API.md:516", "status": "verified"}
 {"from": "document:web/ST.md", "to": "file:sql/4_streamlit.sql", "type": "documents", "evidence": "web/ST.md:52-56", "status": "verified"}
 {"from": "document:web/ST.md", "to": "process:sis_manual_check", "type": "documents", "evidence": "web/ST.md:45-50", "status": "verified"}
 {"from": "document:web/ST.md", "to": "process:build_web", "type": "documents", "evidence": "web/ST.md:8-19", "status": "verified"}

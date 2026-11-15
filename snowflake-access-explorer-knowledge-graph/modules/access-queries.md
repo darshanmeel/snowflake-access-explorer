@@ -23,10 +23,10 @@ flowchart LR
 
 | File | Answers | Mirrors in the app | path:line |
 |---|---|---|---|
-| `1_user_roles.sql` | Every role a user holds, shortest PATH, WAYS | `access.walk()` (access.py:1561) | access_queries/1_user_roles.sql:1-74 |
-| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:2032) | access_queries/2_user_access.sql:1-83 |
-| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:2032) | access_queries/3_role_access.sql:1-70 |
-| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:1493) | access_queries/4_role_holders.sql:1-77 |
+| `1_user_roles.sql` | Every role a user holds, shortest PATH, WAYS | `access.walk()` (access.py:1569) | access_queries/1_user_roles.sql:1-74 |
+| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:2040) | access_queries/2_user_access.sql:1-83 |
+| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:2040) | access_queries/3_role_access.sql:1-70 |
+| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:1501) | access_queries/4_role_holders.sql:1-77 |
 | `5_object_users.sql` | Who reaches one exact object (and privilege) | `access.on` + `up()` | access_queries/5_object_users.sql:1-92 |
 | `functions.sql` | The five as table functions `AQ_USER_ROLES` ... `AQ_OBJECT_USERS` in `AQ_DB.AQ_SCHEMA` | | access_queries/functions.sql:1-337 |
 | `access_examples.ipynb` | Snowflake Notebook: inputs cell, 5 `create_N` cells, 8 examples twice (`a_*` call the functions, `b_*` plain queries) | | access_queries/access_examples.ipynb:1-1302 |
@@ -74,12 +74,12 @@ Example (test data of test_queries.py): `1_user_roles.sql` for `ANALYST_01` give
 
 ## Relation to the app's table functions
 
-- `sql/1_setup.sql` has the same walks as `TF_ACCESS_OF` (sql/1_setup.sql:672) and `TF_WHO_CAN` (sql/1_setup.sql:733), but over the `TBL_ACCESS_` snapshot tables (edges marked inferred).
+- `sql/1_setup.sql` has the same walks as `TF_ACCESS_OF` (sql/1_setup.sql:676) and `TF_WHO_CAN` (sql/1_setup.sql:737), but over the `TBL_ACCESS_` snapshot tables (edges marked inferred).
 - `access_queries/` reads ACCOUNT_USAGE directly: no future grants, up to about 2 hours behind (access_queries/README.md:85-91, 124-131).
 
 ## Used by the app's SQL panel
 
-- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:4380-4389`, `access.py:4502-4529`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
+- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:4401-4410`, `access.py:4525-4552`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
 
 ## Unclear
 

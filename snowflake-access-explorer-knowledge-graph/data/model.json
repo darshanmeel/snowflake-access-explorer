@@ -4,7 +4,7 @@
    "name": "TBL_ACCESS_RUN",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per CALL of SP_ACCESS_SNAPSHOT that ran (kept; a SKIPPED call deletes its own row, sql/1_setup.sql:615)",
+   "grain": "one row per CALL of SP_ACCESS_SNAPSHOT that ran (kept; a SKIPPED call deletes its own row, sql/1_setup.sql:619)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -78,14 +78,14 @@
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:532",
-    "sql/1_setup.sql:626-629"
+    "sql/1_setup.sql:533",
+    "sql/1_setup.sql:630-633"
    ],
    "read_by": [
-    "access.py:466-467 snapshot()",
-    "sql/1_setup.sql:660 TF_ACCESS_OF",
-    "sql/1_setup.sql:720 TF_WHO_CAN",
-    "sql/1_setup.sql:527-528 busy check",
+    "access.py:467-468 snapshot()",
+    "sql/1_setup.sql:664 TF_ACCESS_OF",
+    "sql/1_setup.sql:724 TF_WHO_CAN",
+    "sql/1_setup.sql:528-529 busy check",
     "sql/2_snapshot_verify.sql:5-6"
    ],
    "evidence": "sql/1_setup.sql:13-21"
@@ -171,19 +171,19 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:238-246",
-    "sql/1_setup.sql:280",
-    "sql/1_setup.sql:311"
+    "sql/1_setup.sql:239-247",
+    "sql/1_setup.sql:281",
+    "sql/1_setup.sql:312"
    ],
    "read_by": [
-    "access.py:473 snapshot()",
-    "sql/1_setup.sql:671-675,613 TF_ACCESS_OF",
-    "sql/1_setup.sql:730-740 TF_WHO_CAN",
-    "sql/1_setup.sql:362-366 data_objects()"
+    "access.py:476 snapshot()",
+    "sql/1_setup.sql:675-679,613 TF_ACCESS_OF",
+    "sql/1_setup.sql:734-744 TF_WHO_CAN",
+    "sql/1_setup.sql:363-367 data_objects()"
    ],
    "evidence": "sql/1_setup.sql:24-33"
   },
@@ -232,17 +232,17 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:247-248",
-    "sql/1_setup.sql:281"
+    "sql/1_setup.sql:248-249",
+    "sql/1_setup.sql:282"
    ],
    "read_by": [
-    "access.py:473 snapshot()",
-    "sql/1_setup.sql:661-663 TF_ACCESS_OF",
-    "sql/1_setup.sql:722,633 TF_WHO_CAN"
+    "access.py:476 snapshot()",
+    "sql/1_setup.sql:665-667 TF_ACCESS_OF",
+    "sql/1_setup.sql:726,633 TF_WHO_CAN"
    ],
    "evidence": "sql/1_setup.sql:36-41"
   },
@@ -339,17 +339,17 @@
     "USER_NAME"
    ],
    "pk_status": "logical",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:319-322",
-    "sql/1_setup.sql:327-328"
+    "sql/1_setup.sql:320-323",
+    "sql/1_setup.sql:328-329"
    ],
    "read_by": [
-    "access.py:473 snapshot()",
-    "sql/1_setup.sql:667 TF_ACCESS_OF",
-    "sql/1_setup.sql:724 TF_WHO_CAN"
+    "access.py:476 snapshot()",
+    "sql/1_setup.sql:671 TF_ACCESS_OF",
+    "sql/1_setup.sql:728 TF_WHO_CAN"
    ],
    "evidence": "sql/1_setup.sql:44-54"
   },
@@ -416,14 +416,14 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:336-347"
+    "sql/1_setup.sql:337-348"
    ],
    "read_by": [
-    "access.py:473 snapshot()"
+    "access.py:476 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:57-64"
   },
@@ -499,15 +499,15 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:395-402",
-    "sql/1_setup.sql:420"
+    "sql/1_setup.sql:396-403",
+    "sql/1_setup.sql:421"
    ],
    "read_by": [
-    "access.py:473 snapshot()"
+    "access.py:476 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:67-75"
   },
@@ -592,15 +592,15 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:436-447",
-    "sql/1_setup.sql:469"
+    "sql/1_setup.sql:437-448",
+    "sql/1_setup.sql:470"
    ],
    "read_by": [
-    "access.py:473 snapshot()"
+    "access.py:476 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:78-87"
   },
@@ -649,14 +649,14 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:481-483"
+    "sql/1_setup.sql:482-484"
    ],
    "read_by": [
-    "access.py:473 snapshot()"
+    "access.py:476 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:90-95"
   },
@@ -732,14 +732,14 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:630-632); a FAILED run deletes its own rows (sql/1_setup.sql:623-625)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:634-636); a FAILED run deletes its own rows (sql/1_setup.sql:627-629)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:515-516"
+    "sql/1_setup.sql:516-517"
    ],
    "read_by": [
-    "access.py:474-478 snapshot() (optional, None when missing)"
+    "access.py:477-481 snapshot() (optional, None when missing)"
    ],
    "evidence": "sql/1_setup.sql:98-106"
   },
@@ -747,7 +747,7 @@
    "name": "TBL_ACCESS_ACTIVITY",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x UTC day x user x role x client x object x action x query type x app (final GROUP BY of activity_sql, sql/1_setup.sql:575)",
+   "grain": "one row per run x UTC day x user x role x client x object x action x query type x app (final GROUP BY of activity_sql, sql/1_setup.sql:579)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -860,22 +860,22 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL); logical key = RUN_ID + the GROUP BY columns",
    "pk_status": "inferred",
-   "versioning": "RUN_ID; rows of the last OK run older than since are copied into the new run (sql/1_setup.sql:590-593); after an OK run every row of other runs is deleted (sql/1_setup.sql:648-653); a FAILED run deletes its own rows (sql/1_setup.sql:641-643)",
-   "retention": "ACTIVITY_DAYS = 60 days (sql/1_setup.sql:178, sql/1_setup.sql:587)",
+   "versioning": "RUN_ID; rows of the last OK run older than since are copied into the new run (sql/1_setup.sql:594-597); after an OK run every row of other runs is deleted (sql/1_setup.sql:652-657); a FAILED run deletes its own rows (sql/1_setup.sql:645-647)",
+   "retention": "ACTIVITY_DAYS = 60 days (sql/1_setup.sql:178, sql/1_setup.sql:591)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT activity()",
-    "sql/1_setup.sql:577-600"
+    "sql/1_setup.sql:581-604"
    ],
    "read_by": [
-    "access.py:474-478 snapshot() (optional, None when missing)",
-    "access.py:1090 build() -> acts",
+    "access.py:477-481 snapshot() (optional, None when missing)",
+    "access.py:1098 build() -> acts",
     "sql/2_snapshot_verify.sql:39-42"
    ],
    "sources": [
-    "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY (sql/1_setup.sql:552)",
-    "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY (sql/1_setup.sql:566-567)",
-    "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS (sql/1_setup.sql:547-548)"
+    "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY (sql/1_setup.sql:554)",
+    "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY (sql/1_setup.sql:568-569)",
+    "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS (sql/1_setup.sql:549-550)"
    ],
    "evidence": "sql/1_setup.sql:108-122"
   },
@@ -883,7 +883,7 @@
    "name": "TBL_ACCESS_FINDING",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per rule finding of the last SP_ACCESS_FINDINGS run (the call deletes every row first, sql/1_setup.sql:846)",
+   "grain": "one row per rule finding of the last SP_ACCESS_FINDINGS run (the call deletes every row first, sql/1_setup.sql:850)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -969,14 +969,14 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "rows of the same RUN_ID replaced per CALL (sql/1_setup.sql:826); findings of older runs are not deleted (inferred from sql/1_setup.sql:826)",
+   "versioning": "rows of the same RUN_ID replaced per CALL (sql/1_setup.sql:830); findings of older runs are not deleted (inferred from sql/1_setup.sql:830)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_FINDINGS",
-    "sql/1_setup.sql:826-830"
+    "sql/1_setup.sql:830-834"
    ],
    "read_by": [
-    "no reader in the app found (grep of access.py, server.py); SELECT granted to APP_ROLE at sql/1_setup.sql:879; test_sql.py:225 parses its DDL"
+    "no reader in the app found (grep of access.py, server.py); SELECT granted to APP_ROLE at sql/1_setup.sql:883; test_sql.py:225 parses its DDL"
    ],
    "evidence": "sql/1_setup.sql:131-141"
   },
@@ -1398,7 +1398,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",
@@ -1411,7 +1411,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_USER",
@@ -1424,7 +1424,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_USAGE",
@@ -1437,7 +1437,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_TAG",
@@ -1450,7 +1450,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_POLICY",
@@ -1463,7 +1463,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1476,7 +1476,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1489,7 +1489,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:473 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
   },
   {
    "from": "TBL_ACCESS_FINDING",
@@ -1502,7 +1502,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:840-842"
+   "evidence": "sql/1_setup.sql:844-846"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",
@@ -1515,7 +1515,7 @@
    ],
    "cardinality": "N:1 (user may lack a profile row)",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:664-667; access.py:1072-1082"
+   "evidence": "sql/1_setup.sql:668-671; access.py:1080-1090"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",
@@ -1528,7 +1528,7 @@
    ],
    "cardinality": "N:M",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:677-678,595; access.py:1081"
+   "evidence": "sql/1_setup.sql:681-682,595; access.py:1089"
   },
   {
    "from": "TBL_ACCESS_GRANT",
@@ -1541,7 +1541,7 @@
    ],
    "cardinality": "N:M (role hierarchy, GRANTED_ON in ROLE/DATABASE_ROLE, PRIVILEGE USAGE)",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:671-675; access.py:1054-1058"
+   "evidence": "sql/1_setup.sql:675-679; access.py:1062-1066"
   },
   {
    "from": "TBL_ACCESS_USAGE",
@@ -1554,7 +1554,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:1079-1080"
+   "evidence": "access.py:1087-1088"
   },
   {
    "from": "TBL_ACCESS_USAGE",
@@ -1567,7 +1567,7 @@
    ],
    "cardinality": "N:M (KIND ROLE / SECONDARY ROLE)",
    "status": "inferred",
-   "evidence": "access.py:2197-2200"
+   "evidence": "access.py:2205-2208"
   },
   {
    "from": "TBL_ACCESS_TAG",
@@ -1580,7 +1580,7 @@
    ],
    "cardinality": "N:M (also exact match on the object's DB / DB.SCHEMA from split_name for inherited tags)",
    "status": "logical",
-   "evidence": "access.py:2219-2235"
+   "evidence": "access.py:2227-2243"
   },
   {
    "from": "TBL_ACCESS_POLICY",
@@ -1593,7 +1593,7 @@
    ],
    "cardinality": "N:M",
    "status": "logical",
-   "evidence": "access.py:2280-2288"
+   "evidence": "access.py:2288-2296"
   },
   {
    "from": "TBL_ACCESS_POLICY",
@@ -1606,7 +1606,7 @@
    ],
    "cardinality": "N:M (tag-based policy, OBJECT_NAME empty, case-insensitive)",
    "status": "logical",
-   "evidence": "access.py:2289-2292"
+   "evidence": "access.py:2297-2300"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1619,7 +1619,7 @@
    ],
    "cardinality": "1:N",
    "status": "logical",
-   "evidence": "access.py:5416"
+   "evidence": "access.py:5439"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1632,7 +1632,7 @@
    ],
    "cardinality": "N:1 (sensitive source table, rule 22)",
    "status": "logical",
-   "evidence": "access.py:5412-5413"
+   "evidence": "access.py:5435-5436"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1645,7 +1645,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:1088-1089"
+   "evidence": "access.py:1096-1097"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1658,7 +1658,7 @@
    ],
    "cardinality": "N:M (name as ACCESS_HISTORY gives it)",
    "status": "inferred",
-   "evidence": "access.py:4259-4263"
+   "evidence": "access.py:4267-4271"
   },
   {
    "from": "TBL_ACCESS_FINDING",
@@ -1697,7 +1697,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:476 (WHERE RUN_ID = last OK run); sql/1_setup.sql:595-596"
+   "evidence": "access.py:479 (WHERE RUN_ID = last OK run); sql/1_setup.sql:599-600"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1710,7 +1710,7 @@
    ],
    "cardinality": "N:1",
    "status": "inferred",
-   "evidence": "access.py:5500 (u in profile)"
+   "evidence": "access.py:5523 (u in profile)"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1723,7 +1723,7 @@
    ],
    "cardinality": "N:M (name as ACCESS_HISTORY gives it)",
    "status": "inferred",
-   "evidence": "access.py:5500 (o in kinds), access.py:4583"
+   "evidence": "access.py:5523 (o in kinds), access.py:4606"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1736,7 +1736,7 @@
    ],
    "cardinality": "N:M",
    "status": "inferred",
-   "evidence": "access.py:4581 (data_use(role) walks the role grants)"
+   "evidence": "access.py:4604 (data_use(role) walks the role grants)"
   }
  ],
  "views": [
@@ -1751,7 +1751,7 @@
    ],
    "filter": "last OK run (MAX_BY FINISHED_AT); role links USAGE on ROLE/DATABASE_ROLE minus admin grantees; simple paths, 50 hops",
    "grain": "one row per path x privilege reached (PRIVILEGE, GRANTED_ON, DATABASE_NAME, SCHEMA_NAME, OBJECT_NAME, DEPTH, PATH, HOLDER)",
-   "evidence": "sql/1_setup.sql:651-710"
+   "evidence": "sql/1_setup.sql:655-714"
   },
   {
    "name": "TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)",
@@ -1764,7 +1764,7 @@
    ],
    "filter": "last OK run; grants on the object (PRIVILEGE NULL = any); walk up role links; every user holds PUBLIC",
    "grain": "one row per grantee (role or user) x path (GRANTEE, GRANTEE_KIND, PRIVILEGE, DEPTH, PATH)",
-   "evidence": "sql/1_setup.sql:712-753"
+   "evidence": "sql/1_setup.sql:716-757"
   },
   {
    "name": "TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)",
@@ -1774,7 +1774,7 @@
    ],
    "filter": "OBJECT_NAME match and PRIVILEGE or OWNERSHIP",
    "grain": "one row per path (PATH, HOPS, HOLDER, VIA_OWNERSHIP); no rows = no",
-   "evidence": "sql/1_setup.sql:755-767"
+   "evidence": "sql/1_setup.sql:759-771"
   },
   {
    "name": "snapshot dict (in memory)",
@@ -1784,9 +1784,9 @@
     "live sources (live / mine)",
     "fake()"
    ],
-   "filter": "RUN_ID = last OK run (access.py:466-473)",
+   "filter": "RUN_ID = last OK run (access.py:467-476)",
    "grain": "key per table: list of row dicts; run = one TBL_ACCESS_RUN row",
-   "evidence": "access.py:464-479, 560-836, 470-553, 130-345"
+   "evidence": "access.py:465-484, 560-836, 470-553, 130-345"
   },
   {
    "name": "TBL_ACCESS_*_PREV (DuckDB)",

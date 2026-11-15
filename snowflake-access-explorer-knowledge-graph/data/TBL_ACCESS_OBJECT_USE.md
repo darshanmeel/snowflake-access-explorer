@@ -7,7 +7,7 @@ flowchart LR
   T --> O[access.build: obj_use] --> U[used_on]
 ```
 
-DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROUP BY 1, 2, 3, 4`, `sql/1_setup.sql:517`).
+DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROUP BY 1, 2, 3, 4`, `sql/1_setup.sql:518`).
 
 | Column | Type | Meaning | Line |
 |---|---|---|---|
@@ -19,7 +19,7 @@ DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROU
 | QUERIES | NUMBER | distinct queries | 104 |
 | LAST_USED | TIMESTAMP_LTZ | last query | 105 |
 
-- SQL: `sql/1_setup.sql:503-517`, same text as `access.py:920-934`; window `USE_DAYS=180` (`sql/1_setup.sql:177`, `access.py:62`).
-- Written: `sql/1_setup.sql:520-533`; not readable -> UNAVAILABLE, no fallback, run stays OK.
-- Read as optional table (None if missing): `access.py:61,411-415`; lookups `access.py:1088-1089`; `used_on` `access.py:4735-4746`.
-- `mine()` returns no OBJECT_USE key (`access.py:620-622`); `build` tolerates it (`access.py:1088`).
+- SQL: `sql/1_setup.sql:504-518`, same text as `access.py:925-939`; window `USE_DAYS=180` (`sql/1_setup.sql:177`, `access.py:62`).
+- Written: `sql/1_setup.sql:521-534`; not readable -> UNAVAILABLE, no fallback, run stays OK.
+- Read as optional table (None if missing): `access.py:61,411-415`; lookups `access.py:1096-1097`; `used_on` `access.py:4758-4769`.
+- `mine()` returns no OBJECT_USE key (`access.py:625-627`); `build` tolerates it (`access.py:1096`).

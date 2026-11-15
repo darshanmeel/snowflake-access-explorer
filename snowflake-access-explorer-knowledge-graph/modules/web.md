@@ -92,7 +92,7 @@ flowchart LR
 | | `npm run build` -> web/dist | `npm run build:st` -> web/dist-st |
 |---|---|---|
 | Entry | web/index.html -> src/main.tsx | web/st/index.html -> src/st/main.tsx (web/st/index.html:10) |
-| Served by | server.py `spa` (server.py:26, server.py:2400-2410) | st_react.py component (st_react.py:12-13) |
+| Served by | server.py `spa` (server.py:26, server.py:2421-2431) | st_react.py component (st_react.py:12-13) |
 | Assets | inline limit 4096, ELK own chunk | no inlined assets, one JS (inlineDynamicImports) + one CSS (web/vite.config.ts:37-39) |
 | Stamp | src-hash.txt of web/src (web/vite.config.ts:10-20), checked by `test_bundles_fresh` (test_server.py:463) | same |
 
