@@ -2,7 +2,7 @@
 
 See who can access what in Snowflake, and through which roles. It runs on your own machine, only reads from Snowflake, and never changes a grant.
 
-**Full guide: [README.html](README.html)**, in this folder. It covers every screen with screenshots, how to read the graphs, all 29 rules, settings and limits. Open it in a browser: double-click it, or run `start README.html`. GitHub shows it as source code, so open your local copy.
+**Full guide: [README.html](README.html)**, in this folder. Also: [docs/overview.html](docs/overview.html) (what it is and how it runs) and [docs/technical.html](docs/technical.html) (components, flows, data model). It covers every screen with screenshots, how to read the graphs, all 29 rules, settings and limits. Open it in a browser: double-click it, or run `start README.html`. GitHub shows it as source code, so open your local copy.
 
 ## What it does
 ```mermaid
@@ -247,7 +247,13 @@ python run_sql.py sql/2_snapshot.sql;  python run_sql.py sql/2_snapshot_verify.s
 Then set `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` in `.env` (and `SNOWFLAKE_ROLE=<APP_ROLE>` for viewers) and run `python run.py --objects`.
 - `run_sql.py` stops with a message when `settings.local.sql` is missing or still has `<placeholders>`, and before any statement when a file a `PUT` needs is missing.
 - `DEV_ROLE` needs, on the role itself (`run_sql.py` runs `USE SECONDARY ROLES NONE`): `USAGE` on `<DB>`, `<SCHEMA>` and `<WH>`; on `<DB>.<SCHEMA>` `CREATE TABLE`, `CREATE PROCEDURE`, `CREATE FUNCTION`, `CREATE STAGE`, plus `CREATE STREAMLIT` for Streamlit in Snowflake and `CREATE TASK` with account `EXECUTE TASK` for the daily task; and `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or `MANAGE GRANTS`) to see the whole account. Viewers only need `APP_ROLE`.
-- Fresh data: schedule `CALL SP_ACCESS_SNAPSHOT('AUTO')` as a **daily task**, or rerun `sql/2_snapshot.sql` (README.html, Run modes and setup). **Rebuild snapshot** in the app runs the procedure too; a second CALL while one is still running steps back (`SKIPPED`).
+- Fresh data: the setup scripts create no task. Create the daily task yourself (the owner needs `EXECUTE TASK`; `3_cleanup.sql` drops it), or rerun `sql/2_snapshot.sql`:
+  ```sql
+  CREATE TASK <DB>.<SCHEMA>.TSK_ACCESS_SNAPSHOT WAREHOUSE = <WH> SCHEDULE = 'USING CRON 0 6 * * * UTC'
+    AS CALL <DB>.<SCHEMA>.SP_ACCESS_SNAPSHOT('AUTO');
+  ALTER TASK <DB>.<SCHEMA>.TSK_ACCESS_SNAPSHOT RESUME;
+  ```
+  **Rebuild snapshot** in the app runs the procedure too; a second CALL while one is still running steps back (`SKIPPED`).
 - Without the app, in a worksheet: `SELECT * FROM TABLE(TF_ACCESS_OF('<USER>', NULL));`, `TF_WHO_CAN`, `TF_CAN`, `CALL SP_ACCESS_FINDINGS('{}')` (`TBL_ACCESS_FINDING` keeps only the last run).
 - SnowSQL instead of `run_sql.py`: `!source` the same `sql/` files in order. Remove everything: `python run_sql.py sql/3_cleanup.sql`.
 
@@ -291,13 +297,13 @@ It uses the app's own Snowflake session, keeps data in memory only (24 h) and wr
 
 | | `SOURCE=objects` (recommended for a team) | `SOURCE=direct` |
 |---|---|---|
-| Creates in Snowflake | the snapshot tables, procedures and daily task (`1_setup.sql`, `2_snapshot.sql`), then the app (`4_streamlit.sql`) | only the stage and the app (`4_streamlit.sql`): no tables, procedures or task |
+| Creates in Snowflake | the snapshot tables and procedures (`1_setup.sql`, `2_snapshot.sql`; the daily task is your own statement, see above), then the app (`4_streamlit.sql`) | only the stage and the app (`4_streamlit.sql`): no tables, procedures or task |
 | How the data is read | the app reads the last snapshot: opens fast, every viewer sees the same run | each viewer's session reads `ACCOUNT_USAGE` live with the owner role on **Load shared data** (seconds to minutes), kept 24 h in memory |
 | The owner role (`DEV_ROLE`) needs | the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) privileges | `USAGE` on `<DB>`, `<SCHEMA>`, `<WH>`, `CREATE STAGE` and `CREATE STREAMLIT` on the schema, and `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or the `SNOWFLAKE` database roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`) |
 | Missing | as in both: My access and What changed (local version only) | also future grants and streams when Snowflake refuses their `SHOW` in the app: listed under **Incomplete** |
 
 1. `SOURCE=objects`: do the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) setup first (`1_setup.sql`,
-   `2_snapshot.sql`, the daily task). `SOURCE=direct`: skip it; step 3 also grants the app role `USAGE` on `<DB>`,
+   `2_snapshot.sql`, and the daily task you create). `SOURCE=direct`: skip it; step 3 also grants the app role `USAGE` on `<DB>`,
    `<SCHEMA>` and `<WH>`.
 2. Settings for the app go in `sis/.env` (required, git-ignored, so the `sis` folder is not in a fresh clone), uploaded
    as the app's `.env`: `mkdir sis; copy sis.env.example sis\.env` (macOS/Linux: `mkdir -p sis && cp sis.env.example sis/.env`)
@@ -316,7 +322,7 @@ It uses the app's own Snowflake session, keeps data in memory only (24 h) and wr
    It creates the stage `STG_ACCESS_APP`, uploads the Python files, `environment.yml` (packages: `streamlit=1.52.*`,
    pinned so a redeploy can't change it, and `snowflake-snowpark-python`) and `web/dist-st` (the old bundle files removed
    first), creates the Streamlit app `ST_ACCESS_EXPLORER` (warehouse `WH`) and grants `USAGE` on it to `APP_ROLE`.
-   SnowSQL: `!source sql/4_streamlit.sql`.
+   SnowSQL: `!source sql/4_streamlit.sql`, with `HERE` (the repo folder, for the uploads) set in `settings.local.sql`.
 4. Open it in Snowsight: **Projects > Streamlit > ST_ACCESS_EXPLORER**. To update after `git pull`, run step 3 again.
 
 - The app runs with its **owner's rights** (`DEV_ROLE`): every viewer sees what that role reads, not their own access.
@@ -341,6 +347,9 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 ### Container Services (optional)
 Only to give everyone the local web app without each person installing it: run `server.py` as a Snowpark Container Services
 service (any container image with Python and `requirements-web.txt`, `HOST=0.0.0.0`). Not needed to use the app.
+The repo has no image, service spec or network rule for it, and this route is not yet tested. What it needs: an image
+built from the repo, a service spec that runs `python run.py` on port 8000 with a public endpoint, and
+`ALLOWED_HOSTS=<the endpoint's host name>` (the server answers only its own host names, else `400 bad_host`).
 The app logs in like on a shared server: give the service `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER` and a key pair
 (`SNOWFLAKE_PRIVATE_KEY_FILE`, mounted as a secret). Browser SSO can't work there, and My access is off (key pair).
 
@@ -352,8 +361,9 @@ role) and rules 24-28 read `ACCESS_HISTORY` with `QUERY_HISTORY` (role, statemen
 last 60 days (`ACTIVITY_DAYS`), aggregated per UTC day, user, role, client, object, Streamlit app (from the query tag) and statement, with the queries
 per UTC hour (`HOURS`): query metadata, never query text. Off-hours are worked out in the app from `HOURS` and
 `WORK_HOURS`. To keep the cost down, a new read copies the days the last one already has and reads only the days after them
-(the last day again, as ACCESS_HISTORY lags up to 3 hours); the app tags its own queries (`QUERY_TAG` = `access-explorer`)
-and leaves them out. Snowflake does not log result downloads from Snowsight or drivers. The full table, with the fallbacks,
+(the last day again, as ACCESS_HISTORY lags up to 3 hours). Days start at UTC midnight whatever the session's time zone.
+The app leaves its own queries out: locally they carry `QUERY_TAG` = `access-explorer`, inside Snowflake the app's
+Streamlit name `ST_ACCESS_EXPLORER`, and the procedure's reads and writes of the `TBL_ACCESS_` tables are skipped. Snowflake does not log result downloads from Snowsight or drivers. The full table, with the fallbacks,
 is in [README.html](README.html) > Data sources.
 
 ## Use the queries without the app

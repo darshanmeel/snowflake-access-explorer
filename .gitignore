@@ -9,3 +9,6 @@ sis/
 
 # knowledge-graph update scratch (worklist, previous state): rebuilt on every update
 /snowflake-access-explorer-knowledge-graph/_update/
+
+# code review reports (darshan-singh-meel-review): local output, not committed
+/reviews/

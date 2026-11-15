@@ -62,6 +62,7 @@ OPTIONAL = ["OBJECT_USE", "ACTIVITY"]  # snapshot tables an older setup may lack
 USE_DAYS = int(os.environ.get("USE_DAYS", "180"))  # object usage read from ACCESS_HISTORY (Granted vs used)
 ACTIVITY_DAYS = int(os.environ.get("ACTIVITY_DAYS", "60"))  # Activity tabs and rules 24-28: days of ACCESS_HISTORY
 QUERY_TAG = "access-explorer"  # set on the app's own connection; its queries are left out of the activity
+APP_ST = "ST_ACCESS_EXPLORER"  # the app inside Snowflake (sql/4_streamlit.sql): its queries carry this StreamlitName
 # SESSIONS.CLIENT_APPLICATION_ID without its version: people type queries there (rule 25), and short labels for all
 INTERACTIVE = set(os.environ.get("INTERACTIVE_CLIENTS", "Snowflake UI,SnowSQL,Snowflake CLI").split(","))
 CLIENTS = {"Snowflake UI": "Snowsight", "PythonConnector": "Python", "JavaScript": "Node.js", "Go": "Go",
@@ -461,10 +462,12 @@ def fake_previous():
                     OBJECT_USE=fake_use("2026-10-26 07:00"), ACTIVITY=fake_activity("2026-10-26 07:00"))
 
 
-def snapshot(query, where):
-    """The last OK run of the snapshot tables. query(sql) -> list of dicts; where = DB.SCHEMA of the tables."""
-    runs = query(f"SELECT RUN_ID, FINISHED_AT, SOURCES, NOTES FROM {where}.TBL_ACCESS_RUN WHERE STATUS = 'OK' "
-                 "ORDER BY FINISHED_AT DESC LIMIT 1")
+def snapshot(query, where, tries=3):
+    """The last OK run of the snapshot tables. query(sql) -> list of dicts; where = DB.SCHEMA of the tables. A run that
+    finishes while we read deletes the rows we read from, so the read starts again on the new run."""
+    latest = lambda: query(f"SELECT RUN_ID, FINISHED_AT, SOURCES, NOTES FROM {where}.TBL_ACCESS_RUN WHERE STATUS = 'OK' "  # noqa: E731
+                           "ORDER BY FINISHED_AT DESC LIMIT 1")
+    runs = latest()
     if not runs:
         raise RuntimeError(f"No OK run in {where}.TBL_ACCESS_RUN: CALL SP_ACCESS_SNAPSHOT() first (sql/2_snapshot.sql)")
     run = runs[0]
@@ -476,6 +479,8 @@ def snapshot(query, where):
             d[t] = query(f"SELECT * FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'")
         except Exception:
             d[t] = None
+    if tries > 1 and latest()[0]["RUN_ID"] != run["RUN_ID"]:
+        return snapshot(query, where, tries - 1)
     return d | {"run": run, "ACTIVITY": hours_of(d["ACTIVITY"])}
 
 
@@ -939,8 +944,9 @@ def activity_sql(since, client=True):
     day, user, role, client, object, ACTION (READ: objects read, WRITE: objects modified, DDL: created, altered or
     dropped) and QUERY_TYPE (SELECT, INSERT, MERGE, ...). Role and statement type come from QUERY_HISTORY, the client
     from SESSIONS (client=False: not readable, CLIENT stays empty). since: first day read ('YYYY-MM-DD'); both history
-    views are cut at it, so Snowflake prunes them, and ACCESS_HISTORY is scanned once. The app's own queries (QUERY_TAG)
-    are left out. DAY and HOURS are in UTC: HOURS = {hour of day: queries}, so the app can count off-hours for any
+    views are cut at its UTC midnight (not the session's), so Snowflake prunes them, and ACCESS_HISTORY is scanned once.
+    The app's own queries are left out: QUERY_TAG locally, its Streamlit app (APP_ST) inside Snowflake, and its
+    TBL_ACCESS_ tables, which SP_ACCESS_SNAPSHOT writes. DAY and HOURS are in UTC: HOURS = {hour of day: queries}, so the app can count off-hours for any
     working hours without reading again. APP: the Streamlit app the query ran for (Snowflake tags them with
     {"StreamlitName": ...}, older ones "streamlitName: ..."), else NULL. The same text is in access.py and
     SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
@@ -950,7 +956,7 @@ def activity_sql(since, client=True):
     return f"""WITH A AS (
             SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL,
                    CONVERT_TIMEZONE('UTC', QUERY_START_TIME) AS L
-            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::DATE),
+            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ),
         H AS (
             SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
             FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
@@ -965,12 +971,14 @@ def activity_sql(since, client=True):
                    COALESCE(TRY_PARSE_JSON(QUERY_TAG):StreamlitName::STRING,
                             REGEXP_SUBSTR(QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP
             FROM {AU}.QUERY_HISTORY
-            WHERE START_TIME >= '{since}'::DATE AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'),
+            WHERE START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'
+              AND COALESCE(QUERY_TAG, '') NOT LIKE '%.{APP_ST}%'),
         G AS (
             SELECT H.L::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE, Q.APP,
                    HOUR(H.L) AS HR, COUNT(DISTINCT H.QUERY_ID) AS N, MAX(H.T) AS LAST_USED
             FROM H JOIN Q ON Q.QUERY_ID = H.QUERY_ID {join}
-            WHERE H.OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9)
+            WHERE H.OBJECT_NAME IS NOT NULL AND NOT STARTSWITH(SPLIT_PART(H.OBJECT_NAME, '.', 3), 'TBL_ACCESS_')
+            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9)
         SELECT DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, SUM(N) AS QUERIES, MAX(LAST_USED) AS LAST_USED,
                OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS, APP
         FROM G GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP"""
@@ -4345,7 +4353,7 @@ def activity(name, what, user=None):
 def query_sql(name, what, first, last):
     """Copy-only SQL that lists every query behind the Activity tab, one by one (query id, time, user, role, statement,
     client; never the query text), to run in Snowflake. The app never runs it."""
-    q = name.replace("'", "''")
+    q = quoted(name)
     where = {"object": f"""O.VALUE:"objectName"::STRING = '{q}'""", "user": f"A.USER_NAME = '{q}'",
              "role": f"Q.ROLE_NAME = '{q}'", "app": f"TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING = '{q}'",
              "scope": f"""O.VALUE:"objectName"::STRING LIKE '{q}.%'"""}[what]
@@ -4355,9 +4363,10 @@ SELECT DISTINCT A.QUERY_ID, A.QUERY_START_TIME, A.USER_NAME, Q.ROLE_NAME, Q.QUER
 FROM {AU}.ACCESS_HISTORY A
 JOIN LATERAL FLATTEN(ARRAY_CAT(ARRAY_CAT(A.DIRECT_OBJECTS_ACCESSED, A.OBJECTS_MODIFIED),
                                ARRAY_CONSTRUCT_COMPACT(A.OBJECT_MODIFIED_BY_DDL))) O
-JOIN {AU}.QUERY_HISTORY Q ON Q.QUERY_ID = A.QUERY_ID AND Q.START_TIME >= '{first}'::DATE
+JOIN {AU}.QUERY_HISTORY Q ON Q.QUERY_ID = A.QUERY_ID AND Q.START_TIME >= '{first} 00:00:00 +00:00'::TIMESTAMP_TZ
 LEFT JOIN {AU}.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
-WHERE A.QUERY_START_TIME >= '{first}'::DATE AND A.QUERY_START_TIME < DATEADD(DAY, 1, '{last}'::DATE)
+WHERE A.QUERY_START_TIME >= '{first} 00:00:00 +00:00'::TIMESTAMP_TZ
+  AND A.QUERY_START_TIME < DATEADD(DAY, 1, '{last} 00:00:00 +00:00'::TIMESTAMP_TZ)
   AND {where}
 ORDER BY A.QUERY_START_TIME DESC;"""
 
@@ -4371,10 +4380,20 @@ NEEDS = ("-- Read-only. Needs SNOWFLAKE.ACCOUNT_USAGE: IMPORTED PRIVILEGES on da
          "-- policies). Without them Snowflake says the view does not exist. ACCOUNT_USAGE lags up to 3 hours.\n")
 
 
+def one_line(v):
+    """v with line breaks and other control characters as spaces: a name from a link can't start a new SQL line."""
+    return re.sub(r"[\x00-\x1f\x7f  ]", " ", str(v))
+
+
+def quoted(v):
+    """v for inside a single-quoted Snowflake string: one line, backslashes and quotes escaped."""
+    return one_line(v).replace("\\", "\\\\").replace("'", "''")
+
+
 def lit(v):
     """A SQL literal for a SET line."""
     return "NULL" if v is None else ("TRUE" if v else "FALSE") if isinstance(v, bool) else str(v) if isinstance(v, int) \
-        else "'" + str(v).replace("'", "''") + "'"
+        else "'" + quoted(v) + "'"
 
 
 def query_file(file, title, **sets):
@@ -4385,13 +4404,13 @@ def query_file(file, title, **sets):
         return None
     text = f.read_text(encoding="utf-8")
     for k, v in sets.items():
-        text = re.sub(rf"^SET {k} = .*;$", f"SET {k} = {lit(v)};", text, flags=re.M)
+        text = re.sub(rf"^SET {k} = .*;$", lambda _, k=k, v=v: f"SET {k} = {lit(v)};", text, flags=re.M)
     return dict(title=title, sql=text.rstrip() + "\n")
 
 
 def plain(title, about, sets, body):
     """A query of our own: comment lines, SET lines, then the SELECT (with $NAME for the SET values)."""
-    head = "".join(f"-- {x}\n" for x in about) + NEEDS
+    head = "".join(f"-- {one_line(x)}\n" for x in about) + NEEDS
     return dict(title=title, sql=head + "".join(f"SET {k} = {lit(v)};\n" for k, v in sets.items()) + "\n" + body.strip() + "\n")
 
 
@@ -4402,7 +4421,8 @@ ACT_BASE = """WITH A AS (   -- one row per query in the window (UTC days); L: it
     SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DATEADD(HOUR, $TZ_HOURS, CONVERT_TIMEZONE('UTC', QUERY_START_TIME)) AS L,
            DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
     FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
-    WHERE QUERY_START_TIME >= $FROM_DAY::DATE AND QUERY_START_TIME < DATEADD(DAY, 1, $TO_DAY::DATE)),
+    WHERE QUERY_START_TIME >= ($FROM_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ   -- UTC days, whatever the session's time zone
+      AND QUERY_START_TIME < DATEADD(DAY, 1, ($TO_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ)),
 H AS (   -- each object a query read (READ), changed (WRITE) or created, altered or dropped (DDL)
     SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
     FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
@@ -4414,9 +4434,10 @@ X AS (   -- with the role, statement type, Streamlit app (query tag) and client 
     SELECT H.*, Q.ROLE_NAME, Q.QUERY_TYPE, COALESCE(TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING,
                                                    REGEXP_SUBSTR(Q.QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP,
            REGEXP_REPLACE(S.CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
-    FROM H JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY Q ON Q.QUERY_ID = H.QUERY_ID AND Q.START_TIME >= $FROM_DAY::DATE
+    FROM H JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY Q ON Q.QUERY_ID = H.QUERY_ID AND Q.START_TIME >= ($FROM_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ
     LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
-    WHERE H.OBJECT_NAME IS NOT NULL AND COALESCE(Q.QUERY_TAG, '') <> '{tag}' AND {where})
+    WHERE H.OBJECT_NAME IS NOT NULL AND COALESCE(Q.QUERY_TAG, '') <> '{tag}' AND COALESCE(Q.QUERY_TAG, '') NOT LIKE '%.{app}%'
+      AND NOT STARTSWITH(SPLIT_PART(H.OBJECT_NAME, '.', 3), 'TBL_ACCESS_') AND {where})   -- not the app's own queries or tables
 """
 OFF = "(DAYOFWEEKISO(L) > 5 OR HOUR(L) < $WORK_START OR HOUR(L) >= $WORK_END)"  # L is already in business time
 ACT_SECTIONS = {  # key: (title, what it shows, the final SELECT on X)
@@ -4468,7 +4489,7 @@ def activity_section_sql(name, what, first, last, key, work=WORK_HOURS):
     return plain(f"{title}: {name}", [f"{title} for {name} ({what}), {first} to {last} (UTC days). {about}.",
                                       "Change the SET lines for another one or another window. TZ_HOURS shifts UTC to your business",
                                       "time (e.g. 2 for UTC+2): days and hours below are in that time."],
-                 sets, ACT_BASE.format(where=where, tag=QUERY_TAG) + select)
+                 sets, ACT_BASE.format(where=where, tag=QUERY_TAG, app=APP_ST) + select)
 
 
 def page_sql(page, p, first=None, last=None):

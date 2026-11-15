@@ -304,7 +304,7 @@ def test_activity():
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
     exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
-    assert ns["ACTIVITY_DAYS"] == a.ACTIVITY_DAYS and ns["QUERY_TAG"] == a.QUERY_TAG
+    assert ns["ACTIVITY_DAYS"] == a.ACTIVITY_DAYS and ns["QUERY_TAG"] == a.QUERY_TAG and ns["APP_ST"] == a.APP_ST
     src, why = ns["activity"](fake_session(con), "run-9", "AUTO")
     assert src == "UNAVAILABLE" and "ACCESS_HISTORY" in why
     assert not con.execute("SELECT * FROM TBL_ACCESS_ACTIVITY WHERE RUN_ID = 'run-9'").fetchall()

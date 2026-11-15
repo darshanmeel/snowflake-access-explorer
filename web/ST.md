@@ -65,6 +65,7 @@ st_react.py
 ui.py               (theme tokens, help texts, type icons: sent in /api/meta)
 environment.yml     warehouse runtime: channel snowflake, streamlit=1.52.* pinned, snowflake-snowpark-python
 sis/.env            the app's .env (INSIDE=1, SOURCE=objects, ACCESS_SNAPSHOT)
+access_queries/*.sql the SQL behind each page (the </> mark on every card), read by access.query_file
 web/dist-st/index.html
 web/dist-st/assets/*.js, *.css, *.woff2
 ```

@@ -177,6 +177,7 @@ TAG_FALLBACK_MAX = 300  # tables/views read one by one when the ACCOUNT_USAGE vi
 USE_DAYS = 180  # object usage kept from ACCESS_HISTORY
 ACTIVITY_DAYS = 60  # table activity kept (the app's ACTIVITY_DAYS)
 QUERY_TAG = "access-explorer"  # the app's own queries, left out of the activity
+APP_ST = "ST_ACCESS_EXPLORER"  # the app inside Snowflake: its queries carry this StreamlitName
 
 
 def rows(session, sql):
@@ -538,8 +539,9 @@ def activity_sql(since, client=True):
     day, user, role, client, object, ACTION (READ: objects read, WRITE: objects modified, DDL: created, altered or
     dropped) and QUERY_TYPE (SELECT, INSERT, MERGE, ...). Role and statement type come from QUERY_HISTORY, the client
     from SESSIONS (client=False: not readable, CLIENT stays empty). since: first day read ('YYYY-MM-DD'); both history
-    views are cut at it, so Snowflake prunes them, and ACCESS_HISTORY is scanned once. The app's own queries (QUERY_TAG)
-    are left out. DAY and HOURS are in UTC: HOURS = {hour of day: queries}, so the app can count off-hours for any
+    views are cut at its UTC midnight (not the session's), so Snowflake prunes them, and ACCESS_HISTORY is scanned once.
+    The app's own queries are left out: QUERY_TAG locally, its Streamlit app (APP_ST) inside Snowflake, and its
+    TBL_ACCESS_ tables, which SP_ACCESS_SNAPSHOT writes. DAY and HOURS are in UTC: HOURS = {hour of day: queries}, so the app can count off-hours for any
     working hours without reading again. APP: the Streamlit app the query ran for (Snowflake tags them with
     {"StreamlitName": ...}, older ones "streamlitName: ..."), else NULL. The same text is in access.py and
     SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
@@ -549,7 +551,7 @@ def activity_sql(since, client=True):
     return f"""WITH A AS (
             SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL,
                    CONVERT_TIMEZONE('UTC', QUERY_START_TIME) AS L
-            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::DATE),
+            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ),
         H AS (
             SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
             FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
@@ -564,12 +566,14 @@ def activity_sql(since, client=True):
                    COALESCE(TRY_PARSE_JSON(QUERY_TAG):StreamlitName::STRING,
                             REGEXP_SUBSTR(QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP
             FROM {AU}.QUERY_HISTORY
-            WHERE START_TIME >= '{since}'::DATE AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'),
+            WHERE START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'
+              AND COALESCE(QUERY_TAG, '') NOT LIKE '%.{APP_ST}%'),
         G AS (
             SELECT H.L::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE, Q.APP,
                    HOUR(H.L) AS HR, COUNT(DISTINCT H.QUERY_ID) AS N, MAX(H.T) AS LAST_USED
             FROM H JOIN Q ON Q.QUERY_ID = H.QUERY_ID {join}
-            WHERE H.OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9)
+            WHERE H.OBJECT_NAME IS NOT NULL AND NOT STARTSWITH(SPLIT_PART(H.OBJECT_NAME, '.', 3), 'TBL_ACCESS_')
+            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9)
         SELECT DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, SUM(N) AS QUERIES, MAX(LAST_USED) AS LAST_USED,
                OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS, APP
         FROM G GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP"""

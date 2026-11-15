@@ -663,6 +663,9 @@ def test_sql_page():  # "SQL behind this page": commented, read-only, full names
              ("object", "name=SALES.CORE&show=activity", "SET IN_SCOPE = 'SALES.CORE';"),
              ("object", "name=WH_SALES_XS&show=activity", "SET WAREHOUSE_NAME = 'WH_SALES_XS';"),
              ("access", "user=O'BRIEN&show=activity", "SET USER_NAME = 'O''BRIEN';"),
+             # a line break or backslash from a link stays inside the string: no statement of its own
+             ("access", "user=X%0AGRANT%20ROLE%20R%20TO%20USER%20U;%20--&show=activity", "SET USER_NAME = 'X GRANT ROLE R TO USER U; --';"),
+             ("access", "user=X%5C'&show=activity", "SET USER_NAME = 'X\\\\''';"),
              ("usage", "user=ENGINEER_01", "USER_NAME = $USER_NAME"), ("rules", "", "GRANTEE_NAME = 'PUBLIC'"), ("home", "", "SNOWFLAKE.ACCOUNT_USAGE"),
              # names under any parameter: Can they? (a user and an object), Compare (two roles), Request (a role)
              ("check", "name=ENGINEER_01&obj=SALES.CORE.TBL_CUSTOMER", "SET USER_NAME = 'ENGINEER_01';"),
@@ -672,7 +675,7 @@ def test_sql_page():  # "SQL behind this page": commented, read-only, full names
         qs = js(f"/api/sql?page={page}&{q}")["queries"]
         assert qs and any(want in x["sql"] for x in qs), (page, q)
         for x in qs:
-            code = chr(10).join(l.split("--")[0] for l in x["sql"].splitlines())
+            code = chr(10).join(_re.sub(r"'[^']*'", "''", l).split("--")[0] for l in x["sql"].splitlines())  # no strings, no comments
             assert "SNOWFLAKE.ACCOUNT_USAGE." in code and not _re.search(r"\b(INSERT|UPDATE|DELETE|MERGE|CREATE|DROP|ALTER|GRANT|REVOKE|CALL)\b", code), x["title"]
             assert code.count("(") == code.count(")") and x["sql"].lstrip().startswith("--"), x["title"]
     sec = js("/api/activity?name=SALES.CORE.TBL_CUSTOMER")["section_sql"]
@@ -706,10 +709,11 @@ def test_review_fixes():  # search answers, row policy list, defaults that exist
     assert [r["object"] for r in rl] == sorted(a.row_tables()) and len(rl) == js("/api/home")["protection"]["row_tables"]
     old = server.DEMO_USER
     try:
-        server.DEMO_USER = "NOBODY_HERE"
+        server.DEMO_USER = "NOBODY_HERE"; server.ANSWERS.clear()  # answers are kept per data set; this changes a setting
         assert js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["default_user"] == a.users[0]
     finally:
         server.DEMO_USER = old
+        server.ANSWERS.clear()
     users = a.users
     try:
         a.users = []
@@ -799,6 +803,7 @@ def test_csv_formula():
     import server
     t = server.csv_text(["o", "n"], [["=HYPERLINK(1)", "-3"], ["@x", 5], ["T", "+1.5"]])
     assert t.splitlines()[1:] == ["'=HYPERLINK(1),-3", "'@x,5", "T,+1.5"], t
+    assert get("/api/rules.csv?grantee=%3D1%2B1").text.splitlines()[0] == "Rule checks,'=1+1"  # a head row from the link
 
 
 if __name__ == "__main__":

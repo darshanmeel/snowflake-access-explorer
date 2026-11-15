@@ -53,6 +53,8 @@ LOCK = threading.RLock()  # access.py keeps its lookups in module globals: build
 LOAD = threading.Lock()  # one Snowflake read at a time
 MINE = {}
 S = dict(sens={}, rows=[], breaks={}, view="shared", known=None)  # per request, set under LOCK
+ANSWERS = {}  # (data, endpoint, params) -> answer: a page seen before skips LOCK, so users don't queue behind each other
+MAX_ANSWERS = 200
 
 
 class ApiError(Exception):
@@ -286,7 +288,7 @@ def csv_text(cols, rows, head=()):
     safe = lambda v: f"'{v}" if isinstance(v, str) and re.match(r"[=+\-@\t\r]", v) and not re.fullmatch(r"[+-]?\d+(\.\d+)?", v) else v
     f = io.StringIO()
     w = csv.writer(f)
-    w.writerows(list(head) + ([[]] if head else []))
+    w.writerows([[safe(v) for v in r] for r in head] + ([[]] if head else []))  # head rows carry names from the link too
     w.writerow(cols)
     w.writerows([[safe(v) for v in r] for r in rows])
     return f.getvalue()
@@ -2274,14 +2276,33 @@ WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sen
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
+def data_key(view, sid):
+    """Which data set a request answers from (the run, or one My access load), None when it isn't loaded."""
+    if view == "shared":
+        run = load_shared(ask=True)["run"]
+        return "shared", run.get("RUN_ID"), str(run.get("FINISHED_AT"))
+    m = mine_entry(sid) if view == "mine" else None
+    return m and m["key"]
+
+
 def serve(name, params=None, sid=None):
-    """The JSON answer of one endpoint (a dict), as the local server and the Streamlit components get it."""
+    """The JSON answer of one endpoint (a dict), as the local server and the Streamlit components get it. Answers
+    depend only on the data set and the parameters, so a repeat comes from ANSWERS without the lock."""
     p = {k: str(v) for k, v in (params or {}).items()}
+    dk = data_key(p.get("view", "shared"), sid)
+    key = dk and (dk, name, tuple(sorted(p.items())))
+    if key in ANSWERS:
+        return ANSWERS[key]
     with session(p.get("view", "shared"), sid, p.get("builtin") == "1"):
         out = ROUTES[name](p, p.get("view", "shared"))
         if name in WITH_REFS:
             out["refs"] = mkrefs(out)
-        return clean(out)
+        out = clean(out)
+    if key:
+        if len(ANSWERS) >= MAX_ANSWERS:
+            ANSWERS.pop(next(iter(ANSWERS)), None)  # oldest first
+        ANSWERS[key] = out
+    return out
 
 
 def serve_csv(name, params=None, sid=None):

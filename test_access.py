@@ -354,6 +354,14 @@ def test_demo_db():
     assert s["run"]["RUN_ID"] == "run-2" and s["run"]["SOURCES"]["tags"] == "ACCOUNT_USAGE"
     for t in a.TABLES + a.OPTIONAL:
         assert [{k: v for k, v in x.items() if k != "RUN_ID"} for x in s[t]] == d[t], t
+    seen = []  # a new run finishes while we read: the read starts again on it, never mixes or keeps deleted rows
+
+    def racing(sql):
+        seen.append(sql)
+        if len(seen) == 3:
+            con.execute("UPDATE TBL_ACCESS_RUN SET FINISHED_AT = FINISHED_AT + INTERVAL 2 DAY WHERE RUN_ID = 'run-1'")
+        return query(sql)
+    assert a.snapshot(racing, "main")["run"]["RUN_ID"] == "run-1"
     con.execute("DROP TABLE TBL_ACCESS_OBJECT_USE")  # a setup from before the table: still loads, no usage
     assert a.snapshot(query, "main")["OBJECT_USE"] is None
 
@@ -489,12 +497,12 @@ def test_live():
             assert s["OBJECT_USE"] == d["OBJECT_USE"] and src["object_use"] == "ACCOUNT_USAGE"
             assert s["ACTIVITY"] == d["ACTIVITY"] and src["activity"] == "ACCOUNT_USAGE"
             sql = next(c for c in calls if "OBJECT_MODIFIED_BY_DDL" in c)
-            assert f"'{a.QUERY_TAG}'" in sql and "'2026-09-04'::DATE" in sql and "SESSIONS" in sql  # 60 days before 11-03
+            assert f"'{a.QUERY_TAG}'" in sql and "'2026-09-04 00:00:00 +00:00'::TIMESTAMP_TZ" in sql and "SESSIONS" in sql  # 60 days before 11-03
             calls.clear()
             old = [x for x in d["ACTIVITY"] if x["DAY"] < "2026-10-20"]  # an earlier read: only the days it lacks
             s = a.live(query, old)
             sql = next(c for c in calls if "OBJECT_MODIFIED_BY_DDL" in c)
-            assert "'2026-10-18'::DATE" in sql and s["ACTIVITY"][:3] == [x for x in old if x["DAY"] < "2026-10-18"][:3]
+            assert "'2026-10-18 00:00:00 +00:00'::TIMESTAMP_TZ" in sql and s["ACTIVITY"][:3] == [x for x in old if x["DAY"] < "2026-10-18"][:3]
         assert au or (src["object_use"] == src["activity"] == "UNAVAILABLE" and s["OBJECT_USE"] == s["ACTIVITY"] == [])
     # SP_ACCESS_SNAPSHOT's copy of that SELECT (sql/1_setup.sql grants()) qualifies the same way
     setup = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql", "1_setup.sql"), encoding="utf-8").read()

@@ -62,24 +62,33 @@ The data is read once a day (`cache.get`: memory 24 h, and `.cache/` for `CACHE_
 
 `query(sql)` runs on a fresh connection from `sf.connect()` per load, closed afterwards (as `app.with_query`).
 
-### Shared data: one copy, 1 hour
+### Shared data: one copy, 24 hours
 
-- In memory: `{"data": dict, "at": epoch}`. Loaded on the first request that needs it; reused while younger than
-  3600 s (same as `@st.cache_data(ttl=3600)` on `app.shared`). Expired: the next request loads again.
+- In memory: `{"data": dict, "at": epoch}`, reused while younger than `TTL` (`cache.TTL`, 24 h); locally also a file in
+  `.cache/` kept for `CACHE_HOURS` (24, `0` = memory only; never on disk inside Snowflake). Expired: the next request
+  that needs it loads again; **↻** (`POST /api/reload`) reads now.
 - Build key: `("shared", run["RUN_ID"], str(run["FINISHED_AT"]))`.
 - A load error is kept for the request only (not cached): `503 shared_unreadable`, and the UI points to My access.
 
-### My access: per browser session, 1 hour, memory only
+### My access: per browser session, 24 hours
 
 - Cookie `ae_sid`: 32 random hex chars (`os.urandom(16).hex()`), set by `POST /api/mine/load`. `HttpOnly`,
-  `SameSite=Strict`, `Path=/api`, `Max-Age=3600`. Not `Secure` locally (http://localhost).
-- Server dict `MINE = {sid: {"data": dict, "key": ("mine", <random hex>), "user": str, "at": epoch}}`. `key` is
-  random, so two sessions never share `a.build` lookups or rule findings.
-- Every `view=mine` request: look up the cookie; missing, unknown or older than 3600 s -> `409 mine_not_loaded`
+  `SameSite=Strict`, `Path=/api`, `Max-Age` = `TTL` (86400). Not `Secure` locally (http://localhost).
+- Server dict `MINE = {sid: {"data": dict, "key": ("mine", <random hex>), "user": str, "at": epoch, "cache_key": str}}`.
+  `key` is random, so two sessions never share `a.build` lookups or rule findings.
+- Every `view=mine` request: look up the cookie; missing, unknown or older than `TTL` -> `409 mine_not_loaded`
   (expired entries are dropped on the way). Found -> `a.build(data, key)` and answer from memory: no Snowflake call per
   click.
-- `POST /api/mine/load` again replaces the entry (Reload my access). Nothing is written to disk, logs or the shared
-  cache; no other browser sees it.
+- Locally the read is also kept in `.cache/` for `CACHE_HOURS`, one file per Snowflake user (`cache.name("mine", user,
+  WHERE)`), so a restart does not ask for another login; `POST /api/mine/load?fresh=1` drops it and reads again.
+  No other browser session sees it: its build key is random. Inside Snowflake My access is off.
+
+### Answers
+
+- `serve()` keeps each JSON answer in `ANSWERS`, keyed by (data set, endpoint, parameters), up to `MAX_ANSWERS` (200,
+  oldest dropped first). A repeat request is answered without `LOCK`, so users of a shared server or of the app in
+  Snowflake don't wait for each other on pages already seen. A new run or a My access load has a new data key.
+- `access.py` keeps its lookups in module globals, so computing a new answer still takes `LOCK`: one at a time.
 
 ### Per-data-set memo
 
@@ -241,6 +250,22 @@ Reads the logged-in user's own access (see sessions; `?fresh=1` reads Snowflake 
 ### GET /api/mine
 
 `{"loaded": bool, "user", "loaded_at", "expires_at"}` for the cookie, no Snowflake call.
+
+### GET /api/home?view=
+
+Home: `me` (`user`: the default user, `DEMO_USER` when it exists, or the logged-in user for `view=mine`; `counts`: their
+read / change / own ladder), `risks` (rule findings per severity), `per_rule` (findings per rule number), `counts`
+(users, roles, objects, sensitive objects) and `protection` (tagged, masked and unmasked sensitive objects with
+`unmasked_names`, row-policy tables `row_tables` / `row_list`, dormant users who reach sensitive data with
+`dormant_names`).
+
+### GET /api/access?view=&user=|role=
+
+A person or a role (My access with `view=mine`): `who` (name, kind, type, status, last login, default role, holders),
+`counts` (read, change, own, runnable, account powers, admin, sensitive, schemas, usage), `objects` (one row per object
+at its highest level: privileges, level, path and number of paths, holder role, sensitive columns, findings), `heat`
+(per schema: read / change / own / sensitive), `why` (the role tree that gives it), `roles`, `deepest`, `findings` with
+`findings_total`, and `refs`. An unknown role answers `404`.
 
 ### GET /api/find?q=&limit=20&view=
 
