@@ -15,7 +15,7 @@ flowchart LR
   SQL[sql/: setup, snapshot, streamlit deploy] --> SF
 ```
 
-- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:465` snapshot, `access.py:634` live, `access.py:5117` checks, `access.py:4297` activity), cache (`cache.py`), server (`server.py:2333` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
+- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:465` snapshot, `access.py:634` live, `access.py:5116` checks, `access.py:4298` activity), cache (`cache.py`), server (`server.py:2333` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
 - Login: `sf.connect()` (`sf.py:19-42`) uses the app session inside Snowflake, else a key pair or browser SSO from `.env`; PrivateLink is only the `SNOWFLAKE_ACCOUNT` value `<org>-<account>.privatelink` plus private DNS, passed as `account=` (`sf.py:28`, `README.md:181-195`; `processes/privatelink-login.md`).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
@@ -33,7 +33,7 @@ flowchart LR
 | Question | Go to |
 |---|---|
 | How does a request / snapshot / My access / what-changed / a standalone query run, step by step? | `flows/` (snapshot-objects, direct-live, web-request, streamlit-in-snowflake, my-access, startup, what-changed, standalone-queries, activity-read, activity-tab, show-sql) |
-| Table activity: where it is read (incrementally, app queries left out by QUERY_TAG, per UTC day with hours and Streamlit app), what the Activity tab shows per object type (object, app, database / schema scope, warehouse), business hours, rules 24-28 and Streamlit app exposure (rule 29)? | `flows/activity-read.md`, `flows/activity-tab.md`, `logic/activity.md`, `data/TBL_ACCESS_ACTIVITY.md` |
+| Table activity: where it is read (incrementally, app queries left out by the QUERY_TAG / STREAMLIT_APP settings, per UTC day with hours and Streamlit app), what the Activity tab shows per object type (object, app, database / schema scope, warehouse), business hours, rules 24-28 and Streamlit app exposure (rule 29)? | `flows/activity-read.md`, `flows/activity-tab.md`, `logic/activity.md`, `data/TBL_ACCESS_ACTIVITY.md` |
 | What does rule N check? How are paths counted, depth, what-if, graph roll-up, caching? | `logic/` (rules, activity, page-sql, walks, rbac-model, what-if, graph-input, diff, caching) |
 | What does file / module X do, what calls what? | `modules/` (access, server, cache, sf, app-and-st_react, ui, run-scripts, web, sql, tests, access-queries) |
 | Plain SQL / table functions / notebooks over ACCOUNT_USAGE without the app (user roles, user or role access, role holders, object users)? | `modules/access-queries.md` (files, CTEs, functions, notebooks, test), `flows/standalone-queries.md` (worksheet / path A / path B, example rows) |

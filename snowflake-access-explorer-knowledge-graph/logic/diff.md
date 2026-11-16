@@ -7,26 +7,26 @@ What changed compares the loaded snapshot with the previous one: `facts()` per d
 flowchart LR
   CP["server.changes_page<br/>server.py:1721-1742"] -->|FAKE| FP["a.fake_previous()<br/>access.py:451-462"]
   CP -->|snowflake, local| PR["cache.prev(KEY)<br/>cache.py:84-90"]
-  CP --> D["a.diff(prev)<br/>access.py:4984-5066"]
-  D --> FN["facts() now<br/>access.py:4856-4882"]
-  D --> LD["loaded(prev): facts() old<br/>access.py:4843-4851"]
-  D --> GE["grant_events()<br/>access.py:4944-4967"]
+  CP --> D["a.diff(prev)<br/>access.py:4983-5065"]
+  D --> FN["facts() now<br/>access.py:4855-4881"]
+  D --> LD["loaded(prev): facts() old<br/>access.py:4842-4850"]
+  D --> GE["grant_events()<br/>access.py:4943-4966"]
   D --> EV[events + counts]
 ```
 
-## facts() (`access.py:4856-4882`)
-- `access {(user, object): (level, privileges)}` on tables/views, merging per granted role `table_reach()`; users with the same granted roles share the work (`access.py:4862-4874`).
-- `table_reach(r)` / `own_tables(h)` cached per role (`access.py:4885-4907`); `table_level()` gives the ladder level (`access.py:4915-4922`).
-- `grants` keyed `(grantee, privilege, granted on, object)` -> `GRANTED_BY`; admin role links and hidden built-ins left out (`access.py:4876-4877`).
-- `user_roles`, `findings` (keyed num, grantee, user, detail), `status`, `sens`, `run` (`access.py:4878-4881`).
+## facts() (`access.py:4855-4881`)
+- `access {(user, object): (level, privileges)}` on tables/views, merging per granted role `table_reach()`; users with the same granted roles share the work (`access.py:4861-4873`).
+- `table_reach(r)` / `own_tables(h)` cached per role (`access.py:4884-4906`); `table_level()` gives the ladder level (`access.py:4914-4921`).
+- `grants` keyed `(grantee, privilege, granted on, object)` -> `GRANTED_BY`; admin role links and hidden built-ins left out (`access.py:4875-4876`).
+- `user_roles`, `findings` (keyed num, grantee, user, detail), `status`, `sens`, `run` (`access.py:4877-4880`).
 
-## diff(prev) (`access.py:4984-5066`)
-- Old side built with `loaded(prev)` (save, build, restore) (`access.py:4993`, `4203-4211`).
-- Gained / lost = new pair or higher level on `LEVELS` (`access.py:4995-4998`, `LEVELS` `access.py:1214`).
-- Findings: same (rule, grantee, user) counts as the same finding (`access.py:4999-5001`).
-- Grant events for removed and added grants and user-role links (`access.py:5002-5007`), each with impact text (`impact_text`, `access.py:4933-4941`).
-- User status changes (new, gone, dormant, disabled) (`access.py:5031-5041`); new/fixed findings not tied to a grant event (`access.py:5042-5056`).
-- Sort `risk, gain, lose, user, fixed` (`access.py:5057-5058`); counts per filter `event_counts()` (`access.py:4970-4974`); severity strips (`access.py:5061-5063`).
+## diff(prev) (`access.py:4983-5065`)
+- Old side built with `loaded(prev)` (save, build, restore) (`access.py:4992`, `4203-4211`).
+- Gained / lost = new pair or higher level on `LEVELS` (`access.py:4994-4997`, `LEVELS` `access.py:1215`).
+- Findings: same (rule, grantee, user) counts as the same finding (`access.py:4998-5000`).
+- Grant events for removed and added grants and user-role links (`access.py:5001-5006`), each with impact text (`impact_text`, `access.py:4932-4940`).
+- User status changes (new, gone, dormant, disabled) (`access.py:5030-5040`); new/fixed findings not tied to a grant event (`access.py:5041-5055`).
+- Sort `risk, gain, lose, user, fixed` (`access.py:5056-5057`); counts per filter `event_counts()` (`access.py:4969-4973`); severity strips (`access.py:5060-5062`).
 - Server caches per previous run: `a.cached(("diff", cache.run_of(prev)), ...)` (`server.py:1739`).
 - Not available on My access view, inside Snowflake, or with `CACHE_HOURS=0` (`server.py:1725-1737`).
 

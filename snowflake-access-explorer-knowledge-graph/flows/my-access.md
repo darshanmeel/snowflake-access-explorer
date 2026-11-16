@@ -39,7 +39,7 @@ sequenceDiagram
 8. `APPLICABLE_ROLES` from the first database whose INFORMATION_SCHEMA works (fills links of unreadable roles) — access.py:576-587, access.py:533-541.
 9. Directly granted roles: `SHOW GRANTS TO USER`, else APPLICABLE_ROLES, else available roles no other role holds — access.py:588-597.
 10. Profile `DESC USER` (last login unknown, `LOGIN_UNKNOWN=True`); usage from ACCOUNT_USAGE 30 days, else INFORMATION_SCHEMA 7 days; tags / policies `UNAVAILABLE` — access.py:598-627.
-11. Fake demo: `a.only(d, user)` = one user's slice of the fake data, `RUN_ID="live"` — access.py:997-1006; `DEMO_USER` default `ENGINEER_01` — server.py:24.
+11. Fake demo: `a.only(d, user)` = one user's slice of the fake data, `RUN_ID="live"` — access.py:998-1007; `DEMO_USER` default `ENGINEER_01` — server.py:24.
 12. Pages with `view=mine`: `session()` takes `MINE[sid]`, else 409 `mine_not_loaded` — server.py:192-196; `mine_entry` expires after `TTL` — server.py:115-120; `meta` drops `SHARED_ONLY` pages — server.py:2157-2158.
 13. Home in mine view: no `risks`, `per_rule`, `protection` — server.py:1088-1094. What changed refuses — server.py:1725-1726.
 14. Tests: `test_mine` — test_server.py:235; `test_mine_shared_server` — test_server.py:395.

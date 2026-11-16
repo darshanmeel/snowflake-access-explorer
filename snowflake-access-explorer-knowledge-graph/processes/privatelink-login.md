@@ -18,7 +18,7 @@ flowchart LR
 - Browser SSO: the SAML integration must use the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`), else the identity provider returns the login to the public URL and it fails; fallback is a key pair — README.md:192-193.
 - Check: `python sf.py "select current_user(), current_role(), current_account()"`; `run_sql.py` and both apps use the same login — README.md:194.
 - Streamlit in Snowflake needs none of it (the app's own session) — README.md:195, sf.py:20-22.
-- Shared server: same `.privatelink` value and private DNS on the server — README.md:303.
+- Shared server: same `.privatelink` value and private DNS on the server — README.md:305.
 
 ## In the code
 - `sf.connect()` has no PrivateLink code: it passes `account=os.environ["SNOWFLAKE_ACCOUNT"]` to `snowflake.connector.connect` as given — sf.py:28. The connector builds the host from that value.

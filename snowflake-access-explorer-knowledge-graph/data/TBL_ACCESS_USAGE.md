@@ -21,6 +21,6 @@ DDL: `sql/1_setup.sql:57-64`. Grain: run x user x kind x name (`GROUP BY 2, 4`, 
 
 - Aggregation SQL: `sql/1_setup.sql:345-357`; SECONDARY ROLE from `SECONDARY_ROLE_STATS:roleNames`, ACCOUNT_USAGE only (`:324-329`).
 - Window: 30 days (`DAYS`, `sql/1_setup.sql:175,325-326`); fallback 7 days / 10000 queries (`:342-344`); else UNAVAILABLE (`:345-346`).
-- Read: `access.py:1087-1088` -> `used_roles` `access.py:2211-2214`.
+- Read: `access.py:1088-1089` -> `used_roles` `access.py:2212-2215`.
 - NAME -> role when KIND is ROLE / SECONDARY ROLE: inferred link to `TBL_ACCESS_GRANT.GRANTEE_ROLE`.
 - My access: per-user aggregation, 30 days ACCOUNT_USAGE else `QUERY_HISTORY_BY_USER` 7 days (`access.py:606-621`).

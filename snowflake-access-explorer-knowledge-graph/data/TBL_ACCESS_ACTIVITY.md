@@ -4,14 +4,14 @@ Table use per UTC day, user, role, client, object, action, statement and Streaml
 ```mermaid
 flowchart LR
   AH[ACCOUNT_USAGE.ACCESS_HISTORY] --> Q[activity_sql since day]
-  QH[QUERY_HISTORY minus QUERY_TAG access-explorer] --> Q
+  QH[QUERY_HISTORY minus the app's QUERY_TAG and STREAMLIT_APP] --> Q
   SE[SESSIONS optional] --> Q
   P[(rows of the last OK run<br/>older than since)] --> T
   Q --> T[(TBL_ACCESS_ACTIVITY)]
   T --> S[access.snapshot OPTIONAL] --> B[access.build: acts] --> A[activity / rules_activity]
 ```
 
-DDL: `sql/1_setup.sql:108-122`; older tables get `HOURS` and `APP` from `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (may fail) — `sql/1_setup.sql:124-128`. Grain: run x UTC day x user x role x client x object x action x query type x app (`GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP`, `sql/1_setup.sql:579`). No PK declared; that grain is the logical key (inferred from the GROUP BY).
+DDL: `sql/1_setup.sql:108-122`; older tables get `HOURS` and `APP` from `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (may fail) — `sql/1_setup.sql:124-128`. Grain: run x UTC day x user x role x client x object x action x query type x app (`GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP`, `sql/1_setup.sql:580`). No PK declared; that grain is the logical key (inferred from the GROUP BY).
 
 | Column | Type | Meaning | Sensitivity | Line |
 |---|---|---|---|---|
@@ -28,10 +28,10 @@ DDL: `sql/1_setup.sql:108-122`; older tables get `HOURS` and `APP` from `ALTER T
 | HOURS | VARIANT | `OBJECT_AGG(UTC hour, queries)`, e.g. `{"9": 8, "22": 3}`; parsed to a dict by `hours_of` (`access.py:487-490`) | personal (activity time) | 120 |
 | APP | VARCHAR(2000) | the Streamlit app the queries ran for: QUERY_TAG JSON `StreamlitName`, else `streamlitName: ...` text; NULL otherwise | – | 121 |
 
-- SQL: `sql/1_setup.sql:537-579`, same text as `access.py:942-984` (checked by `test_sql.py:302`); window `ACTIVITY_DAYS = 60` (`sql/1_setup.sql:178`, `access.py:63`); the app's queries left out by `QUERY_TAG` (`sql/1_setup.sql:179`, `sql/1_setup.sql:569`).
-- Written: `sql/1_setup.sql:581-604` (columns list with `HOURS`, `APP`, `sql/1_setup.sql:594`) — previous OK run's rows with `first <= DAY < since` copied under the new `RUN_ID`, then `activity_sql(since)` inserted (`sql/1_setup.sql:595-600`); not readable -> UNAVAILABLE, no fallback, the run stays OK; an error deletes this run's rows (`sql/1_setup.sql:602-604`).
-- Versioning: one copy per run (`RUN_ID`); after an OK run other runs' rows are deleted like every `DATA` table (`sql/1_setup.sql:171`, `sql/1_setup.sql:652-657`); a FAILED run drops its rows (`sql/1_setup.sql:645-647`).
-- Read as optional table (None if missing): `access.py:60-61`, `access.py:477-481`; lookup `acts` `access.py:1018`, `access.py:1098`; Direct mode builds the same rows in memory (`access.py:904-913`).
-- Granted to `&APP_ROLE` (may fail): `sql/1_setup.sql:902-903`. Verify: `sql/2_snapshot_verify.sql:39-42`. Dropped: `sql/3_cleanup.sql:65-66`.
-- DuckDB copy: same columns (`HOURS JSON`, `APP VARCHAR`), `cache.py:177-179`; DuckDB test of the procedure step: `test_sql.py:298-311`.
-- Readers: `activity()` (APP for the app view), `query_sql()`, `activity_graph()`, `activity_sensitive()`, `rules_activity()` (`access.py:4297-4751`, `access.py:5507-5558`) — see [logic/activity.md](../logic/activity.md).
+- SQL: `sql/1_setup.sql:537-580`, same text as `access.py:942-985` (checked by `test_sql.py:302`); window `ACTIVITY_DAYS = 60` (`sql/1_setup.sql:178`, `access.py:63`); the app's queries left out by `QUERY_TAG` and `APP_ST`, filled from `!define QUERY_TAG` / `STREAMLIT_APP` (defaults access-explorer / ST_ACCESS_EXPLORER, `sql/1_setup.sql:179-180`, `settings.sql:16-19`) and filtered at `sql/1_setup.sql:570-571`.
+- Written: `sql/1_setup.sql:582-605` (columns list with `HOURS`, `APP`, `sql/1_setup.sql:595`) — previous OK run's rows with `first <= DAY < since` copied under the new `RUN_ID`, then `activity_sql(since)` inserted (`sql/1_setup.sql:596-601`); not readable -> UNAVAILABLE, no fallback, the run stays OK; an error deletes this run's rows (`sql/1_setup.sql:603-605`).
+- Versioning: one copy per run (`RUN_ID`); after an OK run other runs' rows are deleted like every `DATA` table (`sql/1_setup.sql:171`, `sql/1_setup.sql:653-658`); a FAILED run drops its rows (`sql/1_setup.sql:646-648`).
+- Read as optional table (None if missing): `access.py:60-61`, `access.py:477-481`; lookup `acts` `access.py:1019`, `access.py:1099`; Direct mode builds the same rows in memory (`access.py:904-913`).
+- Granted to `&APP_ROLE` (may fail): `sql/1_setup.sql:903-904`. Verify: `sql/2_snapshot_verify.sql:39-42`. Dropped: `sql/3_cleanup.sql:65-66`.
+- DuckDB copy: same columns (`HOURS JSON`, `APP VARCHAR`), `cache.py:177-179`; DuckDB test of the procedure step: `test_sql.py:298-312`.
+- Readers: `activity()` (APP for the app view), `query_sql()`, `activity_graph()`, `activity_sensitive()`, `rules_activity()` (`access.py:4298-4752`, `access.py:5506-5557`) — see [logic/activity.md](../logic/activity.md).

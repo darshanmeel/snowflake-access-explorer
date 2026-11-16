@@ -17,20 +17,20 @@ flowchart LR
 
 | Key | Table | Row keys | Consumed in `build` |
 |---|---|---|---|
-| `run` | `TBL_ACCESS_RUN` (one row) | RUN_ID, FINISHED_AT, SOURCES, NOTES (`access.py:467-475`) | `access.py:1092` |
-| `GRANT` | `TBL_ACCESS_GRANT` | GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE, GRANT_OPTION, GRANTED_BY | `access.py:1058-1075` |
-| `USER_ROLE` | `TBL_ACCESS_USER_ROLE` | USER_NAME, ROLE_NAME, GRANTED_BY | `access.py:1076` |
-| `USER` | `TBL_ACCESS_USER` | USER_NAME, TYPE, DISABLED, DEFAULT_*, LAST_SUCCESS_LOGIN | `access.py:1086` |
-| `USAGE` | `TBL_ACCESS_USAGE` | USER_NAME, KIND, NAME, QUERIES, LAST_USED | `access.py:1087-1088` |
-| `TAG` | `TBL_ACCESS_TAG` | OBJECT_NAME, DOMAIN, COLUMN_NAME, TAG_NAME, TAG_VALUE, APPLY_METHOD | `access.py:1093` |
-| `POLICY` | `TBL_ACCESS_POLICY` | POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY | `access.py:1094` |
-| `STREAM` | `TBL_ACCESS_STREAM` | STREAM_NAME, SOURCE_NAME, SOURCE_TYPE | `access.py:1095` |
-| `OBJECT_USE` | `TBL_ACCESS_OBJECT_USE` (optional) | USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED | `access.py:1096-1097` |
-| `ACTIVITY` | `TBL_ACCESS_ACTIVITY` (optional) | DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED | `access.py:1098` (`acts`) |
+| `run` | `TBL_ACCESS_RUN` (one row) | RUN_ID, FINISHED_AT, SOURCES, NOTES (`access.py:467-475`) | `access.py:1093` |
+| `GRANT` | `TBL_ACCESS_GRANT` | GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE, GRANT_OPTION, GRANTED_BY | `access.py:1059-1076` |
+| `USER_ROLE` | `TBL_ACCESS_USER_ROLE` | USER_NAME, ROLE_NAME, GRANTED_BY | `access.py:1077` |
+| `USER` | `TBL_ACCESS_USER` | USER_NAME, TYPE, DISABLED, DEFAULT_*, LAST_SUCCESS_LOGIN | `access.py:1087` |
+| `USAGE` | `TBL_ACCESS_USAGE` | USER_NAME, KIND, NAME, QUERIES, LAST_USED | `access.py:1088-1089` |
+| `TAG` | `TBL_ACCESS_TAG` | OBJECT_NAME, DOMAIN, COLUMN_NAME, TAG_NAME, TAG_VALUE, APPLY_METHOD | `access.py:1094` |
+| `POLICY` | `TBL_ACCESS_POLICY` | POLICY_NAME, POLICY_KIND, OBJECT_NAME, COLUMN_NAME, ARG_COLUMNS, TAG_NAME, POLICY_BODY | `access.py:1095` |
+| `STREAM` | `TBL_ACCESS_STREAM` | STREAM_NAME, SOURCE_NAME, SOURCE_TYPE | `access.py:1096` |
+| `OBJECT_USE` | `TBL_ACCESS_OBJECT_USE` (optional) | USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED | `access.py:1097-1098` |
+| `ACTIVITY` | `TBL_ACCESS_ACTIVITY` (optional) | DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED | `access.py:1099` (`acts`) |
 
 - Mapping key -> table: `TABLES` / `OPTIONAL` `access.py:60-61`, `SELECT * FROM {where}.TBL_ACCESS_{t}` `access.py:476,413`.
 - `snapshot()` rows also carry RUN_ID (SELECT *); `live()` / `mine()` rows have no RUN_ID key (`access.py:677-686,483-484`).
-- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:477-481`; `act_state()` then explains it (`access.py:4287-4289`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:92-94`, `access.py:904-913`).
+- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:477-481`; `act_state()` then explains it (`access.py:4288-4290`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:92-94`, `access.py:904-913`).
 
 ## Producers
 
@@ -41,11 +41,11 @@ flowchart LR
 | `mine(query, db)` | `"live"` | `access.py:544-627` | TAG / POLICY / STREAM empty, no OBJECT_USE; tags/policies UNAVAILABLE (`:548-549`) |
 | `fake()` | `"fake"` | `access.py:155-371` | `access.py:367,344-345` |
 | `fake_previous()` | `"fake-previous"` | `access.py:451-462` | What changed demo |
-| `only(d, user)` | `"live"` | `access.py:997-1006` | demo of mine() |
+| `only(d, user)` | `"live"` | `access.py:998-1007` | demo of mine() |
 
 - Shared data chosen by `server.read_shared` `server.py:89-90` (fake / live / snapshot by MODE and SOURCE from `cache.config()` `cache.py:27-40`, `server.py:21`), cached via `load_shared` `server.py:98-107`.
 - My access: `server.py:164-168` (`cache.get(cache.name("mine", ...), a.mine)`).
-- SP_ACCESS_FINDINGS also builds it inside Snowflake: `sql/1_setup.sql:841-842`.
+- SP_ACCESS_FINDINGS also builds it inside Snowflake: `sql/1_setup.sql:842-843`.
 
 ## Kept where
 
@@ -54,4 +54,4 @@ flowchart LR
 - Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:67-81`; read by `cache.prev` `cache.py:84-90` for What changed `server.py:1730`.
 - `drop` sets the file aside as `.old.pkl` (Read again): `cache.py:146-154`.
 - Cache key = account, source/what, snapshot location, user, role: `cache.py:43-48`; server `KEY` `server.py:23`.
-- `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:1025-1026,903-909`.
+- `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:1026-1027,903-909`.

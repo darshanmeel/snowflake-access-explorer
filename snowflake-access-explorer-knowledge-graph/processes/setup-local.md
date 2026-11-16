@@ -46,13 +46,13 @@ flowchart LR
   - Optional: `ROLE_PREFIXES` (and others listed in README.html > Settings) — .env.example:31-32.
 - Missing `SNOWFLAKE_ACCOUNT` outside Snowflake raises "copy .env.example to .env" — sf.py:23-25.
 - Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): no code change; the `.privatelink` account value, private DNS for the account and OCSP hosts, key pair as is, browser SSO only with the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); check with `python sf.py "select current_user(), ..."` — README.md:179-195, README.html:645; sf.connect() passes the value as `account=` — sf.py:28. Steps: processes/privatelink-login.md.
-- Settings table with defaults — README.md:197-212.
+- Settings table with defaults — README.md:197-214.
 
 ## `settings.local.sql` (from `settings.sql`, git-ignored)
-- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:260.
-- Names: `DB`, `SCHEMA`, `WH`, `DEV_ROLE`, `APP_ROLE`, `HERE` (SnowSQL only; run_sql.py fills it) — settings.sql:5-14, run_sql.py:19.
+- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:262.
+- Names: `DB`, `SCHEMA`, `WH`, `DEV_ROLE`, `APP_ROLE`, `HERE` (SnowSQL only; run_sql.py fills it) — settings.sql:6-15, run_sql.py:20; `STREAMLIT_APP` (default ST_ACCESS_EXPLORER) and `QUERY_TAG` (default access-explorer), same values as in `.env` and `sis/.env` — settings.sql:16-19.
 - git-ignored — .gitignore:4.
-- run_sql.py falls back to settings.sql if no local file, then stops if any `<placeholder>` is left — run_sql.py:17, run_sql.py:22-27.
+- run_sql.py falls back to settings.sql if no local file, and per name for names the local file lacks; it stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG`, then if any `<placeholder>` is left — run_sql.py:17-19, run_sql.py:23-31.
 
 ## Local-only files
 - `.cache/` (git-ignored) holds the pickled data and `access.duckdb` — .gitignore:7, CLAUDE.md:9-15.

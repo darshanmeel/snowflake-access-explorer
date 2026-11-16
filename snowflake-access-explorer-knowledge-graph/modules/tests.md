@@ -18,9 +18,9 @@ flowchart LR
 
 | Command | What | path:line |
 |---|---|---|
-| `python test_access.py` | Every `test_` function, `test_cache` first, `a.build(a.fake())` before each, all failures reported, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (skips test_perf, test_pages, test_live there) | test_access.py:1827-1846 |
+| `python test_access.py` | Every `test_` function, `test_cache` first, `a.build(a.fake())` before each, all failures reported, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (skips test_perf, test_pages, test_live there) | test_access.py:1835-1854 |
 | `python test_server.py` | Every `test_` in file order; FAKE=1 set at import; TestClient on `server.make_app()` | test_server.py:7-14, test_server.py:809-815 |
-| `python test_sql.py` | 11 tests in a fixed list | test_sql.py:469-473 |
+| `python test_sql.py` | 11 tests in a fixed list | test_sql.py:470-474 |
 | `npm test` (in web/) | `vitest run` | web/package.json:11 |
 | Rule check | `python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists 1-29 | CLAUDE.md "Verify before saying done" |
 
@@ -45,6 +45,7 @@ flowchart LR
 | Screens | test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow, test_usage_changes, test_review_fixes | test_access.py:1465-1770 |
 | Activity | test_activity: Activity tab numbers, rules 24-28 (one finding each), UTC hours and weekend add up (test_access.py:1721-1724), activity_sql UTC / HOURS / StreamlitName (test_access.py:1726-1727), scope view and query_sql (test_access.py:1728-1730), warehouse_use (test_access.py:1731-1732), grant path behind a use, sensitive view, tag text, app_exposure and rule 29 with its What-if fix (test_access.py:1747-1755), owner role -> no rule 24, no ACTIVITY -> not available, incremental window (`activity_start`) | test_access.py:1709-1767 |
 | Docs | test_readme_rules (docs/make_readme.py rule table) | test_access.py:1796 |
+| Settings | test_tag_settings: env `QUERY_TAG=it's`, `STREAMLIT_APP=ST_OTHER` in a child process -> `a.QUERY_TAG` / `a.APP_ST` take them, activity_sql has `<> 'it''s'` and `NOT LIKE '%.ST_OTHER%'` (a quote cannot end the string) | test_access.py:1827 |
 
 ## test_server.py groups
 
@@ -69,11 +70,11 @@ flowchart LR
 | test_findings | SP_ACCESS_FINDINGS | test_sql.py:228 |
 | test_streams | streams step -> TBL_ACCESS_STREAM; error -> UNAVAILABLE | test_sql.py:259 |
 | test_object_use | same ACCESS_HISTORY SELECT as access.use_sql | test_sql.py:282 |
-| test_activity | SP activity step: same SELECT as access.activity_sql, same ACTIVITY_DAYS and QUERY_TAG; no ACCESS_HISTORY -> UNAVAILABLE, no rows | test_sql.py:298 |
-| test_show_fallback | SHOW fallback equals access.live() | test_sql.py:314 |
-| test_run_overlap | two SP_ACCESS_SNAPSHOT CALLs at once: one goes on, the other SKIPPED; an OK run keeps the rows of a run still running (started over an hour ago) | test_sql.py:384 |
-| test_usage_extra | QUERY_HISTORY failing leaves the run OK, usage UNAVAILABLE | test_sql.py:426 |
-| test_same_queries | each ACCOUNT_USAGE SELECT of `access.live()` has the same text in SP_ACCESS_SNAPSHOT (aliases, RUN_ID and the INSERT aside) | test_sql.py:446 |
+| test_activity | SP activity step: same SELECT as access.activity_sql; `&QUERY_TAG` / `&STREAMLIT_APP` replaced by a.QUERY_TAG / a.APP_ST before the body runs (test_sql.py:306-307); same ACTIVITY_DAYS, QUERY_TAG and APP_ST; no ACCESS_HISTORY -> UNAVAILABLE, no rows | test_sql.py:298 |
+| test_show_fallback | SHOW fallback equals access.live() | test_sql.py:315 |
+| test_run_overlap | two SP_ACCESS_SNAPSHOT CALLs at once: one goes on, the other SKIPPED; an OK run keeps the rows of a run still running (started over an hour ago) | test_sql.py:385 |
+| test_usage_extra | QUERY_HISTORY failing leaves the run OK, usage UNAVAILABLE | test_sql.py:427 |
+| test_same_queries | each ACCOUNT_USAGE SELECT of `access.live()` has the same text in SP_ACCESS_SNAPSHOT (aliases, RUN_ID and the INSERT aside) | test_sql.py:447 |
 
 ## vitest (web/src)
 

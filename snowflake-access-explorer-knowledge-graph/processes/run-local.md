@@ -36,7 +36,7 @@ flowchart TD
 | Other port | `python run.py --port 9000` | :9000 | README.md:115 |
 | DuckDB copy off / on for fake | `DUCKDB=0` / `DUCKDB=1` | `.cache\access.duckdb` | README.md:116 |
 | Memory only | `CACHE_HOURS=0` | | README.md:117 |
-| Shared server | `HOST=0.0.0.0` + key pair (behind PrivateLink: `.privatelink` account value + private DNS, README.md:303) | `http://<server>:8000` | README.md:118 |
+| Shared server | `HOST=0.0.0.0` + key pair (behind PrivateLink: `.privatelink` account value + private DNS, README.md:305) | `http://<server>:8000` | README.md:118 |
 
 ## Source selection
 - `cache.config()`: `SOURCE` or `objects` when `ACCESS_SNAPSHOT` set, else `direct` — cache.py:27-32; anything else is an error — cache.py:34; objects without a location errors — cache.py:39.
@@ -49,9 +49,9 @@ flowchart TD
 
 ## Gates on a local run
 - My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:133-151.
-- Local API answers only its host names (`allowed_hosts()`) — server.py:2316-2320, README.md:255.
+- Local API answers only its host names (`allowed_hosts()`) — server.py:2316-2320, README.md:257.
 - Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink only the `SNOWFLAKE_ACCOUNT` value (`<org>-<account>.privatelink`) and private DNS change, `account=` is passed as given — sf.py:28, README.md:181-195, processes/privatelink-login.md.
-- First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:252.
+- First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:254.
 
 ## Dev mode (inferred)
 - `npm run dev` serves the page from Vite and proxies `/api` to `server.py` on `ACCESS_API_PORT` (default 8000) — web/vite.config.ts:41-42, web/package.json:7. Not described in README (inferred: developer-only).

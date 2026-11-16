@@ -12,7 +12,7 @@ flowchart TD
   R --> KP["keep_prev(): old file -> .prev.pkl<br/>cache.py:72-81"]
   R --> SQ["sql_copy -> access.duckdb<br/>cache.py:205"]
   G --> B["a.build(d, key, builtin)<br/>server.py:197-198"]
-  B --> KB["built{} up to KEEP_BUILT=3<br/>access.py:1025-1051"]
+  B --> KB["built{} up to KEEP_BUILT=3<br/>access.py:1026-1052"]
 ```
 
 ## Cache key (`cache.name`, `cache.py:43-48`)
@@ -32,8 +32,8 @@ flowchart TD
 - `prev(key)`: returns it with its mtime, or None (`cache.py:84-90`); used by What changed (`server.py:1730`).
 
 ## Built data sets (`access.py`)
-- `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1022`, `974-978`).
-- `build(d, key, builtin)`: same `(key, builtin)` as loaded -> no work; the loaded one is saved to `built`, at most `KEEP_BUILT` (3) kept (oldest dropped); a key in `built` is restored instead of rebuilt (`access.py:1025-1051`).
+- `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1023`, `974-978`).
+- `build(d, key, builtin)`: same `(key, builtin)` as loaded -> no work; the loaded one is saved to `built`, at most `KEEP_BUILT` (3) kept (oldest dropped); a key in `built` is restored instead of rebuilt (`access.py:1026-1052`).
 - Shared build key: `("shared", RUN_ID, FINISHED_AT)` (`server.py:191`); My access gets a random key per load (`server.py:175-177`).
 - Test: `test_built` (`test_access.py:941`), `test_cache` (`test_access.py:1404`).
 

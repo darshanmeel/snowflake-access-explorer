@@ -32,27 +32,28 @@ sequenceDiagram
 
 ## Steps
 
-1. Settings: `ACTIVITY_DAYS = 60` and `QUERY_TAG = "access-explorer"` in the procedure (`sql/1_setup.sql:178-179`) and in `access.py` (`access.py:63-64`); `test_sql.test_activity` checks they match (`test_sql.py:307`).
+1. Settings: `ACTIVITY_DAYS = 60` in the procedure (`sql/1_setup.sql:178`) and in `access.py` (env, `access.py:63`). The app's own queries are named by two settings: `QUERY_TAG` (env, default `access-explorer`, `access.py:64`) and `STREAMLIT_APP` (env, default `ST_ACCESS_EXPLORER`, read into `APP_ST`, `access.py:65`); the procedure gets them from `!define QUERY_TAG` / `STREAMLIT_APP` at deploy (`sql/1_setup.sql:179-180`, `settings.sql:16-19`). `test_sql.test_activity` fills the two names from access.py and checks all three match (`test_sql.py:306-308`).
 2. The app's connection carries the tag: `session_parameters={"QUERY_TAG": access.QUERY_TAG}` — `sf.py:34`. Inside Snowflake `connect()` returns the app's active session (`sf.py:20-22`), where this parameter is not set.
-3. Snapshot path: `run()` calls `keep("activity", *activity(session, run_id, mode))` after object use — `sql/1_setup.sql:638`.
-4. `activity()`: `fallback(session, "ACCESS_HISTORY", mode)` -> UNAVAILABLE with the reason, no fallback — `sql/1_setup.sql:587-589`, `sql/1_setup.sql:208-218`.
-5. Window: previous OK run (`MAX_BY(RUN_ID, FINISHED_AT)`), `first = CURRENT_DATE() - ACTIVITY_DAYS`, `last = MAX(DAY)` of that run, `since = max(first, last - 1 day)` — `sql/1_setup.sql:590-593`.
-6. Copy: rows of the previous run with `DAY >= first AND DAY < since` go in under the new `RUN_ID`, every column (`HOURS`, `APP` included) — `sql/1_setup.sql:594-597`.
-7. Read: `SESSIONS` readable (`fallback(..., "SESSIONS", "AUTO")`) decides the client column; `INSERT ... SELECT '<run>', A.* FROM (activity_sql(since, client))` — `sql/1_setup.sql:598-600`; source ACCOUNT_USAGE, note "no client" when SESSIONS is not readable — `sql/1_setup.sql:601`.
-8. Error -> this run's ACTIVITY rows deleted, UNAVAILABLE — `sql/1_setup.sql:602-604`. Row count per run — `sql/1_setup.sql:642-644`; a FAILED run drops its rows from every `DATA` table (ACTIVITY included, `sql/1_setup.sql:171`) — `sql/1_setup.sql:645-647`.
-9. The SELECT: ACCESS_HISTORY since the day (READ / WRITE / DDL objects, start time also in UTC) joined to QUERY_HISTORY (role, statement, APP from QUERY_TAG `StreamlitName`, tag filter) and SESSIONS (client); grouped per UTC hour first, then per UTC day with `QUERIES = SUM`, `HOURS = OBJECT_AGG(hour, queries)` — `sql/1_setup.sql:537-579`, same text as `access.py:942-984`.
+3. Snapshot path: `run()` calls `keep("activity", *activity(session, run_id, mode))` after object use — `sql/1_setup.sql:639`.
+4. `activity()`: `fallback(session, "ACCESS_HISTORY", mode)` -> UNAVAILABLE with the reason, no fallback — `sql/1_setup.sql:588-590`, `sql/1_setup.sql:208-218`.
+5. Window: previous OK run (`MAX_BY(RUN_ID, FINISHED_AT)`), `first = CURRENT_DATE() - ACTIVITY_DAYS`, `last = MAX(DAY)` of that run, `since = max(first, last - 1 day)` — `sql/1_setup.sql:591-594`.
+6. Copy: rows of the previous run with `DAY >= first AND DAY < since` go in under the new `RUN_ID`, every column (`HOURS`, `APP` included) — `sql/1_setup.sql:595-598`.
+7. Read: `SESSIONS` readable (`fallback(..., "SESSIONS", "AUTO")`) decides the client column; `INSERT ... SELECT '<run>', A.* FROM (activity_sql(since, client))` — `sql/1_setup.sql:599-601`; source ACCOUNT_USAGE, note "no client" when SESSIONS is not readable — `sql/1_setup.sql:602`.
+8. Error -> this run's ACTIVITY rows deleted, UNAVAILABLE — `sql/1_setup.sql:603-605`. Row count per run — `sql/1_setup.sql:643-645`; a FAILED run drops its rows from every `DATA` table (ACTIVITY included, `sql/1_setup.sql:171`) — `sql/1_setup.sql:646-648`.
+9. The SELECT: ACCESS_HISTORY since the day (READ / WRITE / DDL objects, start time also in UTC) joined to QUERY_HISTORY (role, statement, APP from QUERY_TAG `StreamlitName`; rows tagged `QUERY_TAG` or from the app `APP_ST` left out, quotes in either doubled first, `access.py:954`, `access.py:975-976`) and SESSIONS (client); grouped per UTC hour first, then per UTC day with `QUERIES = SUM`, `HOURS = OBJECT_AGG(hour, queries)` — `sql/1_setup.sql:537-580`, same text as `access.py:942-985`.
 10. Reader (objects): `snapshot()` reads `TBL_ACCESS_ACTIVITY` of the last OK run as an OPTIONAL table; a setup without it gives `None`; `hours_of` turns the `HOURS` JSON text into a dict — `access.py:60-61`, `access.py:477-484`, `access.py:487-490`.
 11. Direct path: `read_shared()` passes `cache.last(KEY)`'s ACTIVITY rows to `live()` — `server.py:92-94`; `last()` looks in memory, then `<key>.pkl`, `.old.pkl` (set aside by a refresh), `.prev.pkl` — `cache.py:93-104`.
-12. `live()`: ACCESS_HISTORY readable (same check as object use) -> `activity_start(old, now)`, SESSIONS check, `keep + hours_of(query(activity_sql(since, client)))`; else `ACTIVITY = []`, UNAVAILABLE — `access.py:904-913`, `access.py:987-994`.
-13. `build()` clears and fills `acts` from `d["ACTIVITY"]` (None or missing -> empty) — `access.py:1055-1057`, `access.py:1098`.
+12. `live()`: ACCESS_HISTORY readable (same check as object use) -> `activity_start(old, now)`, SESSIONS check, `keep + hours_of(query(activity_sql(since, client)))`; else `ACTIVITY = []`, UNAVAILABLE — `access.py:904-913`, `access.py:988-995`.
+13. `build()` clears and fills `acts` from `d["ACTIVITY"]` (None or missing -> empty) — `access.py:1056-1058`, `access.py:1099`.
 14. The DuckDB copy writes `TBL_ACCESS_ACTIVITY` (and `_PREV`) with the columns of `cache.COLUMNS` (`HOURS JSON`, `APP VARCHAR`) — `cache.py:177-179`, `cache.py:220`.
 15. Check after a run: `2_snapshot_verify.sql` ACTIVITY (days, users, objects, rows with a client, queries per action) — `sql/2_snapshot_verify.sql:39-42`; one run in all data tables — `sql/2_snapshot_verify.sql:14`.
-16. Setup: table DDL `sql/1_setup.sql:108-122`; a table made before `HOURS` / `APP` gets them from `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (may fail) — `sql/1_setup.sql:124-128`; `GRANT SELECT ... TO ROLE &APP_ROLE` (may fail) `sql/1_setup.sql:902-903`; cleanup `sql/3_cleanup.sql:65-66`.
+16. Setup: table DDL `sql/1_setup.sql:108-122`; a table made before `HOURS` / `APP` gets them from `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (may fail) — `sql/1_setup.sql:124-128`; `GRANT SELECT ... TO ROLE &APP_ROLE` (may fail) `sql/1_setup.sql:903-904`; cleanup `sql/3_cleanup.sql:65-66`.
 
 ## Example (fake Snowflake in `test_live`)
 
-- First read, now 2026-11-03: the activity SELECT carries `'access-explorer'`, `'2026-09-04'::DATE` and SESSIONS (`test_access.py:499-500`).
+- First read, now 2026-11-03: the activity SELECT carries the default tag `'access-explorer'`, `'2026-09-04'::DATE` and SESSIONS (`test_access.py:499-500`).
 - Second read with earlier rows up to 2026-10-19: the SELECT starts at `'2026-10-18'::DATE` and the kept rows come first (`test_access.py:502-505`).
-- SP on DuckDB (no ACCESS_HISTORY): `("UNAVAILABLE", "...ACCESS_HISTORY...")`, no rows for the run (`test_sql.py:308-310`).
+- Other names (`test_tag_settings`, `test_access.py:1827-1832`): `QUERY_TAG=it's`, `STREAMLIT_APP=ST_OTHER` -> the SELECT has `<> 'it''s'` and `NOT LIKE '%.ST_OTHER%'`.
+- SP on DuckDB (no ACCESS_HISTORY): `("UNAVAILABLE", "...ACCESS_HISTORY...")`, no rows for the run (`test_sql.py:309-311`).
 
 Related: [activity logic](../logic/activity.md) · [Activity tab request](activity-tab.md) · [TBL_ACCESS_ACTIVITY](../data/TBL_ACCESS_ACTIVITY.md) · [direct read](direct-live.md) · [snapshot read](snapshot-objects.md).

@@ -13,7 +13,7 @@ sequenceDiagram
     participant Q as st_react.answer()
     participant S as server.py
     participant F as sf.connect()
-    V->>P: open ST_ACCESS_EXPLORER
+    V->>P: open the STREAMLIT_APP app (default ST_ACCESS_EXPLORER)
     P->>P: set_page_config, hide chrome, hint "Loading..."
     P->>R: app()
     R->>J: _comp(component="app", answers={}, query=...)

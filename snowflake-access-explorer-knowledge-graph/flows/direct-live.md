@@ -47,7 +47,7 @@ sequenceDiagram
 8. Future grants: SHOW only; `SHOW DATABASES` refused -> `future_grants=UNAVAILABLE` — access.py:721-749.
 9. Users: ACCOUNT_USAGE.USERS else `SHOW USERS` — access.py:751-767. Usage: QUERY_HISTORY 30 days else INFORMATION_SCHEMA 7 days — access.py:769-799.
 10. Tags / policies: ACCOUNT_USAGE else per-object INFORMATION_SCHEMA up to `TAG_FALLBACK_MAX` (300) — access.py:819-892, access.py:631.
-11. Object use: ACCESS_HISTORY only (`use_sql`), else empty + note — access.py:894-902, access.py:925-939. Activity: ACCESS_HISTORY + QUERY_HISTORY (+ SESSIONS for the client), only the days `old` lacks (`activity_start`), the app's QUERY_TAG left out — access.py:904-913, access.py:942-994 ([flows/activity-read.md](activity-read.md)). Streams: `SHOW STREAMS IN ACCOUNT` — access.py:915-921.
+11. Object use: ACCESS_HISTORY only (`use_sql`), else empty + note — access.py:894-902, access.py:925-939. Activity: ACCESS_HISTORY + QUERY_HISTORY (+ SESSIONS for the client), only the days `old` lacks (`activity_start`), the app's QUERY_TAG left out — access.py:904-913, access.py:942-995 ([flows/activity-read.md](activity-read.md)). Streams: `SHOW STREAMS IN ACCOUNT` — access.py:915-921.
 12. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)` — access.py:922.
 13. Parallel SHOW statements: `each()` runs `SHOW_THREADS` (16) at a time, returning exceptions instead of failing — access.py:511-525.
 14. Kept with `cache.get` (memory + file); SQL copy gets run id `direct-<timestamp>` — cache.py:217-218.

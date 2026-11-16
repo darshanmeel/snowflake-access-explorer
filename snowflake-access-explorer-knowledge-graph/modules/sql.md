@@ -5,7 +5,7 @@ Snowflake side: numbered `sql/<n>_<step>.sql` files of `-- name:` statements plu
 
 ```mermaid
 flowchart LR
-  S[settings.sql template<br/>settings.local.sql real] -->|&DB &SCHEMA &WH &DEV_ROLE &APP_ROLE &HERE| R[run_sql.py]
+  S[settings.sql template<br/>settings.local.sql real] -->|&DB &SCHEMA &WH &DEV_ROLE &APP_ROLE &HERE &STREAMLIT_APP &QUERY_TAG| R[run_sql.py]
   R --> S1[1_setup.sql<br/>tables, SP_ACCESS_SNAPSHOT, TFs, SP_ACCESS_FINDINGS, grants]
   R --> S2[2_snapshot.sql<br/>CALL SP_ACCESS_SNAPSHOT]
   R --> S4[4_streamlit.sql<br/>stage, PUT, CREATE STREAMLIT]
@@ -18,13 +18,15 @@ flowchart LR
 
 | Name | Meaning | path:line |
 |---|---|---|
-| `DB`, `SCHEMA` | Location of snapshot tables and procedure | settings.sql:4-6 |
-| `WH` | Warehouse for procedure and app | settings.sql:7-8 |
-| `DEV_ROLE` | Creates / owns tables and procedure; procedure reads with its rights | settings.sql:9-10 |
-| `APP_ROLE` | SELECT on the snapshot tables only | settings.sql:11-12 |
-| `HERE` | Repo path for PUT (SnowSQL only; run_sql.py fills it, run_sql.py:19) | settings.sql:13-14 |
+| `DB`, `SCHEMA` | Location of snapshot tables and procedure | settings.sql:5-7 |
+| `WH` | Warehouse for procedure and app | settings.sql:8-9 |
+| `DEV_ROLE` | Creates / owns tables and procedure; procedure reads with its rights | settings.sql:10-11 |
+| `APP_ROLE` | SELECT on the snapshot tables only | settings.sql:12-13 |
+| `HERE` | Repo path for PUT (SnowSQL only; run_sql.py fills it, run_sql.py:20) | settings.sql:14-15 |
+| `STREAMLIT_APP` | Name of the app inside Snowflake, default `ST_ACCESS_EXPLORER`: 4_streamlit, 3_cleanup, both verify files, `APP_ST` in the procedure (sql/1_setup.sql:180) | settings.sql:16-17 |
+| `QUERY_TAG` | Local app's query tag, default `access-explorer`: `QUERY_TAG` in the procedure (sql/1_setup.sql:179) | settings.sql:18-19 |
 
-- `run_sql.py` reads `!define` lines (run_sql.py:18) and refuses unfilled `<...>` values (run_sql.py:22-27).
+- `run_sql.py` reads `!define` lines of settings.sql, then settings.local.sql over them (run_sql.py:18-19), refuses quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG` (run_sql.py:26-28) and unfilled `<...>` values (run_sql.py:29-31).
 
 ## sql/1_setup.sql
 
@@ -36,19 +38,19 @@ flowchart LR
 | TABLE_RUN ... TABLE_ACTIVITY | `TBL_ACCESS_RUN`, `_GRANT`, `_USER_ROLE`, `_USER`, `_USAGE`, `_TAG`, `_POLICY`, `_STREAM`, `_OBJECT_USE`, `_ACTIVITY` | sql/1_setup.sql:12, 23, 35, 43, 56, 66, 77, 89, 97, 108 |
 | TABLE_ACTIVITY_HOURS, TABLE_ACTIVITY_APP (may fail) | `ALTER TABLE TBL_ACCESS_ACTIVITY ADD COLUMN IF NOT EXISTS` HOURS VARIANT / APP VARCHAR(2000), for a table made before them | sql/1_setup.sql:124-128 |
 | TABLE_FINDING | findings table for SP_ACCESS_FINDINGS | sql/1_setup.sql:130 |
-| PROCEDURE | `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, EXECUTE AS OWNER | sql/1_setup.sql:143-659 |
-| FUNCTION_ACCESS_OF (may fail) | `TF_ACCESS_OF(NAME, MAX_DEPTH)` | sql/1_setup.sql:675-734 |
-| FUNCTION_WHO_CAN (may fail) | `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` | sql/1_setup.sql:736-777 |
-| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` | sql/1_setup.sql:779-791 |
-| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:794, 680 |
-| PROCEDURE_FINDINGS | `SP_ACCESS_FINDINGS(P_SETTINGS)` runs access.py | sql/1_setup.sql:801-863 |
-| GRANT_*_APP (may fail) | USAGE on db / schema / warehouse, SELECT on each table, USAGE on TFs and procedure to `&APP_ROLE` | sql/1_setup.sql:866-919 |
+| PROCEDURE | `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, EXECUTE AS OWNER | sql/1_setup.sql:143-660 |
+| FUNCTION_ACCESS_OF (may fail) | `TF_ACCESS_OF(NAME, MAX_DEPTH)` | sql/1_setup.sql:676-735 |
+| FUNCTION_WHO_CAN (may fail) | `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` | sql/1_setup.sql:737-778 |
+| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` | sql/1_setup.sql:780-792 |
+| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:795, 680 |
+| PROCEDURE_FINDINGS | `SP_ACCESS_FINDINGS(P_SETTINGS)` runs access.py | sql/1_setup.sql:802-864 |
+| GRANT_*_APP (may fail) | USAGE on db / schema / warehouse, SELECT on each table, USAGE on TFs and procedure to `&APP_ROLE` | sql/1_setup.sql:867-920 |
 
 ### SP_ACCESS_SNAPSHOT internals
 
 ```mermaid
 flowchart TD
-  RUN[run session, p_source<br/>sql/1_setup.sql:607] --> G[grants 230]
+  RUN[run session, p_source<br/>sql/1_setup.sql:608] --> G[grants 230]
   RUN --> FU[future 287]
   RUN --> U[users 324]
   RUN --> US[usage 341]
@@ -64,10 +66,10 @@ flowchart TD
 - Rows carry `RUN_ID`; the app reads only the last OK run (sql/1_setup.sql:155, access.py:467-472).
 - `grants()` SHOW path: per role both `SHOW GRANTS TO ROLE` and `SHOW GRANTS OF ROLE` are read before either is kept, so a role refused half-way is skipped whole (listed in NOTES), never kept without its holders (sql/1_setup.sql:253-262).
 - `future()` SHOW path: each place (database or schema) is tried on its own; a refused place skips only itself, one note per database, as `access.live` does (sql/1_setup.sql:306-320).
-- `usage()`: the ACCOUNT_USAGE `QUERY_HISTORY` insert is extra; when it fails its rows are deleted and the dataset is `UNAVAILABLE` with the reason, the run stays OK (sql/1_setup.sql:361-368); test `test_usage_extra` (test_sql.py:426).
-- `run()`: busy guard after the insert (earliest RUNNING run of the last hour goes on, others SKIPPED, sql/1_setup.sql:612-620); an OK run keeps the rows of a run RUNNING for under a day (sql/1_setup.sql:652-657). `test_run_overlap` (test_sql.py:384).
-- `SP_ACCESS_FINDINGS` keeps only the last run: `DELETE FROM` the findings table inside the transaction (sql/1_setup.sql:850).
-- `activity()`: reads only the days the last OK run lacks (its rows older than the day before its last day are copied), then `activity_sql(since)` (same text as `access.activity_sql`); not readable -> UNAVAILABLE, the run stays OK; SESSIONS not readable -> no client (sql/1_setup.sql:581-604, sql/1_setup.sql:537-579); rows per UTC day with `HOURS` (queries per UTC hour) and `APP` (Streamlit app from the QUERY_TAG), both copied forward (sql/1_setup.sql:594). Settings `ACTIVITY_DAYS`, `QUERY_TAG` (sql/1_setup.sql:178-179); test: test_sql.py:298. Flow: [flows/activity-read.md](../flows/activity-read.md).
+- `usage()`: the ACCOUNT_USAGE `QUERY_HISTORY` insert is extra; when it fails its rows are deleted and the dataset is `UNAVAILABLE` with the reason, the run stays OK (sql/1_setup.sql:361-368); test `test_usage_extra` (test_sql.py:427).
+- `run()`: busy guard after the insert (earliest RUNNING run of the last hour goes on, others SKIPPED, sql/1_setup.sql:613-621); an OK run keeps the rows of a run RUNNING for under a day (sql/1_setup.sql:653-658). `test_run_overlap` (test_sql.py:385).
+- `SP_ACCESS_FINDINGS` keeps only the last run: `DELETE FROM` the findings table inside the transaction (sql/1_setup.sql:851).
+- `activity()`: reads only the days the last OK run lacks (its rows older than the day before its last day are copied), then `activity_sql(since)` (same text as `access.activity_sql`); not readable -> UNAVAILABLE, the run stays OK; SESSIONS not readable -> no client (sql/1_setup.sql:582-605, sql/1_setup.sql:537-580); rows per UTC day with `HOURS` (queries per UTC hour) and `APP` (Streamlit app from the QUERY_TAG), both copied forward (sql/1_setup.sql:595). Settings `ACTIVITY_DAYS`, `QUERY_TAG` (sql/1_setup.sql:178-179); test: test_sql.py:298. Flow: [flows/activity-read.md](../flows/activity-read.md).
 - Helpers: `rows` 182, `ident` 187, `clean` 191, `count` 226, `data_objects` 375, `use_sql` 503, `activity_sql` 536 (all sql/1_setup.sql).
 
 ## sql/2_snapshot.sql
@@ -89,8 +91,8 @@ flowchart TD
 | PUT_ENVIRONMENT | environment.yml (sql/4_streamlit.sql:49) | sql/4_streamlit.sql:48 |
 | PUT_WEB_INDEX, CLEAR_WEB_ASSETS (may fail), PUT_WEB_ASSETS | web/dist-st | sql/4_streamlit.sql:51-58 |
 | PUT_SETTINGS | sis/.env as the app's .env (sql/4_streamlit.sql:62) | sql/4_streamlit.sql:61 |
-| STREAMLIT | `CREATE OR REPLACE STREAMLIT ST_ACCESS_EXPLORER`, `MAIN_FILE = 'app.py'` | sql/4_streamlit.sql:64-70 |
-| GRANT_DATABASE / SCHEMA / WAREHOUSE_APP (may fail), GRANT_STREAMLIT | app role access | sql/4_streamlit.sql:73-82 |
+| STREAMLIT | `CREATE OR REPLACE STREAMLIT &DB.&SCHEMA.&STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`), `MAIN_FILE = 'app.py'` | sql/4_streamlit.sql:64-72 |
+| GRANT_DATABASE / SCHEMA / WAREHOUSE_APP (may fail), GRANT_STREAMLIT | app role access | sql/4_streamlit.sql:73-83 |
 
 - Two options: SOURCE=objects (needs 1 and 2 first) or SOURCE=direct (owner role reads ACCOUNT_USAGE live) (sql/4_streamlit.sql:2-7).
 
@@ -101,6 +103,6 @@ flowchart TD
 | sql/1_setup_verify.sql | TABLES (expect 11: the 10 snapshot tables + TBL_ACCESS_FINDING that 1_setup.sql creates), PROCEDURE, PROCEDURE_FINDINGS, FUNCTION_*, STAGE_CODE (expect 1), CALL_* smoke calls, ACCOUNT_USAGE_* readable (may fail), SHOW_STREAMS, DEV_ROLE_GRANTS | sql/1_setup_verify.sql:4-64 |
 | sql/2_snapshot_verify.sql | LAST_RUN_OK (expect 1), ONE_RUN_IN_DATA (expect 1), counts by type / kind / domain, OBJECT_USE (may fail), ACTIVITY (may fail: days, users, objects, rows with a client, queries per action) | sql/2_snapshot_verify.sql:4-42 |
 | sql/3_cleanup_verify.sql | Every object gone (expect 0) | sql/3_cleanup_verify.sql:3-24 |
-| sql/4_streamlit_verify.sql | STREAMLIT (expect 1), STAGE_FILES, WEB_ASSETS (expect 4), GRANT_STREAMLIT | sql/4_streamlit_verify.sql:3-14 |
+| sql/4_streamlit_verify.sql | STREAMLIT (expect 1), STAGE_FILES, WEB_ASSETS (expect 4), GRANT_STREAMLIT | sql/4_streamlit_verify.sql:3-15 |
 
 - Parity: `test_sql.py` runs the TF bodies read from sql/1_setup.sql on DuckDB against access.py (test_sql.py:1-2).

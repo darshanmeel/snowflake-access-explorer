@@ -48,7 +48,7 @@ sequenceDiagram
 9. `sf.connect()`: inside Snowflake the app's own session (`a.INSIDE`) — sf.py:20-22; else key pair if `SNOWFLAKE_PRIVATE_KEY_FILE`, else SSO `externalbrowser` — sf.py:23-42; `sf.rows` is the only read path — sf.py:50-54.
 10. `a.snapshot(query, where)`: last OK run from `TBL_ACCESS_RUN`, error if none; then `SELECT *` per table in `TABLES` filtered by `RUN_ID`; `OPTIONAL` (`OBJECT_USE`, `ACTIVITY`) may be missing -> `None`; then the latest OK run is read again and, if a run finished meanwhile (its cleanup deletes the rows just read), the read starts over on it (up to 3 tries; `test_demo_db`) — access.py:465-490, access.py:60-61.
 11. On a fresh read: DuckDB SQL copy if wanted — cache.py:124-125, cache.py:193-198, cache.py:205-262; previous file kept as `<key>.prev.pkl` (for What changed) — cache.py:72-81; atomic write via `.tmp` — cache.py:126-131.
-12. `a.build(d, key, builtin)` fills module lookups; same key skips work; keeps up to `KEEP_BUILT` data sets — access.py:1038-1103, access.py:1025.
+12. `a.build(d, key, builtin)` fills module lookups; same key skips work; keeps up to `KEEP_BUILT` data sets — access.py:1039-1104, access.py:1026.
 13. Page handler (e.g. `home_page`) reads only lookups / `S["rows"]` — server.py:1073-1094; `clean()` makes JSON-safe output — server.py:209.
 
 ## Sequence: refresh and rebuild
@@ -78,7 +78,7 @@ sequenceDiagram
 15. `reload("rebuild")`: fake -> "Demo: the CALL runs only on Snowflake"; objects -> `CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')` through `with_query`; non-OK status returns `ok=False` and keeps the copy; OK -> `cache.drop(KEY)` — server.py:2208-2227.
 16. `reload("page")`: `cache.drop(KEY)` only (objects: next page reads again) — server.py:2231-2234.
 17. `cache.drop`: out of memory, local file set aside as `.old.pkl` so it becomes `.prev.pkl` on the next read — cache.py:146-154, cache.py:72-81.
-18. Procedure (owner's rights): inserts its RUNNING row, then steps back (deletes its row, `SKIPPED`) unless it is the earliest RUNNING run of the last hour (sql/1_setup.sql:612-620); fills each table, FAILED deletes this run's rows, OK deletes older runs' rows except those of a run RUNNING for under a day (sql/1_setup.sql:652-657) — sql/1_setup.sql:144-150, sql/1_setup.sql:607-658.
+18. Procedure (owner's rights): inserts its RUNNING row, then steps back (deletes its row, `SKIPPED`) unless it is the earliest RUNNING run of the last hour (sql/1_setup.sql:613-621); fills each table, FAILED deletes this run's rows, OK deletes older runs' rows except those of a run RUNNING for under a day (sql/1_setup.sql:653-658) — sql/1_setup.sql:144-150, sql/1_setup.sql:608-659.
 19. Read-only guard: `test_read_only` records every statement and allows only reads plus the `SP_ACCESS_SNAPSHOT` CALL — test_server.py:328.
 
 ## Example (FAKE=1, mock query; no Snowflake)

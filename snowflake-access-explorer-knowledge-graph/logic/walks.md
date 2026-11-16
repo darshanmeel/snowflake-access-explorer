@@ -5,7 +5,7 @@ How `access.py` finds every route from a user or role to a grant: counted exactl
 
 ```mermaid
 flowchart TD
-  ST["starts(name,user)<br/>access.py:1554-1566"] --> FA["fast()<br/>1595-1600"]
+  ST["starts(name,user)<br/>access.py:1555-1567"] --> FA["fast()<br/>1595-1600"]
   FA --> DAG["dag(): drop loop-closing links<br/>1453-1475"]
   FA --> CNT["counts(): paths per role<br/>1525-1546"]
   DAG --> SH["shortest(): BFS<br/>1549-1561"]
@@ -22,53 +22,53 @@ flowchart TD
 ```
 
 ## Graph model
-- Lookups filled by `build()`: `holds` (role -> child roles), `held_by` (child -> parents), `users_of`, `roles_of`, `granted` (role -> grants), `on` (object -> holders) (`access.py:1077-1085`).
+- Lookups filled by `build()`: `holds` (role -> child roles), `held_by` (child -> parents), `users_of`, `roles_of`, `granted` (role -> grants), `on` (object -> holders) (`access.py:1078-1086`).
 - Walk down = parent -> roles it holds; walk up = holder -> grantees.
 
 ## Depth
-- Depth = roles from the start to the grant holder, holder included; a user is not a role (`depth()`, `access.py:1575-1579`).
+- Depth = roles from the start to the grant holder, holder included; a user is not a role (`depth()`, `access.py:1576-1580`).
 - Example (verified on fake data): `ANALYST_01 > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ` -> depth 3; a holder alone = 1.
-- Same definition on every page (docstring `access.py:1577-1578`); `held()` rows: user direct = 1, role direct = 2 (`access.py:2781-2782`).
+- Same definition on every page (docstring `access.py:1578-1579`); `held()` rows: user direct = 1, role direct = 2 (`access.py:2782-2783`).
 
 ## Start paths
-- Role: `[[role]]`; user: `[user, r]` per granted role, plus `[user, PUBLIC]` (every user holds PUBLIC) (`access.py:1554-1566`).
-- `default_only`: one start, shortest path to `DEFAULT_ROLE` (only that role is in session) (`access.py:1561-1564`).
+- Role: `[[role]]`; user: `[user, r]` per granted role, plus `[user, PUBLIC]` (every user holds PUBLIC) (`access.py:1555-1567`).
+- `default_only`: one start, shortest path to `DEFAULT_ROLE` (only that role is in session) (`access.py:1562-1565`).
 
 ## Counting vs listing
-- `counts()`: path count per role layer by layer, no enumeration (`access.py:1668-1689`).
-- `tally()`: total paths to holders = sum(count(holder) x grant rows); `down[r]` = paths from r to a holder (`access.py:1772-1785`).
-- `via_role` / `via_link`: paths through a role / a link, counted (`access.py:1788-1800`); a link used by every path = choke point.
-- `listed()`: chains in `down()` order, pruned to roles that lead to a target, at most `cap` = `MAX_PATHS` (`access.py:1710-1738`). A chain only refuses roles already on it after the start's first element (`go(p, i)`, `r not in p[i:]`, `access.py:1731-1732`): for a user start `[user, role, ...]` `i = 1`, so a role named like the user is not taken for the user (`access.py:1735-1737`).
-- `MAX_PATHS` default 200, "counts are always exact" (`access.py:85`); note text "first 200 of N" from `paths_note()` (`access.py:1756-1758`).
-- `capped_paths()`: shortest first; the shortest path always kept when cut (`access.py:1749-1753`).
-- Full listings `access_of()` / `who_can()` (via `walk`/`down`/`up`) remain as reference for TF_ACCESS_OF / TF_WHO_CAN parity (`access.py:2040-2042`, `1981-1985`) - inferred from commit 6330f29 message; code is verified.
+- `counts()`: path count per role layer by layer, no enumeration (`access.py:1669-1690`).
+- `tally()`: total paths to holders = sum(count(holder) x grant rows); `down[r]` = paths from r to a holder (`access.py:1773-1786`).
+- `via_role` / `via_link`: paths through a role / a link, counted (`access.py:1789-1801`); a link used by every path = choke point.
+- `listed()`: chains in `down()` order, pruned to roles that lead to a target, at most `cap` = `MAX_PATHS` (`access.py:1711-1739`). A chain only refuses roles already on it after the start's first element (`go(p, i)`, `r not in p[i:]`, `access.py:1732-1733`): for a user start `[user, role, ...]` `i = 1`, so a role named like the user is not taken for the user (`access.py:1736-1738`).
+- `MAX_PATHS` default 200, "counts are always exact" (`access.py:85`); note text "first 200 of N" from `paths_note()` (`access.py:1757-1759`).
+- `capped_paths()`: shortest first; the shortest path always kept when cut (`access.py:1750-1754`).
+- Full listings `access_of()` / `who_can()` (via `walk`/`down`/`up`) remain as reference for TF_ACCESS_OF / TF_WHO_CAN parity (`access.py:2041-2043`, `1981-1985`) - inferred from commit 6330f29 message; code is verified.
 
 ## Shortest (BFS)
-- `bfs(path)`: shortest path to every role held (`access.py:1514-1525`); `shortest()` same over `dag` links with hop cap (`access.py:1692-1707`); starts are sorted by length and a longer start (a default role's route) joins the BFS only at its own hop, so a shorter route found meanwhile wins (`access.py:1695-1699`); `paths_from()` BFS without hop cap (`access.py:4059-4069`).
-- `first_short()`: first of the shortest paths in `down()` order (`access.py:1803-1824`).
+- `bfs(path)`: shortest path to every role held (`access.py:1515-1526`); `shortest()` same over `dag` links with hop cap (`access.py:1693-1708`); starts are sorted by length and a longer start (a default role's route) joins the BFS only at its own hop, so a shorter route found meanwhile wins (`access.py:1696-1700`); `paths_from()` BFS without hop cap (`access.py:4060-4070`).
+- `first_short()`: first of the shortest paths in `down()` order (`access.py:1804-1825`).
 
 ## Cycle guard
-- `down()` / `up()` skip roles already on the path (`access.py:1495`, `1362`).
-- `dag()`: DFS, drops back edges (links closing a loop) (`access.py:1596-1618`).
-- `loops()`: Tarjan SCC, lists role loops so the app can warn (`access.py:1621-1661`); `paths_to()` lists over every link when loops exist (`access.py:1833-1834`). Fake data: no loops (verified).
+- `down()` / `up()` skip roles already on the path (`access.py:1496`, `1362`).
+- `dag()`: DFS, drops back edges (links closing a loop) (`access.py:1597-1619`).
+- `loops()`: Tarjan SCC, lists role loops so the app can warn (`access.py:1622-1662`); `paths_to()` lists over every link when loops exist (`access.py:1834-1835`). Fake data: no loops (verified).
 - `MAX_HOPS` (50) caps any walk; capped starts recorded in `capped` (`access.py:55`, `1335-1342`, `1543-1544`).
 
 ## Users vs roles namespaces
-- A user named like a role gets graph id `name + " (user)"` (`UTAG`, `uid()`, `access.py:1152-1157`); `node_kind` / `node_name` resolve it (`access.py:1160-1169`).
-- `down(..., user=True)` lets a role with the user's name appear on the path (`access.py:1495`); `up()` ends a path with `uid(u, True)` (`access.py:1511`).
+- A user named like a role gets graph id `name + " (user)"` (`UTAG`, `uid()`, `access.py:1153-1158`); `node_kind` / `node_name` resolve it (`access.py:1161-1170`).
+- `down(..., user=True)` lets a role with the user's name appear on the path (`access.py:1496`); `up()` ends a path with `uid(u, True)` (`access.py:1512`).
 
 ## Walk up
-- `up_walk(srcs, hops, user_hops)`: rows `{(name, is_user): (count, shortest up path)}`, `paths(key)` lazily (`access.py:1873-1905`). PUBLIC is held by every user (`users_on`, `access.py:1868-1870`).
-- `up_only_via()`: every up path passes through a role (reach without it) (`access.py:1908-1921`).
-- `up_rows(r)`: cached `up_walk([r])["rows"]` (`access.py:2091-2093`); `ups(role)`: reach only (roles, users) (`access.py:1533-1546`).
-- `who_users(obj)`: `{(user, privilege): path, firsts, count}` counted, not listed (`access.py:2104-2122`). Example: `('ENGINEER_01','SELECT')` on SALES.CORE.TBL_CUSTOMER -> count 3, shortest `ENGINEER_01 > F_ANALYST > T_SALES_CORE_READ`, firsts `F_ANALYST, F_ENGINEER`.
-- `held(role)`: grantees with depth, count, `only_via` (`access.py:2780-2795`).
+- `up_walk(srcs, hops, user_hops)`: rows `{(name, is_user): (count, shortest up path)}`, `paths(key)` lazily (`access.py:1874-1906`). PUBLIC is held by every user (`users_on`, `access.py:1869-1871`).
+- `up_only_via()`: every up path passes through a role (reach without it) (`access.py:1909-1922`).
+- `up_rows(r)`: cached `up_walk([r])["rows"]` (`access.py:2092-2094`); `ups(role)`: reach only (roles, users) (`access.py:1534-1547`).
+- `who_users(obj)`: `{(user, privilege): path, firsts, count}` counted, not listed (`access.py:2105-2123`). Example: `('ENGINEER_01','SELECT')` on SALES.CORE.TBL_CUSTOMER -> count 3, shortest `ENGINEER_01 > F_ANALYST > T_SALES_CORE_READ`, firsts `F_ANALYST, F_ENGINEER`.
+- `held(role)`: grantees with depth, count, `only_via` (`access.py:2781-2796`).
 
 ## Page walks
-- `can(user, priv, obj)`: paths (<= MAX_PATHS), exact `count`, `shortest`, `choke` (roles on every path), `owner` paths, `options` = `removal()`, `ask` / `closest` when no path (`access.py:3410-3443`).
+- `can(user, priv, obj)`: paths (<= MAX_PATHS), exact `count`, `shortest`, `choke` (roles on every path), `owner` paths, `options` = `removal()`, `ask` / `closest` when no path (`access.py:3411-3444`).
   Example: `can("ANALYST_01","SELECT","SALES.CORE.TBL_CUSTOMER")` -> count 1, shortest 3, choke `[GRP_ANALYSTS, F_ANALYST, T_SALES_CORE_READ]`.
-- `removal()`: one option per choke grant edge, fewest users losing it first (`access.py:3344-3369`). Example first option: `REVOKE ROLE GRP_ANALYSTS FROM USER ANALYST_01;` affects 1.
-- `cut_points()`: per link on every path: `people` who lose it, `lost` other privileges (`access.py:3458-3479`). Example: revoking `GRP_ANALYSTS` from ANALYST_01 -> people `[ANALYST_01]`, lost 9.
-- `loses(user, grantee, role)`: `(privilege, object)` lost when role is revoked from grantee (`access.py:2798-2800`). Example `loses("ANALYST_01","GRP_ANALYSTS","F_ANALYST")` starts `('SELECT','SALES.CORE.<TABLE>'), ('SELECT','SALES.CORE.TBL_CUSTOMER'), ...`.
-- `lose(e)` / `losing(e)`: users who lose access when one edge goes, cached per edge (`access.py:3310-3327`); `losers()` for several edges (`access.py:3330-3341`).
+- `removal()`: one option per choke grant edge, fewest users losing it first (`access.py:3345-3370`). Example first option: `REVOKE ROLE GRP_ANALYSTS FROM USER ANALYST_01;` affects 1.
+- `cut_points()`: per link on every path: `people` who lose it, `lost` other privileges (`access.py:3459-3480`). Example: revoking `GRP_ANALYSTS` from ANALYST_01 -> people `[ANALYST_01]`, lost 9.
+- `loses(user, grantee, role)`: `(privilege, object)` lost when role is revoked from grantee (`access.py:2799-2801`). Example `loses("ANALYST_01","GRP_ANALYSTS","F_ANALYST")` starts `('SELECT','SALES.CORE.<TABLE>'), ('SELECT','SALES.CORE.TBL_CUSTOMER'), ...`.
+- `lose(e)` / `losing(e)`: users who lose access when one edge goes, cached per edge (`access.py:3311-3328`); `losers()` for several edges (`access.py:3331-3342`).
 - Tests: `test_counted` (`test_access.py:888`), `test_perf` (`test_access.py:1134`).

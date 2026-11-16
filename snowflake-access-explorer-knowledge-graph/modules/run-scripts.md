@@ -29,16 +29,16 @@ flowchart LR
 
 | Name | Does | path:line |
 |---|---|---|
-| `SETTINGS` / `NAMES` | settings.local.sql if present, else settings.sql; `!define NAME=value` lines | run_sql.py:17-18 |
-| `HERE` name | absolute repo path for `PUT 'file://&HERE/...'` | run_sql.py:19 |
-| `check_names()` | Stops if any name is still `<...>` | run_sql.py:22-27 |
-| `fill(sql)` | Replaces `&NAME`; unknown name stops | run_sql.py:30-35 |
-| `missing_files(text)` | PUT sources that do not exist (checked before any statement) | run_sql.py:38-40 |
-| `statements(text)` | `(name, flags, sql)` per `-- name:` block | run_sql.py:43-46 |
-| `main(path)` | `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, warehouse, database; runs each; `(may fail)` -> SKIPPED; `_verify.sql` -> OK / MISSING / WRONG, then VERIFIED or NOT VERIFIED | run_sql.py:49-79 |
+| `SETTINGS` / `NAMES` | settings.local.sql if present, else settings.sql; `!define NAME=value` lines of settings.sql first, then settings.local.sql over them, so a name the local file lacks (e.g. `STREAMLIT_APP`, `QUERY_TAG`) keeps the template value | run_sql.py:17-19 |
+| `HERE` name | absolute repo path for `PUT 'file://&HERE/...'` | run_sql.py:20 |
+| `check_names()` | Stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG` (pasted into the procedure's Python and `$$` block), then if any name is still `<...>` | run_sql.py:23-31 |
+| `fill(sql)` | Replaces `&NAME`; unknown name stops | run_sql.py:34-39 |
+| `missing_files(text)` | PUT sources that do not exist (checked before any statement) | run_sql.py:42-44 |
+| `statements(text)` | `(name, flags, sql)` per `-- name:` block | run_sql.py:47-50 |
+| `main(path)` | `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, warehouse, database; runs each; `(may fail)` -> SKIPPED; `_verify.sql` -> OK / MISSING / WRONG, then VERIFIED or NOT VERIFIED | run_sql.py:53-83 |
 
-- Example: `python run_sql.py sql/1_setup_verify.sql` prints `OK: TABLES (11 rows)` when all 11 TBL_ACCESS_ tables exist (format at run_sql.py:72-73, expectation at sql/1_setup_verify.sql:4).
-- `(expect N)` compares the row count (run_sql.py:62, run_sql.py:72).
+- Example: `python run_sql.py sql/1_setup_verify.sql` prints `OK: TABLES (11 rows)` when all 11 TBL_ACCESS_ tables exist (format at run_sql.py:76-77, expectation at sql/1_setup_verify.sql:4).
+- `(expect N)` compares the row count (run_sql.py:66, run_sql.py:76).
 
 ## sf.py CLI
 
@@ -52,4 +52,4 @@ flowchart LR
 
 ## Other root files (not scripts)
 
-- `settings.sql`: template of `&NAME` values (settings.sql:5-14); see sql.md.
+- `settings.sql`: template of `&NAME` values (settings.sql:6-19), with defaults for `STREAMLIT_APP` (ST_ACCESS_EXPLORER) and `QUERY_TAG` (access-explorer); see documents/settings-sql.md.
