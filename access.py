@@ -61,8 +61,8 @@ TABLES = ["GRANT", "USER_ROLE", "USER", "USAGE", "TAG", "POLICY", "STREAM"]
 OPTIONAL = ["OBJECT_USE", "ACTIVITY"]  # snapshot tables an older setup may lack: read when there, else empty
 USE_DAYS = int(os.environ.get("USE_DAYS", "180"))  # object usage read from ACCESS_HISTORY (Granted vs used)
 ACTIVITY_DAYS = int(os.environ.get("ACTIVITY_DAYS", "60"))  # Activity tabs and rules 24-28: days of ACCESS_HISTORY
-QUERY_TAG = "access-explorer"  # set on the app's own connection; its queries are left out of the activity
-APP_ST = "ST_ACCESS_EXPLORER"  # the app inside Snowflake (sql/4_streamlit.sql): its queries carry this StreamlitName
+QUERY_TAG = os.environ.get("QUERY_TAG", "access-explorer")  # set on the app's own connection; its queries are left out of the activity
+APP_ST = os.environ.get("STREAMLIT_APP", "ST_ACCESS_EXPLORER")  # the app inside Snowflake (sql/4_streamlit.sql): its queries carry this StreamlitName
 # SESSIONS.CLIENT_APPLICATION_ID without its version: people type queries there (rule 25), and short labels for all
 INTERACTIVE = set(os.environ.get("INTERACTIVE_CLIENTS", "Snowflake UI,SnowSQL,Snowflake CLI").split(","))
 CLIENTS = {"Snowflake UI": "Snowsight", "PythonConnector": "Python", "JavaScript": "Node.js", "Go": "Go",
@@ -951,6 +951,7 @@ def activity_sql(since, client=True):
     {"StreamlitName": ...}, older ones "streamlitName: ..."), else NULL. The same text is in access.py and
     SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
     col = "S.CLIENT" if client else "NULL"
+    tag, app = (v.replace("\\", "\\\\").replace("'", "''") for v in (QUERY_TAG, APP_ST))  # quotes cannot end the strings
     join = (f"""LEFT JOIN (SELECT SESSION_ID, REGEXP_REPLACE(CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
                        FROM {AU}.SESSIONS) S ON S.SESSION_ID = Q.SESSION_ID""" if client else "")
     return f"""WITH A AS (
@@ -971,8 +972,8 @@ def activity_sql(since, client=True):
                    COALESCE(TRY_PARSE_JSON(QUERY_TAG):StreamlitName::STRING,
                             REGEXP_SUBSTR(QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP
             FROM {AU}.QUERY_HISTORY
-            WHERE START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'
-              AND COALESCE(QUERY_TAG, '') NOT LIKE '%.{APP_ST}%'),
+            WHERE START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ AND COALESCE(QUERY_TAG, '') <> '{tag}'
+              AND COALESCE(QUERY_TAG, '') NOT LIKE '%.{app}%'),
         G AS (
             SELECT H.L::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE, Q.APP,
                    HOUR(H.L) AS HR, COUNT(DISTINCT H.QUERY_ID) AS N, MAX(H.T) AS LAST_USED
@@ -4489,7 +4490,7 @@ def activity_section_sql(name, what, first, last, key, work=WORK_HOURS):
     return plain(f"{title}: {name}", [f"{title} for {name} ({what}), {first} to {last} (UTC days). {about}.",
                                       "Change the SET lines for another one or another window. TZ_HOURS shifts UTC to your business",
                                       "time (e.g. 2 for UTC+2): days and hours below are in that time."],
-                 sets, ACT_BASE.format(where=where, tag=QUERY_TAG, app=APP_ST) + select)
+                 sets, ACT_BASE.format(where=where, tag=quoted(QUERY_TAG), app=quoted(APP_ST)) + select)
 
 
 def page_sql(page, p, first=None, last=None):

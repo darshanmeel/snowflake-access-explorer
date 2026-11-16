@@ -15,13 +15,17 @@ from sf import connect
 
 HERE = pathlib.Path(__file__).parent
 SETTINGS = HERE / "settings.local.sql" if (HERE / "settings.local.sql").exists() else HERE / "settings.sql"
-NAMES = dict(re.findall(r"^!define (\w+)=(.*?)\s*$", SETTINGS.read_text(encoding="utf-8"), re.M))
+NAMES = {k: v for f in (HERE / "settings.sql", SETTINGS)  # a name the local file lacks keeps the template value
+         for k, v in re.findall(r"^!define (\w+)=(.*?)\s*$", f.read_text(encoding="utf-8"), re.M)}
 NAMES["HERE"] = HERE.resolve().as_posix()  # PUT needs an absolute path to access.py
 
 
 def check_names():
     """Stop before Snowflake sees '<DB>': settings.local.sql missing or not filled in."""
     todo = sorted(k for k, v in NAMES.items() if v.startswith("<"))
+    bad = [k for k in ("STREAMLIT_APP", "QUERY_TAG") if re.search(r"[\"'$\\]", NAMES.get(k, ""))]
+    if bad:  # pasted into the procedure's Python and $$ block, where a quote or $ breaks it
+        raise SystemExit(f"{SETTINGS.name}: {', '.join(bad)}: no quotes, $ or backslash (letters, digits, - and _).")
     if todo:
         raise SystemExit(f"{SETTINGS.name}: {', '.join(todo)} not filled in. Copy settings.sql to settings.local.sql "
                          "and fill in the names (README > Setup).")

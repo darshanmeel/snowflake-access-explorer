@@ -176,8 +176,8 @@ DAYS = 30
 TAG_FALLBACK_MAX = 300  # tables/views read one by one when the ACCOUNT_USAGE views are not readable
 USE_DAYS = 180  # object usage kept from ACCESS_HISTORY
 ACTIVITY_DAYS = 60  # table activity kept (the app's ACTIVITY_DAYS)
-QUERY_TAG = "access-explorer"  # the app's own queries, left out of the activity
-APP_ST = "ST_ACCESS_EXPLORER"  # the app inside Snowflake: its queries carry this StreamlitName
+QUERY_TAG = "&QUERY_TAG"  # the app's own queries, left out of the activity
+APP_ST = "&STREAMLIT_APP"  # the app inside Snowflake: its queries carry this StreamlitName
 
 
 def rows(session, sql):
@@ -546,6 +546,7 @@ def activity_sql(since, client=True):
     {"StreamlitName": ...}, older ones "streamlitName: ..."), else NULL. The same text is in access.py and
     SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
     col = "S.CLIENT" if client else "NULL"
+    tag, app = (v.replace("\\", "\\\\").replace("'", "''") for v in (QUERY_TAG, APP_ST))  # quotes cannot end the strings
     join = (f"""LEFT JOIN (SELECT SESSION_ID, REGEXP_REPLACE(CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
                        FROM {AU}.SESSIONS) S ON S.SESSION_ID = Q.SESSION_ID""" if client else "")
     return f"""WITH A AS (
@@ -566,8 +567,8 @@ def activity_sql(since, client=True):
                    COALESCE(TRY_PARSE_JSON(QUERY_TAG):StreamlitName::STRING,
                             REGEXP_SUBSTR(QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP
             FROM {AU}.QUERY_HISTORY
-            WHERE START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ AND COALESCE(QUERY_TAG, '') <> '{QUERY_TAG}'
-              AND COALESCE(QUERY_TAG, '') NOT LIKE '%.{APP_ST}%'),
+            WHERE START_TIME >= '{since} 00:00:00 +00:00'::TIMESTAMP_TZ AND COALESCE(QUERY_TAG, '') <> '{tag}'
+              AND COALESCE(QUERY_TAG, '') NOT LIKE '%.{app}%'),
         G AS (
             SELECT H.L::DATE AS DAY, H.USER_NAME, Q.ROLE_NAME, {col} AS CLIENT, H.OBJECT_NAME, H.ACTION, Q.QUERY_TYPE, Q.APP,
                    HOUR(H.L) AS HR, COUNT(DISTINCT H.QUERY_ID) AS N, MAX(H.T) AS LAST_USED

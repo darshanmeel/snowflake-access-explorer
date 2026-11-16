@@ -303,7 +303,8 @@ def test_activity():
     con = load(a.fake(), build=False)
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
-    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main").replace("&QUERY_TAG", a.QUERY_TAG)
+         .replace("&STREAMLIT_APP", a.APP_ST), ns)
     assert ns["ACTIVITY_DAYS"] == a.ACTIVITY_DAYS and ns["QUERY_TAG"] == a.QUERY_TAG and ns["APP_ST"] == a.APP_ST
     src, why = ns["activity"](fake_session(con), "run-9", "AUTO")
     assert src == "UNAVAILABLE" and "ACCESS_HISTORY" in why

@@ -206,6 +206,8 @@ SNOWFLAKE_ACCOUNT=<org>-<account>.privatelink
 | `SHOW_THREADS` | `16` | SHOW statements sent at once when ACCOUNT_USAGE is not readable (`1` = one after another) |
 | `HOST` | `127.0.0.1` | Address the local web app (and `run.py streamlit`) listens on; `0.0.0.0` on a shared server ([Deploy](#deploy)) |
 | `DUCKDB` | unset | The [SQL copy](#query-the-data-with-sql-duckdb) in `.cache/access.duckdb`: unset = after each read from Snowflake, `0` = off, `1` = also of the fake data |
+| `QUERY_TAG` | `access-explorer` | Query tag on the app's own connection; Activity leaves these queries out. Same value in `.env`, `sis/.env` (Direct mode) and `settings.local.sql` |
+| `STREAMLIT_APP` | `ST_ACCESS_EXPLORER` | Name of the app inside Snowflake; Activity leaves its queries out. Same value in `.env`, `sis/.env` and `settings.local.sql` |
 | `KEEP_BUILT` | `3` | Data sets kept built in memory besides the loaded one (shared, My access, `builtin=1`): switching back costs no rebuild |
 
 More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, `MAX_PATHS`, ...): README.html. Path counts are exact and counted over the role graph; full chains are listed up to `MAX_PATHS`, so big accounts stay quick (README.html > Limits).
@@ -339,9 +341,9 @@ It uses the app's own Snowflake session, keeps data in memory only (24 h) and wr
    ```
    It creates the stage `STG_ACCESS_APP`, uploads the Python files, `environment.yml` (packages: `streamlit=1.52.*`,
    pinned so a redeploy can't change it, and `snowflake-snowpark-python`) and `web/dist-st` (the old bundle files removed
-   first), creates the Streamlit app `ST_ACCESS_EXPLORER` (warehouse `WH`) and grants `USAGE` on it to `APP_ROLE`.
+   first), creates the Streamlit app named by `STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`) on warehouse `WH` and grants `USAGE` on it to `APP_ROLE`.
    SnowSQL: `!source sql/4_streamlit.sql`, with `HERE` (the repo folder, for the uploads) set in `settings.local.sql`.
-4. Open it in Snowsight: **Projects > Streamlit > ST_ACCESS_EXPLORER**. To update after `git pull`, run step 3 again.
+4. Open it in Snowsight: **Projects > Streamlit >** the `STREAMLIT_APP` name (`ST_ACCESS_EXPLORER` by default). To update after `git pull`, run step 3 again.
 
 - The app runs with its **owner's rights** (`DEV_ROLE`): every viewer sees what that role reads, not their own access.
   So **My access** (each person's own view) is hidden there; it is a feature of the local version.
@@ -380,8 +382,8 @@ last 60 days (`ACTIVITY_DAYS`), aggregated per UTC day, user, role, client, obje
 per UTC hour (`HOURS`): query metadata, never query text. Off-hours are worked out in the app from `HOURS` and
 `WORK_HOURS`. To keep the cost down, a new read copies the days the last one already has and reads only the days after them
 (the last day again, as ACCESS_HISTORY lags up to 3 hours). Days start at UTC midnight whatever the session's time zone.
-The app leaves its own queries out: locally they carry `QUERY_TAG` = `access-explorer`, inside Snowflake the app's
-Streamlit name `ST_ACCESS_EXPLORER`, and the procedure's reads and writes of the `TBL_ACCESS_` tables are skipped. Snowflake does not log result downloads from Snowsight or drivers. The full table, with the fallbacks,
+The app leaves its own queries out: locally they carry the query tag `QUERY_TAG` (default `access-explorer`), inside Snowflake the app's
+Streamlit name `STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`), and the procedure's reads and writes of the `TBL_ACCESS_` tables are skipped. Snowflake does not log result downloads from Snowsight or drivers. The full table, with the fallbacks,
 is in [README.html](README.html) > Data sources.
 
 ## Use the queries without the app

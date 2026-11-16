@@ -1824,6 +1824,14 @@ def test_with_sql():  # Compare / Request / Granted vs used SQL comes from acces
     assert u["sql"] and u["sql"] == a.what_if(u["changes"])["sql"]  # the trim reads as What if writes it
 
 
+def test_tag_settings():
+    """QUERY_TAG and STREAMLIT_APP come from the environment; a quote in them cannot end the SQL strings."""
+    env = dict(os.environ, QUERY_TAG="it's", STREAMLIT_APP="ST_OTHER")
+    out = subprocess.run([sys.executable, "-c", "import access as a; print(a.QUERY_TAG, a.APP_ST); "
+                          "print(a.activity_sql('2026-01-01'))"], env=env, capture_output=True, text=True, check=True).stdout
+    assert out.startswith("it's ST_OTHER") and "<> 'it''s'" in out and "NOT LIKE '%.ST_OTHER%'" in out
+
+
 if __name__ == "__main__":
     import traceback
     again = "ROLE_PREFIXES" in os.environ  # the rerun with another naming
