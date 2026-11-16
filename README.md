@@ -179,12 +179,13 @@ SNOWFLAKE_WAREHOUSE=<WH>
 - Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): see [PrivateLink](#privatelink).
 
 #### PrivateLink
-No code change: put the private host in `SNOWFLAKE_ACCOUNT`.
+Keep the account as it is and set the private host in `SNOWFLAKE_HOST`; the connector then connects there instead of the public address.
 ```
-SNOWFLAKE_ACCOUNT=<org>-<account>.privatelink
+SNOWFLAKE_ACCOUNT=<org>-<account>
+SNOWFLAKE_HOST=<org>-<account>.privatelink.snowflakecomputing.com
 ```
-- The value is `regionless-privatelink-account-url` (or the older `privatelink-account-url`) from
-  `SELECT SYSTEM$GET_PRIVATELINK_CONFIG();`, without `.snowflakecomputing.com`.
+- The host is `regionless-privatelink-account-url` (or the older `privatelink-account-url`) from
+  `SELECT SYSTEM$GET_PRIVATELINK_CONFIG();`.
 - The machine must resolve `<org>-<account>.privatelink.snowflakecomputing.com` and the OCSP host
   (`privatelink-ocsp-url` in the same output) to the private endpoint (VPN or company network, private DNS).
   A missing OCSP record shows as a hang or a certificate error on connect.
@@ -204,6 +205,7 @@ SNOWFLAKE_ACCOUNT=<org>-<account>.privatelink
 | `BUILTIN` | `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*` | Names of Snowflake's built-in roles and objects, folded under PUBLIC and left out of rule checks (`?builtin=1` shows them) |
 | `APP`, `WEB_PORT`, `STREAMLIT_PORT` | `web`, `8000`, `8501` | What `run.py` starts, and where |
 | `SHOW_THREADS` | `16` | SHOW statements sent at once when ACCOUNT_USAGE is not readable (`1` = one after another) |
+| `SNOWFLAKE_HOST` | unset | Snowflake host to connect to instead of `<account>.snowflakecomputing.com`: the PrivateLink host ([PrivateLink](#privatelink)) |
 | `HOST` | `127.0.0.1` | Address the local web app (and `run.py streamlit`) listens on; `0.0.0.0` on a shared server ([Deploy](#deploy)) |
 | `DUCKDB` | unset | The [SQL copy](#query-the-data-with-sql-duckdb) in `.cache/access.duckdb`: unset = after each read from Snowflake, `0` = off, `1` = also of the fake data |
 | `QUERY_TAG` | `access-explorer` | Query tag on the app's own connection; Activity leaves these queries out. Same value in `.env`, `sis/.env` (Direct mode) and `settings.local.sql` |
@@ -302,7 +304,7 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 - Browser SSO can't work on a server (the login tab would open there): create a service user with a **key pair** and set
   `SNOWFLAKE_PRIVATE_KEY_FILE` (and `SNOWFLAKE_PRIVATE_KEY_PWD`) in `.env`. Everyone then sees what that user's role sees,
   so **My access** is off there (it would show the service user's access as each visitor's own).
-- Behind PrivateLink: the same `.privatelink` account value and private DNS on the server ([PrivateLink](#privatelink)).
+- Behind PrivateLink: the same `SNOWFLAKE_HOST` and private DNS on the server ([PrivateLink](#privatelink)).
 - With `HOST=0.0.0.0` the server answers this machine's names and IP addresses; for another name (a DNS alias, a proxy) add it to
   `ALLOWED_HOSTS`.
 - Prefer `SOURCE=objects` with the daily snapshot task: the service role then needs only `SELECT` on the `TBL_ACCESS_` tables.

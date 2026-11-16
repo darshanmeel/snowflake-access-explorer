@@ -26,6 +26,7 @@ def connect():
     import snowflake.connector
     args = dict(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
+        host=os.environ.get("SNOWFLAKE_HOST"),  # PrivateLink: the private host, when the public one is blocked
         user=os.environ.get("SNOWFLAKE_USER"),
         role=os.environ.get("SNOWFLAKE_ROLE"),
         warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE"),
