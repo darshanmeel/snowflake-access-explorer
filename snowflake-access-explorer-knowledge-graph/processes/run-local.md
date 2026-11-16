@@ -50,7 +50,7 @@ flowchart TD
 ## Gates on a local run
 - My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:133-151.
 - Local API answers only its host names (`allowed_hosts()`) — server.py:2316-2320, README.md:255.
-- Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink only the `SNOWFLAKE_ACCOUNT` value (`<org>-<account>.privatelink`) and private DNS change, `account=` is passed as given — sf.py:26, README.md:181-196, processes/privatelink-login.md.
+- Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink only the `SNOWFLAKE_ACCOUNT` value (`<org>-<account>.privatelink`) and private DNS change, `account=` is passed as given — sf.py:28, README.md:181-195, processes/privatelink-login.md.
 - First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:252.
 
 ## Dev mode (inferred)

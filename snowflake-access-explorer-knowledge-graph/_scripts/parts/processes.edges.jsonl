@@ -101,11 +101,11 @@
 {"from": "config:environment.yml", "to": "streamlit:ST_ACCESS_EXPLORER", "type": "configures", "evidence": "sql/4_streamlit.sql:48-49", "status": "verified"}
 {"from": "process:run_local", "to": "script:run.py", "type": "calls", "evidence": "README.md:155", "status": "verified"}
 {"from": "document:reviews/review-2026-11-10-2027.html", "to": "file:access.py", "type": "documents", "evidence": "reviews/review-2026-11-10-2027.html:1", "status": "inferred"}
-{"from": "document:README.md", "to": "process:privatelink_login", "type": "documents", "evidence": "README.md:181-196", "status": "verified"}
+{"from": "document:README.md", "to": "process:privatelink_login", "type": "documents", "evidence": "README.md:181-195", "status": "verified"}
 {"from": "document:README.html", "to": "process:privatelink_login", "type": "documents", "evidence": "README.html:645", "status": "verified"}
 {"from": "process:privatelink_login", "to": "config:.env.example", "type": "depends_on", "evidence": "README.md:182-184", "status": "verified"}
 {"from": "process:privatelink_login", "to": "secret_ref:.env", "type": "writes", "evidence": "README.md:182-184", "status": "verified"}
-{"from": "process:privatelink_login", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:26", "status": "verified"}
+{"from": "process:privatelink_login", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:28", "status": "verified"}
 {"from": "process:privatelink_login", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:191", "status": "verified"}
 {"from": "process:setup_local", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:179", "status": "verified"}
 {"from": "process:container_services", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:303", "status": "verified"}

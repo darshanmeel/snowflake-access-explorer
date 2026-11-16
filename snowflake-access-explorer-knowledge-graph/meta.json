@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-15",
- "commit": "bbfb1e33cb67ea54b1a44fac7f4f2c01f87909a9",
+ "commit": "2777f41dc192cc8badb7b5d4ae45f657621cfa35",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -316,5 +316,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-16 20:39 UTC"
+ "updated": "2026-11-16 20:42 UTC"
 }

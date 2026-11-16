@@ -5358,7 +5358,7 @@
 {"from": "document:README.md", "to": "process:build_web", "type": "documents", "evidence": "README.md:150", "status": "verified"}
 {"from": "document:README.md", "to": "process:container_services", "type": "documents", "evidence": "README.md:365-373", "status": "verified"}
 {"from": "document:README.md", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.md:257-275", "status": "verified"}
-{"from": "document:README.md", "to": "process:privatelink_login", "type": "documents", "evidence": "README.md:181-196", "status": "verified"}
+{"from": "document:README.md", "to": "process:privatelink_login", "type": "documents", "evidence": "README.md:181-195", "status": "verified"}
 {"from": "document:README.md", "to": "process:run_local", "type": "documents", "evidence": "README.md:102-123", "status": "verified"}
 {"from": "document:README.md", "to": "process:setup_local", "type": "documents", "evidence": "README.md:142-151", "status": "verified"}
 {"from": "document:README.md", "to": "process:test", "type": "documents", "evidence": "README.md:444", "status": "verified"}
@@ -5637,7 +5637,7 @@
 {"from": "process:deploy_snowflake", "to": "process:snapshot_task", "type": "triggers", "evidence": "README.md:267-269", "status": "verified"}
 {"from": "process:deploy_snowflake", "to": "script:run_sql.py", "type": "calls", "evidence": "README.md:261", "status": "verified"}
 {"from": "process:privatelink_login", "to": "config:.env.example", "type": "depends_on", "evidence": "README.md:182-184", "status": "verified"}
-{"from": "process:privatelink_login", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:26", "status": "verified"}
+{"from": "process:privatelink_login", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:28", "status": "verified"}
 {"from": "process:privatelink_login", "to": "secret_ref:.env", "type": "writes", "evidence": "README.md:182-184", "status": "verified"}
 {"from": "process:privatelink_login", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:191", "status": "verified"}
 {"from": "process:run_local", "to": "config:.streamlit/config.toml", "type": "reads", "evidence": ".streamlit/config.toml:1", "status": "verified"}

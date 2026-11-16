@@ -25,7 +25,7 @@ flowchart TD
 - Session setup: `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, `USE WAREHOUSE &WH`, `USE DATABASE &DB` — run_sql.py:58-59.
 - `(expect N)` row-count check — run_sql.py:62, run_sql.py:72.
 - Login of `run_sql.py`: the same `.env` login as the app (`sf.connect()`), so PrivateLink needs only the `.privatelink` account value and private DNS — README.md:194, processes/privatelink-login.md. Streamlit in Snowflake uses its own session: no PrivateLink setup — README.md:195.
-- SnowSQL alternative: `!source sql/<file>` from the repo folder; each file starts with `!source settings.local.sql` — sql/1_setup.sql:5-6, README.md:274. SnowSQL needs `HERE` filled by hand — settings.sql:13-14.
+- SnowSQL alternative: `!source sql/<file>` from the repo folder; each file starts with `!source settings.local.sql` — sql/1_setup.sql:5-6, README.md:275. SnowSQL needs `HERE` filled by hand — settings.sql:13-14.
 
 ## Step 1: sql/1_setup.sql (SOURCE=objects only)
 - Purpose: the 10 snapshot tables (TBL_ACCESS_ACTIVITY included) + findings table, snapshot procedure, findings stage/procedure, table functions, app-role read access; safe to rerun — sql/1_setup.sql:1-5.
@@ -59,10 +59,10 @@ flowchart TD
 ## Roles and grants needed
 | Role | Needs | Evidence |
 |---|---|---|
-| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:265, README.html:655 |
+| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:266, README.html:658 |
 | `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:922-926 |
 | `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:334-335, sql/4_streamlit.sql:5-7 |
-| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:865-865, README.html:655 |
+| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:865-865, README.html:658 |
 | `APP_ROLE`, SiS | USAGE on `ST_ACCESS_EXPLORER` (+ DB/schema/WH) | sql/4_streamlit.sql:72-83 |
 - How these grants are given in practice: see access-requests.md.
 

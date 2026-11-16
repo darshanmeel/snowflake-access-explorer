@@ -45,7 +45,7 @@ flowchart LR
   - Secret refs: `SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD` (key pair; else browser SSO) — .env.example:28-29, sf.py:36-41.
   - Optional: `ROLE_PREFIXES` (and others listed in README.html > Settings) — .env.example:31-32.
 - Missing `SNOWFLAKE_ACCOUNT` outside Snowflake raises "copy .env.example to .env" — sf.py:23-25.
-- Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): no code change; the `.privatelink` account value, private DNS for the account and OCSP hosts, key pair as is, browser SSO only with the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); check with `python sf.py "select current_user(), ..."` — README.md:179-196, README.html:645; sf.connect() passes the value as `account=` — sf.py:26. Steps: processes/privatelink-login.md.
+- Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): no code change; the `.privatelink` account value, private DNS for the account and OCSP hosts, key pair as is, browser SSO only with the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); check with `python sf.py "select current_user(), ..."` — README.md:179-195, README.html:645; sf.connect() passes the value as `account=` — sf.py:28. Steps: processes/privatelink-login.md.
 - Settings table with defaults — README.md:197-212.
 
 ## `settings.local.sql` (from `settings.sql`, git-ignored)
