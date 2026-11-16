@@ -42,7 +42,7 @@ flowchart LR
 
 ## sf.py CLI
 
-- `python sf.py "select current_user()"` or `python sf.py -f query.sql`; prints tab-separated rows (sf.py:67-72). See sf.md.
+- `python sf.py "select current_user()"` or `python sf.py -f query.sql`; prints tab-separated rows (sf.py:68-73). See sf.md.
 
 ## docs/make_readme.py
 

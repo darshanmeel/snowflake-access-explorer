@@ -33,7 +33,7 @@ sequenceDiagram
 ## Steps
 
 1. Settings: `ACTIVITY_DAYS = 60` in the procedure (`sql/1_setup.sql:178`) and in `access.py` (env, `access.py:63`). The app's own queries are named by two settings: `QUERY_TAG` (env, default `access-explorer`, `access.py:64`) and `STREAMLIT_APP` (env, default `ST_ACCESS_EXPLORER`, read into `APP_ST`, `access.py:65`); the procedure gets them from `!define QUERY_TAG` / `STREAMLIT_APP` at deploy (`sql/1_setup.sql:179-180`, `settings.sql:16-19`). `test_sql.test_activity` fills the two names from access.py and checks all three match (`test_sql.py:306-308`).
-2. The app's connection carries the tag: `session_parameters={"QUERY_TAG": access.QUERY_TAG}` — `sf.py:34`. Inside Snowflake `connect()` returns the app's active session (`sf.py:20-22`), where this parameter is not set.
+2. The app's connection carries the tag: `session_parameters={"QUERY_TAG": access.QUERY_TAG}` — `sf.py:35`. Inside Snowflake `connect()` returns the app's active session (`sf.py:20-22`), where this parameter is not set.
 3. Snapshot path: `run()` calls `keep("activity", *activity(session, run_id, mode))` after object use — `sql/1_setup.sql:639`.
 4. `activity()`: `fallback(session, "ACCESS_HISTORY", mode)` -> UNAVAILABLE with the reason, no fallback — `sql/1_setup.sql:588-590`, `sql/1_setup.sql:208-218`.
 5. Window: previous OK run (`MAX_BY(RUN_ID, FINISHED_AT)`), `first = CURRENT_DATE() - ACTIVITY_DAYS`, `last = MAX(DAY)` of that run, `since = max(first, last - 1 day)` — `sql/1_setup.sql:591-594`.

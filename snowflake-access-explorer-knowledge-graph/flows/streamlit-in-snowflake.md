@@ -41,7 +41,7 @@ sequenceDiagram
 7. Frame side: `startApp` installs a transport that queues `{id, method, url, body}`; `flush` sends the full open list; `answer` resolves/rejects by id (`ApiFail`) — web/src/st/main.tsx:17-41; `draw` renders `<App>` once — web/src/st/main.tsx:45-49; client switches from `fetch` to the transport — web/src/api/client.ts:23-26, web/src/api/client.ts:39, web/src/api/client.ts:47.
 8. `answer()` maps the URL to server functions: `meta`, `mine`, `reload`, `mine/load` (new random sid, drops the previous MINE entry), `*.csv` -> `serve_csv`, `ROUTES` -> `serve`, else 404 `not_found` — st_react.py:22-44.
 9. Errors as in the web version: `ApiError` -> its status, other exceptions -> 500 `{detail:"error"}` — st_react.py:45-48; `_js` escapes `</` — st_react.py:17-19.
-10. Connection: `sf.connect()` returns the app's own session when `INSIDE` — sf.py:19-22; `sf.owned()` is False inside, so `with_query` never closes it — sf.py:45-47, server.py:85-86.
+10. Connection: `sf.connect()` returns the app's own session when `INSIDE` — sf.py:19-22; `sf.owned()` is False inside, so `with_query` never closes it — sf.py:46-48, server.py:85-86.
 11. No disk inside: `cache.local()` False -> memory only; no DuckDB copy — cache.py:51-53, cache.py:193-198.
 12. My access hidden: `mine_off()` returns the "not available inside Snowflake" reason first — server.py:138-140; `meta.mine_available=False` hides the button — server.py:2156, web/src/App.tsx:322.
 13. What changed has no previous snapshot inside (memory only) — server.py:1730-1734.

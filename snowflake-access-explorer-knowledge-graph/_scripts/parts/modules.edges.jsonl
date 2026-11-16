@@ -675,9 +675,9 @@
 {"from": "function:cache.py:get", "to": "function:cache.py:keep_prev", "type": "calls", "evidence": "cache.py:128", "status": "verified"}
 {"from": "function:cache.py:sql_copy", "to": "table:.cache/access.duckdb", "type": "writes", "evidence": "cache.py:228", "status": "verified"}
 {"from": "module:sf.py", "to": "function:sf.py:connect", "type": "contains", "evidence": "sf.py:19", "status": "verified"}
-{"from": "module:sf.py", "to": "function:sf.py:owned", "type": "contains", "evidence": "sf.py:45", "status": "verified"}
-{"from": "module:sf.py", "to": "function:sf.py:rows", "type": "contains", "evidence": "sf.py:50", "status": "verified"}
-{"from": "module:sf.py", "to": "function:sf.py:run", "type": "contains", "evidence": "sf.py:57", "status": "verified"}
+{"from": "module:sf.py", "to": "function:sf.py:owned", "type": "contains", "evidence": "sf.py:46", "status": "verified"}
+{"from": "module:sf.py", "to": "function:sf.py:rows", "type": "contains", "evidence": "sf.py:51", "status": "verified"}
+{"from": "module:sf.py", "to": "function:sf.py:run", "type": "contains", "evidence": "sf.py:58", "status": "verified"}
 {"from": "module:st_react.py", "to": "function:st_react.py:answer", "type": "contains", "evidence": "st_react.py:22", "status": "verified"}
 {"from": "module:st_react.py", "to": "function:st_react.py:app", "type": "contains", "evidence": "st_react.py:51", "status": "verified"}
 {"from": "module:st_react.py", "to": "function:st_react.py:_js", "type": "contains", "evidence": "st_react.py:17", "status": "verified"}

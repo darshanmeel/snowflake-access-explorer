@@ -16,7 +16,7 @@ flowchart LR
 ```
 
 - Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:465` snapshot, `access.py:634` live, `access.py:5116` checks, `access.py:4298` activity), cache (`cache.py`), server (`server.py:2333` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
-- Login: `sf.connect()` (`sf.py:19-42`) uses the app session inside Snowflake, else a key pair or browser SSO from `.env`; PrivateLink is only the `SNOWFLAKE_ACCOUNT` value `<org>-<account>.privatelink` plus private DNS, passed as `account=` (`sf.py:28`, `README.md:181-195`; `processes/privatelink-login.md`).
+- Login: `sf.connect()` (`sf.py:19-43`) uses the app session inside Snowflake, else a key pair or browser SSO from `.env`; PrivateLink keeps the plain `SNOWFLAKE_ACCOUNT` and adds `SNOWFLAKE_HOST` (the `<org>-<account>.privatelink` host, passed as `host=`) plus private DNS (`sf.py:28-29`, `README.md:181-196`; `processes/privatelink-login.md`).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
 ## Entry points

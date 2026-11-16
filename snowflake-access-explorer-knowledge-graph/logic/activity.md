@@ -31,7 +31,7 @@ flowchart LR
 - `G`: per UTC day (`L::DATE`), user, role, client, object, action, statement, app and UTC hour: `N = COUNT(DISTINCT QUERY_ID)`, `LAST_USED = MAX(T)`; the `TBL_ACCESS_` tables are left out — `access.py:977-982`.
 - Final: one row per day .. app, `QUERIES = SUM(N)`, `HOURS = OBJECT_AGG(hour, N)` ({"13": 12, "22": 3}) — `access.py:983-985`.
 - The same text sits in SP_ACCESS_SNAPSHOT (`sql/1_setup.sql:537-580`); `test_sql.test_activity` checks it is identical (`test_sql.py:302`).
-- Query tag: `sf.connect` sets `session_parameters={"QUERY_TAG": access.QUERY_TAG}` — `sf.py:34`. `QUERY_TAG` is env `QUERY_TAG` (default `access-explorer`) and `APP_ST` env `STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`) — `access.py:64-65`; SP_ACCESS_SNAPSHOT takes them from `&QUERY_TAG` / `&STREAMLIT_APP` (`sql/1_setup.sql:179-180`), so `.env`, `sis/.env` and settings.local.sql must agree (`settings.sql:16-19`, `sis.env.example:16-21`, `.env.example:33-35`). Example: `test_tag_settings` (`test_access.py:1827-1832`).
+- Query tag: `sf.connect` sets `session_parameters={"QUERY_TAG": access.QUERY_TAG}` — `sf.py:35`. `QUERY_TAG` is env `QUERY_TAG` (default `access-explorer`) and `APP_ST` env `STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`) — `access.py:64-65`; SP_ACCESS_SNAPSHOT takes them from `&QUERY_TAG` / `&STREAMLIT_APP` (`sql/1_setup.sql:179-180`), so `.env`, `sis/.env` and settings.local.sql must agree (`settings.sql:16-19`, `sis.env.example:16-21`, `.env.example:33-35`). Example: `test_tag_settings` (`test_access.py:1827-1832`).
 - `HOURS` comes back from Snowflake (and DuckDB `JSON`) as text: `hours_of(rows)` parses it to a dict on load, in `snapshot()` and `live()` — `access.py:487-490`, `access.py:484`, `access.py:909`.
 
 ## Business hours and off-hours

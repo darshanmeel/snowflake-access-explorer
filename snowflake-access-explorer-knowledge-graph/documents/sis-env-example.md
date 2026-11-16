@@ -20,4 +20,4 @@ flowchart LR
 - `QUERY_TAG` (commented, default access-explorer; same as `!define QUERY_TAG` and the local `.env`, so Direct mode here leaves the local app's queries out) — sis.env.example:19-21.
 
 ## Relates to
-- sql/4_streamlit.sql:61-62 (PUT), run_sql.py:56-59 (missing-file hint), .gitignore:8 (`sis/`), access.py:34-35 (INSIDE), access.py:64-65 (QUERY_TAG / STREAMLIT_APP), README.md:327-336, web/ST.md:67.
+- sql/4_streamlit.sql:61-62 (PUT), run_sql.py:56-59 (missing-file hint), .gitignore:8 (`sis/`), access.py:34-35 (INSIDE), access.py:64-65 (QUERY_TAG / STREAMLIT_APP), README.md:329-338, web/ST.md:67.

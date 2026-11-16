@@ -120,7 +120,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>Reads only descriptions of access (metadata), never the business data itself.</li>
 <li>Hand-made permission changes are removed again by the change process.</li>
 </ul>
-<p class="src">README.md:9-14, 328 · CLAUDE.md:6-7 · example values: fake data run, see the example sections below</p></section>
+<p class="src">README.md:9-14, 350 · CLAUDE.md:6-7 · example values: fake data run, see the example sections below</p></section>
 
 <section id="what"><h2>What it is</h2>
 <div class="strip"><div class="s">Person</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Group role</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Job role</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Data access role</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Table</div></div>
@@ -164,7 +164,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <tr><td class="v">ANALYST_01</td><td class="v">ANALYST_01 &gt; GRP_ANALYSTS &gt; F_ANALYST &gt; T_SALES_CORE_READ</td><td class="v">1</td></tr>
 <tr><td class="v">ANALYST_02</td><td class="v">ANALYST_02 &gt; GRP_ANALYSTS &gt; F_ANALYST &gt; T_SALES_CORE_READ</td><td class="v">1</td></tr>
 </table></div>
-<p class="src">access.who_users("SALES.CORE.TBL_CUSTOMER"), SELECT rows, on a.fake() — access.py:1955-1976, fake data access.py:130</p>
+<p class="src">access.who_users("SALES.CORE.TBL_CUSTOMER"), SELECT rows, on a.fake() — access.py:1956-1977, fake data access.py:130</p>
 <h3>What the auditor also learns</h3>
 <ul>
 <li>Columns BIRTH_DATE and PHONE are labelled sensitive but not hidden (check 6).</li>
@@ -174,7 +174,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>"Can they?" for ANALYST_01: Yes, 1 path.</li>
 <li>Places to cut that path: GRP_ANALYSTS, F_ANALYST or T_SALES_CORE_READ.</li>
 </ul>
-<p class="src">fake data, a.fake() access.py:130 · a.checks() access.py:4475, rules 6/7/10 access.py:4648-4681 · a.can("ANALYST_01","SELECT","SALES.CORE.TBL_CUSTOMER") access.py:3245 · a.who_can("SALES.CORE.TBL_CUSTOMER") for ENGINEER_01 paths · run 2026-11-10 with FAKE=1</p></section>
+<p class="src">fake data, a.fake() access.py:130 · a.checks() access.py:4476, rules 6/7/10 access.py:4649-4682 · a.can("ANALYST_01","SELECT","SALES.CORE.TBL_CUSTOMER") access.py:3411 · a.who_can("SALES.CORE.TBL_CUSTOMER") for ENGINEER_01 paths · run 2026-11-10 with FAKE=1</p></section>
 
 <section id="examples"><h2>More examples</h2>
 <div class="exset">
@@ -183,17 +183,17 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <div class="lbl2">OUT</div>
 <table><tr><td>loses</td><td>ANALYST_01: 9 objects</td></tr><tr><td>keeps</td><td>ANALYST_01 still uses warehouse WH_SALES_XS, via PUBLIC</td></tr><tr><td>findings</td><td>1 fixed · 0 new</td></tr></table>
 <div class="lbl2">TEXT FOR THE CHANGE TEAM</div><div class="res"><code>REVOKE ROLE GRP_ANALYSTS FROM USER ANALYST_01;</code><br>Remove in the infrastructure-as-code repo: role GRP_ANALYSTS granted to user ANALYST_01</div>
-<p class="src">a.what_if([...]) on a.fake() — access.py:3920; test_access.py:999</p></div>
+<p class="src">a.what_if([...]) on a.fake() — access.py:3921; test_access.py:1000</p></div>
 <div class="ex edge"><div class="h"><span class="verdict">WHAT IF · WIDER CUT</span><b>A data role removed from a job role</b></div>
 <div class="lbl2">IN</div><div class="res"><code>Remove T_SALES_CORE_READ from job role F_ANALYST</code></div>
 <div class="lbl2">OUT</div>
 <table><tr><td>loses</td><td>2 users: 3 objects</td></tr><tr><td>keeps</td><td>3 users, another path (most via T_SALES_MART_READ)</td></tr><tr><td>findings</td><td>0 fixed · 0 new · 2 changed</td></tr></table>
-<p class="src">a.what_if([...]) on a.fake() — access.py:3920; test_access.py:994</p></div>
+<p class="src">a.what_if([...]) on a.fake() — access.py:3921; test_access.py:995</p></div>
 <div class="ex bad"><div class="h"><span class="verdict">HIGH RISK</span><b>Permission given to everyone (PUBLIC)</b></div>
 <div class="lbl2">IN</div><div class="res"><code>PUBLIC holds USAGE on WAREHOUSE WH_SALES_XS</code><br>Plain: every user can use this compute.</div>
 <div class="lbl2">OUT</div><div class="res">Check 9 "Privilege granted to PUBLIC", severity High. Why: "Every user, present and future, gets it."</div>
 <div class="lbl2">FIX TEXT</div><div class="res"><code>REVOKE USAGE ON WAREHOUSE WH_SALES_XS FROM ROLE PUBLIC;</code><br>Remove in the infrastructure-as-code repo: USAGE on warehouse WH_SALES_XS granted to role PUBLIC</div>
-<p class="src">a.rule_rows() rule 9 on a.fake() — RULES access.py:87, check access.py:4630-4635</p></div>
+<p class="src">a.rule_rows() rule 9 on a.fake() — RULES access.py:87, check access.py:4631-4636</p></div>
 <div class="ex ok"><div class="h"><span class="verdict">MY ACCESS</span><b>An employee checks their own access</b></div>
 <div class="lbl2">IN</div><div class="res">My access, logged in as ENGINEER_01 (fake demo user)</div>
 <div class="lbl2">OUT</div>
@@ -206,13 +206,13 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>My access is off inside Snowflake, on a shared server (also behind a proxy or tunnel named in ALLOWED_HOSTS) and with a key-pair login.</li>
 <li>MY_ACCESS=1 turns it on when the key pair is your own user.</li>
 </ul>
-<p class="src">CLAUDE.md:63 · README.md:20, 216-217 · access.py:3920-4096 (restore in finally) · server.py:126-143</p>
+<p class="src">CLAUDE.md:63 · README.md:20, 237-238 · access.py:3921-4097 (restore in finally) · server.py:126-143</p>
 <details><summary>One more check example: admin role as someone's starting role</summary>
 <div class="exset"><div class="ex bad"><div class="h"><span class="verdict">ADMIN</span><b>Admin role as default role</b></div>
 <div class="lbl2">IN</div><div class="res"><code>OPS_01 default role SYSADMIN</code></div>
 <div class="lbl2">OUT</div><div class="res">Check 12, High: "Every session starts with admin rights."</div>
 <div class="lbl2">FIX TEXT</div><div class="res"><code>ALTER USER OPS_01 SET DEFAULT_ROLE = &lt;functional role&gt;;</code></div>
-<p class="src">a.rule_rows() rule 12 — access.py:4636-4641</p></div></div></details></section>
+<p class="src">a.rule_rows() rule 12 — access.py:4637-4642</p></div></div></details></section>
 
 <section id="checks"><h2>What the 29 checks look for</h2>
 <div class="bars"><div class="bar"><span class="bl">Sensitive data exposure</span><span class="bt"><span class="bf" style="width:100.0%"></span></span><span class="bv">29</span></div><div class="bar"><span class="bl">Role design that is hard to review</span><span class="bt"><span class="bf" style="width:65.5%"></span></span><span class="bv">19</span></div><div class="bar"><span class="bl">Too much power in a person&#x27;s hands</span><span class="bt"><span class="bf" style="width:31.0%"></span></span><span class="bv">9</span></div><div class="bar"><span class="bl">Leftover and shared access</span><span class="bt"><span class="bf" style="width:20.7%"></span></span><span class="bv">6</span></div><div class="bar"><span class="bl">What people did on tables</span><span class="bt"><span class="bf" style="width:17.2%"></span></span><span class="bv">5</span></div></div>
@@ -229,7 +229,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>Snowflake's own built-in permissions given to everyone are not reported.</li>
 <li>"Read-only role can write" (17) is a best guess from names or usage: review before acting.</li>
 </ul>
-<p class="src">README.md:19 · access.py:4451-4472 · CLAUDE.md:60-61 · README.html:712</p>
+<p class="src">README.md:19 · access.py:4452-4473 · CLAUDE.md:60-61 · README.html:713</p>
 <details><summary>All 29 checks</summary>
 <div class="tblwrap"><table>
 <tr><th>#</th><th>Check</th><th>Severity</th><th>Why it matters</th></tr>
@@ -241,7 +241,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <div class="card"><h3>On your laptop (recommended)</h3>
 <div class="strip"><div class="s">You (browser)</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s e">Explorer on your computer</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Snowflake (your login)</div></div>
 <ul>
-<li>Logs in with your own sign-in (SSO) or a key pair.</li>
+<li>Logs in with your own sign-in (SSO) or a key pair; behind PrivateLink, SNOWFLAKE_HOST names the private host.</li>
 <li>My access only with your own SSO login (or MY_ACCESS=1).</li>
 <li>Shows What changed.</li>
 <li>Keeps a copy of what it read for 24 hours on your computer.</li>
@@ -268,7 +268,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 </table></div>
 <ul><li>With only a warehouse role you see only your own access.</li>
 <li>With read rights on the whole account you see everyone.</li></ul>
-<p class="src">README.md:11-12, 72, 107-112, 120, 156, 207-212, 217, 230, 268-277 · sql/2_snapshot.sql:1 · CLAUDE.md:9, 33-36 · server.py:126-143 · README.html:528</p></section>
+<p class="src">README.md:11-12, 72, 107-112, 120, 156, 181-196, 228-233, 238, 251, 289-298 · sql/2_snapshot.sql:1 · CLAUDE.md:9, 33-36 · server.py:126-143 · README.html:528</p></section>
 
 <section id="no-app"><h2>Answers without the app</h2>
 <div class="strip"><div class="s">Person with a question</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s e">Snowflake's SQL page or notebook</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s d">Snowflake account history (read only)</div><svg viewBox="0 0 26 14" aria-hidden="true"><line x1="1" y1="7" x2="20" y2="7" stroke="#17191D" stroke-width="1.5"/><path d="M19,3 L25,7 L19,11 z" fill="#17191D"/></svg><div class="s">Answer table</div></div>
@@ -336,7 +336,7 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>CSV downloads cannot run spreadsheet formulas: a cell starting with = + - @ is marked as text.</li>
 <li>The queries without the app also only read Snowflake's account history.</li>
 </ul>
-<p class="src">test_server.py:322-342 test_read_only · README.md:22, 328 · CLAUDE.md:6, 9-13, 15, 24, 63 · access_queries/README.md:4, 90</p></section>
+<p class="src">test_server.py:322-342 test_read_only · README.md:22, 350 · CLAUDE.md:6, 9-13, 15, 24, 63 · access_queries/README.md:4, 90</p></section>
 
 <section id="risks"><h2>Costs and risks</h2>
 <h3>Top 3 risks</h3>
@@ -357,14 +357,14 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>Impact: a wrong finding gets acted on.</li>
 <li>Fix: review before acting; unclear hiding rules show "unknown".</li></ul></li>
 </ol>
-<p class="src">README.html:165, 712 · README.md:118, 120, 214, 230</p>
+<p class="src">README.html:165, 713 · README.md:118, 120, 235, 251</p>
 <details><summary>Costs</summary>
 <div class="tblwrap"><table>
 <tr><th>Item</th><th>What it is</th><th>Source</th></tr>
 <tr><td>Snowflake compute</td><td>Reads run on a warehouse (Snowflake compute, SNOWFLAKE_WAREHOUSE); amount: Not defined in source — confirm with owner</td><td class="v">README.md:153</td></tr>
-<tr><td>Setup in Snowflake</td><td>Read directly: nothing created. Shared copy: snapshot tables, 2 procedures, 3 table functions; you schedule the daily CALL (no task in the repo)</td><td class="v">README.md:109, 230 · sql/2_snapshot.sql:1</td></tr>
+<tr><td>Setup in Snowflake</td><td>Read directly: nothing created. Shared copy: snapshot tables, 2 procedures, 3 table functions; you schedule the daily CALL (no task in the repo)</td><td class="v">README.md:109, 251 · sql/2_snapshot.sql:1</td></tr>
 <tr><td>Install effort</td><td>Laptop: Python 3.10+ and git; no Node or npm. Inside Snowflake: none for viewers</td><td class="v">README.md:72, 122, 268</td></tr>
-<tr><td>Licence</td><td>MIT or Apache-2.0</td><td class="v">README.md:386-389</td></tr>
+<tr><td>Licence</td><td>MIT or Apache-2.0</td><td class="v">README.md:408-411</td></tr>
 </table></div></details></section>
 
 <section id="decision"><h2>Decision needed</h2>
@@ -376,5 +376,5 @@ summary { cursor:pointer; font-weight:600; font-size:14px; padding:4px 0; }
 <li>Choose whether auditors get the queries without the app.</li>
 <li>Who approves these choices: Not defined in source — confirm with owner.</li>
 </ul>
-<p class="src">README.md:107-112, 207-212, 230, 268 · sql/2_snapshot.sql:1 · access_queries/README.md:3-4</p></section>
+<p class="src">README.md:107-112, 228-233, 251, 289 · sql/2_snapshot.sql:1 · access_queries/README.md:3-4</p></section>
 </main></body></html>

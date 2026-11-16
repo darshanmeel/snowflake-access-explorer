@@ -56,10 +56,10 @@
 {"from": "function:sf.py:connect", "to": "flow:direct_live", "type": "part_of", "evidence": "sf.py:19", "status": "verified"}
 {"from": "function:sf.py:connect", "to": "flow:my_access", "type": "part_of", "evidence": "sf.py:19", "status": "verified"}
 {"from": "function:sf.py:connect", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "sf.py:19", "status": "verified"}
-{"from": "function:sf.py:owned", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "sf.py:45", "status": "verified"}
-{"from": "function:sf.py:rows", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "sf.py:50", "status": "verified"}
-{"from": "function:sf.py:rows", "to": "flow:direct_live", "type": "part_of", "evidence": "sf.py:50", "status": "verified"}
-{"from": "function:sf.py:rows", "to": "flow:my_access", "type": "part_of", "evidence": "sf.py:50", "status": "verified"}
+{"from": "function:sf.py:owned", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "sf.py:46", "status": "verified"}
+{"from": "function:sf.py:rows", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "sf.py:51", "status": "verified"}
+{"from": "function:sf.py:rows", "to": "flow:direct_live", "type": "part_of", "evidence": "sf.py:51", "status": "verified"}
+{"from": "function:sf.py:rows", "to": "flow:my_access", "type": "part_of", "evidence": "sf.py:51", "status": "verified"}
 {"from": "function:access.py:in_snowflake", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "access.py:29", "status": "verified"}
 {"from": "function:access.py:in_snowflake", "to": "flow:startup", "type": "part_of", "evidence": "access.py:29", "status": "verified"}
 {"from": "function:access.py:snapshot", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "access.py:465", "status": "verified"}
@@ -156,7 +156,7 @@
 {"from": "function:access.py:live", "to": "flow:activity_read", "type": "part_of", "evidence": "access.py:904-913", "status": "verified"}
 {"from": "function:access.py:activity_start", "to": "flow:activity_read", "type": "part_of", "evidence": "access.py:988", "status": "verified"}
 {"from": "function:access.py:activity_sql", "to": "flow:activity_read", "type": "part_of", "evidence": "access.py:942", "status": "verified"}
-{"from": "function:sf.py:connect", "to": "flow:activity_read", "type": "part_of", "evidence": "sf.py:34", "status": "verified"}
+{"from": "function:sf.py:connect", "to": "flow:activity_read", "type": "part_of", "evidence": "sf.py:35", "status": "verified"}
 {"from": "function:access.py:build", "to": "flow:activity_read", "type": "part_of", "evidence": "access.py:1099", "status": "verified"}
 {"from": "function:access.py:fake_activity", "to": "flow:activity_read", "type": "part_of", "evidence": "access.py:401", "status": "verified"}
 {"from": "component:web/src/pages/Activity.tsx:ActivityTab", "to": "flow:activity_tab", "type": "part_of", "evidence": "web/src/pages/Activity.tsx:54", "status": "verified"}

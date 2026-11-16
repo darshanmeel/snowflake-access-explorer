@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-15",
- "commit": "263c09942566caada79581015d714a41aaddba10",
+ "commit": "c712f31efec8b5cca74156909bc4b0aab549c899",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -11,8 +11,8 @@
   "graph/parts/structure.*": "script"
  },
  "counts": {
-  "nodes": 1914,
-  "edges": 5634,
+  "nodes": 1915,
+  "edges": 5638,
   "node_types": {
    "business_rule": 72,
    "class": 3,
@@ -76,7 +76,7 @@
    "class": 3,
    "column": 81,
    "component": 100,
-   "config": 58,
+   "config": 59,
    "const": 21,
    "cte": 47,
    "data_model": 1,
@@ -109,12 +109,12 @@
   },
   "edges_by_type": {
    "calls": 1631,
-   "configures": 73,
+   "configures": 75,
    "contains": 1925,
-   "depends_on": 128,
+   "depends_on": 129,
    "deploys": 6,
    "derived_from": 72,
-   "documents": 125,
+   "documents": 126,
    "exposes": 66,
    "fk": 26,
    "grants": 15,
@@ -135,8 +135,8 @@
   "CLAUDE.md": "25ea59e7891e7b0a46305b0545561674d7c39c84ac798f3c5842578aa30cce3d",
   "LICENSE-APACHE": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
   "LICENSE-MIT": "ca553b75fe9ff718aee4e5c37cbd1505626ebe66ed23ed9eee0abfdd3a5e2d49",
-  "README.html": "6ed93c1e03710e67e936b3eb84f8e8c6419a4c7ee53c0172fae7dbfb51cbd840",
-  "README.md": "a6bec63d484c78ef9285772881ad839f563ee6b5192f457c3691004f6598717f",
+  "README.html": "e94b5cf6c474ea067fc4b62f9a9e9ce8e8d123f9c7bb42a254231aaa2d44d123",
+  "README.md": "40e3f1dbe6e7f20404ac1d09616c4d8b68309144ec9a8f1ff1294d4c2f3fe90e",
   "THIRD_PARTY.md": "c948d1fcd2941f071b9c71bde325bd4871d6150346a589f8af49cc3e415d66dc",
   "access.py": "db0dc1ef14d0aa86e1c5df15150183b4e41f0c4d7e7be9338b450abd92435b70",
   "access_queries/1_user_roles.sql": "978d262ea4c3b4b9d7749142baa784963e114c4cd2bdbf85ef6036baaa8fbafc",
@@ -191,10 +191,10 @@
   "docs/img/redesign/whatif.png": "3aa9b1a07e9a0a22abb5a632849ab2a30867818613c7f603ef0198773b000492",
   "docs/img/redesign/whatif_plan.png": "567fea055ed47be608de6f2ab4c2d7881e3fa4b474f647860753c4d9e512541d",
   "docs/make_readme.py": "266c20674606f0bb73be7142c60d8771eab9f83a79e006c90d9ee2657f26c1dd",
-  "docs/overview.html": "f6739d3b034e0056bf30069162da804a24ad6af9bfe070d8e3d576ab65635c45",
+  "docs/overview.html": "e6a4ebcfce45ed76609d1187a5761defd1ecd692e1e07332ab348799271cc76f",
   "docs/redesign-notes.md": "222fd4a45c14c1fffa0ab8bed22aacf7799b096efd5122a6305226b9203ce106",
   "docs/review-2026-11-09.md": "737066ba51d617c613f9822b94b9725830a94e682cfe6fa0b826578a2b2a0f5c",
-  "docs/technical.html": "e2117c1c34e291a0b7a327ef42122fd3297156eeed6a4e2f2459200d64a57f9a",
+  "docs/technical.html": "2a61b8ca2dab55a9050cf25810fa2723054a576b4eec8de43729507500ab18c0",
   "environment.yml": "8ebc1aaee13aa429ab6067013117141c6b759c506b33e210334e33a2c1dd3f68",
   "requirements-dev.txt": "8ffc3d0f405252197b136659ecd8ce9733ef93febe95eb8054e8d1f4d315e120",
   "requirements-web.txt": "f4503a8b89b548fbb9a1363802fa701bf38480539e3bdcf92249dc70e7d583e4",
@@ -203,7 +203,7 @@
   "run_sql.py": "bfb27b9b5ef89fc5f6ff018f5cf8f141187cfdeaea4f418cbeadfe2e31f3cdc4",
   "server.py": "916a9c4557471d41ec420823ea73668f9ca93d1c67c137faa61aae31e6aef939",
   "settings.sql": "9718889913b8e8cf710573ee68317916a3b71fd6474fd775c3ad088b6890a145",
-  "sf.py": "ec9143fc64f9e729af4ee2ade8e15ddee105ec66adbc79e75895282b072344c6",
+  "sf.py": "d7cb3f684b73f3693c51cad090df06edfbb93abd78ef60dcb3dab4e248a095d5",
   "sis.env.example": "cf01204a07d6a6b802e0c8c149aa84b7448e7df066d534a893e740899a700ce7",
   "sql/1_setup.sql": "c83806db63aa9969e324cb1d47499c6d3a4c3179eff40e51e85d18a46e040770",
   "sql/1_setup_verify.sql": "245201fbbc97060d673be0afec4f22b3cac38972457c4c328747f8dff65181c7",
@@ -316,5 +316,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-16 21:48 UTC"
+ "updated": "2026-11-16 22:33 UTC"
 }

@@ -417,7 +417,7 @@
 {"from": "function:sql/1_setup.sql:activity", "to": "business_rule:activity_window", "type": "implements", "evidence": "sql/1_setup.sql:591-599", "status": "verified"}
 {"from": "config:access.py:QUERY_TAG", "to": "business_rule:activity_query_tag", "type": "configures", "evidence": "access.py:975", "status": "verified"}
 {"from": "function:access.py:activity_sql", "to": "business_rule:activity_query_tag", "type": "implements", "evidence": "access.py:972", "status": "verified"}
-{"from": "function:sf.py:connect", "to": "business_rule:activity_query_tag", "type": "implements", "evidence": "sf.py:34", "status": "verified"}
+{"from": "function:sf.py:connect", "to": "business_rule:activity_query_tag", "type": "implements", "evidence": "sf.py:35", "status": "verified"}
 {"from": "function:access.py:activity", "to": "business_rule:activity_counts", "type": "implements", "evidence": "access.py:4315-4351", "status": "verified"}
 {"from": "function:access.py:used_path", "to": "business_rule:activity_used_path", "type": "implements", "evidence": "access.py:4603-4609", "status": "verified"}
 {"from": "config:server.py:MAX_ACTIVITY", "to": "function:server.py:activity_page", "type": "configures", "evidence": "server.py:1684", "status": "verified"}
@@ -474,6 +474,6 @@
 {"from": "config:access.py:APP_ST", "to": "business_rule:activity_query_tag", "type": "configures", "evidence": "access.py:976", "status": "verified"}
 {"from": "config:access.py:APP_ST", "to": "function:access.py:activity_sql", "type": "configures", "evidence": "access.py:954", "status": "verified"}
 {"from": "config:access.py:QUERY_TAG", "to": "function:access.py:activity_sql", "type": "configures", "evidence": "access.py:954", "status": "verified"}
-{"from": "config:access.py:QUERY_TAG", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:34", "status": "verified"}
+{"from": "config:access.py:QUERY_TAG", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:35", "status": "verified"}
 {"from": "config:access.py:APP_ST", "to": "function:access.py:activity_section_sql", "type": "configures", "evidence": "access.py:4493", "status": "verified"}
 {"from": "config:access.py:QUERY_TAG", "to": "function:access.py:activity_section_sql", "type": "configures", "evidence": "access.py:4493", "status": "verified"}

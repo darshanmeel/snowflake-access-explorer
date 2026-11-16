@@ -23,6 +23,6 @@ DDL: `sql/1_setup.sql:131-141`. Grain: one row per finding of the last run (`DEL
 
 - Procedure: `sql/1_setup.sql:802-864`; code from stage `STG_ACCESS_CODE` (`:696-701,709`).
 - Flow: settings -> `access.snapshot` -> `build` -> `rule_rows` (`sql/1_setup.sql:832-844`); write in a transaction (`:750-760`).
-- Not cleaned by SP_ACCESS_SNAPSHOT (`DATA` excludes it, `sql/1_setup.sql:170`); `SP_ACCESS_FINDINGS` empties it itself on every call, so only the last run's findings stay (`sql/1_setup.sql:851`; README.md:269).
+- Not cleaned by SP_ACCESS_SNAPSHOT (`DATA` excludes it, `sql/1_setup.sql:170`); `SP_ACCESS_FINDINGS` empties it itself on every call, so only the last run's findings stay (`sql/1_setup.sql:851`; README.md:271).
 - Readers: SELECT granted to APP_ROLE `sql/1_setup.sql:907`; no reader in `access.py` / `server.py` (grep); not in the DuckDB copy (`cache.py:160-180`).
 - Test: `test_sql.py:230-232` runs the DDL and procedure body on DuckDB.

@@ -24,8 +24,8 @@ flowchart TD
 - Stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG` — run_sql.py:26-28; on unfilled `<placeholders>` — run_sql.py:29-31; on unknown `&NAME` — run_sql.py:34-39; on missing PUT files (hint for `sis/.env`) before any statement — run_sql.py:42-44, run_sql.py:56-59.
 - Session setup: `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, `USE WAREHOUSE &WH`, `USE DATABASE &DB` — run_sql.py:62-63.
 - `(expect N)` row-count check — run_sql.py:66, run_sql.py:76.
-- Login of `run_sql.py`: the same `.env` login as the app (`sf.connect()`), so PrivateLink needs only the `.privatelink` account value and private DNS — README.md:194, processes/privatelink-login.md. Streamlit in Snowflake uses its own session: no PrivateLink setup — README.md:195.
-- SnowSQL alternative: `!source sql/<file>` from the repo folder; each file starts with `!source settings.local.sql` — sql/1_setup.sql:5-6, README.md:277. SnowSQL needs `HERE` filled by hand — settings.sql:14-15 — and every name in settings.local.sql, `STREAMLIT_APP` and `QUERY_TAG` included (no template fallback) — settings.sql:2-3.
+- Login of `run_sql.py`: the same `.env` login as the app (`sf.connect()`), so PrivateLink needs only `SNOWFLAKE_HOST` (plain account kept) and private DNS — README.md:195, processes/privatelink-login.md. Streamlit in Snowflake uses its own session: no PrivateLink setup — README.md:196.
+- SnowSQL alternative: `!source sql/<file>` from the repo folder; each file starts with `!source settings.local.sql` — sql/1_setup.sql:5-6, README.md:279. SnowSQL needs `HERE` filled by hand — settings.sql:14-15 — and every name in settings.local.sql, `STREAMLIT_APP` and `QUERY_TAG` included (no template fallback) — settings.sql:2-3.
 
 ## Step 1: sql/1_setup.sql (SOURCE=objects only)
 - Purpose: the 10 snapshot tables (TBL_ACCESS_ACTIVITY included) + findings table, snapshot procedure, findings stage/procedure, table functions, app-role read access; safe to rerun — sql/1_setup.sql:1-5.
@@ -39,11 +39,11 @@ flowchart TD
 ## Step 2: sql/2_snapshot.sql
 - `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')`; `AUTO` / `ACCOUNT_USAGE` / `SHOW`; ACCOUNT_USAGE lags ~2 h — sql/2_snapshot.sql:1-12.
 - Verify: last run OK, one run in data, counts per table, OBJECT_USE and ACTIVITY (may fail) — sql/2_snapshot_verify.sql:4-42.
-- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:654-656; not in any sql/ file (only dropped in 3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:268.
+- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:654-656; not in any sql/ file (only dropped in 3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:270.
 
 ## Step 3 (numbered 4): sql/4_streamlit.sql
 - Two options: `SOURCE=objects` (run 1 + 2 first) or `SOURCE=direct` (this file only; owner role needs IMPORTED PRIVILEGES) — sql/4_streamlit.sql:2-7.
-- Prereq `sis/.env` (required, git-ignored, template `sis.env.example`): `mkdir sis; copy sis.env.example sis\.env` — README.md:328-337, sql/4_streamlit.sql:9-10, .gitignore:8.
+- Prereq `sis/.env` (required, git-ignored, template `sis.env.example`): `mkdir sis; copy sis.env.example sis\.env` — README.md:330-339, sql/4_streamlit.sql:9-10, .gitignore:8.
 - Stage `STG_ACCESS_APP` — sql/4_streamlit.sql:19-20.
 - PUT `app.py`, `access.py`, `cache.py`, `server.py`, `sf.py`, `st_react.py`, `ui.py` — sql/4_streamlit.sql:22-41.
 - PUT `environment.yml` — sql/4_streamlit.sql:48-49; `.streamlit/config.toml` not uploaded — sql/4_streamlit.sql:44.
@@ -51,7 +51,7 @@ flowchart TD
 - PUT `sis/.env` as the app's `.env` — sql/4_streamlit.sql:61-62.
 - `CREATE OR REPLACE STREAMLIT &DB.&SCHEMA.&STREAMLIT_APP ... MAIN_FILE='app.py' QUERY_WAREHOUSE=&WH`; `STREAMLIT_APP` is a setting, default `ST_ACCESS_EXPLORER` (settings.sql:16-17) — sql/4_streamlit.sql:64-72. Set the same name as `STREAMLIT_APP` in `sis/.env` and `.env` (sis.env.example:16-18, .env.example:33-35).
 - Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:72-83.
-- Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:346.
+- Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:348.
 - Verify: Streamlit exists (expect 1), stage files, exactly 4 assets, grants on the app — sql/4_streamlit_verify.sql:3-15.
 - Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:698-705, web/ST.md:54-55.
 - Manual check in Snowsight: hint disappears, Home shows data, no CSP errors — web/ST.md:45-50.
@@ -59,9 +59,9 @@ flowchart TD
 ## Roles and grants needed
 | Role | Needs | Evidence |
 |---|---|---|
-| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:268, README.html:658 |
+| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:270, README.html:658 |
 | `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:923-927 |
-| `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:336-337, sql/4_streamlit.sql:5-7 |
+| `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:338-339, sql/4_streamlit.sql:5-7 |
 | `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:866-866, README.html:658 |
 | `APP_ROLE`, SiS | USAGE on the Streamlit `&STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`) (+ DB/schema/WH) | sql/4_streamlit.sql:72-83 |
 - How these grants are given in practice: see access-requests.md.
