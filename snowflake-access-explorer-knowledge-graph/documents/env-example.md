@@ -17,8 +17,9 @@ flowchart LR
 - `APP`, `WEB_PORT`, `STREAMLIT_PORT` (commented) — .env.example:12-14.
 - `ALLOWED_HOSTS`, `MY_ACCESS` (commented; HOST mentioned in comment) — .env.example:15-18.
 - `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE` — .env.example:21-25; `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` (commented) — .env.example:26-27.
+- Over PrivateLink `SNOWFLAKE_ACCOUNT` takes `<org>-<account>.privatelink`; the template has no PrivateLink line — README.md:181-196, processes/privatelink-login.md.
 - Secret refs: `SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD` (commented) — .env.example:28-29.
 - `ROLE_PREFIXES` (commented) — .env.example:31-32.
 
 ## Relates to
-- access.py:19-26 (loader), sf.py:19-42, cache.py:27-39, run.py:29-41, server.py:133-149, server.py:2316-2320; README.md:164-193; processes/setup-local.md.
+- access.py:19-26 (loader), sf.py:19-42, cache.py:27-39, run.py:29-41, server.py:133-149, server.py:2316-2320; README.md:164-210; processes/setup-local.md.

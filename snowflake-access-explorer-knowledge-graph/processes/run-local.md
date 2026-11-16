@@ -26,31 +26,32 @@ flowchart TD
 ## Modes (README "Run each mode")
 | Mode | Command | Open | Evidence |
 |---|---|---|---|
-| Fake, web | `python run.py --fake` | :8000 | README.md:107 |
-| Fake, Streamlit | `python run.py streamlit --fake` (needs requirements.txt) | :8501 | README.md:108 |
-| Direct (default), web | `python run.py` = `--direct` | :8000 | README.md:109 |
-| Direct, Streamlit | `python run.py streamlit --direct` | :8501 | README.md:110 |
-| Objects, web | `python run.py --objects` (needs `ACCESS_SNAPSHOT` and objects setup) | :8000 | README.md:111 |
-| Objects, Streamlit | `python run.py streamlit --objects` | :8501 | README.md:112 |
-| Side by side | two terminals | :8000 + :8501 | README.md:113 |
-| Other port | `python run.py --port 9000` | :9000 | README.md:114 |
-| DuckDB copy off / on for fake | `DUCKDB=0` / `DUCKDB=1` | `.cache\access.duckdb` | README.md:115 |
-| Memory only | `CACHE_HOURS=0` | | README.md:116 |
-| Shared server | `HOST=0.0.0.0` + key pair | `http://<server>:8000` | README.md:117 |
+| Fake, web | `python run.py --fake` | :8000 | README.md:108 |
+| Fake, Streamlit | `python run.py streamlit --fake` (needs requirements.txt) | :8501 | README.md:109 |
+| Direct (default), web | `python run.py` = `--direct` | :8000 | README.md:110 |
+| Direct, Streamlit | `python run.py streamlit --direct` | :8501 | README.md:111 |
+| Objects, web | `python run.py --objects` (needs `ACCESS_SNAPSHOT` and objects setup) | :8000 | README.md:112 |
+| Objects, Streamlit | `python run.py streamlit --objects` | :8501 | README.md:113 |
+| Side by side | two terminals | :8000 + :8501 | README.md:114 |
+| Other port | `python run.py --port 9000` | :9000 | README.md:115 |
+| DuckDB copy off / on for fake | `DUCKDB=0` / `DUCKDB=1` | `.cache\access.duckdb` | README.md:116 |
+| Memory only | `CACHE_HOURS=0` | | README.md:117 |
+| Shared server | `HOST=0.0.0.0` + key pair (behind PrivateLink: `.privatelink` account value + private DNS, README.md:303) | `http://<server>:8000` | README.md:118 |
 
 ## Source selection
 - `cache.config()`: `SOURCE` or `objects` when `ACCESS_SNAPSHOT` set, else `direct` — cache.py:27-32; anything else is an error — cache.py:34; objects without a location errors — cache.py:39.
-- Direct vs objects comparison — README.md:127-132.
+- Direct vs objects comparison — README.md:128-133.
 - `FAKE=1` forces not-inside — access.py:32; `INSIDE=0|1` explicit — access.py:34-35.
 
 ## Data freshness
-- Kept 24 h in memory and in `.cache/`; previous run kept as `<name>.prev.pkl` for What changed — README.md:139; `TTL = 24 * 3600` — cache.py:22; `CACHE_HOURS` — cache.py:21.
-- Direct mode reads on "Load shared data"; `SHOW_THREADS` (16) when ACCOUNT_USAGE is not readable — README.md:134-137.
+- Kept 24 h in memory and in `.cache/`; previous run kept as `<name>.prev.pkl` for What changed — README.md:140; `TTL = 24 * 3600` — cache.py:22; `CACHE_HOURS` — cache.py:21.
+- Direct mode reads on "Load shared data"; `SHOW_THREADS` (16) when ACCOUNT_USAGE is not readable — README.md:135-138.
 
 ## Gates on a local run
 - My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:133-151.
-- Local API answers only its host names (`allowed_hosts()`) — server.py:2316-2320, README.md:237.
-- First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:234.
+- Local API answers only its host names (`allowed_hosts()`) — server.py:2316-2320, README.md:255.
+- Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink only the `SNOWFLAKE_ACCOUNT` value (`<org>-<account>.privatelink`) and private DNS change, `account=` is passed as given — sf.py:26, README.md:181-196, processes/privatelink-login.md.
+- First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:252.
 
 ## Dev mode (inferred)
 - `npm run dev` serves the page from Vite and proxies `/api` to `server.py` on `ACCESS_API_PORT` (default 8000) — web/vite.config.ts:41-42, web/package.json:7. Not described in README (inferred: developer-only).

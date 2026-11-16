@@ -10,6 +10,7 @@ flowchart LR
   C -->|tests| F[pip install -r requirements-dev.txt]
   D --> G[copy .env.example .env]
   E --> G
+  G -.-> PL[PrivateLink: .privatelink account + private DNS]
   G --> H{SOURCE=objects or SiS deploy?}
   H -->|yes| I[copy settings.sql settings.local.sql]
   H -->|no| J[python run.py]
@@ -17,11 +18,11 @@ flowchart LR
 ```
 
 ## Steps
-- Needs Python 3.10+ and git, no Node or npm (web app comes built) — README.md:72, README.md:141.
-- Create and activate venv: `python -m venv .venv; .venv\Scripts\activate` — README.md:145. Execution-policy hint if `activate` is blocked — README.md:148.
-- Install the web version: `pip install -r requirements-web.txt` — README.md:146.
-- Update later: `git pull; pip install -r requirements-web.txt` — README.md:149.
-- Try without Snowflake: `python run.py --fake` — README.md:78.
+- Needs Python 3.10+ and git, no Node or npm (web app comes built) — README.md:73, README.md:142.
+- Create and activate venv: `python -m venv .venv; .venv\Scripts\activate` — README.md:146. Execution-policy hint if `activate` is blocked — README.md:149.
+- Install the web version: `pip install -r requirements-web.txt` — README.md:147.
+- Update later: `git pull; pip install -r requirements-web.txt` — README.md:150.
+- Try without Snowflake: `python run.py --fake` — README.md:79.
 
 ## Requirements files
 | File | For | Contents (pinning) |
@@ -34,20 +35,21 @@ flowchart LR
 - duckdb is only in requirements-web.txt; without it the app runs and notes why there is no SQL copy — CLAUDE.md:14-15.
 
 ## `.env` (from `.env.example`, git-ignored)
-- Copy: `copy .env.example .env` — README.md:166. `.env` is git-ignored — .gitignore:3.
+- Copy: `copy .env.example .env` — README.md:167. `.env` is git-ignored — .gitignore:3.
 - Rules: `NAME=value`, no comment after a value; empty/missing name falls back to env var; a shell variable wins — .env.example:1; loader uses `os.environ.setdefault` — access.py:19-26.
 - Names only (values never stored here):
   - Source/data: `FAKE`, `SOURCE`, `ACCESS_SNAPSHOT`, `CACHE_HOURS` — .env.example:4-10.
   - Runner: `APP`, `WEB_PORT`, `STREAMLIT_PORT` — .env.example:12-14.
   - Shared server: `HOST` (comment), `ALLOWED_HOSTS`, `MY_ACCESS` — .env.example:15-18.
-  - Login: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` — .env.example:21-27; read by sf.connect() — sf.py:27-35.
+  - Login: `SNOWFLAKE_ACCOUNT` (`<org>-<account>`, README.md:175; over PrivateLink `<org>-<account>.privatelink`, README.md:184), `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` — .env.example:21-27; read by sf.connect() — sf.py:27-35.
   - Secret refs: `SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD` (key pair; else browser SSO) — .env.example:28-29, sf.py:36-41.
   - Optional: `ROLE_PREFIXES` (and others listed in README.html > Settings) — .env.example:31-32.
 - Missing `SNOWFLAKE_ACCOUNT` outside Snowflake raises "copy .env.example to .env" — sf.py:23-25.
-- Settings table with defaults — README.md:179-193.
+- Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): no code change; the `.privatelink` account value, private DNS for the account and OCSP hosts, key pair as is, browser SSO only with the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); check with `python sf.py "select current_user(), ..."` — README.md:179-196, README.html:645; sf.connect() passes the value as `account=` — sf.py:26. Steps: processes/privatelink-login.md.
+- Settings table with defaults — README.md:197-212.
 
 ## `settings.local.sql` (from `settings.sql`, git-ignored)
-- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:242.
+- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:260.
 - Names: `DB`, `SCHEMA`, `WH`, `DEV_ROLE`, `APP_ROLE`, `HERE` (SnowSQL only; run_sql.py fills it) — settings.sql:5-14, run_sql.py:19.
 - git-ignored — .gitignore:4.
 - run_sql.py falls back to settings.sql if no local file, then stops if any `<placeholder>` is left — run_sql.py:17, run_sql.py:22-27.

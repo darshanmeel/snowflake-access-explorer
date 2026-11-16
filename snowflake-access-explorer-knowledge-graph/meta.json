@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-15",
- "commit": "fcddee7985c997e0f5f33f91a86c5805fa9b21f2",
+ "commit": "bbfb1e33cb67ea54b1a44fac7f4f2c01f87909a9",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -11,8 +11,8 @@
   "graph/parts/structure.*": "script"
  },
  "counts": {
-  "nodes": 1909,
-  "edges": 5668,
+  "nodes": 1910,
+  "edges": 5677,
   "node_types": {
    "business_rule": 72,
    "class": 3,
@@ -68,7 +68,65 @@
    "deploys": 6,
    "grants": 15,
    "illustrates": 408
-  }
+  },
+  "files": 182,
+  "nodes_by_type": {
+   "build_output": 2,
+   "business_rule": 72,
+   "class": 3,
+   "column": 81,
+   "component": 100,
+   "config": 55,
+   "const": 21,
+   "cte": 47,
+   "data_model": 1,
+   "data_structure": 1,
+   "deployment": 1,
+   "doc": 8,
+   "document": 12,
+   "endpoint": 32,
+   "external_system": 22,
+   "file": 182,
+   "flow": 12,
+   "folder": 12,
+   "function": 656,
+   "infra_object": 3,
+   "module": 41,
+   "procedure": 2,
+   "process": 11,
+   "repo": 1,
+   "role": 2,
+   "script": 3,
+   "secret_ref": 5,
+   "snowflake_object": 3,
+   "sql_file": 7,
+   "table": 55,
+   "task": 146,
+   "test_case": 106,
+   "type": 162,
+   "udtf": 3,
+   "ui_screen": 40
+  },
+  "edges_by_type": {
+   "calls": 1677,
+   "configures": 58,
+   "contains": 1922,
+   "depends_on": 128,
+   "deploys": 6,
+   "derived_from": 72,
+   "documents": 125,
+   "exposes": 66,
+   "fk": 26,
+   "grants": 15,
+   "illustrates": 408,
+   "implements": 234,
+   "imports": 363,
+   "part_of": 163,
+   "reads": 296,
+   "triggers": 8,
+   "writes": 110
+  },
+  "flows": 12
  },
  "file_hashes": {
   ".env.example": "fc8cfea2110c121ebb36ee34d08a1c1889389e64be2a4b63d7cb91b83b5dd0b8",
@@ -77,8 +135,8 @@
   "CLAUDE.md": "25ea59e7891e7b0a46305b0545561674d7c39c84ac798f3c5842578aa30cce3d",
   "LICENSE-APACHE": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
   "LICENSE-MIT": "ca553b75fe9ff718aee4e5c37cbd1505626ebe66ed23ed9eee0abfdd3a5e2d49",
-  "README.html": "306072ca7c35de3a9ff183584d5849856e546f23449b4831b4c464196149ec80",
-  "README.md": "1e13cab6a8dc2af4952a2d6edd6ea261199db505fac11d9fd49695dac14f0849",
+  "README.html": "07d993a2868334eaa93def18379d19db82c2715eee345c8040998241ac513a41",
+  "README.md": "3d50d4927662c935f174f60cd57d67146e9a917aedeecd82ab162185fb850fc7",
   "THIRD_PARTY.md": "c948d1fcd2941f071b9c71bde325bd4871d6150346a589f8af49cc3e415d66dc",
   "access.py": "2d939e7d707b05adea0b09e4c9eeb0c7d69b21cea0f08a9e2321b485afa15c82",
   "access_queries/1_user_roles.sql": "978d262ea4c3b4b9d7749142baa784963e114c4cd2bdbf85ef6036baaa8fbafc",
@@ -258,5 +316,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-15 19:08 UTC"
+ "updated": "2026-11-16 20:39 UTC"
 }
