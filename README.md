@@ -176,6 +176,23 @@ SNOWFLAKE_WAREHOUSE=<WH>
 - Login is browser SSO by default: a tab opens. For a key pair add `SNOWFLAKE_PRIVATE_KEY_FILE=C:\keys\rsa_key.p8` (and `SNOWFLAKE_PRIVATE_KEY_PWD=<passphrase>` if encrypted).
 - No passwords in the repo; `.env` is git-ignored. No comment after a value on the same line. A name missing or empty in `.env` comes from the environment variable; a variable set in the shell wins.
 - One login per new connection. To reuse a login for about 4 h, an admin runs `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;` once.
+- Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): see [PrivateLink](#privatelink).
+
+#### PrivateLink
+No code change: put the private host in `SNOWFLAKE_ACCOUNT`.
+```
+SNOWFLAKE_ACCOUNT=<org>-<account>.privatelink
+```
+- The value is `regionless-privatelink-account-url` (or the older `privatelink-account-url`) from
+  `SELECT SYSTEM$GET_PRIVATELINK_CONFIG();`, without `.snowflakecomputing.com`.
+- The machine must resolve `<org>-<account>.privatelink.snowflakecomputing.com` and the OCSP host
+  (`privatelink-ocsp-url` in the same output) to the private endpoint (VPN or company network, private DNS).
+  A missing OCSP record shows as a hang or a certificate error on connect.
+- Key pair: works as is.
+- Browser SSO: the SAML integration must use the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`),
+  else the identity provider sends the login back to the public URL and it fails. If that can't be changed, use a key pair.
+- Check: `python sf.py "select current_user(), current_role(), current_account()"`. `run_sql.py` and both apps use the same login.
+- Streamlit in Snowflake needs none of this: it uses the app's own session.
 
 ### Settings
 | Name | Default | Meaning |
@@ -283,6 +300,7 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 - Browser SSO can't work on a server (the login tab would open there): create a service user with a **key pair** and set
   `SNOWFLAKE_PRIVATE_KEY_FILE` (and `SNOWFLAKE_PRIVATE_KEY_PWD`) in `.env`. Everyone then sees what that user's role sees,
   so **My access** is off there (it would show the service user's access as each visitor's own).
+- Behind PrivateLink: the same `.privatelink` account value and private DNS on the server ([PrivateLink](#privatelink)).
 - With `HOST=0.0.0.0` the server answers this machine's names and IP addresses; for another name (a DNS alias, a proxy) add it to
   `ALLOWED_HOSTS`.
 - Prefer `SOURCE=objects` with the daily snapshot task: the service role then needs only `SELECT` on the `TBL_ACCESS_` tables.

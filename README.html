@@ -642,6 +642,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
         <li>Browser SSO by default: a tab opens on the machine running the app, so run it on your own machine (a shared server needs a key pair).</li>
         <li>Key pair instead: <code>SNOWFLAKE_PRIVATE_KEY_FILE</code> (+ <code>SNOWFLAKE_PRIVATE_KEY_PWD</code> if encrypted). No passwords.</li>
         <li>One login per new connection; an admin's <code>ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE;</code> lets one login last ~4 h.</li>
+        <li id="privatelink">PrivateLink (or Private Service Connect): <code>SNOWFLAKE_ACCOUNT=&lt;org&gt;-&lt;account&gt;.privatelink</code> (<code>regionless-privatelink-account-url</code>, or <code>privatelink-account-url</code>, from <code>SELECT SYSTEM$GET_PRIVATELINK_CONFIG();</code> without <code>.snowflakecomputing.com</code>). The machine must resolve that host and the OCSP host (<code>privatelink-ocsp-url</code>) to the private endpoint. Key pair works as is; browser SSO needs the SAML integration on the PrivateLink URLs (<code>SAML2_SNOWFLAKE_ACS_URL</code>, <code>SAML2_SNOWFLAKE_ISSUER_URL</code>). Not needed inside Snowflake.</li>
       </ul>
     </div>
   </div>
