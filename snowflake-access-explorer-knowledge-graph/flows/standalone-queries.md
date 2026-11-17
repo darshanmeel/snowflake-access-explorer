@@ -26,15 +26,15 @@ sequenceDiagram
 ## Steps
 
 1. Pick a question: user's roles (`1_user_roles.sql`), user's access (`2_user_access.sql`), role's access (`3_role_access.sql`), who holds a role (`4_role_holders.sql`), who reaches an object (`5_object_users.sql`) (access_queries/README.md:19-29).
-2. Choose how to run (access_queries/README.md:42-84):
-   - Worksheet: change the `SET` lines, run the whole file (access_queries/1_user_roles.sql:17-19).
+2. Choose how to run (access_queries/README.md:42-87):
+   - Worksheet: change the `SET` lines, run the whole file (access_queries/1_user_roles.sql:19-21).
    - Snowflake Notebook `access_examples.ipynb`: run `inputs` (access_queries/access_examples.ipynb:25-44), then path A (`create_1`..`create_5`, then `a_*`) or path B (`b_*`) (access_queries/access_examples.ipynb:59-610, 634-1280).
-3. Path A only: run `functions.sql` once in a schema you may create functions in; each function body is the file's query (access_queries/functions.sql:4-13). If the CREATE fails, use path B.
-4. The query reads only `GRANTS_TO_ROLES` (access_queries/1_user_roles.sql:32), `GRANTS_TO_USERS` (access_queries/1_user_roles.sql:49) and `USERS` (access_queries/1_user_roles.sql:53), active rows only.
-5. Walk: role links from `EDGE` (access_queries/1_user_roles.sql:41-46), start roles plus PUBLIC (access_queries/1_user_roles.sql:57-60), recursive `WALK` (access_queries/1_user_roles.sql:61-69); upwards files use `UP` and `MEMBER` (access_queries/4_role_holders.sql:56-68).
-6. Result: shortest path per answer and `WAYS` (access_queries/1_user_roles.sql:70-74); for privileges the role rows are reduced first (`ROLES`, access_queries/2_user_access.sql:75-83).
+3. Path A only: run `functions.sql` once in a schema you may create functions in; each function body is the file's query (access_queries/functions.sql:4-15). If the CREATE fails, use path B.
+4. The query reads only `GRANTS_TO_ROLES` (access_queries/1_user_roles.sql:34), `GRANTS_TO_USERS` (access_queries/1_user_roles.sql:51) and `USERS` (access_queries/1_user_roles.sql:55), active rows only.
+5. Walk: role links from `EDGE` (access_queries/1_user_roles.sql:43-48), start roles plus PUBLIC (access_queries/1_user_roles.sql:59-62), recursive `WALK` (access_queries/1_user_roles.sql:63-71); upwards files use `UP` and `MEMBER` (access_queries/4_role_holders.sql:58-70).
+6. Result: shortest path per answer and `WAYS` (access_queries/1_user_roles.sql:72-76); for privileges the role rows are reduced first (`ROLES`, access_queries/2_user_access.sql:77-85).
 
-## Example rows (test data: `access.fake()` plus the extras of access_queries/test_queries.py:219-228, on DuckDB)
+## Example rows (test data: `access.fake()` plus the extras of access_queries/test_queries.py:219-244, on DuckDB)
 
 `1_user_roles.sql`, `USER_NAME = 'ANALYST_01'` (3 of 6 rows):
 
@@ -58,7 +58,7 @@ sequenceDiagram
 | ANALYST_01 | USER | SELECT | TABLE | T_SALES_CORE_READ | 3 | ANALYST_01 > GRP_ANALYSTS > F_ANALYST > T_SALES_CORE_READ | 2 |
 | ADMIN_01 | USER | SELECT | TABLE | T_SALES_CORE_READ | 4 | ADMIN_01 > PUBLIC > T_SALES_MART_READ > F_ANALYST > T_SALES_CORE_READ | 1 |
 
-The README's example output uses `access.fake()` alone, so its WAYS can be lower (access_queries/README.md:122-147).
+The README's example output uses `access.fake()` alone, so its WAYS can be lower (access_queries/README.md:125-150).
 
 ## Checks
 
@@ -66,4 +66,4 @@ The README's example output uses `access.fake()` alone, so its WAYS can be lower
 
 ## Unclear
 
-- Latency (up to about 2 hours) and missing future grants are ACCOUNT_USAGE limits, stated in access_queries/README.md:85-120, not tested.
+- Latency (up to about 2 hours) and missing future grants are ACCOUNT_USAGE limits, stated in access_queries/README.md:88-123, not tested.

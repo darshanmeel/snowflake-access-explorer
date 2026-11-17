@@ -18,23 +18,23 @@ flowchart LR
 - `python access_queries/test_queries.py` green: query files and `functions.sql` equal to `access.py`, notebook current — CLAUDE.md:115 (modules/access-queries.md > Test).
 - `test_pages` (app.py hands every page to the component) and `test_server.py` (what each page answers) — CLAUDE.md:116-117.
 - Test packages: `requirements-dev.txt` — CLAUDE.md:113, requirements-dev.txt:1-4.
-- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:448.
+- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:455.
 
 ## test_access.py
-- Forces `FAKE=1` — test_access.py:12.
-- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:1835-1854.
-- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1118-1136.
-- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:474, CLAUDE.md:22; `test_pages` — test_access.py:665; `test_sis_upload` — test_access.py:698; `test_counted` — test_access.py:888; `test_readme_rules` (README.html generated parts up to date) — test_access.py:1796-1806.
+- Forces `FAKE=1` — test_access.py:13.
+- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:2006-2025.
+- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1235-1253.
+- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:571, CLAUDE.md:22; `test_pages` — test_access.py:782; `test_sis_upload` — test_access.py:815; `test_counted` — test_access.py:1005; `test_readme_rules` (README.html generated parts up to date) — test_access.py:1933-1943.
 
 ## test_sql.py
-- Forces `FAKE=1`, imports `duckdb` (so requirements-web.txt / dev needed) — test_sql.py:12-14, requirements-dev.txt:3.
-- Loads a data set into DuckDB as the `TBL_ACCESS_` tables — test_sql.py:32, test_sql.py:72.
-- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:470-474.
-- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:663.
+- Forces `FAKE=1`, imports `duckdb` (so requirements-web.txt / dev needed) — test_sql.py:13-15, requirements-dev.txt:3.
+- Loads a data set into DuckDB as the `TBL_ACCESS_` tables — test_sql.py:33, test_sql.py:82.
+- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:676-680.
+- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:907.
 
 ## test_server.py
-- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:824-829.
-- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:328, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:267; `test_same_site` — test_server.py:423; `test_bundles_fresh` — test_server.py:463.
+- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:941-946.
+- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:330, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:267; `test_same_site` — test_server.py:448; `test_bundles_fresh` — test_server.py:488.
 - Uses FastAPI TestClient via httpx — requirements-dev.txt:4.
 
 ## Web (vitest)

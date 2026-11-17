@@ -22,7 +22,7 @@ flowchart LR
 
 | Piece | Does | path:line |
 |---|---|---|
-| `SHARED_ONLY`, `viewPage(page, mine)` | Pages about everyone (review, flow, changes; `server.SHARED_ONLY`): switching to My access on one of them opens access; home stays (used by `setView`, web/src/App.tsx:281) | web/src/App.tsx:27-30 |
+| `SHARED_ONLY`, `viewPage(page, mine)` | Pages about everyone (review, flow, changes; `server.SHARED_ONLY`): switching to My access on one of them opens access; home stays (used by `setView`, web/src/App.tsx:282) | web/src/App.tsx:27-30 |
 | `PAGES`, `LABEL`, `GROUPS` | 17 page keys, labels, nav groups (answers / admin / detail) | web/src/App.tsx:31-38 |
 | `redirect(page, params)` | Old links to new screens; unknown page -> home | web/src/App.tsx:41-95 |
 | `read()` / `url()` / `useLoc()` | URL `?page=&data=mine&...` <-> location; pushState / popstate | web/src/App.tsx:110-133 |
@@ -30,14 +30,15 @@ flowchart LR
 | `Find` | Top-bar search -> `GET /api/find` | web/src/App.tsx:145-154 |
 | `Side`, `DataInfo`, `DataTime` | Side nav, "Data from" box (SQL copy), refresh | web/src/App.tsx:169-254 |
 | `VIEWS` | page key -> page component | web/src/App.tsx:256-261 |
-| `App` | `GET /api/meta` (web/src/App.tsx:272), `POST mine/load` (web/src/App.tsx:293), `POST reload` page / load (web/src/App.tsx:294-295), rebuild (web/src/App.tsx:297) | web/src/App.tsx:264 |
-| SQL behind this page | State `sql` (web/src/App.tsx:269); top-bar "SQL" button (web/src/App.tsx:330) and a right-click on `<main>` (Shift + right-click keeps the browser menu) open `SqlPanel` for the current page and params (web/src/App.tsx:338-339); flow in [flows/show-sql.md](../flows/show-sql.md) | web/src/App.tsx:330-339 |
+| `App` | `GET /api/meta` (web/src/App.tsx:272), `POST mine/load` (web/src/App.tsx:294), `POST reload` page / load (web/src/App.tsx:295-296), rebuild (web/src/App.tsx:298) | web/src/App.tsx:264 |
+| SQL behind this page | State `sql` (web/src/App.tsx:269); top-bar "SQL" button (web/src/App.tsx:331) and a right-click on `<main>` (Shift + right-click keeps the browser menu) open `SqlPanel` for the current page and params (web/src/App.tsx:339-340); flow in [flows/show-sql.md](../flows/show-sql.md) | web/src/App.tsx:331-340 |
 
 ## API client (web/src/api/client.ts)
 
 - `get()` caches every GET by URL until `clearCache()` (web/src/api/client.ts:9-14, web/src/api/client.ts:35-44).
-- `setTransport` swaps fetch for the Streamlit bridge (web/src/api/client.ts:23-26); `post()` (web/src/api/client.ts:46-53); `download()` saves a server CSV (web/src/api/client.ts:56-64).
-- `useApi(path, p)` refetches on param change or cache clear; `path=null` skips (web/src/api/client.ts:69-86).
+- `setTransport` swaps fetch for the Streamlit bridge (web/src/api/client.ts:23-26); `post()` (web/src/api/client.ts:52-59); `download()` saves a server CSV (web/src/api/client.ts:62-70).
+- `peek(path, p)`: GET without the cache for polling; `null` under the Streamlit transport, where Python answers only once done (web/src/api/client.ts:46-50).
+- `useApi(path, p)` refetches on param change or cache clear; `path=null` skips (web/src/api/client.ts:75-92).
 - Errors -> `ApiFail(status, detail, message)` from the JSON body (web/src/api/client.ts:5-7, web/src/api/client.ts:28-33).
 
 ## Pages (ui_screen nodes)
@@ -56,14 +57,14 @@ flowchart LR
 | request | pages/Request.tsx | Suggested role, approver, SQL / Terraform / ticket text | request (Request.tsx:18) |
 | sensitive | pages/Sensitive.tsx (+ Catalog.tsx) | Sensitive objects, masked columns, readers; catalog tab (client CSV) | sensitive (Sensitive.tsx:37) |
 | flow | pages/Flow.tsx | People -> granted role -> sensitive object | flow (Flow.tsx:16) |
-| rules | pages/Rules.tsx (+ Risks.tsx) | Risks & fixes, heat grid, rule list, plan panel | rules (Rules.tsx:13), rules.csv (Rules.tsx:21), whatif (Risks.tsx:219) |
+| rules | pages/Rules.tsx (+ Risks.tsx) | Risks & fixes, heat grid, rule list, plan panel; rules that did not run (`skipped`, HIERARCHY=0 / ACTIVITY=0) show their reason, not "passes" (`skipNote`, Risks.tsx:86-90, Rules.tsx:59, Rules.tsx:75); Home says its counts leave them out (Home.tsx:154) | rules (Rules.tsx:13), rules.csv (Rules.tsx:21), whatif (Risks.tsx:219) |
 | review | pages/Review.tsx (+ ReviewGrid.tsx) | Review rows + CSV; grid with Keep / Revoke | review (Review.tsx:31), review.csv (Review.tsx:34), grid (ReviewGrid.tsx:19) |
 | whatif | pages/Whatif.tsx (+ Plan.tsx) | Simulated revokes, who loses what, change plan | list (Whatif.tsx:55), whatif.csv (Whatif.tsx:189), whatif (Whatif.tsx:199, Plan.tsx:135), list (Plan.tsx:22-23) |
 | usage | pages/Usage.tsx | Granted vs used (ACCESS_HISTORY) | usage (Usage.tsx:25) |
 | changes | pages/Changes.tsx | Gained / lost access, new / fixed findings, watched questions | changes (Changes.tsx:32), list (Changes.tsx:115), check / who (Changes.tsx:156) |
 
-- pages/Activity.tsx: `ActivityTab` (Activity.tsx:54-58) and `UseLine` (Activity.tsx:72-86) call `/api/activity`; `Activity` (Activity.tsx:104-166) is one access log of stacked sections (the CLAUDE.md exception to the tabs rule), shaped by `what`, inside a `SectionSql` context holding `section_sql` (Activity.tsx:89, Activity.tsx:132); each section is a `Sec` card whose `sql` key hands that section's query to `Card` (Activity.tsx:92-94), shown inline by the card's `</>` corner mark: `Warehouse` (Activity.tsx:246-272) for a warehouse; tiles (`Tiles`, Activity.tsx:176-199) or `AppViewers` for a Streamlit app (Activity.tsx:213-243); `OffHours` (sql=off, Activity.tsx:275-322); `Touched` heat grid (sql=touched, Activity.tsx:362-402; `Heat`, Activity.tsx:326-352); `Hours` (sql=hours; hours shifted by the business-time slider at the top of the tab; overview pages only) (Activity.tsx:406-452); `Detail` (objects busiest first, sql=objects, then `ObjTiles`, `ByClient` (sql=client), `Kinds` (sql=kinds), `Matrix` (sql=matrix), `ByType` (sql=type_day) and `ByDay` (sql=by_day), Activity.tsx:455-506); `ByType` (DML / Read / DDL per day in their own colours, with `DayPanel` (Activity.tsx:624-642): busiest or pinned day, average a day, active days, Activity.tsx:646-674); `ByDay` (queries per day by user, role, client, statement, R / W / DDL or object kind, or any combination via `combine`, top 4 and Other, with a day-by-day table view, Activity.tsx:678-710); `WhoUsed` (sql=who, Activity.tsx:713-756); `Sensitive` (Activity.tsx:792-819); `Paths` (Activity.tsx:770-789); DDL changes (sql=ddl, Activity.tsx:154-158); `QuerySql` (Activity.tsx:822-831); `Checks` (Activity.tsx:833-846). Exports `offOf` (off-hours of a row after the UTC offset, Activity.tsx:25-26) and `combine` (rows summed per combination of dimensions, Activity.tsx:608-621). Types `ActivityPage` etc. (web/src/api/types.ts:1217-1261). Flow: [flows/activity-tab.md](../flows/activity-tab.md).
-- pages/Object.tsx: `AppNote` banner on a Streamlit app's Who has access page: viewers see the owner role's data; who sees sensitive data they can't read (Object.tsx:68, Object.tsx:83-98; `WhoPage.app`, web/src/api/types.ts:986-987).
+- pages/Activity.tsx: `ActivityTab` (Activity.tsx:54-58) and `UseLine` (Activity.tsx:72-86) call `/api/activity`; `Activity` (Activity.tsx:104-166) is one access log of stacked sections (the CLAUDE.md exception to the tabs rule), shaped by `what`, inside a `SectionSql` context holding `section_sql` (Activity.tsx:89, Activity.tsx:132); each section is a `Sec` card whose `sql` key hands that section's query to `Card` (Activity.tsx:92-94), shown inline by the card's `</>` corner mark: `Warehouse` (Activity.tsx:246-272) for a warehouse; tiles (`Tiles`, Activity.tsx:176-199) or `AppViewers` for a Streamlit app (Activity.tsx:213-243); `OffHours` (sql=off, Activity.tsx:275-322); `Touched` heat grid (sql=touched, Activity.tsx:362-402; `Heat`, Activity.tsx:326-352); `Hours` (sql=hours; hours shifted by the business-time slider at the top of the tab; overview pages only) (Activity.tsx:406-452); `Detail` (objects busiest first, sql=objects, then `ObjTiles`, `ByClient` (sql=client), `Kinds` (sql=kinds), `Matrix` (sql=matrix), `ByType` (sql=type_day) and `ByDay` (sql=by_day), Activity.tsx:455-506); `ByType` (DML / Read / DDL per day in their own colours, with `DayPanel` (Activity.tsx:624-642): busiest or pinned day, average a day, active days, Activity.tsx:646-674); `ByDay` (queries per day by user, role, client, statement, R / W / DDL or object kind, or any combination via `combine`, top 4 and Other, with a day-by-day table view, Activity.tsx:678-710); `WhoUsed` (sql=who, Activity.tsx:713-756); `Sensitive` (Activity.tsx:792-819); `Paths` (Activity.tsx:770-789); DDL changes (sql=ddl, Activity.tsx:154-158); `QuerySql` (Activity.tsx:822-831); `Checks` (Activity.tsx:833-846). Exports `offOf` (off-hours of a row after the UTC offset, Activity.tsx:25-26) and `combine` (rows summed per combination of dimensions, Activity.tsx:608-621). Types `ActivityPage` etc. (web/src/api/types.ts:1226-1270). Flow: [flows/activity-tab.md](../flows/activity-tab.md).
+- pages/Object.tsx: `AppNote` banner on a Streamlit app's Who has access page: viewers see the owner role's data; who sees sensitive data they can't read (Object.tsx:68, Object.tsx:83-98; `WhoPage.app`, web/src/api/types.ts:995-996).
 - Pickers search the server: `Pick` -> `GET /api/list?q=&limit=50` (web/src/pages/common.tsx:54-71).
 - SQL to run yourself (pages/common.tsx): `SqlBox` shows one query in a `<pre>` with a Copy SQL button (`copyText`) (web/src/pages/common.tsx:98-107); `SqlPanel` asks `GET /api/sql` with the page and its params, closes on Escape, and lists every query as a `SqlBox` (web/src/pages/common.tsx:111-127); styles `.ae-sqlpanel`, `.ae-sqlbox` (web/src/app.css:732-738). Never runs the SQL.
 - Page helpers without UI: changeplan.ts, history.ts, signoff.ts, verdict.ts, who.ts, screens.ts (imports at web/src/pages/Plan.tsx:9, web/src/pages/Changes.tsx:11, web/src/pages/Catalog.tsx:7, web/src/pages/Check.tsx:10, web/src/pages/Object.tsx:15, web/src/pages/Map.tsx:9).
@@ -83,6 +84,7 @@ flowchart LR
 | Grantees.tsx | Who can reach an object, grouped by chain |
 | PrivilegeTabs.tsx / tabs.ts | Privileges split in tabs |
 | kit.tsx / visuals.tsx / parts.tsx | Small SVG / CSS pieces on `--ae-*` tokens; `DayStack` queries-per-day stacked HTML bars with readout, pin, key focus, weekend shading and lanes (visuals.tsx:72-152) |
+| LoadLog.tsx | While a load or rebuild runs (`busy` / `m.loading`, App.tsx:347), polls `GET /api/progress` about once a second through `peek` and lists the server's lines with their seconds in an `aria-live` log, newest in view; nothing before the first answer; inside Streamlit `peek` gives null and it stops (LoadLog.tsx:1-31, styles.css:295-300; test loadlog.test.tsx) |
 | Combo.tsx | Search box for Find and pickers; `close(keep)` sets the text kept after a pick or blur (Combo.tsx:39, 50, 60) |
 | codegen.ts | SQL / Terraform / ticket text. `sqlOf()` only joins the server's `sql` of each change (`access.with_sql` / `revoke`) under the note's comments: the server is the one SQL writer (codegen.ts:68-71); Terraform uses `roleDb` / `toDb` from the server, never a dot in the name; names quoted as `access.sql_name` / `sql_obj` (`name`, `obj`), HCL strings escaped (`h`), every line of a multi-line note commented (codegen.ts:18-26) |
 | theme.ts | Copy of ui.py TOKENS |
@@ -92,9 +94,9 @@ flowchart LR
 | | `npm run build` -> web/dist | `npm run build:st` -> web/dist-st |
 |---|---|---|
 | Entry | web/index.html -> src/main.tsx | web/st/index.html -> src/st/main.tsx (web/st/index.html:10) |
-| Served by | server.py `spa` (server.py:26, server.py:2427-2437) | st_react.py component (st_react.py:12-13) |
+| Served by | server.py `spa` (server.py:26, server.py:2474-2484) | st_react.py component (st_react.py:13-14) |
 | Assets | inline limit 4096, ELK own chunk | no inlined assets, one JS (inlineDynamicImports) + one CSS (web/vite.config.ts:37-39) |
-| Stamp | src-hash.txt of web/src (web/vite.config.ts:10-20), checked by `test_bundles_fresh` (test_server.py:463) | same |
+| Stamp | src-hash.txt of web/src (web/vite.config.ts:10-20), checked by `test_bundles_fresh` (test_server.py:488) | same |
 
 - Both bundles are committed; rebuild both after any web/src change (CLAUDE.md "Two versions, one logic").
 - Streamlit protocol: componentReady / setComponentValue / setFrameHeight (web/src/st/protocol.ts:5-7); requests sent as the component value (web/src/st/main.tsx:22).

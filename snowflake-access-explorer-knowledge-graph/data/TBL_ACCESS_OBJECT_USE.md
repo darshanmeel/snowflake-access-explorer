@@ -3,11 +3,12 @@ Objects each user read or wrote per ISO week, aggregated from ACCESS_HISTORY (qu
 
 ```mermaid
 flowchart LR
-  A[ACCOUNT_USAGE.ACCESS_HISTORY 180 days] --> Q[use_sql aggregation] --> T[(TBL_ACCESS_OBJECT_USE)]
+  P[(last OK run's weeks but its last two)] -->|copied| T
+  A[ACCOUNT_USAGE.ACCESS_HISTORY from that Monday] --> Q[use_sql since / history_sql PART USE] --> T[(TBL_ACCESS_OBJECT_USE)]
   T --> O[access.build: obj_use] --> U[used_on]
 ```
 
-DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROUP BY 1, 2, 3, 4`, `sql/1_setup.sql:518`).
+DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROUP BY 1, 2, 3, 4`, `sql/1_setup.sql:668`).
 
 | Column | Type | Meaning | Line |
 |---|---|---|---|
@@ -19,7 +20,8 @@ DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROU
 | QUERIES | NUMBER | distinct queries | 104 |
 | LAST_USED | TIMESTAMP_LTZ | last query | 105 |
 
-- SQL: `sql/1_setup.sql:504-518`, same text as `access.py:925-939`; window `USE_DAYS=180` (`sql/1_setup.sql:177`, `access.py:62`).
-- Written: `sql/1_setup.sql:521-534`; not readable -> UNAVAILABLE, no fallback, run stays OK.
-- Read as optional table (None if missing): `access.py:61,411-415`; lookups `access.py:1097-1098`; `used_on` `access.py:4757-4768`.
-- `mine()` returns no OBJECT_USE key (`access.py:625-627`); `build` tolerates it (`access.py:1097`).
+- SQL: `sql/1_setup.sql:652-668`, same text as `access.py:1146-1162`; window `USE_DAYS=180` (`sql/1_setup.sql:208`, `access.py:66`).
+- Written: `sql/1_setup.sql:671-695`: the last OK run's weeks are copied but its last two, then ACCESS_HISTORY is read from that Monday, normally inside the one `INSERT ALL` of `history()` shared with TBL_ACCESS_ACTIVITY (`sql/1_setup.sql:792-822`); not readable -> UNAVAILABLE, `ACTIVITY=0` -> SKIPPED, no fallback, run stays OK.
+- `DATA_RETENTION_TIME_IN_DAYS = 0` (`sql/1_setup.sql:106`, `sql/1_setup.sql:154-155`).
+- Read as optional table (None if missing): `access.py:65` (`OPTIONAL`), `access.py:487`, `access.py:496-504` (a failed read of an OPTIONAL table becomes None); lookups `access.py:1359-1360`; `used_on` `access.py:5043-5054`.
+- `mine()` returns no OBJECT_USE key (`access.py:751-753`); `build` tolerates it (`access.py:1359`).

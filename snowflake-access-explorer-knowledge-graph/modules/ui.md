@@ -5,7 +5,7 @@ Presentation constants only, mostly sent to the React app in `/api/meta`; no dat
 
 ```mermaid
 flowchart LR
-  UI[ui.py] -->|tokens, help, type_icon, pclass| M[server.meta<br/>server.py:2168-2169]
+  UI[ui.py] -->|tokens, help, type_icon, pclass| M[server.meta<br/>server.py:2208-2209]
   M --> W[web/src/components/theme.ts<br/>copy of TOKENS]
   UI -->|psort| S[server.py privilege order]
 ```

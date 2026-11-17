@@ -18,9 +18,9 @@ flowchart TD
 - Imports `access` first so `.env` values (WEB_PORT, ...) apply — run.py:16.
 - Args: `app` = `web|streamlit`, default `APP` env or `web` — run.py:29; `--fake` — run.py:30; `--port` — run.py:31; `--direct` / `--objects` set `SOURCE` — run.py:32-33.
 - `--fake` sets `FAKE=1` in the child env — run.py:36-37; source flag sets `SOURCE` — run.py:38-38.
-- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:26-42; `__main__` runs it — run.py:45-47; `test_run_address` — test_server.py:764.
+- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:26-42; `__main__` runs it — run.py:45-47; `test_run_address` — test_server.py:789.
 - Streamlit: `streamlit run app.py`, port `--port` or `STREAMLIT_PORT` (8501), `--server.address` = `HOST` (default 127.0.0.1, so Streamlit no longer listens on every address and `mine_off()` sees the same `HOST`), headless, usage stats off — run.py:33-38; a plain `streamlit run app.py` also binds 127.0.0.1 via `.streamlit/config.toml:4-5`.
-- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:39-41; server listens on `HOST` (default 127.0.0.1) — server.py:2452.
+- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:39-41; server listens on `HOST` (default 127.0.0.1) — server.py:2499.
 - Child runs in the repo folder; exit code passed through — run.py:47.
 
 ## Modes (README "Run each mode")
@@ -36,23 +36,23 @@ flowchart TD
 | Other port | `python run.py --port 9000` | :9000 | README.md:115 |
 | DuckDB copy off / on for fake | `DUCKDB=0` / `DUCKDB=1` | `.cache\access.duckdb` | README.md:116 |
 | Memory only | `CACHE_HOURS=0` | | README.md:117 |
-| Shared server | `HOST=0.0.0.0` + key pair (behind PrivateLink: `SNOWFLAKE_HOST` + private DNS, README.md:308) | `http://<server>:8000` | README.md:118 |
+| Shared server | `HOST=0.0.0.0` + key pair (behind PrivateLink: `SNOWFLAKE_HOST` + private DNS, README.md:314) | `http://<server>:8000` | README.md:118 |
 
 ## Source selection
-- `cache.config()`: `SOURCE` or `objects` when `ACCESS_SNAPSHOT` set, else `direct` — cache.py:27-32; anything else is an error — cache.py:34; objects without a location errors — cache.py:39.
+- `cache.config()`: `SOURCE` or `objects` when `ACCESS_SNAPSHOT` set, else `direct` — cache.py:35-40; anything else is an error — cache.py:42; objects without a location errors — cache.py:47.
 - Direct vs objects comparison — README.md:128-133.
-- `FAKE=1` forces not-inside — access.py:32; `INSIDE=0|1` explicit — access.py:34-35.
+- `FAKE=1` forces not-inside — access.py:36; `INSIDE=0|1` explicit — access.py:38-39.
 
 ## Data freshness
-- Kept 24 h in memory and in `.cache/`; previous run kept as `<name>.prev.pkl` for What changed — README.md:140; `TTL = 24 * 3600` — cache.py:22; `CACHE_HOURS` — cache.py:21.
+- Kept 24 h in memory and in `.cache/`; previous run kept as `<name>.prev.pkl` for What changed — README.md:142; `TTL = 24 * 3600` — cache.py:22; `CACHE_HOURS` — cache.py:21.
 - Direct mode reads on "Load shared data"; `SHOW_THREADS` (16) when ACCOUNT_USAGE is not readable — README.md:135-138.
 
 ## Gates on a local run
-- My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:133-151.
-- Local API answers only its host names (`allowed_hosts()`) — server.py:2322-2326, README.md:260.
-- Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink the account stays `<org>-<account>` and `SNOWFLAKE_HOST` (the private host, passed as `host=`) plus private DNS are added — sf.py:28-29, README.md:181-196, processes/privatelink-login.md.
-- `CSV=0` in `.env` (or `sis/.env`): every CSV button hidden, CSV downloads 403 `csv_off` — server.py:2308-2317, README.md:213.
-- First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:257.
+- My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:165-183.
+- Local API answers only its host names (`allowed_hosts()`) — server.py:2364-2368, README.md:266.
+- Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink the account stays `<org>-<account>` and `SNOWFLAKE_HOST` (the private host, passed as `host=`) plus private DNS are added — sf.py:28-29, README.md:183-198, processes/privatelink-login.md.
+- `CSV=0` in `.env` (or `sis/.env`): every CSV button hidden, CSV downloads 403 `csv_off` — server.py:2350-2359, README.md:219.
+- First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:263.
 
 ## Dev mode (inferred)
 - `npm run dev` serves the page from Vite and proxies `/api` to `server.py` on `ACCESS_API_PORT` (default 8000) — web/vite.config.ts:41-42, web/package.json:7. Not described in README (inferred: developer-only).

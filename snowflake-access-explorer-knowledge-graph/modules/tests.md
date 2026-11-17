@@ -18,69 +18,79 @@ flowchart LR
 
 | Command | What | path:line |
 |---|---|---|
-| `python test_access.py` | Every `test_` function, `test_cache` first, `a.build(a.fake())` before each, all failures reported, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (skips test_perf, test_pages, test_live there) | test_access.py:1835-1854 |
-| `python test_server.py` | Every `test_` in file order; FAKE=1 set at import; TestClient on `server.make_app()` | test_server.py:7-14, test_server.py:824-830 |
-| `python test_sql.py` | 11 tests in a fixed list | test_sql.py:470-474 |
+| `python test_access.py` | Every `test_` function, `test_cache` first, `a.build(a.fake())` before each, all failures reported, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (skips test_perf, test_pages, test_live there) | test_access.py:2006-2025 |
+| `python test_server.py` | Every `test_` in file order; FAKE=1 set at import; TestClient on `server.make_app()` | test_server.py:7-14, test_server.py:941-947 |
+| `python test_sql.py` | 14 tests in a fixed list | test_sql.py:676-680 |
 | `npm test` (in web/) | `vitest run` | web/package.json:11 |
 | Rule check | `python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists 1-29 | CLAUDE.md "Verify before saying done" |
 
 - Test packages: requirements.txt + requirements-web.txt (duckdb for test_sql) + httpx for TestClient (requirements-dev.txt:1-4).
-- `PERF=0` / `PERF_SCALE` control test_perf (CLAUDE.md; budgets docstring test_access.py:1134).
+- `PERF=0` / `PERF_SCALE` control test_perf (CLAUDE.md; budgets docstring test_access.py:1251).
 
 ## test_access.py groups
 
 | Group | Tests | Lines |
 |---|---|---|
-| Walks and depth | test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_cycle, test_namespaces | test_access.py:28-158, 747, 1255 |
-| Admin paths / BFS starts | test_admin_paths (a cap per admin role: ACCOUNTADMIN not hidden behind SYSADMIN paths), test_shortest_default (a default role's longer start joins at its own hop) | test_access.py:959, 950 |
-| SQL text | test_with_sql (Compare / Request / Granted vs used SQL and role kinds come from access.py) | test_access.py:1809 |
-| Sensitive data | test_sensitive, test_data_view, test_has_lacks | test_access.py:187, 1199, 1211 |
-| Users / rules | test_users, test_rule18_stable, test_rules, test_fixes_clear, test_readonly, test_public, test_new_rules, test_review_logic, test_kinds | test_access.py:235-320, 739-844 |
-| Loaders / Snowflake fakes | test_demo_db, test_each, test_live, test_live_inside, test_db_roles, test_setup_errors | test_access.py:340-665, 705 |
-| Cache | test_cache, test_duckdb | test_access.py:1404, 528 |
-| Streamlit | test_pages (every `server.PAGES` key through app.py), test_sis_upload (4_streamlit.sql uploads every import, plus environment.yml, sis/.env, web/dist-st and `access_queries/*.sql` for the SQL panel, test_access.py:716) | test_access.py:665, 690 |
-| Fast / counted walks, perf | test_cap, test_fast, test_counted, test_built, test_builtin, test_perf (on `big()` test_access.py:1081) | test_access.py:811-978, 1091 |
-| What if | test_whatif_indirect, test_whatif | test_access.py:1005, 982 |
-| Graph inputs | test_group_graph, test_graph_inputs, test_summary | test_access.py:1196, 1324, 1343 |
-| Screens | test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow, test_usage_changes, test_review_fixes | test_access.py:1465-1770 |
-| Activity | test_activity: Activity tab numbers, rules 24-28 (one finding each), UTC hours and weekend add up (test_access.py:1721-1724), activity_sql UTC / HOURS / StreamlitName (test_access.py:1726-1727), scope view and query_sql (test_access.py:1728-1730), warehouse_use (test_access.py:1731-1732), grant path behind a use, sensitive view, tag text, app_exposure and rule 29 with its What-if fix (test_access.py:1747-1755), owner role -> no rule 24, no ACTIVITY -> not available, incremental window (`activity_start`) | test_access.py:1709-1767 |
-| Docs | test_readme_rules (docs/make_readme.py rule table) | test_access.py:1796 |
-| Settings | test_tag_settings: env `QUERY_TAG=it's`, `STREAMLIT_APP=ST_OTHER` in a child process -> `a.QUERY_TAG` / `a.APP_ST` take them, activity_sql has `<> 'it''s'` and `NOT LIKE '%.ST_OTHER%'` (a quote cannot end the string) | test_access.py:1827 |
+| Walks and depth | test_user, test_depth_limit, test_can, test_role, test_object, test_depth, test_classes, test_cycle, test_namespaces | test_access.py:29-159, 747, 1255 |
+| Admin paths / BFS starts | test_admin_paths (a cap per admin role: ACCOUNTADMIN not hidden behind SYSADMIN paths), test_shortest_default (a default role's longer start joins at its own hop) | test_access.py:1076, 950 |
+| SQL text | test_with_sql (Compare / Request / Granted vs used SQL and role kinds come from access.py) | test_access.py:1946 |
+| Sensitive data | test_sensitive, test_data_view, test_has_lacks | test_access.py:188, 1199, 1211 |
+| Users / rules | test_users, test_rule18_stable, test_rules, test_fixes_clear, test_readonly, test_public, test_new_rules, test_review_logic, test_kinds | test_access.py:236-321, 739-844 |
+| Loaders / Snowflake fakes | test_demo_db, test_each, test_live, test_live_inside, test_db_roles, test_setup_errors | test_access.py:341-782, 705 |
+| Cache | test_cache, test_duckdb | test_access.py:1521, 528 |
+| Streamlit | test_pages (every `server.PAGES` key through app.py), test_sis_upload (4_streamlit.sql uploads every import, plus environment.yml, sis/.env, web/dist-st and `access_queries/*.sql` for the SQL panel, test_access.py:833) | test_access.py:782, 690 |
+| Fast / counted walks, perf | test_cap, test_fast, test_counted, test_built, test_builtin, test_perf (on `big()` test_access.py:1198) | test_access.py:928-1095, 1091 |
+| What if | test_whatif_indirect, test_whatif | test_access.py:1122, 982 |
+| Graph inputs | test_group_graph, test_graph_inputs, test_summary | test_access.py:1313, 1324, 1343 |
+| Screens | test_ladder, test_who_has, test_nearest, test_graph_see_compare, test_plan, test_review_catalog_flow, test_usage_changes, test_review_fixes | test_access.py:1582-1907 |
+| Activity | test_activity: Activity tab numbers, rules 24-28 (one finding each), UTC hours and weekend add up (test_access.py:1838-1841), activity_sql UTC / HOURS / StreamlitName (test_access.py:1850-1851), scope view and query_sql (test_access.py:1852-1854), warehouse_use (test_access.py:1868-1869), grant path behind a use, sensitive view, tag text, app_exposure and rule 29 with its What-if fix (test_access.py:1884-1892), owner role -> no rule 24, no ACTIVITY -> not available, incremental window (`activity_start`) | test_access.py:1826-1904 |
+| Settings switches | test_switches: `HIERARCHY=0` skips `a.WALKS` (listed by `skipped_rules`, rule 6 still runs, no "who loses access", pages still walk); `ACTIVITY=0` reads no OBJECT_USE / ACTIVITY table (objects) and probes no ACCESS_HISTORY / SESSIONS (direct), sources SKIPPED, rules 24-28 skipped, cache key `_noactivity`; defaults skip nothing | test_access.py:485-529 |
+| Timeouts | test_timeout: `sf.rows` sends `STATEMENT_TIMEOUT_IN_SECONDS` and a timeout says the step and the doubled setting in minutes; the CALL goes without the limit and its timeout names the warehouse / account limit; `timeout_hint` for 120 s, 90 s and no number | test_access.py:532-568 |
+| Progress lines | test_progress: `live()` gives the same data with and without `a.progress`, a `SHOW GRANTS TO / OF ROLE: n of m` line, `done in`; `snapshot()` with `WORKERS=3` names `[wN] TBL_ACCESS_GRANT: rows in s`; a timeout in a wave gets its own line with the longer setting; `each()` outside `progress()` reports nothing | test_access.py:1972-2003 |
+| Docs | test_readme_rules (docs/make_readme.py rule table) | test_access.py:1933 |
+| Settings | test_tag_settings: env `QUERY_TAG=it's`, `STREAMLIT_APP=ST_OTHER` in a child process -> `a.QUERY_TAG` / `a.APP_ST` take them, activity_sql has `<> 'it''s'` and `NOT LIKE '%.ST_OTHER%'` (a quote cannot end the string) | test_access.py:1964 |
 
 ## test_server.py groups
 
 | Group | Tests | Lines |
 |---|---|---|
-| Page shapes | test_frame, test_user, test_role, test_object, test_check, test_request, test_sensitive_rules_review, test_who, test_access_home, test_graph_see_compare, test_risks_plan, test_review_grid_catalog_flow, test_usage_changes, test_activity (Activity tab of an object, a person, a role, `as=`, untagged table, rules 24-28 in area Activity; test_server.py:634-654), test_sql_page (GET /api/sql per page and `section_sql`; test_server.py:657-682), test_every_page, test_review_fixes, test_step3, test_step4 | test_server.py:50-203, 459-753 |
+| Page shapes | test_frame, test_user, test_role, test_object, test_check, test_request, test_sensitive_rules_review, test_who, test_access_home, test_graph_see_compare, test_risks_plan, test_review_grid_catalog_flow, test_usage_changes, test_activity (Activity tab of an object, a person, a role, `as=`, untagged table, rules 24-28 in area Activity; test_server.py:659-679), test_sql_page (GET /api/sql per page and `section_sql`; test_server.py:682-707), test_every_page, test_review_fixes, test_step3, test_step4 | test_server.py:50-203, 459-753 |
 | Loading / My access | test_load_on_click, test_mine, test_mine_shared_server, test_rebuild_outcome | test_server.py:218, 235, 395, 376 |
-| Read-only | test_read_only: every statement via `sf.rows` must match READ_ONLY, plus the SP_ACCESS_SNAPSHOT CALL | test_server.py:328-373 |
-| Security / errors | test_same_site, test_error_text | test_server.py:423, 452 |
-| CSV off | test_csv_off: `CSV=0` -> `meta.csv` false and every `server.CSV` route 403 `csv_off`, through FastAPI and `st_react.answer` | test_server.py:810-821 |
+| Read-only | test_read_only: every statement via `sf.rows` must match READ_ONLY, plus the SP_ACCESS_SNAPSHOT CALL | test_server.py:330-373 |
+| Security / errors | test_same_site, test_error_text | test_server.py:448, 452 |
+| CSV off | test_csv_off: `CSV=0` -> `meta.csv` false and every `server.CSV` route 403 `csv_off`, through FastAPI and `st_react.answer` | test_server.py:838-849 |
+| Same run | test_same_run: objects mode, a reload while the latest OK run is the one held keeps the held data after one `TBL_ACCESS_RUN` query (also memory only); a new run reads every table again | test_server.py:376-398 |
+| Switches / timeout | test_switches: `HIERARCHY=0` -> `/api/rules` `skipped` = WALKS, not passing, same through `st_react.answer`, Home `skipped` too; a rebuild CALL past the timeout answers 503 with the warehouse / account limit message | test_server.py:852-887 |
+| Progress | test_progress: `GET /api/progress` idle `{running:false, view:null, lines:[]}` (also `st_react.answer`); during a direct load `running`, view shared, lines from `Connected`; asking never starts a load; host and Sec-Fetch checks; `st_react.shown` draws the lines into a box from a thread | test_server.py:890-938 |
 | Versions | test_spa, test_streamlit_bridge, test_bundles_fresh (src-hash.txt) | test_server.py:262, 267, 463 |
 | Graph schema | `graph_ok` checks GRAPH / NODE / EDGE keys and lane bounds | test_server.py:22-25, 40-47 |
 | Other | test_whatif, test_review_check | test_server.py:285, 479 |
-| Review 2026-11-10 | test_run_address (`run.command` passes HOST as `--server.address`), test_cache_lock (`cache.get` memory hit does not wait; `drop` under the lock), test_csv_formula (CSV cells that would run as Excel formulas get `'`) | test_server.py:764, 772, 802 |
+| Review 2026-11-10 | test_run_address (`run.command` passes HOST as `--server.address`), test_cache_lock (`cache.get` memory hit does not wait; `drop` under the lock), test_csv_formula (CSV cells that would run as Excel formulas get `'`) | test_server.py:789, 772, 802 |
 
 ## test_sql.py
 
 | Test | Checks | Line |
 |---|---|---|
-| test_demo | TFs equal access.py on fake data | test_sql.py:135 |
-| test_cap_and_admin | 60-role chain with cycle stops at 50 hops like MAX_HOPS | test_sql.py:151 |
-| test_edges | Ownership in TF_CAN, same-named user and role, duplicates, `' > '` in names | test_sql.py:177 |
-| test_findings | SP_ACCESS_FINDINGS | test_sql.py:228 |
-| test_streams | streams step -> TBL_ACCESS_STREAM; error -> UNAVAILABLE | test_sql.py:259 |
-| test_object_use | same ACCESS_HISTORY SELECT as access.use_sql | test_sql.py:282 |
-| test_activity | SP activity step: same SELECT as access.activity_sql; `&QUERY_TAG` / `&STREAMLIT_APP` replaced by a.QUERY_TAG / a.APP_ST before the body runs (test_sql.py:306-307); same ACTIVITY_DAYS, QUERY_TAG and APP_ST; no ACCESS_HISTORY -> UNAVAILABLE, no rows | test_sql.py:298 |
-| test_show_fallback | SHOW fallback equals access.live() | test_sql.py:315 |
-| test_run_overlap | two SP_ACCESS_SNAPSHOT CALLs at once: one goes on, the other SKIPPED; an OK run keeps the rows of a run still running (started over an hour ago) | test_sql.py:385 |
-| test_usage_extra | QUERY_HISTORY failing leaves the run OK, usage UNAVAILABLE | test_sql.py:427 |
-| test_same_queries | each ACCOUNT_USAGE SELECT of `access.live()` has the same text in SP_ACCESS_SNAPSHOT (aliases, RUN_ID and the INSERT aside) | test_sql.py:447 |
+| test_demo | TFs equal access.py on fake data | test_sql.py:146 |
+| test_cap_and_admin | 60-role chain with cycle stops at 50 hops like MAX_HOPS | test_sql.py:162 |
+| test_edges | Ownership in TF_CAN, same-named user and role, duplicates, `' > '` in names | test_sql.py:188 |
+| test_findings | SP_ACCESS_FINDINGS | test_sql.py:239 |
+| test_streams | streams step -> TBL_ACCESS_STREAM; error -> UNAVAILABLE | test_sql.py:270 |
+| test_object_use | same ACCESS_HISTORY SELECT as access.use_sql | test_sql.py:293 |
+| test_activity | SP activity step: same SELECT as access.activity_sql; `&QUERY_TAG` / `&STREAMLIT_APP` replaced by a.QUERY_TAG / a.APP_ST before the body runs (test_sql.py:318-319); same ACTIVITY_DAYS, QUERY_TAG and APP_ST; no ACCESS_HISTORY -> UNAVAILABLE, no rows | test_sql.py:310 |
+| test_show_fallback | SHOW fallback equals access.live() | test_sql.py:328 |
+| test_run_overlap | two SP_ACCESS_SNAPSHOT CALLs at once: one goes on, the other SKIPPED; an OK run keeps the rows of a run still running (started over an hour ago) | test_sql.py:406 |
+| test_usage_extra | QUERY_HISTORY failing leaves the run OK, usage UNAVAILABLE | test_sql.py:459 |
+| test_same_queries | each ACCOUNT_USAGE SELECT of `access.live()` has the same text in SP_ACCESS_SNAPSHOT (aliases, RUN_ID and the INSERT aside) | test_sql.py:553 |
+| test_object_use_weeks | SP object use copies all but the last two weeks and reads from that Monday (and `access.use_start` in Direct mode): the same rows as a read of every week | test_sql.py:492 |
+| test_proc_settings | SP settings: every statement carries `STATEMENT_TIMEOUT` (`TIMED`), no bare `.collect()`; `later()` runs at most `WORKERS` heavy jobs; `ACTIVITY=0` -> object use and activity SKIPPED, run OK; a timeout that fails the run names its step | test_sql.py:576 |
+| test_history_shared | `access.history_sql` text is in the SP; one INSERT ALL fills object use and activity; when it fails each step runs its own INSERT; a skipped or failing step leaves the other alone | test_sql.py:633 |
 
 ## vitest (web/src)
 
 | File | describe blocks (line) |
 |---|---|
+| components/loadlog.test.tsx | LoadLog (8): nothing before the first answer, about one poll a second while active, lines with seconds in an `aria-live` log, gone and no more polls when inactive; inside Streamlit (`poll` gives null) one poll only |
 | components/codegen.test.ts | code output (10), home and links (56) |
 | components/review1110.test.tsx | table helpers (21), copy-paste code (39), races, pickers and keys (58): collator sort, CSV formula cells, quoting / HCL escaping / multi-line reasons, Home Enter race, picker user vs role of one name, sortable header buttons, `viewPage`, Streamlit frame accepts only its parent's messages |
 | components/helpers.test.ts | categorising (15), graphs (39), folding and opening (91), routes (134), helpers (146) |

@@ -18,7 +18,7 @@ DDL: `sql/1_setup.sql:36-41`. Grain: run x user x role.
 | ROLE_NAME | VARCHAR(255) | granted role | 39 |
 | GRANTED_BY | VARCHAR(255) | granting role | 40 |
 
-- Written: `sql/1_setup.sql:248-249` (ACCOUNT_USAGE, `DELETED_ON IS NULL`) or `:229,235,255` (SHOW, `granted_to = USER`; kept only when both SHOWs of the role were read).
-- Source recorded together with grants: `sql/1_setup.sql:250,257`.
-- Read: `access.py:1077,938-940`; `sql/1_setup.sql:686-688,583-584` (TF_ACCESS_OF), `:651-655` (TF_WHO_CAN; PUBLIC added for every user).
-- My access: ROLE_NAME from `SHOW GRANTS TO USER`, else APPLICABLE_ROLES, else CURRENT_AVAILABLE_ROLES (`access.py:588-597,551`).
+- Written: `sql/1_setup.sql:380-381` (ACCOUNT_USAGE, `DELETED_ON IS NULL`) or `:229,235,255` (SHOW, `granted_to = USER`; kept only when both SHOWs of the role were read).
+- Source recorded together with grants: `sql/1_setup.sql:382,257`.
+- Read: `access.py:1339,938-940`; `sql/1_setup.sql:930-932,583-584` (TF_ACCESS_OF), `:651-655` (TF_WHO_CAN; PUBLIC added for every user).
+- My access: ROLE_NAME from `SHOW GRANTS TO USER`, else APPLICABLE_ROLES, else CURRENT_AVAILABLE_ROLES (`access.py:718-727,551`).

@@ -17,18 +17,20 @@ sequenceDiagram
     S->>S: session -> load_shared(ask=True)
     S-->>W: meta.error = shared_not_loaded (409, no copy yet)
     U->>W: click "Load shared data"
-    W->>S: POST /api/reload {what:"load"}
-    S->>C: get(KEY, read_shared)
-    C->>C: last(KEY): ACTIVITY rows kept from the read before
-    C->>A: with_query(a.live(q, old))
+    W->>S: POST /api/reload {what:"load"} (thread pool; LoadLog polls /api/progress)
+    S->>C: get(KEY, tracked(KEY, "shared", read_shared))
+    C->>C: last(KEY): ACTIVITY and OBJECT_USE rows kept from the read before
+    C->>A: with_query(a.live(q, old, old_use))
     A->>F: USE SECONDARY ROLES ALL (may fail), CURRENT_TIMESTAMP, CURRENT_DATABASE
-    loop per data set
-        A->>F: SELECT 1 FROM ACCOUNT_USAGE.<view> LIMIT 1
-        alt readable
-            A->>SF: ACCOUNT_USAGE query
-        else refused
-            A->>SF: SHOW ... / INFORMATION_SCHEMA fallback (SHOW_THREADS parallel)
-        end
+    par wave 1: every probe at once (each)
+        A->>F: SELECT 1 FROM ACCOUNT_USAGE.<view> LIMIT 1 (ACCESS_HISTORY, SESSIONS only when ACTIVITY is on)
+    end
+    par wave 2: every readable view, WORKERS at a time
+        A->>SF: GRANTS_TO_ROLES, GRANTS_TO_USERS, USERS, QUERY_HISTORY usage, TAG_REFERENCES, POLICY_REFERENCES
+        A->>SF: history_sql: one ACCESS_HISTORY scan for object use + activity (only the weeks / days old lacks)
+    end
+    opt a view not readable
+        A->>SF: SHOW ... / INFORMATION_SCHEMA fallback waves (SHOW_THREADS at a time), SHOW DATABASES once
     end
     A-->>C: dict(run RUN_ID="direct", GRANT, USER_ROLE, USER, USAGE, TAG, POLICY, STREAM, OBJECT_USE, ACTIVITY)
     C-->>S: stored in memory + .cache/<key>.pkl
@@ -37,21 +39,22 @@ sequenceDiagram
 
 ## Steps
 
-1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:31-36; `DIRECT = SOURCE == "direct"` — server.py:22.
-2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` — server.py:98-102, cache.py:136-143.
-3. `meta()` catches it and sends `error` so the UI shows the load card — server.py:2170-2186; React: `needShared` and the "Load shared data" button — web/src/App.tsx:309, web/src/App.tsx:359, `post("reload", {what:"load"})` — web/src/App.tsx:295.
-4. `reload({"what":"load"})` -> `load_shared()` — server.py:2228-2230; refresh `{what:"page"}` / `rebuild` drop the cache and read again at once in direct mode — server.py:2224-2234.
-5. `read_shared()` -> `with_query(lambda q: a.live(q, old))` with `old` = the ACTIVITY rows of `cache.last(KEY)` (memory, `.pkl`, `.old.pkl`, `.prev.pkl`) — server.py:89-95, cache.py:93-104, server.py:73-86.
-6. `live(query)` setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` (may be refused -> `None`) — access.py:658-667.
-7. Grants: ACCOUNT_USAGE `GRANTS_TO_ROLES` / `GRANTS_TO_USERS` if both readable (database role grantee qualified as `DB.ROLE`), else `SHOW ROLES` + `SHOW GRANTS TO/OF ROLE` per role and database roles per database; skipped roles land in notes — access.py:674-719.
-8. Future grants: SHOW only; `SHOW DATABASES` refused -> `future_grants=UNAVAILABLE` — access.py:721-749.
-9. Users: ACCOUNT_USAGE.USERS else `SHOW USERS` — access.py:751-767. Usage: QUERY_HISTORY 30 days else INFORMATION_SCHEMA 7 days — access.py:769-799.
-10. Tags / policies: ACCOUNT_USAGE else per-object INFORMATION_SCHEMA up to `TAG_FALLBACK_MAX` (300) — access.py:819-892, access.py:631.
-11. Object use: ACCESS_HISTORY only (`use_sql`), else empty + note — access.py:894-902, access.py:925-939. Activity: ACCESS_HISTORY + QUERY_HISTORY (+ SESSIONS for the client), only the days `old` lacks (`activity_start`), the app's QUERY_TAG left out — access.py:904-913, access.py:942-995 ([flows/activity-read.md](activity-read.md)). Streams: `SHOW STREAMS IN ACCOUNT` — access.py:915-921.
-12. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)` — access.py:922.
-13. Parallel SHOW statements: `each()` runs `SHOW_THREADS` (16) at a time, returning exceptions instead of failing — access.py:511-525.
-14. Kept with `cache.get` (memory + file); SQL copy gets run id `direct-<timestamp>` — cache.py:217-218.
-15. Must stay in step with `SP_ACCESS_SNAPSHOT` (rule in docstring) — access.py:634-637; checked by `test_live` — test_access.py:474 and `test_live_inside` (SHOW, USE SECONDARY ROLES, CURRENT_DATABASE refused) — test_access.py:518.
+1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:39-44; `DIRECT = SOURCE == "direct"` — server.py:22.
+2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` — server.py:130-137, cache.py:146-153.
+3. `meta()` catches it and sends `error` so the UI shows the load card; the React app posts `reload {what:"load"}` — server.py:2193, web/src/App.tsx:296.
+4. `reload({"what":"load"})` runs in a thread pool (so `/api/progress` answers) -> `load_shared()` -> `cache.get(KEY, tracked(...))` — server.py:2436, server.py:137, server.py:92-108 ([flows/load-progress.md](load-progress.md)).
+5. `read_shared()` -> `a.live(q, old, old_use)` with the ACTIVITY and OBJECT_USE rows of `cache.last(KEY)` — server.py:121-127, cache.py:102-113.
+6. Setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` — access.py:787-796.
+7. Wave 1: every `SELECT 1 FROM ACCOUNT_USAGE.<view> LIMIT 1` probe at once through `each()`; `ACTIVITY=0` probes neither ACCESS_HISTORY nor SESSIONS and notes `skipped (ACTIVITY=0)` — access.py:820-826.
+8. Wave 2: the SQL of every readable view (grants with `DB.ROLE` for database role grantees, users, usage grouped before the JSON of secondary roles is parsed, tags, policies) sent `WORKERS` (3) at a time, each named in the progress lines — access.py:827-873, access.py:895.
+9. Object use and activity: `use_start` / `activity_start` keep the weeks / days the last read has; both reads share one ACCESS_HISTORY scan (`history_sql`, split by `history_rows`); if it fails they are read apart, after a timeout both fail — access.py:875-904 ([logic/activity.md](../logic/activity.md)).
+10. `take(k)` raises a wave-2 failure at the step it belongs to — access.py:906-909.
+11. Grants fallback: `SHOW ROLES`, `SHOW GRANTS TO / OF ROLE` per role, database roles per database (SHOW_THREADS waves); `SHOW DATABASES` read once and reused for future grants — access.py:911-951, access.py:953-982.
+12. Users, usage, tags, policies: the wave-2 rows, else SHOW USERS / INFORMATION_SCHEMA (usage 7 days); per-object tag and policy fallbacks up to `TAG_FALLBACK_MAX` (300) as `many()` waves, policies described once each — access.py:984-1109.
+13. Object use / activity notes `ACCOUNT_USAGE`, `SKIPPED` (ACTIVITY=0) or `UNAVAILABLE`; streams: `SHOW STREAMS IN ACCOUNT` — access.py:1111-1141.
+14. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)`; says `done in N s` — access.py:1142-1143.
+15. Kept with `cache.get` (memory + file) under the key's own lock; SQL copy gets run id `direct-<timestamp>` — cache.py:116-143.
+16. Must stay in step with `SP_ACCESS_SNAPSHOT` (docstring) — access.py:767-771; checked by `test_live`, `test_live_inside`, `test_switches`, `test_progress` — test_access.py:571, test_access.py:485, test_access.py:1972.
 
 ## Example (mock query that answers everything empty; no Snowflake)
 
@@ -61,12 +64,12 @@ Statements `a.live(q)` sends when every ACCOUNT_USAGE view is readable:
 USE SECONDARY ROLES ALL
 SELECT CURRENT_TIMESTAMP() AS T
 SELECT CURRENT_DATABASE() AS D
-SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES LIMIT 1
-SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS LIMIT 1
-SELECT IFF(GRANTED_TO = 'DATABASE_ROLE', ...) ... FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES ...
-SELECT GRANTEE_NAME AS USER_NAME, ROLE AS ROLE_NAME, GRANTED_BY FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS ...
+SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.<view> LIMIT 1   x 8, at once (GRANTS_TO_ROLES ... ACCESS_HISTORY, SESSIONS)
+SELECT IFF(GRANTED_TO = 'DATABASE_ROLE', ...) ... FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES ...   } WORKERS
+SELECT GRANTEE_NAME AS USER_NAME, ROLE AS ROLE_NAME, GRANTED_BY FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS ...  } at a
+... USERS, QUERY_HISTORY usage, TAG_REFERENCES, POLICY_REFERENCES                                               } time
+WITH A0 AS (SELECT ... FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ...) SELECT 'USE' ... UNION ALL SELECT 'ACT' ...
 SHOW DATABASES
-SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.USERS LIMIT 1   ... (USERS, QUERY_HISTORY, TAG_REFERENCES, POLICY_REFERENCES, ACCESS_HISTORY)
 SHOW STREAMS IN ACCOUNT
 ```
 

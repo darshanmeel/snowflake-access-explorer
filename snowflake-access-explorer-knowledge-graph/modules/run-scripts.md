@@ -20,7 +20,7 @@ flowchart LR
 | `import access` loads `.env` (so ports can live there) | run.py:16 |
 | Args: `app` (web / streamlit, default `APP` or web), `--fake`, `--port`, `--direct`, `--objects` | run.py:28-34 |
 | `--fake` -> `FAKE=1`; source -> `SOURCE` | run.py:35-35 |
-| `command(argv, env)` builds `(cmd, env)` (testable; `test_run_address`, test_server.py:764) | run.py:26-42 |
+| `command(argv, env)` builds `(cmd, env)` (testable; `test_run_address`, test_server.py:789) | run.py:26-42 |
 | streamlit: `python -m streamlit run app.py --server.port N --server.address $HOST --server.headless true` (HOST default 127.0.0.1) | run.py:33-38 |
 | web: `WEB_PORT` then `python server.py` | run.py:39-41 |
 | `__main__`: runs the command as a subprocess in the repo folder | run.py:45-47 |
@@ -31,24 +31,25 @@ flowchart LR
 |---|---|---|
 | `SETTINGS` / `NAMES` | settings.local.sql if present, else settings.sql; `!define NAME=value` lines of settings.sql first, then settings.local.sql over them, so a name the local file lacks (e.g. `STREAMLIT_APP`, `QUERY_TAG`) keeps the template value | run_sql.py:17-19 |
 | `HERE` name | absolute repo path for `PUT 'file://&HERE/...'` | run_sql.py:20 |
-| `check_names()` | Stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG` (pasted into the procedure's Python and `$$` block), then if any name is still `<...>` | run_sql.py:23-31 |
-| `fill(sql)` | Replaces `&NAME`; unknown name stops | run_sql.py:34-39 |
-| `missing_files(text)` | PUT sources that do not exist (checked before any statement) | run_sql.py:42-44 |
-| `statements(text)` | `(name, flags, sql)` per `-- name:` block | run_sql.py:47-50 |
-| `main(path)` | `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, warehouse, database; runs each; `(may fail)` -> SKIPPED; `_verify.sql` -> OK / MISSING / WRONG, then VERIFIED or NOT VERIFIED | run_sql.py:53-83 |
+| `check_names()` | Stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG` (pasted into the procedure's Python and `$$` block), on `STATEMENT_TIMEOUT` / `WORKERS` / `ACTIVITY` that are not whole numbers (`int("&NAME")` in the procedure, run_sql.py:29-31), then if any name is still `<...>` | run_sql.py:23-34 |
+| `fill(sql)` | Replaces `&NAME`; unknown name stops | run_sql.py:37-42 |
+| `missing_files(text)` | PUT sources that do not exist (checked before any statement) | run_sql.py:45-47 |
+| `statements(text)` | `(name, flags, sql)` per `-- name:` block | run_sql.py:50-53 |
+| `main(path)` | `USE ROLE &DEV_ROLE`, `USE SECONDARY ROLES NONE`, warehouse, database; runs each; `(may fail)` -> SKIPPED; `_verify.sql` -> OK / MISSING / WRONG, then VERIFIED or NOT VERIFIED | run_sql.py:56-89 |
 
-- Example: `python run_sql.py sql/1_setup_verify.sql` prints `OK: TABLES (11 rows)` when all 11 TBL_ACCESS_ tables exist (format at run_sql.py:76-77, expectation at sql/1_setup_verify.sql:4).
-- `(expect N)` compares the row count (run_sql.py:66, run_sql.py:76).
+- Example: `python run_sql.py sql/1_setup_verify.sql` prints `OK: TABLES (11 rows)` when all 11 TBL_ACCESS_ tables exist (format at run_sql.py:82-83, expectation at sql/1_setup_verify.sql:4).
+- `(expect N)` compares the row count (run_sql.py:69, run_sql.py:82).
+- Each statement but a CALL carries `.env`'s `STATEMENT_TIMEOUT` (`sf.limit`); a timeout stops with `<name>: <timeout_hint> in .env` (run_sql.py:71-76).
 
 ## sf.py CLI
 
-- `python sf.py "select current_user()"` or `python sf.py -f query.sql`; prints tab-separated rows (sf.py:68-73). See sf.md.
+- `python sf.py "select current_user()"` or `python sf.py -f query.sql`; prints tab-separated rows (sf.py:83-88). See sf.md.
 
 ## docs/make_readme.py
 
 - Fills README.html between `<!--map:NAME-->` markers: overview, flow, rules (docs/make_readme.py:1-4).
 - Imports access.py for rule titles and severities (docs/make_readme.py:12); areas from `server.RULE_INFO` (docs/make_readme.py:4).
-- `rules()` (docs/make_readme.py:125), `inject()` (docs/make_readme.py:142); checked by `test_readme_rules` (test_access.py:1796).
+- `rules()` (docs/make_readme.py:125), `inject()` (docs/make_readme.py:142); checked by `test_readme_rules` (test_access.py:1933).
 
 ## Other root files (not scripts)
 

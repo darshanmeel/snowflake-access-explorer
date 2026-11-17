@@ -33,19 +33,19 @@ sequenceDiagram
 
 ## Steps
 
-1. Keeping the previous one: on a fresh read `cache.get` calls `keep_prev(f, new)` before writing — cache.py:122-131; `keep_prev` moves the current file (or the `.old.pkl` set aside by `drop`) to `.prev.pkl` only if its run differs (`run_of` = RUN_ID + FINISHED_AT) — cache.py:67-81; `drop` -> `.old.pkl` — cache.py:146-154.
-2. `cache.prev(key)`: `(data, mtime)` of `.prev.pkl`, or None when memory only / inside Snowflake / none yet — cache.py:84-90.
+1. Keeping the previous one: on a fresh read `cache.get` calls `keep_prev(f, new)` before writing — cache.py:131-140; `keep_prev` moves the current file (or the `.old.pkl` set aside by `drop`) to `.prev.pkl` only if its run differs (`run_of` = RUN_ID + FINISHED_AT) — cache.py:76-90; `drop` -> `.old.pkl` — cache.py:156-166.
+2. `cache.prev(key)`: `(data, mtime)` of `.prev.pkl`, or None when memory only / inside Snowflake / none yet — cache.py:93-99.
 3. UI fetch: `useApi("changes", {view, subject})` — web/src/pages/Changes.tsx:32.
-4. `changes_page`: mine view -> reason; fake -> `a.fake_previous()`; else `cache.prev(KEY)` (skipped inside); no previous -> reason text (inside / none yet / CACHE_HOURS=0) — server.py:1721-1738.
-5. Diff cached per previous run: `a.cached(("diff", cache.run_of(prev)), lambda: a.diff(prev))` — server.py:1739; `cached` clears on rebuild — access.py:1118-1122.
-6. `facts()` per data set: per-user table/view access merged from each granted role's `table_reach` (no path listing), grants (admin role links left out), user_roles, findings, status, sensitive set, run — access.py:4855-4881.
-7. `loaded(prev)`: saves `state()`, builds prev, restores after — access.py:4823-4850.
-8. `diff(prev)`: gained/lost (user, object) pairs by level rank; new/fixed findings matched on (rule, grantee, user); `grant_events` for removed/added grants and user roles — access.py:4983-5006, access.py:4943.
-9. Events: gain/lose with edge, impact, sensitive, finding chips, link; user status changes (new, gone, dormant, disabled); remaining new/fixed findings as risk/fixed; sorted risk, gain, lose, user, fixed; ids assigned — access.py:5008-5059.
-10. Return: events, `event_counts`, new, fixed, severity per side, high, gained, lost, `sens_gained`, `runs.before/now` — access.py:5060-5065, access.py:4969-4973.
-11. Page filters events by `subject` (a node id), builds the summary text, normalises edge kinds — server.py:1740-1752.
-12. Demo previous: a week before `fake()`, `GRP_ANALYSTS` without `F_ANALYST`, the READ role without INSERT, `F_MARKETING` still with SALES.CORE write, `F_ANALYST` with an OWNER role, `ANALYST_02` not dormant — access.py:451-462.
-13. SQL copy keeps the read before as `TBL_ACCESS_<name>_PREV` in DuckDB (separate from the `.prev.pkl` the app uses) — cache.py:235-243.
+4. `changes_page`: mine view -> reason; fake -> `a.fake_previous()`; else `cache.prev(KEY)` (skipped inside); no previous -> reason text (inside / none yet / CACHE_HOURS=0) — server.py:1760-1777.
+5. Diff cached per previous run: `a.cached(("diff", cache.run_of(prev)), lambda: a.diff(prev))` — server.py:1778; `cached` clears on rebuild — access.py:1380-1384.
+6. `facts()` per data set: per-user table/view access merged from each granted role's `table_reach` (no path listing), grants (admin role links left out), user_roles, findings, status, sensitive set, run — access.py:5141-5167.
+7. `loaded(prev)`: saves `state()`, builds prev, restores after — access.py:5109-5136.
+8. `diff(prev)`: gained/lost (user, object) pairs by level rank; new/fixed findings matched on (rule, grantee, user); `grant_events` for removed/added grants and user roles — access.py:5269-5292, access.py:5229.
+9. Events: gain/lose with edge, impact, sensitive, finding chips, link; user status changes (new, gone, dormant, disabled); remaining new/fixed findings as risk/fixed; sorted risk, gain, lose, user, fixed; ids assigned — access.py:5294-5345.
+10. Return: events, `event_counts`, new, fixed, severity per side, high, gained, lost, `sens_gained`, `runs.before/now` — access.py:5346-5351, access.py:5255-5259.
+11. Page filters events by `subject` (a node id), builds the summary text, normalises edge kinds — server.py:1779-1791.
+12. Demo previous: a week before `fake()`, `GRP_ANALYSTS` without `F_ANALYST`, the READ role without INSERT, `F_MARKETING` still with SALES.CORE write, `F_ANALYST` with an OWNER role, `ANALYST_02` not dormant — access.py:460-471.
+13. SQL copy keeps the read before as `TBL_ACCESS_<name>_PREV` in DuckDB (separate from the `.prev.pkl` the app uses) — cache.py:256-264.
 
 ## Example (FAKE=1, `GET /api/changes?view=shared`)
 

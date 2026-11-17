@@ -18,10 +18,10 @@ flowchart LR
 ```
 
 ## Steps
-- Needs Python 3.10+ and git, no Node or npm (web app comes built) — README.md:73, README.md:142.
-- Create and activate venv: `python -m venv .venv; .venv\Scripts\activate` — README.md:146. Execution-policy hint if `activate` is blocked — README.md:149.
-- Install the web version: `pip install -r requirements-web.txt` — README.md:147.
-- Update later: `git pull; pip install -r requirements-web.txt` — README.md:150.
+- Needs Python 3.10+ and git, no Node or npm (web app comes built) — README.md:73, README.md:144.
+- Create and activate venv: `python -m venv .venv; .venv\Scripts\activate` — README.md:148. Execution-policy hint if `activate` is blocked — README.md:151.
+- Install the web version: `pip install -r requirements-web.txt` — README.md:149.
+- Update later: `git pull; pip install -r requirements-web.txt` — README.md:152.
 - Try without Snowflake: `python run.py --fake` — README.md:79.
 
 ## Requirements files
@@ -35,24 +35,24 @@ flowchart LR
 - duckdb is only in requirements-web.txt; without it the app runs and notes why there is no SQL copy — CLAUDE.md:14-15.
 
 ## `.env` (from `.env.example`, git-ignored)
-- Copy: `copy .env.example .env` — README.md:167. `.env` is git-ignored — .gitignore:3.
-- Rules: `NAME=value`, no comment after a value; empty/missing name falls back to env var; a shell variable wins — .env.example:1; loader uses `os.environ.setdefault` — access.py:19-26.
+- Copy: `copy .env.example .env` — README.md:169. `.env` is git-ignored — .gitignore:3.
+- Rules: `NAME=value`, no comment after a value; empty/missing name falls back to env var; a shell variable wins — .env.example:1; loader uses `os.environ.setdefault` — access.py:23-30.
 - Names only (values never stored here):
   - Source/data: `FAKE`, `SOURCE`, `ACCESS_SNAPSHOT`, `CACHE_HOURS` — .env.example:4-10.
   - Runner: `APP`, `WEB_PORT`, `STREAMLIT_PORT` — .env.example:12-14.
   - Shared server: `HOST` (comment), `ALLOWED_HOSTS`, `MY_ACCESS` — .env.example:15-18.
-  - Login: `SNOWFLAKE_ACCOUNT` (`<org>-<account>`, README.md:175), `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` — .env.example:21-27; `SNOWFLAKE_HOST` (commented; PrivateLink host) — .env.example:36-37; `CSV=0` (commented) turns every CSV export off — .env.example:38-39, server.py:2308-2309; read by sf.connect() — sf.py:27-36.
+  - Login: `SNOWFLAKE_ACCOUNT` (`<org>-<account>`, README.md:177), `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` — .env.example:21-27; `SNOWFLAKE_HOST` (commented; PrivateLink host) — .env.example:36-37; `CSV=0` (commented) turns every CSV export off — .env.example:38-39, server.py:2350-2351; read by sf.connect() — sf.py:27-36.
   - Secret refs: `SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD` (key pair; else browser SSO) — .env.example:28-29, sf.py:37-42.
   - Optional: `ROLE_PREFIXES` (and others listed in README.html > Settings) — .env.example:31-32.
 - Missing `SNOWFLAKE_ACCOUNT` outside Snowflake raises "copy .env.example to .env" — sf.py:23-25.
-- Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): keep the plain account, set `SNOWFLAKE_HOST=<org>-<account>.privatelink` + Snowflake domain, private DNS for that host and the OCSP host, key pair as is, browser SSO only with the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); check with `python sf.py "select current_user(), ..."` — README.md:179-196, README.html:645; sf.connect() passes it as `host=` — sf.py:29. Steps: processes/privatelink-login.md.
-- Settings table with defaults — README.md:198-217.
+- Private connectivity (AWS PrivateLink, Azure Private Link, GCP Private Service Connect): keep the plain account, set `SNOWFLAKE_HOST=<org>-<account>.privatelink` + Snowflake domain, private DNS for that host and the OCSP host, key pair as is, browser SSO only with the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); check with `python sf.py "select current_user(), ..."` — README.md:181-198, README.html:646; sf.connect() passes it as `host=` — sf.py:29. Steps: processes/privatelink-login.md.
+- Settings table with defaults — README.md:200-223.
 
 ## `settings.local.sql` (from `settings.sql`, git-ignored)
-- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:265.
+- Needed only for `run_sql.py` / SnowSQL (objects setup, SiS deploy) — settings.sql:1-2, README.md:271.
 - Names: `DB`, `SCHEMA`, `WH`, `DEV_ROLE`, `APP_ROLE`, `HERE` (SnowSQL only; run_sql.py fills it) — settings.sql:6-15, run_sql.py:20; `STREAMLIT_APP` (default ST_ACCESS_EXPLORER) and `QUERY_TAG` (default access-explorer), same values as in `.env` and `sis/.env` — settings.sql:16-19.
 - git-ignored — .gitignore:4.
-- run_sql.py falls back to settings.sql if no local file, and per name for names the local file lacks; it stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG`, then if any `<placeholder>` is left — run_sql.py:17-19, run_sql.py:23-31.
+- run_sql.py falls back to settings.sql if no local file, and per name for names the local file lacks; it stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG`, then if any `<placeholder>` is left — run_sql.py:17-19, run_sql.py:23-34.
 
 ## Local-only files
 - `.cache/` (git-ignored) holds the pickled data and `access.duckdb` — .gitignore:7, CLAUDE.md:9-15.
