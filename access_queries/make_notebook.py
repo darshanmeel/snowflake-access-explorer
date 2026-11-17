@@ -9,6 +9,38 @@ OUT = HERE / "access_examples.ipynb"
 FN = "AQ_DB.AQ_SCHEMA."
 
 
+# Path B reads the grant edges once (the edges cell) and every later cell reads them back by query id; the .sql files
+# keep their own reads, so each still runs alone
+EDGES = """-- Reads the grants to roles, the roles of users and the user names once; every path B cell below reads this
+-- result back (RESULT_SCAN of EDGES_ID) instead of reading ACCOUNT_USAGE again. Run it again after new grants;
+-- a result stays readable 24 hours.
+SELECT 'ROLE' AS SRC, R.PRIVILEGE, R.GRANTED_ON, R.NAME, R.TABLE_CATALOG, R.TABLE_SCHEMA, R.GRANTED_TO, R.GRANTEE_NAME,
+       NULL AS ROLE
+FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES R
+WHERE R.DELETED_ON IS NULL AND R.GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')
+UNION ALL
+SELECT 'USER', NULL, NULL, NULL, NULL, NULL, U.GRANTED_TO, U.GRANTEE_NAME, U.ROLE
+FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS U WHERE U.DELETED_ON IS NULL
+UNION ALL
+SELECT 'NAME', NULL, NULL, U.NAME, NULL, NULL, NULL, NULL, NULL
+FROM SNOWFLAKE.ACCOUNT_USAGE.USERS U WHERE U.DELETED_ON IS NULL;
+SET EDGES_ID = LAST_QUERY_ID();   -- right after the SELECT: the id of its result"""
+SHARED = [  # (the file's own read, the same rows from the edges cell)
+    ("FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES R\n    WHERE R.DELETED_ON IS NULL AND R.GRANTED_TO IN ('ROLE', 'DATABASE_ROLE'))",
+     "FROM TABLE(RESULT_SCAN($EDGES_ID)) R\n    WHERE R.SRC = 'ROLE')"),
+    ("FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS U WHERE U.DELETED_ON IS NULL)",
+     "FROM TABLE(RESULT_SCAN($EDGES_ID)) U WHERE U.SRC = 'USER')"),
+    ("FROM SNOWFLAKE.ACCOUNT_USAGE.USERS U WHERE U.DELETED_ON IS NULL)", "FROM TABLE(RESULT_SCAN($EDGES_ID)) U WHERE U.SRC = 'NAME')")]
+
+
+def shared(q):
+    """q reading the edges cell's result instead of ACCOUNT_USAGE; a read left over fails the build."""
+    for old, new in SHARED:
+        q = q.replace(old, new)
+    assert "ACCOUNT_USAGE" not in q, q
+    return q
+
+
 def body(name):
     t = (HERE / name).read_text(encoding="utf-8")
     return t[t.index("WITH RECURSIVE"):].rstrip().rstrip(";")
@@ -85,8 +117,9 @@ A function reads ACCOUNT_USAGE with its owner's rights: grant `USAGE` on it only
 
 B_NOTE = """## Path B: run the queries directly
 
-Same questions, no functions. Each query is the content of its file in `access_queries/`; the inputs cell supplies
-the `$NAME` values."""
+Same questions, no functions. Run the edges cell first: it reads the grants once, and each query below (the content
+of its file in `access_queries/`) reads that result back instead of `ACCOUNT_USAGE`. The inputs cell supplies the
+`$NAME` values."""
 
 
 def cell(kind, name, text):
@@ -105,9 +138,9 @@ def notebook():
         cells.append(cell("code", f"create_{i + 1}", m.group(0)))
     for name, title, call, _ in EXAMPLES:
         cells += [md(f"a_{name}_md", f"### A. {title}"), cell("code", f"a_{name}", call)]
-    cells.append(md("path_b", B_NOTE))
+    cells += [md("path_b", B_NOTE), cell("code", "b_edges", EDGES)]
     for name, title, _, query in EXAMPLES:
-        cells += [md(f"b_{name}_md", f"### B. {title}"), cell("code", f"b_{name}", query)]
+        cells += [md(f"b_{name}_md", f"### B. {title}"), cell("code", f"b_{name}", shared(query))]
     return {"cells": cells, "nbformat": 4, "nbformat_minor": 5,
             "metadata": {"kernelspec": {"display_name": "Streamlit Notebook", "name": "streamlit"}}}
 

@@ -3,14 +3,18 @@
 Data: fake() (layered RBAC model), snapshot() (the TBL_ACCESS_ tables filled by SP_ACCESS_SNAPSHOT, sql/1_setup.sql)
 or mine() (the logged-in user's own access, live). All return the same dict; build() turns it into the lookups below.
 """
+import contextvars
 import difflib
 import fnmatch
 import functools
+import itertools
 import json
 import os
 import pathlib
 import re
 import statistics
+import threading
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -63,6 +67,11 @@ USE_DAYS = int(os.environ.get("USE_DAYS", "180"))  # object usage read from ACCE
 ACTIVITY_DAYS = int(os.environ.get("ACTIVITY_DAYS", "60"))  # Activity tabs and rules 24-28: days of ACCESS_HISTORY
 QUERY_TAG = os.environ.get("QUERY_TAG", "access-explorer")  # set on the app's own connection; its queries are left out of the activity
 APP_ST = os.environ.get("STREAMLIT_APP", "ST_ACCESS_EXPLORER")  # the app inside Snowflake (sql/4_streamlit.sql): its queries carry this StreamlitName
+STATEMENT_TIMEOUT = int(os.environ.get("STATEMENT_TIMEOUT", "300"))  # seconds per statement the app runs, 0 = Snowflake's own
+WORKERS = max(1, int(os.environ.get("WORKERS", "3")))  # heavy reads at once on the one connection (SHOW_THREADS: the light ones)
+ACTIVITY_ON = os.environ.get("ACTIVITY", "1") != "0"  # 0: no ACCESS_HISTORY reads (object use, activity, rules 24-28)
+HIERARCHY_ON = os.environ.get("HIERARCHY", "1") != "0"  # 0: the rule checks that walk role paths are skipped (WALKS)
+SKIP_ACTIVITY, SKIP_HIERARCHY = "skipped (ACTIVITY=0)", "skipped (HIERARCHY=0)"
 # SESSIONS.CLIENT_APPLICATION_ID without its version: people type queries there (rule 25), and short labels for all
 INTERACTIVE = set(os.environ.get("INTERACTIVE_CLIENTS", "Snowflake UI,SnowSQL,Snowflake CLI").split(","))
 CLIENTS = {"Snowflake UI": "Snowsight", "PythonConnector": "Python", "JavaScript": "Node.js", "Go": "Go",
@@ -462,25 +471,45 @@ def fake_previous():
                     OBJECT_USE=fake_use("2026-10-26 07:00"), ACTIVITY=fake_activity("2026-10-26 07:00"))
 
 
-def snapshot(query, where, tries=3):
+def snapshot(query, where, tries=3, old=None):
     """The last OK run of the snapshot tables. query(sql) -> list of dicts; where = DB.SCHEMA of the tables. A run that
-    finishes while we read deletes the rows we read from, so the read starts again on the new run."""
+    finishes while we read deletes the rows we read from, so the read starts again on the new run. old: the data held
+    (cache.last), returned when it holds the same run in the shape this code reads: a finished run's rows never change,
+    but a pickle from older code may lack a table or still carry RUN_ID."""
     latest = lambda: query(f"SELECT RUN_ID, FINISHED_AT, SOURCES, NOTES FROM {where}.TBL_ACCESS_RUN WHERE STATUS = 'OK' "  # noqa: E731
                            "ORDER BY FINISHED_AT DESC LIMIT 1")
+    t0 = time.monotonic()
+    say(f"Reading the last OK run of {where}.TBL_ACCESS_RUN…")
     runs = latest()
     if not runs:
         raise RuntimeError(f"No OK run in {where}.TBL_ACCESS_RUN: CALL SP_ACCESS_SNAPSHOT() first (sql/2_snapshot.sql)")
     run = runs[0]
+    names = TABLES + OPTIONAL * ACTIVITY_ON
+    if (isinstance(old, dict) and (old.get("run") or {}).get("RUN_ID") == run["RUN_ID"]
+            and all(isinstance(old.get(t), list) and not (old[t] and "RUN_ID" in old[t][0]) for t in names)
+            and not (old.get("ACTIVITY") and isinstance(old["ACTIVITY"][0].get("HOURS"), str))):
+        say(f"Run {run['RUN_ID']} is the one held: nothing read again, done in {took(t0)}")
+        return old
     for k in ("SOURCES", "NOTES"):  # VARIANT comes back as JSON text
         run[k] = json.loads(run[k]) if isinstance(run[k], str) else run[k] or {}
-    d = {t: query(f"SELECT * FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'") for t in TABLES}
-    for t in OPTIONAL:  # a setup from before the table: the screen that needs it says so
-        try:
-            d[t] = query(f"SELECT * FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'")
-        except Exception:
-            d[t] = None
+    # EXCLUDE, not a column list: a table made by an older setup may lack a newer column; RUN_ID is the same on every row
+    sqls = [f"SELECT * EXCLUDE (RUN_ID) FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'" for t in names]
+    # to verify: concurrent cursors on the Streamlit in Snowflake session; WORKERS=1 reads one after another
+    say(f"Run {run['RUN_ID']} finished {run['FINISHED_AT']}: reading {len(names)} tables, {WORKERS} at a time")
+    got = each(query, sqls, WORKERS, [f"TBL_ACCESS_{t}" for t in names])
+    d = {}
+    for t, g in zip(names, got):
+        if isinstance(g, Exception) and t not in OPTIONAL:
+            raise g
+        d[t] = None if isinstance(g, Exception) else g  # an OPTIONAL table a setup from before it lacks: the screen says so
     if tries > 1 and latest()[0]["RUN_ID"] != run["RUN_ID"]:
-        return snapshot(query, where, tries - 1)
+        say("A newer run finished while reading: reading it")
+        return snapshot(query, where, tries - 1, old)
+    if not ACTIVITY_ON:  # the tables are not read: the screens and rules 24-28 say so
+        d |= {t: [] for t in OPTIONAL}
+        run["SOURCES"] = run["SOURCES"] | {"object_use": "SKIPPED", "activity": "SKIPPED"}
+        run["NOTES"] = run["NOTES"] | {"object_use": SKIP_ACTIVITY, "activity": SKIP_ACTIVITY}
+    say(f"done in {took(t0)}")
     return d | {"run": run, "ACTIVITY": hours_of(d["ACTIVITY"])}
 
 
@@ -498,6 +527,31 @@ def line(e):
     return " ".join(str(e).split())[:300]
 
 
+def timed_out(e):
+    """to verify: Snowflake cancels a statement past STATEMENT_TIMEOUT_IN_SECONDS with error 000630 "Statement reached
+    its statement or warehouse timeout of N second(s) and was canceled."."""
+    return getattr(e, "errno", None) == 630 or "reached its statement or warehouse timeout" in str(e)
+
+
+def timeout_hint(e=None, mine=True):
+    """What a timeout means and how to give the statement longer, in minutes. N comes from the error ("timeout of N
+    second(s)"): Snowflake applies the lowest limit, so one that is not the app's STATEMENT_TIMEOUT (mine: the app sent
+    it) comes from the warehouse or account, and a longer STATEMENT_TIMEOUT would not help."""
+    m = re.search(r"timeout of (\d+) second", str(e or ""))
+    n = int(m[1]) if m else STATEMENT_TIMEOUT
+    if mine and STATEMENT_TIMEOUT and n == STATEMENT_TIMEOUT:
+        return f"stopped after {n / 60:g} min (STATEMENT_TIMEOUT={n}); set STATEMENT_TIMEOUT={2 * n} for {2 * n / 60:g} minutes"
+    took = f"stopped after {n / 60:g} min" if m else "stopped"
+    return (f"{took} by the warehouse or account STATEMENT_TIMEOUT_IN_SECONDS, not the app's STATEMENT_TIMEOUT: "
+            "an admin can raise it")
+
+
+def step_name(sql):
+    """The step a statement belongs to, for an error: the first table it reads, else its first words."""
+    m = re.search(r"\bFROM\s+(?:TABLE\()?([\w.$\"]+)", sql, re.I)
+    return m[1] if m else " ".join(sql.split()[:3])
+
+
 def db_ident(name):
     """A database role's qualified name DB.ROLE (unquoted) -> "DB"."ROLE"."""
     return ".".join(ident(p) for p in name.split(".", 1))
@@ -508,21 +562,78 @@ def qualify(db, name):
     return name if name.startswith(db + ".") else f"{db}.{name}"
 
 
-SHOW_THREADS = int(os.environ.get("SHOW_THREADS", "16"))  # SHOW statements sent at once (one per role is slow in a row)
+SHOW_THREADS = int(os.environ.get("SHOW_THREADS", "16"))  # statements sent at once by each(): independent reads are slow one after another
 
 
-def each(query, sqls):
-    """query(sql) for every sql, SHOW_THREADS at a time, in order: the rows, or the exception of a failed one."""
-    def one(sql):
-        try:
-            return query(sql)
-        except Exception as e:
-            return e
-    sqls = list(sqls)
-    if len(sqls) < 2 or SHOW_THREADS < 2:
-        return [one(s) for s in sqls]
-    with ThreadPoolExecutor(min(SHOW_THREADS, len(sqls))) as pool:
-        return list(pool.map(one, sqls))
+_sink = contextvars.ContextVar("progress", default=None)  # where say() sends a line; each() hands it to its threads
+_worker = threading.local()  # n: the worker number of an each() thread
+
+
+@contextmanager
+def progress(fn):
+    """The reads inside report what they do as fn(line) ("SHOW GRANTS TO ROLE: 340 of 2,000"): server.py keeps the
+    lines for the page. A context variable, so two loads at once (shared and My access) keep their own lines."""
+    t = _sink.set(fn)
+    try:
+        yield
+    finally:
+        _sink.reset(t)
+
+
+def say(text):
+    fn = _sink.get()
+    if fn:
+        fn(text)
+
+
+def took(t0):
+    return f"{time.monotonic() - t0:.0f} s"
+
+
+def one(query, sql):
+    """query(sql): the rows, or the exception if it failed."""
+    try:
+        return query(sql)
+    except Exception as e:
+        return e
+
+
+def each(query, sqls, n=None, what=None):
+    """query(sql) for every sql, n at a time (SHOW_THREADS; WORKERS for heavy reads), in order: the rows, or the
+    exception of a failed one. what: progress lines (say), a label for a wave of like statements ("SHOW GRANTS TO
+    ROLE: 340 of 2,000", a timeout on its own line), or one name per statement for a few heavy reads ("[w2] USAGE ...")."""
+    sqls, n = list(sqls), n or SHOW_THREADS
+    names = what if isinstance(what, list) else None
+    done, lock, step = [0], threading.Lock(), max(1, len(sqls) // 10)
+
+    def run(i):
+        tag = f"[w{_worker.n}] " if names and getattr(_worker, "n", 0) else ""
+        if names:
+            say(f"{tag}{names[i]}…")
+        t0 = time.monotonic()
+        r = one(query, sqls[i])
+        if names:
+            say(f"{tag}{names[i]}: " + (f"failed: {line(r)}" if isinstance(r, Exception) else f"{len(r):,} rows in {took(t0)}"))
+        elif what:
+            with lock:
+                done[0] += 1
+                k = done[0]
+            if isinstance(r, Exception) and (isinstance(r, TimeoutError) or timed_out(r)):
+                say(f"{what}: {line(r)}")
+            if k % step == 0 or k == len(sqls):
+                say(f"{what}: {k:,} of {len(sqls):,}")
+        return r
+    if what and not names and sqls:
+        say(f"{what}: {len(sqls):,} statements, {min(n, len(sqls))} at a time")
+    if len(sqls) < 2 or n < 2:
+        return [run(i) for i in range(len(sqls))]
+    sink, ids = _sink.get(), itertools.count(1)
+
+    def start():  # a new thread has its own context: the caller's progress sink, and its worker number
+        _sink.set(sink)
+        _worker.n = next(ids)
+    with ThreadPoolExecutor(min(n, len(sqls)), initializer=start) as pool:
+        return list(pool.map(run, range(len(sqls))))
 
 
 def held_db_roles(grants):
@@ -545,12 +656,30 @@ def mine(query, db):
     """The logged-in user's own access, live, with their own rights. Writes nothing (no tables, no temp tables).
     query(sql) -> list of dicts; db: a database whose INFORMATION_SCHEMA the user can read
     (None: the current one, else one the user's roles can use)."""
-    me = query("SELECT CURRENT_USER() AS U")[0]["U"]
-    db = db or query("SELECT CURRENT_DATABASE() AS D")[0]["D"]
+    t0 = time.monotonic()
+    say("Reading your roles…")
     query("USE SECONDARY ROLES ALL")  # every granted role counts, as with DEFAULT_SECONDARY_ROLES = ('ALL')
-    roles = json.loads(query("SELECT CURRENT_AVAILABLE_ROLES() AS R")[0]["R"])  # granted + inherited, always readable
+    c = query("SELECT CURRENT_USER() AS U, CURRENT_DATABASE() AS D, CURRENT_AVAILABLE_ROLES() AS R")[0]
+    me, db, roles = c["U"], db or c["D"], json.loads(c["R"])  # roles: granted + inherited, always readable
+    who, agg = me.replace("'", "''"), """
+            SELECT 'ROLE' AS KIND, ROLE_NAME AS NAME, COUNT(*) AS QUERIES, MAX(START_TIME) AS LAST_USED FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 2
+            UNION ALL
+            SELECT 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 2"""
+    # one wave: the role SHOWs plus the user's own reads (ACCOUNT_USAGE usage: 30 days, needs IMPORTED PRIVILEGES)
+    wave = each(query, [f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [
+        f"SHOW GRANTS TO USER {ident(me)}", f"DESC USER {ident(me)}",
+        f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM {AU}.QUERY_HISTORY
+                WHERE USER_NAME = '{who}' AND START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP()))""" + agg],
+        what=f"SHOW GRANTS TO ROLE ({len(roles)} roles), your user and usage")
+    shown, desc, au_use = wave[len(roles):]
+
+    def take(r):
+        if isinstance(r, Exception):
+            raise r
+        return r
+
     src, notes, grants, skipped = {}, {}, [], []
-    for r, got in zip(roles, each(query, [f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles])):
+    for r, got in zip(roles, wave[:len(roles)]):
         if isinstance(got, Exception):
             skipped.append(f"{r} ({line(got)})")
         else:
@@ -561,7 +690,8 @@ def mine(query, db):
         wave = sorted(set(todo) - seen)
         seen |= set(wave)
         todo = []
-        for r, got in zip(wave, each(query, [f"SHOW GRANTS TO DATABASE ROLE {db_ident(r)}" for r in wave])):
+        for r, got in zip(wave, each(query, [f"SHOW GRANTS TO DATABASE ROLE {db_ident(r)}" for r in wave],
+                                     what="SHOW GRANTS TO DATABASE ROLE")):
             if isinstance(got, Exception):
                 bad.append(f"{r} ({line(got)})")
                 continue
@@ -586,7 +716,7 @@ def mine(query, db):
                         IS_FUTURE=False) for x in applicable if x["GRANTEE"] in bad]
         notes["grants"] = f"{len(skipped)} roles not readable, their links from APPLICABLE_ROLES: " + " | ".join(skipped[:10])
     try:
-        direct = [x["role"] for x in query(f"SHOW GRANTS TO USER {ident(me)}")]
+        direct = [x["role"] for x in take(shown)]
         src["user_roles"] = "SHOW GRANTS TO USER"
     except Exception as e:
         direct = [x["ROLE_NAME"] for x in applicable if x["GRANTEE"] == me]
@@ -596,20 +726,15 @@ def mine(query, db):
             direct, src["user_roles"] = [r for r in roles if r not in held], "CURRENT_AVAILABLE_ROLES"
         notes["user_roles"] = f"SHOW GRANTS TO USER: {line(e)}"
     try:
-        p = {x["property"]: x["value"] for x in query(f"DESC USER {ident(me)}")}
+        p = {x["property"]: x["value"] for x in take(desc)}
         user = {k: None if p.get(k) in ("null", "", None) else p.get(k)
                 for k in ("TYPE", "DEFAULT_ROLE", "DEFAULT_SECONDARY_ROLES", "DEFAULT_WAREHOUSE", "DEFAULT_NAMESPACE")}
         user |= dict(DISABLED=str(p.get("DISABLED")).lower() == "true", LAST_SUCCESS_LOGIN=None,
                      LOGIN_UNKNOWN=True)  # DESC USER has no last login: unknown, not "never"
     except Exception as e:
         user, notes["users"] = {}, f"DESC USER: {line(e)}"
-    who, agg = me.replace("'", "''"), """
-            SELECT 'ROLE' AS KIND, ROLE_NAME AS NAME, COUNT(*) AS QUERIES, MAX(START_TIME) AS LAST_USED FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 2
-            UNION ALL
-            SELECT 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 2"""
     try:  # ACCOUNT_USAGE first (30 days, needs IMPORTED PRIVILEGES), else INFORMATION_SCHEMA (7 days, own queries)
-        usage = query(f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM {AU}.QUERY_HISTORY
-                WHERE USER_NAME = '{who}' AND START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP()))""" + agg)
+        usage = take(au_use)
         src["usage"] = "ACCOUNT_USAGE"
     except Exception as au:
         try:
@@ -622,32 +747,34 @@ def mine(query, db):
     src["tags"] = src["policies"] = "UNAVAILABLE"
     notes["tags"] = "sensitivity needs the governance views of the shared snapshot"
     run = dict(RUN_ID="live", FINISHED_AT="now", SOURCES=src, NOTES=notes)
+    say(f"done in {took(t0)}")
     return dict(run=run, GRANT=grants, USER_ROLE=[dict(USER_NAME=me, ROLE_NAME=r) for r in direct],
                 USER=[dict(USER_NAME=me) | user], USAGE=[dict(USER_NAME=me) | u for u in usage], TAG=[], POLICY=[],
                 STREAM=[])
 
 
 AU = "SNOWFLAKE.ACCOUNT_USAGE"
-TAG_FALLBACK_MAX = 300  # tables/views read one by one when the ACCOUNT_USAGE views are not readable
+READS = dict(GRANT="GRANTS_TO_ROLES", USER_ROLE="GRANTS_TO_USERS", USER="USERS", USAGE="QUERY_HISTORY usage",
+             TAG="TAG_REFERENCES", POLICY="POLICY_REFERENCES", OBJECT_USE="ACCESS_HISTORY object use",
+             ACTIVITY="ACCESS_HISTORY activity",
+             HISTORY="ACCESS_HISTORY object use + activity")  # live()'s heavy reads, as the progress lines name them
+USE_COLS = ("USER_NAME", "OBJECT_NAME", "WEEK", "ACTION", "QUERIES", "LAST_USED")  # use_sql's columns
+ACT_COLS = ("DAY", "USER_NAME", "ROLE_NAME", "CLIENT", "OBJECT_NAME", "ACTION", "QUERY_TYPE", "QUERIES", "LAST_USED",
+            "HOURS", "APP")  # activity_sql's columns
+TAG_FALLBACK_MAX = 300  # tables/views read per object (SHOW_THREADS at a time) when the ACCOUNT_USAGE views are not readable
 
 
-def live(query, old=None):
+def live(query, old=None, old_use=None):
     """The whole account, read now with the caller's role, kept in memory: what SP_ACCESS_SNAPSHOT('AUTO') writes to the
     tables, for accounts where procedures can't be created. ACCOUNT_USAGE where readable, else SHOW / INFORMATION_SCHEMA
     (keep in step with sql/1_setup.sql). Writes nothing. query(sql) -> list of dicts; same dict as snapshot().
-    old: ACTIVITY rows of an earlier read, so only the days they lack are read."""
+    old / old_use: ACTIVITY / OBJECT_USE rows of an earlier read, so only the days / weeks they lack are read."""
     def rows(sql):  # lower-case keys: SHOW columns are lower case, views upper case
         return [{k.lower(): v for k, v in r.items()} for r in query(sql)]
 
-    def many(sqls):  # rows of each sql, SHOW_THREADS at a time; a failed one gives its exception
-        return [r if isinstance(r, Exception) else [{k.lower(): v for k, v in x.items()} for x in r] for r in each(query, sqls)]
-
-    def readable(view):
-        try:
-            query(f"SELECT 1 FROM {AU}.{view} LIMIT 1")
-            return None
-        except Exception as e:
-            return f"{AU}.{view} not readable: {line(e)}"
+    def many(sqls, what=None):  # rows of each sql, SHOW_THREADS at a time; a failed one gives its exception
+        return [r if isinstance(r, Exception) else [{k.lower(): v for k, v in x.items()} for x in r]
+                for r in each(query, sqls, what=what)]
 
     def clean(name):  # SHOW quotes names with special characters; ACCOUNT_USAGE does not
         return (name or "").replace('"', "")
@@ -655,6 +782,8 @@ def live(query, old=None):
     def blank(v):
         return None if v in ("", "null", None) else v
 
+    t0 = time.monotonic()
+    say("Connected: checking which ACCOUNT_USAGE views this role can read…")
     src, notes, d = {}, {}, {t: [] for t in TABLES + OPTIONAL}
     try:  # privileges of every granted role count (e.g. IMPORTED PRIVILEGES through another role); refused inside
         query("USE SECONDARY ROLES ALL")  # Streamlit in Snowflake (owner's rights): the owner role alone counts there
@@ -670,25 +799,126 @@ def live(query, old=None):
         src[name] = source
         if why:
             notes[name] = why
+        say(f"{name}: {source}" + (f" ({why[:200]})" if why else ""))
 
-    why = readable("GRANTS_TO_ROLES") or readable("GRANTS_TO_USERS")
-    if why is None:  # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG;
-        # a database role grantee is a bare name: qualified with the database of what it is granted, DB.ROLE
-        d["GRANT"] = query(f"""SELECT IFF(GRANTED_TO = 'DATABASE_ROLE',
+    def usage_sql(q, secondary):  # roles, secondary roles and warehouses per user: grouped first, JSON parsed on the groups
+        sql = f"""WITH Q AS (SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, COUNT(*) AS N, MAX(START_TIME) AS T
+                FROM ({q}) GROUP BY 1, 2, 3, 4)
+            SELECT USER_NAME, 'ROLE' AS KIND, ROLE_NAME AS NAME, SUM(N) AS QUERIES, MAX(T) AS LAST_USED
+            FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 1, 3
+            UNION ALL
+            SELECT USER_NAME, 'WAREHOUSE', WAREHOUSE_NAME, SUM(N), MAX(T) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 1, 3"""
+        if secondary:  # SECONDARY_ROLE_STATS: JSON text, roleNames = comma-separated roles
+            sql += """
+            UNION ALL
+            SELECT Q.USER_NAME, 'SECONDARY ROLE', TRIM(S.VALUE::STRING), SUM(Q.N), MAX(Q.T)
+            FROM Q, LATERAL FLATTEN(SPLIT(TRY_PARSE_JSON(Q.SECONDARY_ROLE_STATS):roleNames::STRING, ',')) S
+            WHERE TRIM(S.VALUE::STRING) <> '' GROUP BY 1, 3"""
+        return sql
+
+    # two waves instead of one statement after another: every probe at once, then every ACCOUNT_USAGE read that passed
+    views = ("GRANTS_TO_ROLES", "GRANTS_TO_USERS", "USERS", "QUERY_HISTORY", "TAG_REFERENCES", "POLICY_REFERENCES") + (
+        "ACCESS_HISTORY", "SESSIONS") * ACTIVITY_ON
+    unread = {v: None if not isinstance(r, Exception) else f"{AU}.{v} not readable: {line(r)}"
+              for v, r in zip(views, each(query, [f"SELECT 1 FROM {AU}.{v} LIMIT 1" for v in views],
+                                          what="ACCOUNT_USAGE views"))}
+    if not ACTIVITY_ON:
+        unread |= {"ACCESS_HISTORY": SKIP_ACTIVITY, "SESSIONS": SKIP_ACTIVITY}
+    sqls = {}
+    if not (unread["GRANTS_TO_ROLES"] or unread["GRANTS_TO_USERS"]):  # NAME holds only the object's own name; DATABASE
+        # rows may repeat it in TABLE_CATALOG; a database role grantee is a bare name: qualified with the database of what
+        # it is granted, DB.ROLE
+        sqls["GRANT"] = f"""SELECT IFF(GRANTED_TO = 'DATABASE_ROLE',
                        IFF(GRANTED_ON = 'DATABASE', NAME, TABLE_CATALOG) || '.' || GRANTEE_NAME, GRANTEE_NAME) AS GRANTEE_ROLE,
                    PRIVILEGE, GRANTED_ON,
                    CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
                         WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
                         ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END AS OBJECT_NAME,
                    FALSE AS IS_FUTURE, GRANT_OPTION, GRANTED_BY
-            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')""")
-        d["USER_ROLE"] = query(f"""SELECT GRANTEE_NAME AS USER_NAME, ROLE AS ROLE_NAME, GRANTED_BY
-            FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""")
+            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')"""
+        sqls["USER_ROLE"] = f"""SELECT GRANTEE_NAME AS USER_NAME, ROLE AS ROLE_NAME, GRANTED_BY
+            FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL"""
+    if not unread["USERS"]:  # OBJECT_CONSTRUCT(*): the secondary roles column name differs between Snowflake versions
+        sqls["USER"] = f"""SELECT J:NAME::STRING AS USER_NAME, J:TYPE::STRING AS TYPE,
+                   TRY_TO_BOOLEAN(J:DISABLED::STRING) AS DISABLED, J:DEFAULT_ROLE::STRING AS DEFAULT_ROLE,
+                   COALESCE(J:DEFAULT_SECONDARY_ROLES, J:DEFAULT_SECONDARY_ROLE)::STRING AS DEFAULT_SECONDARY_ROLES,
+                   J:DEFAULT_WAREHOUSE::STRING AS DEFAULT_WAREHOUSE, J:DEFAULT_NAMESPACE::STRING AS DEFAULT_NAMESPACE,
+                   TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING) AS LAST_SUCCESS_LOGIN
+            FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)"""
+    if not unread["QUERY_HISTORY"]:
+        sqls["USAGE"] = usage_sql(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME
+                FROM {AU}.QUERY_HISTORY WHERE START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())""", True)
+    else:
+        sqls["USAGE"] = usage_sql(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME
+                FROM TABLE({ident(db or "SNOWFLAKE")}.INFORMATION_SCHEMA.QUERY_HISTORY(
+                END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()),
+                RESULT_LIMIT => 10000))""", False)
+    if not unread["TAG_REFERENCES"]:
+        sqls["TAG"] = f"""SELECT CASE DOMAIN WHEN 'DATABASE' THEN OBJECT_NAME
+                                          WHEN 'SCHEMA' THEN OBJECT_DATABASE || '.' || OBJECT_NAME
+                                          ELSE OBJECT_DATABASE || '.' || OBJECT_SCHEMA || '.' || OBJECT_NAME END AS OBJECT_NAME,
+                       DOMAIN, IFF(DOMAIN = 'COLUMN', COLUMN_NAME, NULL) AS COLUMN_NAME,
+                       TAG_DATABASE || '.' || TAG_SCHEMA || '.' || TAG_NAME AS TAG_NAME, TAG_VALUE, APPLY_METHOD
+                FROM {AU}.TAG_REFERENCES WHERE OBJECT_DELETED IS NULL AND DOMAIN IN ('DATABASE', 'SCHEMA', 'TABLE', 'COLUMN')"""
+    if not unread["POLICY_REFERENCES"]:
+        sqls["POLICY"] = f"""SELECT R.POLICY_DB || '.' || R.POLICY_SCHEMA || '.' || R.POLICY_NAME AS POLICY_NAME,
+                       R.POLICY_KIND, IFF(R.REF_ENTITY_DOMAIN = 'TAG', NULL,
+                           R.REF_DATABASE_NAME || '.' || R.REF_SCHEMA_NAME || '.' || R.REF_ENTITY_NAME) AS OBJECT_NAME,
+                       R.REF_COLUMN_NAME AS COLUMN_NAME, R.REF_ARG_COLUMN_NAMES::STRING AS ARG_COLUMNS,
+                       IFF(R.REF_ENTITY_DOMAIN = 'TAG', R.REF_DATABASE_NAME || '.' || R.REF_SCHEMA_NAME || '.' || R.REF_ENTITY_NAME,
+                           IFF(R.TAG_NAME IS NULL, NULL, R.TAG_DATABASE || '.' || R.TAG_SCHEMA || '.' || R.TAG_NAME)) AS TAG_NAME,
+                       COALESCE(M.POLICY_BODY, A.POLICY_BODY) AS POLICY_BODY
+                FROM {AU}.POLICY_REFERENCES R
+                LEFT JOIN {AU}.MASKING_POLICIES M ON M.POLICY_ID = R.POLICY_ID AND M.DELETED IS NULL
+                LEFT JOIN {AU}.ROW_ACCESS_POLICIES A ON A.POLICY_ID = R.POLICY_ID AND A.DELETED IS NULL
+                WHERE R.POLICY_KIND IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY')"""
+    act = use = None  # activity_start's / use_start's error, if any: that step then fails alone
+    if not unread["ACCESS_HISTORY"]:  # Enterprise edition; only the weeks / days old_use / old lack are read
+        try:
+            reuse, ustart = use_start(old_use, now)
+            sqls["OBJECT_USE"] = use_sql(ustart.isoformat())
+            say(f"ACCESS_HISTORY object use: keeping {len({x['WEEK'] for x in reuse})} weeks, reading from {ustart}")
+        except Exception as e:
+            use = e
+        try:
+            keep, start = activity_start(old, now)
+            sqls["ACTIVITY"] = activity_sql(start.isoformat(), unread["SESSIONS"] is None)
+            say(f"ACCESS_HISTORY activity: copying {len({x['DAY'] for x in keep})} days, "
+                f"reading {(day(now) - start).days + 1}")
+        except Exception as e:
+            act = e
+    alone = {}  # object use and activity read apart, if their shared read fails
+    if "OBJECT_USE" in sqls and "ACTIVITY" in sqls:  # one ACCESS_HISTORY scan for both, split again below
+        alone = {k: sqls.pop(k) for k in ("OBJECT_USE", "ACTIVITY")}
+        sqls["HISTORY"] = history_sql(ustart.isoformat(), start.isoformat(), unread["SESSIONS"] is None)
+    say(f"Reading {len(sqls)} ACCOUNT_USAGE views, {WORKERS} at a time")
+    res = dict(zip(sqls, each(query, sqls.values(), WORKERS, [READS.get(k, k) for k in sqls])))
+    if alone:
+        h = res.pop("HISTORY")
+        if isinstance(h, Exception) and (isinstance(h, TimeoutError) or timed_out(h)):  # apart: the same scan, the same limit
+            res["OBJECT_USE"] = res["ACTIVITY"] = h
+        elif isinstance(h, Exception):  # each step reads on its own, so one failing read fails only its own step
+            say(f"ACCESS_HISTORY shared read failed ({line(h)}): reading object use and activity apart")
+            res |= dict(zip(alone, each(query, alone.values(), WORKERS, [READS[k] for k in alone])))
+        else:
+            res["OBJECT_USE"], res["ACTIVITY"] = history_rows(h)
+
+    def take(k):  # a wave-2 result; a failed read raises its error here, at the step it belongs to
+        if isinstance(res[k], Exception):
+            raise res[k]
+        return res[k]
+
+    why, shown = unread["GRANTS_TO_ROLES"] or unread["GRANTS_TO_USERS"], None  # shown: SHOW DATABASES, read once
+    if why is None:
+        d["GRANT"] = take("GRANT")
+        d["USER_ROLE"] = take("USER_ROLE")
         note("grants", "ACCOUNT_USAGE", None)
     else:
         skipped = []
+        say("SHOW ROLES…")
         roles = [r["name"] for r in rows("SHOW ROLES")]
-        got = many([f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [f"SHOW GRANTS OF ROLE {ident(r)}" for r in roles])
+        got = many([f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [f"SHOW GRANTS OF ROLE {ident(r)}" for r in roles],
+                   "SHOW GRANTS TO / OF ROLE")
         for role, to, of in zip(roles, got[:len(roles)], got[len(roles):]):
             bad = next((x for x in (to, of) if isinstance(x, Exception)), None)
             if bad:  # a role this role may not inspect: keep going, list it in the notes
@@ -700,14 +930,16 @@ def live(query, old=None):
                            for x in to if x.get("granted_to") in ("ROLE", None)]
             d["USER_ROLE"] += [dict(USER_NAME=x["grantee_name"], ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
                                for x in of if x.get("granted_to") == "USER"]
-        dbs = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+        dbs = shown = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
         qs = []  # database roles: per database, their grants under DB.ROLE
-        for name, got in zip(dbs, many([f"SHOW DATABASE ROLES IN DATABASE {ident(x)}" for x in dbs])):
+        for name, got in zip(dbs, many([f"SHOW DATABASE ROLES IN DATABASE {ident(x)}" for x in dbs],
+                                       "SHOW DATABASE ROLES")):
             if isinstance(got, Exception):
                 skipped.append(f"database roles in {name}: {line(got)}")
             else:
                 qs += [(name, f"{name}.{clean(r['name'])}") for r in got]
-        for (name, q), got in zip(qs, many([f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}" for _, q in qs])):
+        for (name, q), got in zip(qs, many([f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}" for _, q in qs],
+                                           "SHOW GRANTS TO DATABASE ROLE")):
             if isinstance(got, Exception):  # one unreadable database role skips only itself (as SP_ACCESS_SNAPSHOT)
                 skipped.append(f"{q}: {line(got)}")
                 continue
@@ -720,19 +952,20 @@ def live(query, old=None):
 
     skipped = []  # future grants: no ACCOUNT_USAGE view; shares and applications: their grants are not ours
     try:  # SHOW only: when even SHOW DATABASES is refused, the rest still loads and the note says so
-        dbs = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+        dbs = shown if shown is not None else [
+            x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
     except Exception as e:
         dbs, nodb = [], f"SHOW DATABASES: {line(e)}"
     else:
         nodb = None
     places, failed = [], set()
-    for name, got in zip(dbs, many([f"SHOW SCHEMAS IN DATABASE {ident(x)}" for x in dbs])):
+    for name, got in zip(dbs, many([f"SHOW SCHEMAS IN DATABASE {ident(x)}" for x in dbs], "SHOW SCHEMAS")):
         if isinstance(got, Exception):
             skipped.append(f"{name}: {line(got)}")
             continue
         places += [(name, f"DATABASE {ident(name)}")] + [
             (name, f"SCHEMA {ident(name)}.{ident(s['name'])}") for s in got if s["name"] != "INFORMATION_SCHEMA"]
-    for (name, p), got in zip(places, many([f"SHOW FUTURE GRANTS IN {p}" for _, p in places])):
+    for (name, p), got in zip(places, many([f"SHOW FUTURE GRANTS IN {p}" for _, p in places], "SHOW FUTURE GRANTS")):
         if isinstance(got, Exception):
             if name not in failed:  # one note per database
                 failed.add(name)
@@ -748,14 +981,9 @@ def live(query, old=None):
     else:
         note("future_grants", "SHOW", f"{len(skipped)} databases skipped: " + " | ".join(skipped[:20]) if skipped else None)
 
-    why = readable("USERS")
-    if why is None:  # OBJECT_CONSTRUCT(*): the secondary roles column name differs between Snowflake versions
-        d["USER"] = query(f"""SELECT J:NAME::STRING AS USER_NAME, J:TYPE::STRING AS TYPE,
-                   TRY_TO_BOOLEAN(J:DISABLED::STRING) AS DISABLED, J:DEFAULT_ROLE::STRING AS DEFAULT_ROLE,
-                   COALESCE(J:DEFAULT_SECONDARY_ROLES, J:DEFAULT_SECONDARY_ROLE)::STRING AS DEFAULT_SECONDARY_ROLES,
-                   J:DEFAULT_WAREHOUSE::STRING AS DEFAULT_WAREHOUSE, J:DEFAULT_NAMESPACE::STRING AS DEFAULT_NAMESPACE,
-                   TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING) AS LAST_SUCCESS_LOGIN
-            FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)""")
+    why = unread["USERS"]
+    if why is None:
+        d["USER"] = take("USER")
         note("users", "ACCOUNT_USAGE", None)
     else:
         d["USER"] = [dict(USER_NAME=x["name"], TYPE=blank(x.get("type")), DISABLED=str(x.get("disabled")).lower() == "true",
@@ -763,36 +991,20 @@ def live(query, old=None):
                           DEFAULT_SECONDARY_ROLES=blank(x.get("default_secondary_roles")),
                           DEFAULT_WAREHOUSE=blank(x.get("default_warehouse")),
                           DEFAULT_NAMESPACE=blank(x.get("default_namespace")),
-                          LAST_SUCCESS_LOGIN=blank(x.get("last_success_login"))) for x in rows("SHOW USERS")]
+                          LAST_SUCCESS_LOGIN=blank(x.get("last_success_login")))
+                     for x in say("SHOW USERS…") or rows("SHOW USERS")]
         note("users", "SHOW", why)
 
-    def usage(q, secondary):  # roles, secondary roles and warehouses used per user, aggregated in SQL
-        sql = f"""WITH Q AS ({q})
-            SELECT USER_NAME, 'ROLE' AS KIND, ROLE_NAME AS NAME, COUNT(*) AS QUERIES, MAX(START_TIME) AS LAST_USED
-            FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 1, 3
-            UNION ALL
-            SELECT USER_NAME, 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 1, 3"""
-        if secondary:  # SECONDARY_ROLE_STATS: JSON text, roleNames = comma-separated roles
-            sql += """
-            UNION ALL
-            SELECT Q.USER_NAME, 'SECONDARY ROLE', TRIM(S.VALUE::STRING), COUNT(*), MAX(Q.START_TIME)
-            FROM Q, LATERAL FLATTEN(SPLIT(TRY_PARSE_JSON(Q.SECONDARY_ROLE_STATS):roleNames::STRING, ',')) S
-            WHERE TRIM(S.VALUE::STRING) <> '' GROUP BY 1, 3"""
-        return query(sql)
-
-    why = readable("QUERY_HISTORY")
+    why = unread["QUERY_HISTORY"]
     if why is None:
         try:  # usage is extra: without it the rest still loads
-            d["USAGE"] = usage(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME
-                FROM {AU}.QUERY_HISTORY WHERE START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())""", True)
+            d["USAGE"] = take("USAGE")
             note("usage", "ACCOUNT_USAGE", None)
         except Exception as e:
             note("usage", "UNAVAILABLE", line(e))
     else:
         try:
-            d["USAGE"] = usage(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE({ident(db or "SNOWFLAKE")}.INFORMATION_SCHEMA.QUERY_HISTORY(
-                END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()),
-                RESULT_LIMIT => 10000))""", False)
+            d["USAGE"] = take("USAGE")
             note("usage", "INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries, "
                                                       "only the queries this role may see")
         except Exception as e:
@@ -816,27 +1028,33 @@ def live(query, old=None):
     def sq(text):  # inside a '...' string, where backslash also escapes
         return text.replace("\\", "\\\\").replace("'", "''")
 
-    why = readable("TAG_REFERENCES")
+    cap = objs[:TAG_FALLBACK_MAX]  # per-object fallbacks: each statement list sent as one many() wave, zipped back
+    fns = [f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA" for o in cap]
+    why = unread["TAG_REFERENCES"]
     try:
         if why is None:
-            d["TAG"] = query(f"""SELECT CASE DOMAIN WHEN 'DATABASE' THEN OBJECT_NAME
-                                          WHEN 'SCHEMA' THEN OBJECT_DATABASE || '.' || OBJECT_NAME
-                                          ELSE OBJECT_DATABASE || '.' || OBJECT_SCHEMA || '.' || OBJECT_NAME END AS OBJECT_NAME,
-                       DOMAIN, IFF(DOMAIN = 'COLUMN', COLUMN_NAME, NULL) AS COLUMN_NAME,
-                       TAG_DATABASE || '.' || TAG_SCHEMA || '.' || TAG_NAME AS TAG_NAME, TAG_VALUE, APPLY_METHOD
-                FROM {AU}.TAG_REFERENCES WHERE OBJECT_DELETED IS NULL AND DOMAIN IN ('DATABASE', 'SCHEMA', 'TABLE', 'COLUMN')""")
+            d["TAG"] = take("TAG")
             note("tags", "ACCOUNT_USAGE", None)
         else:
             skipped = []
-            for o in objs[:TAG_FALLBACK_MAX]:
-                fn = f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA"
-                try:
-                    for x in rows(f"SELECT * FROM TABLE({fn}.TAG_REFERENCES('{sq(quoted(o))}', 'table'))"):
+            tab = many([f"SELECT * FROM TABLE({fn}.TAG_REFERENCES('{sq(quoted(o))}', 'table'))" for o, fn in zip(cap, fns)],
+                       "TAG_REFERENCES per table")
+            ok = [i for i, r in enumerate(tab) if not isinstance(r, Exception)]  # columns only where the table call worked
+            col = dict(zip(ok, many([f"SELECT * FROM TABLE({fns[i]}.TAG_REFERENCES_ALL_COLUMNS('{sq(quoted(cap[i]))}', 'table'))"
+                                     for i in ok], "TAG_REFERENCES_ALL_COLUMNS")))
+            for i, (o, tr) in enumerate(zip(cap, tab)):
+                cr = col.get(i)
+                try:  # the table rows stay when only the column call failed, as when they ran one after the other
+                    if isinstance(tr, Exception):
+                        raise tr
+                    for x in tr:
                         d["TAG"].append(dict(OBJECT_NAME=o, DOMAIN="TABLE", COLUMN_NAME=None,
                                              TAG_NAME=f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}",
                                              TAG_VALUE=x.get("tag_value"),
                                              APPLY_METHOD="INHERITED" if x.get("level") not in (None, "TABLE") else "MANUAL"))
-                    for x in rows(f"SELECT * FROM TABLE({fn}.TAG_REFERENCES_ALL_COLUMNS('{sq(quoted(o))}', 'table'))"):
+                    if isinstance(cr, Exception):
+                        raise cr
+                    for x in cr:
                         if x.get("level") in (None, "COLUMN"):
                             d["TAG"].append(dict(OBJECT_NAME=o, DOMAIN="COLUMN", COLUMN_NAME=x.get("column_name"),
                                                  TAG_NAME=f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}",
@@ -848,37 +1066,36 @@ def live(query, old=None):
         d["TAG"] = []
         note("tags", "UNAVAILABLE", "; ".join(filter(None, [why, line(e)])))
 
-    why = readable("POLICY_REFERENCES")
+    kept = ("MASKING_POLICY", "ROW_ACCESS_POLICY")
+    why = unread["POLICY_REFERENCES"]
     try:
         if why is None:
-            d["POLICY"] = query(f"""SELECT R.POLICY_DB || '.' || R.POLICY_SCHEMA || '.' || R.POLICY_NAME AS POLICY_NAME,
-                       R.POLICY_KIND, IFF(R.REF_ENTITY_DOMAIN = 'TAG', NULL,
-                           R.REF_DATABASE_NAME || '.' || R.REF_SCHEMA_NAME || '.' || R.REF_ENTITY_NAME) AS OBJECT_NAME,
-                       R.REF_COLUMN_NAME AS COLUMN_NAME, R.REF_ARG_COLUMN_NAMES::STRING AS ARG_COLUMNS,
-                       IFF(R.REF_ENTITY_DOMAIN = 'TAG', R.REF_DATABASE_NAME || '.' || R.REF_SCHEMA_NAME || '.' || R.REF_ENTITY_NAME,
-                           IFF(R.TAG_NAME IS NULL, NULL, R.TAG_DATABASE || '.' || R.TAG_SCHEMA || '.' || R.TAG_NAME)) AS TAG_NAME,
-                       COALESCE(M.POLICY_BODY, A.POLICY_BODY) AS POLICY_BODY
-                FROM {AU}.POLICY_REFERENCES R
-                LEFT JOIN {AU}.MASKING_POLICIES M ON M.POLICY_ID = R.POLICY_ID AND M.DELETED IS NULL
-                LEFT JOIN {AU}.ROW_ACCESS_POLICIES A ON A.POLICY_ID = R.POLICY_ID AND A.DELETED IS NULL
-                WHERE R.POLICY_KIND IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY')""")
+            d["POLICY"] = take("POLICY")
             note("policies", "ACCOUNT_USAGE", None)
         else:
-            skipped, body = [], {}
-            for o in objs[:TAG_FALLBACK_MAX]:
-                fn = f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA"
+            skipped, kind = [], {}
+            got = many([f"""SELECT * FROM TABLE({fn}.POLICY_REFERENCES(
+                            REF_ENTITY_NAME => '{sq(quoted(o))}', REF_ENTITY_DOMAIN => 'table'))""" for o, fn in zip(cap, fns)],
+                       "POLICY_REFERENCES per table")
+            for r in got:  # every policy found, described once, all in one wave
+                for x in [] if isinstance(r, Exception) else r:
+                    try:
+                        if x.get("policy_kind") in kept:
+                            kind.setdefault(f"{x['policy_db']}.{x['policy_schema']}.{x['policy_name']}", x["policy_kind"])
+                    except KeyError:  # its object is skipped below with this error
+                        pass
+            body = {}
+            for name, b in zip(kind, many([f"DESCRIBE {'MASKING POLICY' if k == 'MASKING_POLICY' else 'ROW ACCESS POLICY'} "
+                                           f"{quoted(name)}" for name, k in kind.items()], "DESCRIBE POLICY")):
+                body[name] = None if isinstance(b, Exception) or not b else b[0].get("body")  # no rights: "cannot derive"
+            for o, r in zip(cap, got):
                 try:
-                    for x in rows(f"""SELECT * FROM TABLE({fn}.POLICY_REFERENCES(
-                            REF_ENTITY_NAME => '{sq(quoted(o))}', REF_ENTITY_DOMAIN => 'table'))"""):
-                        if x.get("policy_kind") not in ("MASKING_POLICY", "ROW_ACCESS_POLICY"):
+                    if isinstance(r, Exception):
+                        raise r
+                    for x in r:
+                        if x.get("policy_kind") not in kept:
                             continue
                         name = f"{x['policy_db']}.{x['policy_schema']}.{x['policy_name']}"
-                        if name not in body:
-                            what = "MASKING POLICY" if x["policy_kind"] == "MASKING_POLICY" else "ROW ACCESS POLICY"
-                            try:
-                                body[name] = rows(f"DESCRIBE {what} {quoted(name)}")[0].get("body")
-                            except Exception:  # no rights on the policy: its text stays empty, "cannot derive" in the app
-                                body[name] = None
                         tag = f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}" if x.get("tag_name") else None
                         d["POLICY"].append(dict(POLICY_NAME=name, POLICY_KIND=x["policy_kind"], OBJECT_NAME=o,
                                                 COLUMN_NAME=x.get("ref_column_name"),
@@ -891,49 +1108,55 @@ def live(query, old=None):
         d["POLICY"] = []
         note("policies", "UNAVAILABLE", "; ".join(filter(None, [why, line(e)])))
 
-    why = readable("ACCESS_HISTORY")  # Enterprise edition; no fallback: Granted vs used then explains it
+    why = unread["ACCESS_HISTORY"]  # Enterprise edition; no fallback: Granted vs used then explains it
     try:
         if why:
             raise RuntimeError(why)
-        d["OBJECT_USE"] = query(use_sql())
+        if use:
+            raise use
+        d["OBJECT_USE"] = reuse + take("OBJECT_USE")
         note("object_use", "ACCOUNT_USAGE", None)
     except Exception as e:
         d["OBJECT_USE"] = []
-        note("object_use", "UNAVAILABLE", line(e))
+        note("object_use", "SKIPPED" if why == SKIP_ACTIVITY else "UNAVAILABLE", line(e))
 
     try:  # Enterprise edition; reads only the days old lacks (activity_start)
         if why:
             raise RuntimeError(why)
-        keep, since = activity_start(old, now)
-        cw = readable("SESSIONS")
-        d["ACTIVITY"] = keep + hours_of(query(activity_sql(since.isoformat(), cw is None)))
+        if act:
+            raise act
+        cw = unread["SESSIONS"]
+        d["ACTIVITY"] = keep + hours_of(take("ACTIVITY"))
         note("activity", "ACCOUNT_USAGE", cw and f"{cw}: no client")
     except Exception as e:
         d["ACTIVITY"] = []
-        note("activity", "UNAVAILABLE", line(e))
+        note("activity", "SKIPPED" if why == SKIP_ACTIVITY else "UNAVAILABLE", line(e))
 
     try:  # streams: no ACCOUNT_USAGE view; only the streams this role can see
         d["STREAM"] = [dict(STREAM_NAME=f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}",
                             SOURCE_NAME=clean(x.get("table_name")), SOURCE_TYPE=blank(x.get("source_type")))
-                       for x in rows("SHOW STREAMS IN ACCOUNT")]
+                       for x in say("SHOW STREAMS IN ACCOUNT…") or rows("SHOW STREAMS IN ACCOUNT")]
         note("streams", "SHOW", None)
     except Exception as e:
         note("streams", "UNAVAILABLE", line(e))
+    say(f"done in {took(t0)}")
     return d | {"run": dict(RUN_ID="direct", FINISHED_AT=now, SOURCES=src, NOTES=notes)}
 
 
-def use_sql(days=USE_DAYS):
+def use_sql(since):
     """Object usage from ACCESS_HISTORY (query metadata, never table data), aggregated in Snowflake per user, object,
-    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). The same text
-    is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
-    return f"""WITH H AS (
-            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME AS T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
-            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.DIRECT_OBJECTS_ACCESSED) O
-            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP())
+    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). since: first
+    Monday read ('YYYY-MM-DD'), cut at the session's midnight like the weeks, so a week read again replaces a whole
+    week; ACCESS_HISTORY is scanned once. The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    return f"""WITH A AS (
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED
+            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::TIMESTAMP_LTZ),
+        H AS (
+            SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+            FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
             UNION ALL
-            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME, O.VALUE:"objectName"::STRING, 'WRITE'
-            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.OBJECTS_MODIFIED) O
-            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP()))
+            SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING, 'WRITE'
+            FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O)
         SELECT USER_NAME, OBJECT_NAME, DATEADD(DAY, 1 - DAYOFWEEKISO(T), T::DATE) AS WEEK, ACTION,
                COUNT(DISTINCT QUERY_ID) AS QUERIES, MAX(T) AS LAST_USED
         FROM H WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
@@ -983,6 +1206,45 @@ def activity_sql(since, client=True):
         SELECT DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, SUM(N) AS QUERIES, MAX(LAST_USED) AS LAST_USED,
                OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS, APP
         FROM G GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP"""
+
+
+def history_sql(use_since, act_since, client=True):
+    """use_sql(use_since) and activity_sql(act_since, client) as one statement that scans ACCESS_HISTORY once (A0,
+    from the earlier of the two cuts) for both. Each part keeps its own cut on A0, so it gives the rows of its own
+    read; PART = 'USE' rows carry use_sql's columns, 'ACT' rows activity_sql's, the rest NULL (split by
+    history_rows, or SP_ACCESS_SNAPSHOT's INSERT ALL). The same text is in access.py and SP_ACCESS_SNAPSHOT
+    (sql/1_setup.sql).
+    to verify: Snowflake computes A0 once for both references (one WithClause in the query profile), prunes
+    ACCESS_HISTORY on the LEAST() cut, and allows the parts' own WITH inside a subquery reading the outer A0."""
+    def own(sql):
+        return sql.replace(f"FROM {AU}.ACCESS_HISTORY WHERE", "FROM A0 WHERE")
+    return f"""WITH A0 AS (
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= LEAST('{use_since}'::TIMESTAMP_LTZ,
+                '{act_since} 00:00:00 +00:00'::TIMESTAMP_TZ::TIMESTAMP_LTZ))
+        SELECT 'USE' AS PART, USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED, NULL AS DAY, NULL AS ROLE_NAME,
+               NULL AS CLIENT, NULL AS QUERY_TYPE, NULL AS HOURS, NULL AS APP
+        FROM ({own(use_sql(use_since))}) U
+        UNION ALL
+        SELECT 'ACT', USER_NAME, OBJECT_NAME, NULL, ACTION, QUERIES, LAST_USED, DAY, ROLE_NAME, CLIENT, QUERY_TYPE, HOURS, APP
+        FROM ({own(activity_sql(act_since, client))}) V"""
+
+
+def history_rows(rows):
+    """(OBJECT_USE rows, ACTIVITY rows) of a history_sql read, each with its own read's columns."""
+    return ([{c: x[c] for c in USE_COLS} for x in rows if x["PART"] == "USE"],
+            [{c: x[c] for c in ACT_COLS} for x in rows if x["PART"] == "ACT"])
+
+
+def use_start(old, now):
+    """(OBJECT_USE rows of an earlier read to keep, first Monday to read): the window is USE_DAYS back from now in whole
+    ISO weeks; an earlier read is kept but for its last two weeks, which are read again (ACCESS_HISTORY lags up to 3
+    hours), so a refresh reads one or two weeks and gives the same rows as a read of every week. SP_ACCESS_SNAPSHOT
+    does the same in SQL."""
+    first = monday(day(now) - timedelta(days=USE_DAYS))
+    last = max((day(x["WEEK"]) for x in old or []), default=None)
+    since = max(first, last - timedelta(days=7)) if last else first
+    return [x for x in old or [] if first <= day(x["WEEK"]) < since], since
 
 
 def activity_start(old, now):
@@ -4365,7 +4627,9 @@ FROM {AU}.ACCESS_HISTORY A
 JOIN LATERAL FLATTEN(ARRAY_CAT(ARRAY_CAT(A.DIRECT_OBJECTS_ACCESSED, A.OBJECTS_MODIFIED),
                                ARRAY_CONSTRUCT_COMPACT(A.OBJECT_MODIFIED_BY_DDL))) O
 JOIN {AU}.QUERY_HISTORY Q ON Q.QUERY_ID = A.QUERY_ID AND Q.START_TIME >= '{first} 00:00:00 +00:00'::TIMESTAMP_TZ
-LEFT JOIN {AU}.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
+  AND Q.START_TIME < DATEADD(DAY, 1, '{last} 00:00:00 +00:00'::TIMESTAMP_TZ)
+LEFT JOIN {AU}.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID   -- a session opens before its queries
+  AND S.CREATED_ON < DATEADD(DAY, 1, '{last} 00:00:00 +00:00'::TIMESTAMP_TZ)
 WHERE A.QUERY_START_TIME >= '{first} 00:00:00 +00:00'::TIMESTAMP_TZ
   AND A.QUERY_START_TIME < DATEADD(DAY, 1, '{last} 00:00:00 +00:00'::TIMESTAMP_TZ)
   AND {where}
@@ -4415,9 +4679,11 @@ def plain(title, about, sets, body):
     return dict(title=title, sql=head + "".join(f"SET {k} = {lit(v)};\n" for k, v in sets.items()) + "\n" + body.strip() + "\n")
 
 
-ACT_FILTER = {"object": ("OBJECT_NAME", "X.OBJECT_NAME = $OBJECT_NAME"), "user": ("USER_NAME", "X.USER_NAME = $USER_NAME"),
-              "role": ("ROLE_NAME", "X.ROLE_NAME = $ROLE_NAME"), "app": ("APP_NAME", "X.APP = $APP_NAME"),
-              "scope": ("IN_SCOPE", "X.OBJECT_NAME LIKE $IN_SCOPE || '.%'")}
+APP_OF = "COALESCE(TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING, REGEXP_SUBSTR(Q.QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e'))"
+ACT_FILTER = {  # inside X's own WHERE: H. / Q. columns (USER_NAME is in both), not X.
+    "object": ("OBJECT_NAME", "H.OBJECT_NAME = $OBJECT_NAME"), "user": ("USER_NAME", "H.USER_NAME = $USER_NAME"),
+    "role": ("ROLE_NAME", "Q.ROLE_NAME = $ROLE_NAME"), "app": ("APP_NAME", f"{APP_OF} = $APP_NAME"),
+    "scope": ("IN_SCOPE", "H.OBJECT_NAME LIKE $IN_SCOPE || '.%'")}
 ACT_BASE = """WITH A AS (   -- one row per query in the window (UTC days); L: its time in business time (TZ_HOURS)
     SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DATEADD(HOUR, $TZ_HOURS, CONVERT_TIMEZONE('UTC', QUERY_START_TIME)) AS L,
            DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
@@ -4432,11 +4698,12 @@ H AS (   -- each object a query read (READ), changed (WRITE) or created, altered
     UNION ALL
     SELECT QUERY_ID, USER_NAME, T, L, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL' FROM A WHERE OBJECT_MODIFIED_BY_DDL IS NOT NULL),
 X AS (   -- with the role, statement type, Streamlit app (query tag) and client of each query
-    SELECT H.*, Q.ROLE_NAME, Q.QUERY_TYPE, COALESCE(TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING,
-                                                   REGEXP_SUBSTR(Q.QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e')) AS APP,
+    SELECT H.*, Q.ROLE_NAME, Q.QUERY_TYPE, {app_of} AS APP,
            REGEXP_REPLACE(S.CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
     FROM H JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY Q ON Q.QUERY_ID = H.QUERY_ID AND Q.START_TIME >= ($FROM_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ
-    LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
+      AND Q.START_TIME < DATEADD(DAY, 1, ($TO_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ)
+    LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID   -- a session opens before its queries
+      AND S.CREATED_ON < DATEADD(DAY, 1, ($TO_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ)
     WHERE H.OBJECT_NAME IS NOT NULL AND COALESCE(Q.QUERY_TAG, '') <> '{tag}' AND COALESCE(Q.QUERY_TAG, '') NOT LIKE '%.{app}%'
       AND NOT STARTSWITH(SPLIT_PART(H.OBJECT_NAME, '.', 3), 'TBL_ACCESS_') AND {where})   -- not the app's own queries or tables
 """
@@ -4490,7 +4757,24 @@ def activity_section_sql(name, what, first, last, key, work=WORK_HOURS):
     return plain(f"{title}: {name}", [f"{title} for {name} ({what}), {first} to {last} (UTC days). {about}.",
                                       "Change the SET lines for another one or another window. TZ_HOURS shifts UTC to your business",
                                       "time (e.g. 2 for UTC+2): days and hours below are in that time."],
-                 sets, ACT_BASE.format(where=where, tag=quoted(QUERY_TAG), app=quoted(APP_ST)) + select)
+                 sets, ACT_BASE.format(where=where, tag=quoted(QUERY_TAG), app=quoted(APP_ST), app_of=APP_OF) + select)
+
+
+def activity_once_sql(name, what, first, last, keys, work=WORK_HOURS):
+    """The SQL behind every Activity section in keys from one read: the base (ACT_BASE) runs once, its query id is
+    pinned right after it, and each section reads X from RESULT_SCAN of that id instead of reading ACCESS_HISTORY,
+    QUERY_HISTORY and SESSIONS again. activity_section_sql() keeps each section standalone: dict(title, sql)."""
+    var, where = ACT_FILTER[what]
+    sets = {var: name, "FROM_DAY": first, "TO_DAY": last, "TZ_HOURS": 0, "WORK_START": work[0], "WORK_END": work[1]}
+    base = ACT_BASE.format(where=where, tag=quoted(QUERY_TAG), app=quoted(APP_ST), app_of=APP_OF) + "SELECT * FROM X;\n"
+    pin = "SET BASE_ID = LAST_QUERY_ID();   -- right after the base: the id of its result, read by every section below\n"
+    return plain(f"Every section from one read: {name}",
+                 [f"Every Activity section for {name} ({what}), {first} to {last} (UTC days), reading the history views once.",
+                  "Run it all in one worksheet session: the base first, then any section; a result stays readable 24 hours.",
+                  "Change the SET lines and run the base again for another one. TZ_HOURS as in the single sections."], sets,
+                 base + pin + "".join(f"\n-- {ACT_SECTIONS[k][0]}: {ACT_SECTIONS[k][1]}\n"
+                                      f"WITH X AS (SELECT * FROM TABLE(RESULT_SCAN($BASE_ID)))\n{ACT_SECTIONS[k][2]}\n"
+                                      for k in keys))
 
 
 def page_sql(page, p, first=None, last=None):
@@ -4519,7 +4803,8 @@ GROUP BY 1, 2 ORDER BY 3 DESC;"""), query_file("5_object_users.sql", f"Who can u
         name = user or role or obj
         keys = (["tiles", "client", "kinds", "matrix", "type_day", "by_day", "who", "ddl"] if what in ("object", "app")
                 else ["tiles", "off", "touched", "hours", "objects", "client", "kinds", "matrix", "type_day", "by_day", "who", "ddl"])
-        return [activity_section_sql(name, what, first, last, k) for k in keys] + [dict(title=f"Every query, one by one: {name}",
+        return [activity_once_sql(name, what, first, last, keys)] + [
+            activity_section_sql(name, what, first, last, k) for k in keys] + [dict(title=f"Every query, one by one: {name}",
                                                                                          sql=query_sql(name, what, first, last) + "\n")]
     for user in users_[:2]:
         out += [query_file("2_user_access.sql", f"Everything {user} can reach, through which roles", USER_NAME=user),
@@ -4550,12 +4835,13 @@ WHERE POLICY_KIND IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY')
   AND REF_DATABASE_NAME || '.' || REF_SCHEMA_NAME || '.' || REF_ENTITY_NAME = $OBJECT_NAME
 ORDER BY 1, 3, 4;""")]
     if page == "usage" and (user or role):
+        q = use_sql("0").replace("'0'::TIMESTAMP_LTZ", "DATEADD(DAY, -$DAYS, CURRENT_TIMESTAMP())")  # the last $DAYS days
         out.insert(0, plain(f"Objects used by {user or role}", ["Tables and views read or changed per ISO week (ACCESS_HISTORY; "
                                                               "Enterprise edition), the 'used' side of Granted vs used."],
-                            {"USER_NAME": user or None, "ROLE_NAME": role or None, "DAYS": USE_DAYS}, use_sql("$DAYS").replace(
+                            {"USER_NAME": user or None, "ROLE_NAME": role or None, "DAYS": USE_DAYS}, q.replace(
                                 "FROM H WHERE OBJECT_NAME IS NOT NULL", "FROM H WHERE OBJECT_NAME IS NOT NULL AND USER_NAME = $USER_NAME") + ";"
                             if user else "-- A role's use is the use of the users who hold it: run this per user (4_role_holders.sql lists them).\n"
-                            + use_sql("$DAYS") + ";"))
+                            + q + ";"))
     if page in ("sensitive", "flow", "review") or (page == "home" and not out):
         out.append(plain("Sensitive tags", ["Every tag on databases, schemas, tables and columns; the app counts these as "
                                             f"sensitive: {SENSITIVE_TAGS}."], {}, """
@@ -5100,7 +5386,7 @@ def rule_rows():
         iac, sql = f.get("fix") or fix_text(f["edges"])
         n, t = f["num"], RULES[f["num"]][0]
         affects, impact, who = f.get("affects"), f.get("impact"), []
-        if f["edges"]:
+        if f["edges"] and HIERARCHY_ON:  # who loses access: a walk per user (HIERARCHY=0: not counted)
             who = sorted(set().union(*(lose(e) for e in f["edges"])))
             affects = len(who)
             impact = plural(affects, "user") + " lose" + "s" * (affects == 1) + " access"
@@ -5222,7 +5508,8 @@ def rules_model(only=None):
     # another role it holds (READ inside WRITE); technical-to-technical links are the model's own, so not checked
     consumers = [(g, h, True) for g, h in roles_of.items()] + [(g, h, False) for g, h in holds.items()
                                                                if role_kind(g) != "technical"]
-    for g, direct, u in consumers:  # one finding per (consumer, held role, READ role), shortest path
+    # one finding per (consumer, held role, READ role), shortest path
+    for g, direct, u in consumers if HIERARCHY_ON else ():
         for d in direct if inside(only, g, "3") else ():
             best = bfs([d])
             for t in dict.fromkeys(direct):
@@ -5243,7 +5530,8 @@ def rules_model(only=None):
             out.append(find("13", r, f"holds {plural(len(kids), 'role')}" + (f": {', '.join(kids)}" if kids else "")
                             + f"; {plural(len(granted.get(r, [])), 'privilege')} of its own", [r],
                             fix=(f"Remove in the infrastructure-as-code repo: role {r}", f"DROP ROLE {sql_name(r)};")))
-    for r in sorted(x for x in users_of if inside(only, x, "14")):  # 14: per role granted to users, the deepest grant
+    # 14: per role granted to users, the deepest grant
+    for r in sorted(x for x in users_of if HIERARCHY_ON and inside(only, x, "14")):
         deep = None  # the first grant of the longest chain, a data object first; shorter chains can't win
         for x, p in sorted(bfs([r]).items(), key=lambda t: -len(t[1])):
             if deep and len(p) < deep[0]:
@@ -5261,7 +5549,8 @@ def rules_model(only=None):
 def rules_admin(only=None):
     """Rules 5, 9, 12: admin roles, PUBLIC, admin default roles."""
     out = []
-    near = set().union(*(ups(r)[1] for r in ADMIN if r in roles))  # reach only: skips the path walk for everyone else
+    # reach only: skips the path walk for everyone else
+    near = set().union(*(ups(r)[1] for r in ADMIN if r in roles)) if HIERARCHY_ON else set()
     for u in users:  # 5: one finding per (person, admin role), shortest path; one below another admin role is not
         if u in near and not is_service(u) and inside(only, u, "5"):
             for r, ps in group((p[-1], p) for p in admin_paths(u, user=True)).items():
@@ -5291,13 +5580,13 @@ def rules_sensitive(only=None):
         for c in sensitive_cols(o):
             if c not in ps:
                 k = "VIEW" if "VIEW" in (kinds.get(o) or "") else "TABLE"
-                n = len(readers(o))
+                n = len(readers(o)) if HIERARCHY_ON else None  # the readers need a walk; the finding does not
                 out.append(find("6", o, f"column {c}: " + ", ".join(tag_label(t, v) for cc, t, v, _ in s[o] if cc == c),
-                                [o], affects=n, impact=f"{plural(n, 'reader')} see it in clear",
+                                [o], affects=n, impact=None if n is None else f"{plural(n, 'reader')} see it in clear",
                                 fix=(f"Add in the infrastructure-as-code repo: a masking policy on {o}.{c}",
                                      f"ALTER {k} {sql_obj(o)} MODIFY COLUMN {sql_name(c)} SET MASKING POLICY <policy>;")))
-    read_by = {o: readers(o) for o in s}
-    for u in users:  # 7
+    read_by = {o: readers(o) for o in s} if HIERARCHY_ON else {}
+    for u in users if HIERARCHY_ON else ():  # 7
         if is_service(u) or not inside(only, u, "7"):
             continue
         objs = sorted(o for o, us in read_by.items() if u in us)
@@ -5307,7 +5596,7 @@ def rules_sensitive(only=None):
             out.append(find("7", u, f"{why}; reads {len(objs)} sensitive: {', '.join(objs)}", [u],
                             [role_edge(u, r, True) for r in roles_of.get(u, [])], user=True))
     writes = {}  # user -> {sensitive object: [(privilege, type, holder)]}: reach only, no path listing
-    for o in s:
+    for o in s if HIERARCHY_ON else ():
         for r, pv, k in on.get(o, []):
             if priv_class(pv, k) in ("write", "own"):
                 for u in ups(r)[1]:
@@ -5321,7 +5610,7 @@ def rules_sensitive(only=None):
             out.append(find("10", u, "; ".join(f"{', '.join(pv)} on {o}" for o, pv in v.items()),
                             min((best[r] for _, _, r in got[o0]), key=len) + [o0], edges, user=True))
     for r in roles:  # 11: the fix cuts every held role (and own grant) that leads to sensitive data
-        if role_kind(r) == "group" and inside(only, r, "11"):
+        if HIERARCHY_ON and role_kind(r) == "group" and inside(only, r, "11"):
             got = reads([r])
             objs = sorted(set(got) & set(s))
             if objs:
@@ -5519,7 +5808,7 @@ def rules_activity():
             adm.setdefault((u, x["ROLE_NAME"]), []).append(x)
     out = []
     for (u, o), xs in sorted(per.items()):
-        if u in profile and not is_service(u) and o in kinds:
+        if HIERARCHY_ON and u in profile and not is_service(u) and o in kinds:
             ch = [x for x in xs if x["ACTION"] in ("WRITE", "DDL") and x["ROLE_NAME"]
                   and "own" not in data_use(x["ROLE_NAME"])[1].get(o, ())]
             if ch:
@@ -5561,6 +5850,22 @@ def findings(only=None):
     """Every rule finding, in rule order: dict(num, grantee, detail, path, edges [grant edges the fix removes], edge
     (see find()), fix, paths, affects, impact). only: {rule: users and roles it checks} for the per-grantee rules
     (SCOPED), the other rules check everything (what_if: only what a change can touch)."""
-    out = (rules_model(only) + rules_admin(only) + rules_sensitive(only) + rules_users() + rule17(only) + rule18()
-           + rule19() + rules_operate() + rule22() + rule23(only) + cached("activity", rules_activity) + rule29())
+    walks = (rule17(only) + rule18() + rule19() + rules_operate() + rule22() + rule23(only) + rule29()
+             if HIERARCHY_ON else [])
+    out = (rules_model(only) + rules_admin(only) + rules_sensitive(only) + rules_users() + walks
+           + cached("activity", rules_activity))
     return sorted(out, key=lambda f: int(f["num"]))
+
+
+# rules whose check walks role paths (bfs, ups, up_walk, data_use, reads): HIERARCHY=0 skips them; rule 6 then runs
+# without its reader count
+WALKS = {"3", "5", "7", "10", "11", "14", "17", "18", "19", "20", "21", "22", "23", "24", "29"}
+ACTIVITY_RULES = {"24", "25", "26", "27", "28"}
+
+
+def skipped_rules():
+    """{rule: why it did not run}: HIERARCHY=0 (WALKS), ACTIVITY=0 (rules 24-28)."""
+    out = {} if HIERARCHY_ON else dict.fromkeys(WALKS, SKIP_HIERARCHY)
+    if (run.get("SOURCES") or {}).get("activity") == "SKIPPED":
+        out |= {n: out.get(n, SKIP_ACTIVITY) for n in ACTIVITY_RULES}
+    return dict(sorted(out.items(), key=lambda t: int(t[0])))

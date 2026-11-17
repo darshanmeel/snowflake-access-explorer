@@ -7,6 +7,8 @@
 --   function in your account), use the plain query files instead: they need nothing created.
 -- Arguments: the SET names of each query file, in the same order. Only the name (and OBJECT_NAME) is required:
 --   PRIVILEGE '' (or NULL) = any, MAX_DEPTH 50 (NULL = 50), SHOW_BUILTIN FALSE, as in the files.
+-- Paths are listed before they are counted: on hierarchies where roles are reached through many paths, lower
+--   MAX_DEPTH or use the app, which counts paths over the role graph.
 -- A function reads ACCOUNT_USAGE with its owner's rights: whoever gets USAGE on it sees the account's grants.
 --   Grant USAGE only to roles that may see them.
 -- Each body is the query of its file with $NAME -> NAME and without the last ORDER BY (test_queries.py checks it);

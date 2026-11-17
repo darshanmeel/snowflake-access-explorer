@@ -43,6 +43,12 @@ export function get<T>(path: string, p: Record<string, string | undefined | null
   return hit as Promise<T>;
 }
 
+/** GET without the cache, for polling; null inside Streamlit, where Python answers only once it is done. */
+export async function peek<T>(path: string, p: Record<string, string | undefined | null> = {}): Promise<T | null> {
+  if (transport) return null;
+  return (await check(await fetch(`/api/${path}${qs(p)}`, { credentials: "same-origin" }))).json();
+}
+
 export async function post<T>(path: string, body?: unknown): Promise<T> {
   if (transport) return transport("POST", `/api/${path}`, body ?? {}) as Promise<T>;
   const r = await check(await fetch(`/api/${path}`, {

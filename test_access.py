@@ -5,6 +5,7 @@ import random
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from urllib.parse import parse_qsl
@@ -345,21 +346,28 @@ def test_demo_db():
     d = a.fake()
     write(con, d)
 
+    lock = threading.Lock()  # snapshot() reads the tables in parallel; one DuckDB connection runs one at a time
+
     def query(sql):
-        cur = con.execute(sql)
-        cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+        with lock:
+            cur = con.execute(sql)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
 
     s = a.snapshot(query, "main")
     assert s["run"]["RUN_ID"] == "run-2" and s["run"]["SOURCES"]["tags"] == "ACCOUNT_USAGE"
+    assert a.snapshot(query, "main", old=s) is s  # the same run in this shape: kept
+    for old in ({k: v for k, v in s.items() if k != "TAG"}, s | {"GRANT": [x | {"RUN_ID": "run-2"} for x in s["GRANT"]]}):
+        assert a.snapshot(query, "main", old=old) == s  # a pickle of older code: read again
     for t in a.TABLES + a.OPTIONAL:
         assert [{k: v for k, v in x.items() if k != "RUN_ID"} for x in s[t]] == d[t], t
     seen = []  # a new run finishes while we read: the read starts again on it, never mixes or keeps deleted rows
 
     def racing(sql):
-        seen.append(sql)
-        if len(seen) == 3:
-            con.execute("UPDATE TBL_ACCESS_RUN SET FINISHED_AT = FINISHED_AT + INTERVAL 2 DAY WHERE RUN_ID = 'run-1'")
+        with lock:
+            seen.append(sql)
+            if len(seen) == 3:
+                con.execute("UPDATE TBL_ACCESS_RUN SET FINISHED_AT = FINISHED_AT + INTERVAL 2 DAY WHERE RUN_ID = 'run-1'")
         return query(sql)
     assert a.snapshot(racing, "main")["run"]["RUN_ID"] == "run-1"
     con.execute("DROP TABLE TBL_ACCESS_OBJECT_USE")  # a setup from before the table: still loads, no usage
@@ -406,6 +414,9 @@ def fake_snowflake(d, au):
                 raise RuntimeError("Object does not exist or not authorized.")
             if "LIMIT 1" in s:
                 return [{"1": 1}]
+            if "'USE' AS PART" in s:  # history_sql: object use and activity in one read, the other part's columns NULL
+                return ([dict(dict.fromkeys(a.ACT_COLS), **x, PART="USE") for x in d["OBJECT_USE"]] +
+                        [dict(dict.fromkeys(a.USE_COLS), **x, PART="ACT") for x in d["ACTIVITY"]])
             if "OBJECT_MODIFIED_BY_DDL" in s:  # activity_sql: before QUERY_HISTORY, which it joins
                 return [dict(x) for x in d["ACTIVITY"]]
             if "ACCOUNT_USAGE.GRANTS_TO_ROLES " in s + " ":
@@ -471,6 +482,92 @@ def test_each():
     assert isinstance(got[1], ValueError) and len(got) == 60
 
 
+def test_switches():
+    """HIERARCHY=0 skips the rules that walk role paths (a.WALKS) and lists them as skipped; ACTIVITY=0 reads nothing
+    from ACCESS_HISTORY (objects mode: no OBJECT_USE / ACTIVITY table; Direct mode: no probe) and skips rules 24-28.
+    At the defaults nothing is skipped and every rule has a finding."""
+    d = a.fake()
+    a.build(d)
+    every = {c[0] for c in a.checks()}
+    assert a.skipped_rules() == {} and every == set(a.RULES)
+    old = a.HIERARCHY_ON, a.ACTIVITY_ON
+    try:
+        a.HIERARCHY_ON = False
+        a.build(d)
+        got, skip = {c[0] for c in a.checks()}, a.skipped_rules()
+        assert skip == dict.fromkeys(sorted(a.WALKS, key=int), a.SKIP_HIERARCHY), skip
+        assert got == every - a.WALKS and "6" in got, sorted(got, key=int)
+        assert all(x["affects"] is None for x in a.rule_rows() if x["edges"])  # who loses access needs a walk too
+        assert a.access_of("ENGINEER_01", True)  # pages still walk
+        a.HIERARCHY_ON, a.ACTIVITY_ON = True, False
+        sent = []
+
+        def query(sql):
+            sent.append(sql)
+            if ".TBL_ACCESS_RUN " in sql:
+                return [{"RUN_ID": "r1", "FINISHED_AT": "2026-11-03 10:00", "SOURCES": '{"activity": "ACCOUNT_USAGE"}',
+                         "NOTES": "{}"}]
+            return [dict(x) for x in d[re.search(r"TBL_ACCESS_(\w+) WHERE", sql)[1]]]
+        s = a.snapshot(query, "D.S")
+        assert not [x for x in sent if "OBJECT_USE" in x or "TBL_ACCESS_ACTIVITY" in x]
+        assert s["ACTIVITY"] == s["OBJECT_USE"] == [] and s["run"]["SOURCES"]["activity"] == "SKIPPED"
+        a.build(s)
+        assert a.act_state() == (False, a.SKIP_ACTIVITY) and a.use_state() == (False, a.SKIP_ACTIVITY)
+        assert a.skipped_rules() == dict.fromkeys(sorted(a.ACTIVITY_RULES, key=int), a.SKIP_ACTIVITY)
+        assert not {c[0] for c in a.checks()} & a.ACTIVITY_RULES
+        show, calls = fake_snowflake(d, False)
+        s = a.live(show)
+        assert not [c for c in calls if "ACCESS_HISTORY" in c or "SESSIONS" in c], calls
+        assert s["run"]["SOURCES"]["activity"] == s["run"]["SOURCES"]["object_use"] == "SKIPPED"
+        assert s["run"]["NOTES"]["activity"] == a.SKIP_ACTIVITY
+        import cache
+        assert cache.name("direct").endswith("_noactivity")
+    finally:
+        a.HIERARCHY_ON, a.ACTIVITY_ON = old
+        a.build(d)
+    import cache
+    assert not cache.name("direct").endswith("_noactivity")
+
+
+def test_timeout():
+    """A statement past STATEMENT_TIMEOUT: sf.rows says which step and how to give it longer, in minutes."""
+    import sf
+
+    class Cur:
+        def execute(self, sql, **kw):
+            self.kw = kw
+            raise RuntimeError("000630 (57014): Statement reached its statement or warehouse timeout of 300 second(s) "
+                               "and was canceled.")
+    cur, old = Cur(), a.STATEMENT_TIMEOUT
+    conn = type("Conn", (), {"cursor": lambda self: cur})()
+    a.STATEMENT_TIMEOUT = 300  # the default, whatever .env says
+    try:
+        sf.rows(conn, f"SELECT 1 FROM {a.AU}.ACCESS_HISTORY")
+        raise AssertionError("no timeout")
+    except TimeoutError as e:
+        assert str(e) == (f"{a.AU}.ACCESS_HISTORY: stopped after 5 min (STATEMENT_TIMEOUT=300); set "
+                          "STATEMENT_TIMEOUT=600 for 10 minutes"), e
+    assert cur.kw == {"_statement_params": {"STATEMENT_TIMEOUT_IN_SECONDS": 300}}
+    try:  # the CALL goes without the limit (the procedure limits its own statements), so its timeout is not the app's
+        sf.rows(conn, "CALL D.S.SP_ACCESS_SNAPSHOT('AUTO')")
+        raise AssertionError("no timeout")
+    except TimeoutError as e:
+        assert cur.kw == {} and str(e) == ("CALL D.S.SP_ACCESS_SNAPSHOT('AUTO'): stopped after 5 min by the warehouse "
+                                           "or account STATEMENT_TIMEOUT_IN_SECONDS, not the app's STATEMENT_TIMEOUT: "
+                                           "an admin can raise it"), e
+    try:
+        assert a.timeout_hint("timeout of 120 second(s)").startswith("stopped after 2 min by the warehouse")
+        a.STATEMENT_TIMEOUT = 90
+        assert a.timeout_hint("timeout of 90 second(s)") == ("stopped after 1.5 min (STATEMENT_TIMEOUT=90); set "
+                                                             "STATEMENT_TIMEOUT=180 for 3 minutes")
+        a.STATEMENT_TIMEOUT = 0
+        assert a.timeout_hint("reached its statement or warehouse timeout") == (
+            "stopped by the warehouse or account STATEMENT_TIMEOUT_IN_SECONDS, not the app's STATEMENT_TIMEOUT: an "
+            "admin can raise it")
+    finally:
+        a.STATEMENT_TIMEOUT = old
+
+
 def test_live():
     """live() without ACCOUNT_USAGE (SHOW fallback) and with it gives the same lookups as the data it read; writes nothing."""
     d = a.fake()
@@ -498,6 +595,28 @@ def test_live():
             assert s["ACTIVITY"] == d["ACTIVITY"] and src["activity"] == "ACCOUNT_USAGE"
             sql = next(c for c in calls if "OBJECT_MODIFIED_BY_DDL" in c)
             assert f"'{a.QUERY_TAG}'" in sql and "'2026-09-04 00:00:00 +00:00'::TIMESTAMP_TZ" in sql and "SESSIONS" in sql  # 60 days before 11-03
+            assert sql.count("ACCOUNT_USAGE.ACCESS_HISTORY") == 1 and "'USE' AS PART" in sql  # one scan for both
+            assert not [c for c in calls if "ACCESS_HISTORY" in c and "LIMIT 1" not in c and c != sql]
+
+            def shared_fails(sql):  # the shared read fails: each step reads on its own, the same rows
+                if "'USE' AS PART" in sql:
+                    raise RuntimeError("SQL compilation error")
+                return query(sql)
+            calls.clear()
+            t = a.live(shared_fails)
+            assert t["OBJECT_USE"] == d["OBJECT_USE"] and t["ACTIVITY"] == d["ACTIVITY"]
+            assert t["run"]["SOURCES"]["object_use"] == t["run"]["SOURCES"]["activity"] == "ACCOUNT_USAGE"
+            assert len([c for c in calls if "ACCESS_HISTORY" in c and "LIMIT 1" not in c]) == 2, calls
+
+            def shared_slow(sql):  # a timeout: no read apart (the same scan under the same limit), both steps say so
+                if "'USE' AS PART" in sql:
+                    raise TimeoutError(f"{a.AU}.ACCESS_HISTORY: {a.timeout_hint()}")
+                return query(sql)
+            calls.clear()
+            t = a.live(shared_slow)
+            assert t["run"]["SOURCES"]["object_use"] == t["run"]["SOURCES"]["activity"] == "UNAVAILABLE"
+            assert all("STATEMENT_TIMEOUT" in t["run"]["NOTES"][k] for k in ("object_use", "activity")), t["run"]["NOTES"]
+            assert not [c for c in calls if "ACCESS_HISTORY" in c and "LIMIT 1" not in c], calls
             calls.clear()
             old = [x for x in d["ACTIVITY"] if x["DAY"] < "2026-10-20"]  # an earlier read: only the days it lacks
             s = a.live(query, old)
@@ -555,7 +674,7 @@ def test_duckdb():
     import duckdb
     setup = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql", "1_setup.sql"), encoding="utf-8").read()
     for name, cols in cache.COLUMNS.items():
-        body = re.search(rf"TABLE IF NOT EXISTS &DB\.&SCHEMA\.TBL_ACCESS_{name} \(.*?\n(.*?)\n\);", setup, re.S).group(1)
+        body = re.search(rf"TABLE IF NOT EXISTS &DB\.&SCHEMA\.TBL_ACCESS_{name} \(.*?\n(.*?)\n\)[^;\n]*;", setup, re.S).group(1)
         want = [ln.split()[0] for ln in body.splitlines() if ln.strip() and not ln.strip().startswith("--")]
         assert [c.split()[0] for c in cols.split(", ")] == want, name
     assert set(cache.COLUMNS) == {"RUN"} | set(a.TABLES) | set(a.OPTIONAL)
@@ -641,9 +760,7 @@ def test_db_roles():
 
         def query(sql):
             if sql.startswith("SELECT CURRENT_USER()"):
-                return [{"U": "ENGINEER_01"}]
-            if sql.startswith("SELECT CURRENT_AVAILABLE_ROLES()"):
-                return [{"R": json.dumps(mine_roles)}]
+                return [{"U": "ENGINEER_01", "D": None, "R": json.dumps(mine_roles)}]
             if sql.startswith("SHOW GRANTS TO USER"):
                 return [{"role": x} for x in a.roles_of["ENGINEER_01"]]
             if bad and sql == f'SHOW GRANTS TO DATABASE ROLE {a.db_ident(bad)}':
@@ -1723,11 +1840,31 @@ def test_activity():  # Activity tabs and rules 24-28: ACCESS_HISTORY per day, u
     ins = next(r for r in x["rows"] if r["type"] == "INSERT")
     assert [h for h, v in enumerate(ins["hours"]) if v] == [13, 22]  # Snowsight use partly at 22:00 UTC: off-hours
     assert {(r["user"], r["kind"]) for r in x["rows"] if r["interactive"]} == {("ENGINEER_01", "person"), ("SVC_DEPLOY", "service")}
+    h = a.history_sql("2026-05-04", "2026-09-04", False)  # both reads in one ACCESS_HISTORY scan, each with its own cut
+    for part in (a.use_sql("2026-05-04"), a.activity_sql("2026-09-04", False)):
+        assert part.replace(f"FROM {a.AU}.ACCESS_HISTORY WHERE", "FROM A0 WHERE") in h
+    assert h.count(f"{a.AU}.ACCESS_HISTORY") == 1 and h.count("FROM A0 WHERE") == 2
+    use, act = dict(zip(a.USE_COLS, "UOWAQL")), dict(zip(a.ACT_COLS, "DURCOAYQLHP"))
+    assert a.history_rows([dict(dict.fromkeys(a.ACT_COLS), **use, PART="USE"),
+                           dict(dict.fromkeys(a.USE_COLS), **act, PART="ACT")]) == ([use], [act])
     sql = a.activity_sql("2026-01-01")
     assert "CONVERT_TIMEZONE('UTC'" in sql and "OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS" in sql and "StreamlitName" in sql
     assert a.activity("SALES.CORE", "scope")["by"]["object"][0]["key"].startswith("SALES.CORE.")  # a schema: all in it
     assert "LIKE 'SALES.CORE.%'" in a.query_sql("SALES.CORE", "scope", "2026-09-04", "2026-11-02")
     assert "O'BRIEN" not in a.query_sql("O'BRIEN", "user", "2026-09-04", "2026-11-02").replace("O''BRIEN", "")  # quoted
+    for what in a.ACT_FILTER:  # X is not in scope inside its own CTE: its WHERE uses H. / Q. columns
+        sql = a.activity_section_sql("SALES.CORE", what, "2026-09-04", "2026-11-02", "tiles")["sql"]
+        inside = sql[sql.index("X AS ("):sql.index("-- not the app's own")]
+        assert not re.search(r"\bX\.", inside) and "S.CREATED_ON < DATEADD(DAY, 1, ($TO_DAY" in inside, what
+        assert "Q.START_TIME < DATEADD(DAY, 1, ($TO_DAY" in inside, what
+    once = a.activity_once_sql("SALES.CORE", "scope", "2026-09-04", "2026-11-02", list(a.ACT_SECTIONS))["sql"]  # base read once
+    base, rest = once.split("SET BASE_ID = LAST_QUERY_ID();")
+    assert base.rstrip().endswith("SELECT * FROM X;") and "ACCOUNT_USAGE" not in rest and "SET IN_SCOPE = 'SALES.CORE';" in base
+    assert rest.count("WITH X AS (SELECT * FROM TABLE(RESULT_SCAN($BASE_ID)))") == len(a.ACT_SECTIONS)
+    assert all(s[2] in rest for s in a.ACT_SECTIONS.values()) and "SET WORK_START = " in base
+    assert a.page_sql("access", {"user": "ENGINEER_01", "show": "activity"})[0]["title"].startswith("Every section from one read")
+    sql = a.query_sql("SALES.CORE", "scope", "2026-09-04", "2026-11-02")
+    assert "Q.START_TIME < DATEADD(DAY, 1, '2026-11-02" in sql and "S.CREATED_ON >= " not in sql
     w = a.warehouse_use("WH_SALES_XS")
     assert w["used"] and w["used"][0]["queries"] >= w["used"][-1]["queries"] and not {r["user"] for r in w["used"]} & set(w["unused"])
     g, gone = a.activity_graph("SALES.CORE.TBL_CUSTOMER", "object", x["rows"])  # the grant path behind each use
@@ -1830,6 +1967,40 @@ def test_tag_settings():
     out = subprocess.run([sys.executable, "-c", "import access as a; print(a.QUERY_TAG, a.APP_ST); "
                           "print(a.activity_sql('2026-01-01'))"], env=env, capture_output=True, text=True, check=True).stdout
     assert out.startswith("it's ST_OTHER") and "<> 'it''s'" in out and "NOT LIKE '%.ST_OTHER%'" in out
+
+
+def test_progress():
+    """live() and the waves report what they do (a.progress): the same data with and without it, a worker number on
+    the heavy reads when WORKERS > 1, a count on the SHOW waves, a timeout on its own line with the longer setting."""
+    d = a.fake()
+    plain, lines = a.live(fake_snowflake(d, False)[0]), []  # SHOW: ACCOUNT_USAGE not readable (no pandas needed)
+    with a.progress(lines.append):
+        assert a.live(fake_snowflake(d, False)[0]) == plain
+    assert lines[-1].startswith("done in ") and any(x.startswith("SHOW GRANTS TO / OF ROLE: ") and " of " in x
+                                                    for x in lines), lines
+
+    def snap(sql):  # the snapshot tables: their heavy reads go WORKERS at a time
+        if ".TBL_ACCESS_RUN " in sql:
+            return [{"RUN_ID": "r1", "FINISHED_AT": "2026-11-03 10:00", "SOURCES": "{}", "NOTES": "{}"}]
+        return [dict(x) for x in d.get(re.search(r"TBL_ACCESS_(\w+) WHERE", sql)[1]) or []]
+    plain, lines, w = a.snapshot(snap, "D.S"), [], a.WORKERS
+    try:
+        a.WORKERS = 3
+        with a.progress(lines.append):
+            assert a.snapshot(snap, "D.S") == plain
+    finally:
+        a.WORKERS = w
+    assert any(re.match(r"\[w[123]\] TBL_ACCESS_GRANT: [\d,]+ rows in \d+ s$", x) for x in lines), lines
+    assert lines[-1].startswith("done in "), lines
+    lines, n = [], a.STATEMENT_TIMEOUT
+
+    def slow(sql):
+        raise TimeoutError(f"{a.step_name(sql)}: {a.timeout_hint()}")
+    with a.progress(lines.append):
+        got = a.each(slow, ["SHOW GRANTS TO ROLE X", "SHOW GRANTS TO ROLE Y"], what="SHOW GRANTS TO ROLE")
+    assert all(isinstance(g, TimeoutError) for g in got)
+    assert sum(f"STATEMENT_TIMEOUT={2 * n}" in x for x in lines) == 2 and lines[-1] == "SHOW GRANTS TO ROLE: 2 of 2", lines
+    a.each(slow, ["A"], what="no sink")  # outside progress(): nothing to report to, no error
 
 
 if __name__ == "__main__":

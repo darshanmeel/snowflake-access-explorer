@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_GRANT (   -- role -> object an
     IS_FUTURE BOOLEAN,
     GRANT_OPTION BOOLEAN,
     GRANTED_BY VARCHAR(255)
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_USER_ROLE
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_USER_ROLE (   -- role -> user
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_USER_ROLE (   -- role -> user
     USER_NAME VARCHAR(255),
     ROLE_NAME VARCHAR(255),
     GRANTED_BY VARCHAR(255)
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_USER
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_USER (   -- user profile
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_USER (   -- user profile
     DEFAULT_WAREHOUSE VARCHAR(255),
     DEFAULT_NAMESPACE VARCHAR(500),
     LAST_SUCCESS_LOGIN TIMESTAMP_LTZ
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_USAGE
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_USAGE (   -- roles and warehouses used, per user
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_USAGE (   -- roles and warehou
     NAME VARCHAR(255),
     QUERIES NUMBER,
     LAST_USED TIMESTAMP_LTZ
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_TAG
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_TAG (   -- tags on databases, schemas, tables/views, columns
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_TAG (   -- tags on databases, 
     TAG_NAME VARCHAR(500),           -- TAG_DATABASE.TAG_SCHEMA.TAG_NAME
     TAG_VALUE VARCHAR(500),
     APPLY_METHOD VARCHAR(50)         -- MANUAL, CLASSIFIED, PROPAGATED, INHERITED, ...
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_POLICY
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_POLICY (   -- masking and row access policies and where they sit
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_POLICY (   -- masking and row 
     ARG_COLUMNS VARCHAR(2000),       -- row access policy / conditional masking arguments
     TAG_NAME VARCHAR(500),           -- tag-based policy: DB.SCHEMA.TAG
     POLICY_BODY VARCHAR              -- policy text; the app reads role checks from it (not evaluated)
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_STREAM
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_STREAM (   -- streams and their source (rule 22), from SHOW STREAMS
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_STREAM (   -- streams and thei
     STREAM_NAME VARCHAR(2000),       -- DB.SCHEMA.STREAM
     SOURCE_NAME VARCHAR(2000),       -- DB.SCHEMA.TABLE the stream reads
     SOURCE_TYPE VARCHAR(50)          -- Table, View, ...
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_OBJECT_USE
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE (   -- objects used per user and week, from ACCESS_HISTORY
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE (   -- objects used
     ACTION VARCHAR(10),              -- READ (objects read) or WRITE (objects modified)
     QUERIES NUMBER,
     LAST_USED TIMESTAMP_LTZ
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_ACTIVITY
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_ACTIVITY (   -- table use per day, user, role, client and statement,
@@ -119,13 +119,43 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_ACTIVITY (   -- table use per 
     LAST_USED TIMESTAMP_LTZ,
     HOURS VARIANT,                   -- {UTC hour of day: queries}; DAY is the UTC day too
     APP VARCHAR(2000)                -- the Streamlit app the queries ran for (QUERY_TAG StreamlitName), else NULL
-);
+) DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_ACTIVITY_HOURS (may fail)
 ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_ACTIVITY ADD COLUMN IF NOT EXISTS HOURS VARIANT;   -- a table made before the column
 
 -- name: TABLE_ACTIVITY_APP (may fail)
 ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_ACTIVITY ADD COLUMN IF NOT EXISTS APP VARCHAR(2000);
+
+-- every run writes the snapshot tables anew and deletes the run before it, and they can be rebuilt from ACCOUNT_USAGE
+-- with a CALL: no Time Travel on them (Fail-safe stays, permanent tables). The run log keeps the default.
+-- Tables made before this setting get it here.
+-- name: RETENTION_GRANT (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_GRANT SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_USER_ROLE (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_USER_ROLE SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_USER (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_USER SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_USAGE (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_USAGE SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_TAG (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_TAG SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_POLICY (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_POLICY SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_STREAM (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_STREAM SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_OBJECT_USE (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_OBJECT_USE SET DATA_RETENTION_TIME_IN_DAYS = 0;
+
+-- name: RETENTION_ACTIVITY (may fail)
+ALTER TABLE &DB.&SCHEMA.TBL_ACCESS_ACTIVITY SET DATA_RETENTION_TIME_IN_DAYS = 0;
 
 -- name: TABLE_FINDING
 CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings of the last run, filled by SP_ACCESS_FINDINGS
@@ -154,6 +184,7 @@ $$
 # P_SOURCE: AUTO = ACCOUNT_USAGE where the owner can read it, else the SHOW fallback; ACCOUNT_USAGE or SHOW = force one.
 # Rows carry RUN_ID; the app reads the last OK run, so a running or failed CALL never shows half a snapshot.
 import json
+import re
 import uuid
 from datetime import timedelta
 
@@ -178,11 +209,100 @@ USE_DAYS = 180  # object usage kept from ACCESS_HISTORY
 ACTIVITY_DAYS = 60  # table activity kept (the app's ACTIVITY_DAYS)
 QUERY_TAG = "&QUERY_TAG"  # the app's own queries, left out of the activity
 APP_ST = "&STREAMLIT_APP"  # the app inside Snowflake: its queries carry this StreamlitName
+TIMEOUT = int("&STATEMENT_TIMEOUT")  # seconds per statement (settings.sql), 0 = Snowflake's own
+WORKERS = max(1, int("&WORKERS"))  # heavy INSERT ... SELECT jobs (later()) running at once
+READ_ACTIVITY = "&ACTIVITY" != "0"  # 0: no ACCESS_HISTORY reads (object use, activity)
+# a statement parameter, not ALTER SESSION (refused in an owner's-rights procedure). to verify: Snowflake applies
+# STATEMENT_TIMEOUT_IN_SECONDS from statement_params to a procedure's child statements and async jobs
+TIMED = {"statement_params": {"STATEMENT_TIMEOUT_IN_SECONDS": TIMEOUT}} if TIMEOUT else {}
+
+
+BATCH = 16  # statements sent at once as async child jobs: one SHOW after another takes minutes on big accounts
+ASYNC = True  # run() clears it when a probe job gives no rows: every step then runs one statement after another
+PENDING = []  # wait() of the heavy jobs started by later(), oldest first: at most WORKERS run at once
+STOP = []  # set when a run has failed: waits then end the jobs already started and start none
+
+
+def async_ok(session):
+    """to verify: SHOW through collect_nowait() in an owner's-rights procedure. One SHOW as an async child job, read
+    back; when that fails, the async path is off for the run."""
+    try:
+        session.sql("SHOW ROLES LIMIT 1").collect_nowait(**TIMED).result()
+        return True
+    except Exception:
+        return False
+
+
+def low(found):  # lower-case keys: SHOW columns are lower case, views upper case
+    return [{k.strip('"').lower(): v for k, v in r.as_dict().items()} for r in found]
 
 
 def rows(session, sql):
-    """Rows as dicts with lower-case keys (SHOW columns are lower case, views upper case)."""
-    return [{k.strip('"').lower(): v for k, v in r.as_dict().items()} for r in session.sql(sql).collect()]
+    """Rows as dicts with lower-case keys."""
+    return low(session.sql(sql).collect(**TIMED))
+
+
+def many(session, sqls):
+    """rows() of each sql, BATCH at a time as async child jobs, in order; a failed one gives its exception.
+    to verify: SHOW / DESCRIBE / INFORMATION_SCHEMA calls through collect_nowait() in an owner's-rights procedure;
+    a statement that cannot start async runs with collect() instead, one after the other as before."""
+    if not ASYNC:
+        return [one(session, s) for s in sqls]
+    out = []
+    for i in range(0, len(sqls), BATCH):
+        part, jobs = sqls[i:i + BATCH], []
+        for s in part:
+            try:
+                jobs.append(session.sql(s).collect_nowait(**TIMED))
+            except Exception:
+                jobs.append(None)
+        for s, j in zip(part, jobs):
+            try:
+                out.append(low(j.result() if j else session.sql(s).collect(**TIMED)))
+            except Exception as e:
+                out.append(e)
+    return out
+
+
+def one(session, sql):  # rows(), or the exception of a refused statement
+    try:
+        return rows(session, sql)
+    except Exception as e:
+        return e
+
+
+def ready(source, note):  # a step's (source, note) known now, in the shape of later()
+    return lambda: (source, note)
+
+
+def later(session, table, run_id, sql, ok):
+    """Starts a heavy INSERT ... SELECT as an async child job, so the heavy steps overlap. The wait() it returns gives
+    the step's (source, note) once the job ends: ok, or UNAVAILABLE with this run's rows of table deleted; it waits only
+    once. to verify: collect_nowait() for an INSERT in an owner's-rights procedure; one that cannot start async runs
+    in wait() with collect(), as before."""
+    while len(PENDING) >= WORKERS:  # the oldest heavy job ends before this one starts
+        PENDING.pop(0)()
+    try:
+        job = session.sql(sql).collect_nowait(**TIMED) if ASYNC else None
+    except Exception:
+        job = None
+    got = []
+
+    def wait():
+        if not got:
+            got.append(ok)
+            if STOP and not job:  # the run failed: this statement never started, so it has no rows to wait for
+                got[0] = ("UNAVAILABLE", "not run: the run failed")
+                return got[0]
+            try:
+                job.result() if job else session.sql(sql).collect(**TIMED)
+            except Exception as e:
+                got[0] = ("UNAVAILABLE", first_line(e))
+                if table:  # history()'s shared INSERT ALL: one statement, so a failed one inserted nothing
+                    session.sql(f"DELETE FROM {table} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
+        return got[0]
+    PENDING.append(wait)
+    return wait
 
 
 def ident(name):
@@ -201,8 +321,20 @@ def sq(text):  # inside a '...' SQL string, where backslash also escapes
     return text.replace("\\", "\\\\").replace("'", "''")
 
 
-def first_line(e):  # the cause is on the 2nd line of "SQL compilation error:\n..."
-    return " ".join(str(e).split())[:500]
+def timed_out(e):  # as access.timed_out: error 000630
+    return "reached its statement or warehouse timeout" in str(e)
+
+
+def first_line(e):  # the cause is on the 2nd line of "SQL compilation error:\n..."; a timeout says how to give it longer
+    text, hint = " ".join(str(e).split())[:500], ""
+    if timed_out(e):  # as access.timeout_hint: a limit other than TIMEOUT is the warehouse's or the account's
+        m = re.search(r"timeout of (\d+) second", text)
+        n = int(m[1]) if m else TIMEOUT
+        hint = (f"stopped after {n / 60:g} min (STATEMENT_TIMEOUT={n}); set STATEMENT_TIMEOUT={2 * n} for "
+                f"{2 * n / 60:g} minutes in settings.local.sql and run sql/1_setup.sql again; " if TIMEOUT and n == TIMEOUT
+                else (f"stopped after {n / 60:g} min" if m else "stopped") + " by the warehouse or account "
+                "STATEMENT_TIMEOUT_IN_SECONDS, not STATEMENT_TIMEOUT of settings.local.sql: an admin can raise it; ")
+    return hint + text
 
 
 def fallback(session, view, mode):
@@ -210,7 +342,7 @@ def fallback(session, view, mode):
     if mode == "SHOW":
         return "SHOW forced by P_SOURCE"
     try:
-        session.sql(f"SELECT 1 FROM {AU}.{view} LIMIT 1").collect()
+        session.sql(f"SELECT 1 FROM {AU}.{view} LIMIT 1").collect(**TIMED)
         return None
     except Exception as e:
         if mode == "ACCOUNT_USAGE":
@@ -220,12 +352,12 @@ def fallback(session, view, mode):
 
 def save(session, table, cols, data):
     if data:
-        session.create_dataframe(data, schema=cols).write.save_as_table(table, mode="append", column_order="name")
+        session.create_dataframe(data, schema=cols).write.save_as_table(table, mode="append", column_order="name", **TIMED)
     return len(data)
 
 
 def count(session, table, run_id):
-    return session.sql(f"SELECT COUNT(*) AS N FROM {table} WHERE RUN_ID = '{run_id}'").collect()[0]["N"]
+    return session.sql(f"SELECT COUNT(*) AS N FROM {table} WHERE RUN_ID = '{run_id}'").collect(**TIMED)[0]["N"]
 
 
 def grants(session, run_id, mode):
@@ -244,37 +376,36 @@ def grants(session, run_id, mode):
                         WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
                         ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END,
                    FALSE, GRANT_OPTION, GRANTED_BY
-            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')""").collect()
+            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')""").collect(**TIMED)
         session.sql(f"""INSERT INTO {USER_ROLE} (RUN_ID, USER_NAME, ROLE_NAME, GRANTED_BY)
-            SELECT '{run_id}', GRANTEE_NAME, ROLE, GRANTED_BY FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""").collect()
+            SELECT '{run_id}', GRANTEE_NAME, ROLE, GRANTED_BY FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""").collect(**TIMED)
         out["grants"] = out["user_roles"] = ("ACCOUNT_USAGE", None)
         return out
     g, u, skipped = [], [], []
-    for role in [r["name"] for r in rows(session, "SHOW ROLES")]:
-        try:  # both SHOWs before keeping either: a half-read role would look like it has no holders
-            to = rows(session, f"SHOW GRANTS TO ROLE {ident(role)}")
-            of = rows(session, f"SHOW GRANTS OF ROLE {ident(role)}")
-        except Exception as e:  # a role the owner may not inspect: keep going, list it in NOTES
-            skipped.append(f"{role}: {first_line(e)}")
+    roles = [r["name"] for r in rows(session, "SHOW ROLES")]
+    got = many(session, [f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [f"SHOW GRANTS OF ROLE {ident(r)}" for r in roles])
+    for role, to, of in zip(roles, got[:len(roles)], got[len(roles):]):
+        bad = next((x for x in (to, of) if isinstance(x, Exception)), None)
+        if bad:  # both SHOWs before keeping either: a half-read role would look like it has no holders; a role the
+            skipped.append(f"{role}: {first_line(bad)}")  # owner may not inspect: keep going, list it in NOTES
             continue
         g += [[run_id, role, x["privilege"], x["granted_on"], clean(x["name"]), False,
                str(x.get("grant_option")).lower() == "true", x.get("granted_by")]
               for x in to if x.get("granted_to") in ("ROLE", None)]
         u += [[run_id, x["grantee_name"], role, x.get("granted_by")] for x in of if x.get("granted_to") == "USER"]
-    for d in rows(session, "SHOW DATABASES"):  # database roles: per database, their grants under DB.ROLE
-        if d.get("kind", "STANDARD") != "STANDARD":
+    # database roles: per database, their grants under DB.ROLE
+    dbs = [d["name"] for d in rows(session, "SHOW DATABASES") if d.get("kind", "STANDARD") == "STANDARD"]
+    lists = many(session, [f"SHOW DATABASE ROLES IN DATABASE {ident(db)}" for db in dbs])
+    names = [(db, clean(r["name"])) for db, rs in zip(dbs, lists) if not isinstance(rs, Exception) for r in rs]
+    held = dict(zip(names, many(session, [f"SHOW GRANTS TO DATABASE ROLE {ident(db)}.{ident(r)}" for db, r in names])))
+    for db, rs in zip(dbs, lists):  # notes in database order, as when read one after the other
+        if isinstance(rs, Exception):
+            skipped.append(f"database roles in {db}: {first_line(rs)}")
             continue
-        try:
-            dbrs = rows(session, f"SHOW DATABASE ROLES IN DATABASE {ident(d['name'])}")
-        except Exception as e:
-            skipped.append(f"database roles in {d['name']}: {first_line(e)}")
-            continue
-        for r in dbrs:  # one unreadable database role skips only itself (as access.live does)
-            q = f"{d['name']}.{clean(r['name'])}"
-            try:
-                got = rows(session, f"SHOW GRANTS TO DATABASE ROLE {ident(d['name'])}.{ident(clean(r['name']))}")
-            except Exception as e:
-                skipped.append(f"{q}: {first_line(e)}")
+        for r in rs:  # one unreadable database role skips only itself (as access.live does)
+            q, got = f"{db}.{clean(r['name'])}", held[(db, clean(r["name"]))]
+            if isinstance(got, Exception):
+                skipped.append(f"{q}: {first_line(got)}")
                 continue
             g += [[run_id, q, x["privilege"], x["granted_on"], clean(x["name"]), False,
                    str(x.get("grant_option")).lower() == "true", x.get("granted_by")] for x in got]
@@ -292,23 +423,27 @@ def future(session, run_id):
         dbs = rows(session, "SHOW DATABASES")
     except Exception as e:
         return "UNAVAILABLE", f"SHOW DATABASES: {first_line(e)}"
-    for d in dbs:
-        if d.get("kind", "STANDARD") != "STANDARD":  # shares, applications: their grants are not ours
-            continue
-        db = d["name"]
+    dbs = [d["name"] for d in dbs if d.get("kind", "STANDARD") == "STANDARD"]  # shares, applications: not ours
+    places, nope = {}, {}  # every SHOW sent in async waves; the rows and notes then taken in database order
+    for db, got in zip(dbs, many(session, [f"SHOW SCHEMAS IN DATABASE {ident(db)}" for db in dbs])):
         try:
-            places = [f"DATABASE {ident(db)}"] + [f"SCHEMA {ident(db)}.{ident(s['name'])}"
-                                                  for s in rows(session, f"SHOW SCHEMAS IN DATABASE {ident(db)}")
-                                                  if s["name"] != "INFORMATION_SCHEMA"]
+            if isinstance(got, Exception):
+                raise got
+            places[db] = [f"DATABASE {ident(db)}"] + [f"SCHEMA {ident(db)}.{ident(s['name'])}"
+                                                      for s in got if s["name"] != "INFORMATION_SCHEMA"]
         except Exception as e:
-            skipped.append(f"{db}: {first_line(e)}")
+            nope[db] = f"{db}: {first_line(e)}"
+    flat = [(db, p) for db, ps in places.items() for p in ps]
+    found = dict(zip(flat, many(session, [f"SHOW FUTURE GRANTS IN {p}" for _, p in flat])))
+    for db in dbs:
+        if db in nope:
+            skipped.append(nope[db])
             continue
         bad = None
-        for p in places:  # one refused place skips only itself, one note per database (as access.live does)
-            try:
-                got = rows(session, f"SHOW FUTURE GRANTS IN {p}")
-            except Exception as e:
-                bad = bad or f"{db}: {first_line(e)}"
+        for p in places[db]:  # one refused place skips only itself, one note per database (as access.live does)
+            got = found[(db, p)]
+            if isinstance(got, Exception):
+                bad = bad or f"{db}: {first_line(got)}"
                 continue
             for x in got:  # to a database role of this database: DB.ROLE
                 if x.get("grant_to") in ("ROLE", "DATABASE_ROLE"):
@@ -329,7 +464,7 @@ def users(session, run_id, mode):
         session.sql(f"""INSERT INTO {USER} SELECT '{run_id}', J:NAME::STRING, J:TYPE::STRING, TRY_TO_BOOLEAN(J:DISABLED::STRING),
                    J:DEFAULT_ROLE::STRING, COALESCE(J:DEFAULT_SECONDARY_ROLES, J:DEFAULT_SECONDARY_ROLE)::STRING,
                    J:DEFAULT_WAREHOUSE::STRING, J:DEFAULT_NAMESPACE::STRING, TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING)
-            FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)""").collect()
+            FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)""").collect(**TIMED)
         return "ACCOUNT_USAGE", None
     data = [[run_id, x["name"], blank(x.get("type")), str(x.get("disabled")).lower() == "true", blank(x.get("default_role")),
              blank(x.get("default_secondary_roles")), blank(x.get("default_warehouse")), blank(x.get("default_namespace")),
@@ -342,35 +477,31 @@ def users(session, run_id, mode):
 def usage(session, run_id, mode):
     """Roles, secondary roles and warehouses used per user, aggregated in SQL: ACCOUNT_USAGE.QUERY_HISTORY (30 days)
     or INFORMATION_SCHEMA.QUERY_HISTORY (7 days, max 10000 queries, only those the owner may see)."""
-    def insert(src, secondary):
+    def insert_sql(src, secondary):  # grouped first, so the JSON is parsed on the groups, not on every query (as access.live)
         sql = f"""INSERT INTO {USAGE} (RUN_ID, USER_NAME, KIND, NAME, QUERIES, LAST_USED)
-            WITH Q AS ({src})
-            SELECT '{run_id}', USER_NAME, 'ROLE', ROLE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 2, 4
+            WITH Q AS (SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, COUNT(*) AS N, MAX(START_TIME) AS T
+                FROM ({src}) GROUP BY 1, 2, 3, 4)
+            SELECT '{run_id}', USER_NAME, 'ROLE', ROLE_NAME, SUM(N), MAX(T) FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 2, 4
             UNION ALL
-            SELECT '{run_id}', USER_NAME, 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 2, 4"""
+            SELECT '{run_id}', USER_NAME, 'WAREHOUSE', WAREHOUSE_NAME, SUM(N), MAX(T) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 2, 4"""
         if secondary:  # SECONDARY_ROLE_STATS: JSON text, roleNames = comma-separated roles
             sql += f"""
             UNION ALL
-            SELECT '{run_id}', Q.USER_NAME, 'SECONDARY ROLE', TRIM(S.VALUE::STRING), COUNT(*), MAX(Q.START_TIME)
+            SELECT '{run_id}', Q.USER_NAME, 'SECONDARY ROLE', TRIM(S.VALUE::STRING), SUM(Q.N), MAX(Q.T)
             FROM Q, LATERAL FLATTEN(SPLIT(TRY_PARSE_JSON(Q.SECONDARY_ROLE_STATS):roleNames::STRING, ',')) S
             WHERE TRIM(S.VALUE::STRING) <> '' GROUP BY 2, 4"""
-        session.sql(sql).collect()
+        return sql
 
     why = fallback(session, "QUERY_HISTORY", mode)
-    if why is None:
-        try:  # usage is extra (and the heaviest read): without it the run stays OK, as in access.live
-            insert(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME FROM {AU}.QUERY_HISTORY
-                       WHERE START_TIME >= DATEADD(DAY, -{DAYS}, CURRENT_TIMESTAMP())""", True)
-            return "ACCOUNT_USAGE", None
-        except Exception as e:
-            session.sql(f"DELETE FROM {USAGE} WHERE RUN_ID = '{run_id}'").collect()
-            return "UNAVAILABLE", first_line(e)
+    if why is None:  # usage is extra (and a heavy read): without it the run stays OK, as in access.live
+        return later(session, USAGE, run_id, insert_sql(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME FROM {AU}.QUERY_HISTORY
+                       WHERE START_TIME >= DATEADD(DAY, -{DAYS}, CURRENT_TIMESTAMP())""", True), ("ACCOUNT_USAGE", None))
     try:
-        insert("""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE(&DB.INFORMATION_SCHEMA.QUERY_HISTORY(
-                  END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000))""", False)
-        return "INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries, owner's view only"
+        session.sql(insert_sql("""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME FROM TABLE(&DB.INFORMATION_SCHEMA.QUERY_HISTORY(
+                  END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000))""", False)).collect(**TIMED)
+        return ready("INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries, owner's view only")
     except Exception as e:
-        return "UNAVAILABLE", why + f"; INFORMATION_SCHEMA.QUERY_HISTORY: {first_line(e)}"
+        return ready("UNAVAILABLE", why + f"; INFORMATION_SCHEMA.QUERY_HISTORY: {first_line(e)}")
 
 
 def data_objects(session, run_id):
@@ -413,18 +544,27 @@ def tags(session, run_id, mode):
                        DOMAIN, IFF(DOMAIN = 'COLUMN', COLUMN_NAME, NULL), TAG_DATABASE || '.' || TAG_SCHEMA || '.' || TAG_NAME,
                        TAG_VALUE, APPLY_METHOD
                 FROM {AU}.TAG_REFERENCES
-                WHERE OBJECT_DELETED IS NULL AND DOMAIN IN ('DATABASE', 'SCHEMA', 'TABLE', 'COLUMN')""").collect()
+                WHERE OBJECT_DELETED IS NULL AND DOMAIN IN ('DATABASE', 'SCHEMA', 'TABLE', 'COLUMN')""").collect(**TIMED)
             return "ACCOUNT_USAGE", None
         objs, out, skipped = data_objects(session, run_id), [], []
-        for o in objs[:TAG_FALLBACK_MAX]:
-            fn = f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA"
-            try:
+        cap = objs[:TAG_FALLBACK_MAX]  # each statement list sent in async waves, zipped back (as access.live)
+        fns = [f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA" for o in cap]
+        tab = many(session, [f"SELECT * FROM TABLE({fn}.TAG_REFERENCES('{sq(quoted(o))}', 'table'))" for o, fn in zip(cap, fns)])
+        ok = [i for i, r in enumerate(tab) if not isinstance(r, Exception)]  # columns only where the table call worked
+        col = dict(zip(ok, many(session, [f"SELECT * FROM TABLE({fns[i]}.TAG_REFERENCES_ALL_COLUMNS('{sq(quoted(cap[i]))}', 'table'))"
+                                          for i in ok])))
+        for i, o in enumerate(cap):
+            try:  # the table rows stay when only the column call failed, as when they ran one after the other
                 # to verify: LEVEL = where the tag is set (DATABASE, SCHEMA, TABLE, COLUMN); TABLE rows include the
                 # tags inherited from the schema and database; column rows set higher up are skipped (the table row has them)
-                for x in rows(session, f"SELECT * FROM TABLE({fn}.TAG_REFERENCES('{sq(quoted(o))}', 'table'))"):
+                if isinstance(tab[i], Exception):
+                    raise tab[i]
+                for x in tab[i]:
                     out.append([run_id, o, "TABLE", None, f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}",
                                 x.get("tag_value"), "INHERITED" if x.get("level") not in (None, "TABLE") else "MANUAL"])
-                for x in rows(session, f"SELECT * FROM TABLE({fn}.TAG_REFERENCES_ALL_COLUMNS('{sq(quoted(o))}', 'table'))"):
+                if isinstance(col[i], Exception):
+                    raise col[i]
+                for x in col[i]:
                     if x.get("level") in (None, "COLUMN"):
                         out.append([run_id, o, "COLUMN", x.get("column_name"),
                                     f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}", x.get("tag_value"),
@@ -434,7 +574,7 @@ def tags(session, run_id, mode):
         save(session, TAG, TAG_COLS, out)
         return "INFORMATION_SCHEMA", capped_note(why, objs, skipped)
     except Exception as e:
-        session.sql(f"DELETE FROM {TAG} WHERE RUN_ID = '{run_id}'").collect()
+        session.sql(f"DELETE FROM {TAG} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
         return "UNAVAILABLE", "; ".join(filter(None, [why, first_line(e)]))
 
 
@@ -458,23 +598,31 @@ def policies(session, run_id, mode):
                 FROM {AU}.POLICY_REFERENCES R
                 LEFT JOIN {AU}.MASKING_POLICIES M ON M.POLICY_ID = R.POLICY_ID AND M.DELETED IS NULL
                 LEFT JOIN {AU}.ROW_ACCESS_POLICIES A ON A.POLICY_ID = R.POLICY_ID AND A.DELETED IS NULL
-                WHERE R.POLICY_KIND IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY')""").collect()
+                WHERE R.POLICY_KIND IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY')""").collect(**TIMED)
             return "ACCOUNT_USAGE", None
-        objs, out, skipped, body = data_objects(session, run_id), [], [], {}
-        for o in objs[:TAG_FALLBACK_MAX]:
-            fn = f"{ident(o.split('.')[0])}.INFORMATION_SCHEMA"
+        objs, out, skipped, kept, kind = data_objects(session, run_id), [], [], ("MASKING_POLICY", "ROW_ACCESS_POLICY"), {}
+        cap = objs[:TAG_FALLBACK_MAX]  # each statement list sent in async waves, zipped back (as access.live)
+        got = many(session, [f"""SELECT * FROM TABLE({ident(o.split('.')[0])}.INFORMATION_SCHEMA.POLICY_REFERENCES(
+                        REF_ENTITY_NAME => '{sq(quoted(o))}', REF_ENTITY_DOMAIN => 'table'))""" for o in cap])
+        for r in got:  # every policy found, described once, all in one wave
+            for x in [] if isinstance(r, Exception) else r:
+                try:
+                    if x.get("policy_kind") in kept:
+                        kind.setdefault(f"{x['policy_db']}.{x['policy_schema']}.{x['policy_name']}", x["policy_kind"])
+                except KeyError:  # its object is skipped below with this error
+                    pass
+        body = {}  # to verify: DESCRIBE returns the text in column "body"
+        for name, b in zip(kind, many(session, [f"DESCRIBE {'MASKING POLICY' if k == 'MASKING_POLICY' else 'ROW ACCESS POLICY'} "
+                                                f"{quoted(name)}" for name, k in kind.items()])):
+            body[name] = None if isinstance(b, Exception) or not b else b[0].get("body")  # no rights: "cannot derive"
+        for o, r in zip(cap, got):
             try:
-                for x in rows(session, f"""SELECT * FROM TABLE({fn}.POLICY_REFERENCES(
-                        REF_ENTITY_NAME => '{sq(quoted(o))}', REF_ENTITY_DOMAIN => 'table'))"""):
-                    if x.get("policy_kind") not in ("MASKING_POLICY", "ROW_ACCESS_POLICY"):
+                if isinstance(r, Exception):
+                    raise r
+                for x in r:
+                    if x.get("policy_kind") not in kept:
                         continue
                     name = f"{x['policy_db']}.{x['policy_schema']}.{x['policy_name']}"
-                    if name not in body:
-                        what = "MASKING POLICY" if x["policy_kind"] == "MASKING_POLICY" else "ROW ACCESS POLICY"
-                        try:  # to verify: DESCRIBE returns the text in column "body"
-                            body[name] = rows(session, f"DESCRIBE {what} {quoted(name)}")[0].get("body")
-                        except Exception:  # no rights on the policy: its text stays empty, "cannot derive" in the app
-                            body[name] = None
                     tag = f"{x['tag_database']}.{x['tag_schema']}.{x['tag_name']}" if x.get("tag_name") else None
                     out.append([run_id, name, x["policy_kind"], o, x.get("ref_column_name"),
                                 blank(x.get("ref_arg_column_names")), tag, body[name]])
@@ -483,7 +631,7 @@ def policies(session, run_id, mode):
         save(session, POLICY, POLICY_COLS, out)
         return "INFORMATION_SCHEMA", capped_note(why, objs, skipped)
     except Exception as e:
-        session.sql(f"DELETE FROM {POLICY} WHERE RUN_ID = '{run_id}'").collect()
+        session.sql(f"DELETE FROM {POLICY} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
         return "UNAVAILABLE", "; ".join(filter(None, [why, first_line(e)]))
 
 
@@ -497,41 +645,54 @@ def streams(session, run_id):
         save(session, STREAM, ["RUN_ID", "STREAM_NAME", "SOURCE_NAME", "SOURCE_TYPE"], data)
         return "SHOW", None
     except Exception as e:
-        session.sql(f"DELETE FROM {STREAM} WHERE RUN_ID = '{run_id}'").collect()
+        session.sql(f"DELETE FROM {STREAM} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
         return "UNAVAILABLE", first_line(e)
 
 
-def use_sql(days=USE_DAYS):
+def use_sql(since):
     """Object usage from ACCESS_HISTORY (query metadata, never table data), aggregated in Snowflake per user, object,
-    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). The same text
-    is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
-    return f"""WITH H AS (
-            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME AS T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
-            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.DIRECT_OBJECTS_ACCESSED) O
-            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP())
+    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). since: first
+    Monday read ('YYYY-MM-DD'), cut at the session's midnight like the weeks, so a week read again replaces a whole
+    week; ACCESS_HISTORY is scanned once. The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    return f"""WITH A AS (
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED
+            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::TIMESTAMP_LTZ),
+        H AS (
+            SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
+            FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
             UNION ALL
-            SELECT H.USER_NAME, H.QUERY_ID, H.QUERY_START_TIME, O.VALUE:"objectName"::STRING, 'WRITE'
-            FROM {AU}.ACCESS_HISTORY H, LATERAL FLATTEN(H.OBJECTS_MODIFIED) O
-            WHERE H.QUERY_START_TIME >= DATEADD(DAY, -{days}, CURRENT_TIMESTAMP()))
+            SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING, 'WRITE'
+            FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O)
         SELECT USER_NAME, OBJECT_NAME, DATEADD(DAY, 1 - DAYOFWEEKISO(T), T::DATE) AS WEEK, ACTION,
                COUNT(DISTINCT QUERY_ID) AS QUERIES, MAX(T) AS LAST_USED
         FROM H WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
 
 
-def object_use(session, run_id, mode):
+def object_use(session, run_id, why, plan=False):
     """Objects used per user, ISO week and READ / WRITE: ACCOUNT_USAGE.ACCESS_HISTORY (Enterprise edition; query
-    metadata, never table data), aggregated in SQL (access.use_sql has the same text). No fallback: UNAVAILABLE, the
-    run stays OK and the app's Granted vs used screen explains it."""
+    metadata, never table data), aggregated in SQL (access.use_sql has the same text). why: run()'s ACCESS_HISTORY
+    probe. To keep the cost down the last OK run's whole weeks are copied, all but its last two, which are read again
+    (ACCESS_HISTORY lags up to 3 hours; access.use_start does the same): the same rows as a read of every week. No
+    fallback: UNAVAILABLE, the run stays OK and the app's Granted vs used screen explains it. plan: for history(), the
+    first Monday read and this step's own INSERT instead of starting it."""
     try:
-        why = fallback(session, "ACCESS_HISTORY", mode)
         if why:
-            return "UNAVAILABLE", why
-        session.sql(f"""INSERT INTO {OBJECT_USE} (RUN_ID, USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED)
-            SELECT '{run_id}', U.* FROM ({use_sql()}) U""").collect()
-        return "ACCOUNT_USAGE", None
+            return ready("SKIPPED" if why.startswith("skipped") else "UNAVAILABLE", why)
+        prev = session.sql(f"SELECT MAX_BY(RUN_ID, FINISHED_AT) AS R FROM {RUN} WHERE STATUS = 'OK'").collect(**TIMED)[0]["R"]
+        first = session.sql("SELECT CURRENT_DATE() AS D").collect(**TIMED)[0]["D"] - timedelta(days=USE_DAYS)
+        first -= timedelta(days=first.weekday())  # whole ISO weeks: a copied week is never counted again
+        last = prev and session.sql(f"SELECT MAX(WEEK) AS W FROM {OBJECT_USE} WHERE RUN_ID = '{prev}'").collect(**TIMED)[0]["W"]
+        since = max(first, last - timedelta(days=7)) if last else first
+        cols = "USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED"
+        if last:
+            session.sql(f"""INSERT INTO {OBJECT_USE} (RUN_ID, {cols}) SELECT '{run_id}', {cols} FROM {OBJECT_USE}
+                            WHERE RUN_ID = '{prev}' AND WEEK >= '{first}' AND WEEK < '{since}'""").collect(**TIMED)
+        sql = f"""INSERT INTO {OBJECT_USE} (RUN_ID, {cols})
+            SELECT '{run_id}', U.* FROM ({use_sql(since.isoformat())}) U"""
+        return (since, sql) if plan else later(session, OBJECT_USE, run_id, sql, ("ACCOUNT_USAGE", None))
     except Exception as e:
-        session.sql(f"DELETE FROM {OBJECT_USE} WHERE RUN_ID = '{run_id}'").collect()
-        return "UNAVAILABLE", first_line(e)
+        session.sql(f"DELETE FROM {OBJECT_USE} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
+        return ready("UNAVAILABLE", first_line(e))
 
 
 def activity_sql(since, client=True):
@@ -579,30 +740,86 @@ def activity_sql(since, client=True):
                OBJECT_AGG(HR::STRING, N::VARIANT) AS HOURS, APP
         FROM G GROUP BY DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, APP"""
 
-def activity(session, run_id, mode):
+def activity(session, run_id, why, plan=False):
     """Table activity per day, user, role, client, object and statement (access.activity_sql has the same text). To
     keep the cost down only the days the last OK run lacks are read: its rows are copied up to the day before its last
     day, and that day and newer are read again (ACCESS_HISTORY lags up to 3 hours; access.activity_start does the
-    same). No fallback: UNAVAILABLE, the run stays OK and the Activity tabs explain it."""
+    same). why: run()'s ACCESS_HISTORY probe. No fallback: UNAVAILABLE, the run stays OK and the Activity tabs explain it.
+    plan: for history(), (first day read, this step's own INSERT, its (source, note), SESSIONS readable) instead."""
     try:
-        why = fallback(session, "ACCESS_HISTORY", mode)
         if why:
-            return "UNAVAILABLE", why
-        prev = session.sql(f"SELECT MAX_BY(RUN_ID, FINISHED_AT) AS R FROM {RUN} WHERE STATUS = 'OK'").collect()[0]["R"]
-        first = session.sql("SELECT CURRENT_DATE() AS D").collect()[0]["D"] - timedelta(days=ACTIVITY_DAYS)
-        last = prev and session.sql(f"SELECT MAX(DAY) AS D FROM {ACTIVITY} WHERE RUN_ID = '{prev}'").collect()[0]["D"]
+            return ready("SKIPPED" if why.startswith("skipped") else "UNAVAILABLE", why)
+        prev = session.sql(f"SELECT MAX_BY(RUN_ID, FINISHED_AT) AS R FROM {RUN} WHERE STATUS = 'OK'").collect(**TIMED)[0]["R"]
+        first = session.sql("SELECT CURRENT_DATE() AS D").collect(**TIMED)[0]["D"] - timedelta(days=ACTIVITY_DAYS)
+        last = prev and session.sql(f"SELECT MAX(DAY) AS D FROM {ACTIVITY} WHERE RUN_ID = '{prev}'").collect(**TIMED)[0]["D"]
         since = max(first, last - timedelta(days=1)) if last else first
         cols = "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED, HOURS, APP"
         if last:
             session.sql(f"""INSERT INTO {ACTIVITY} (RUN_ID, {cols}) SELECT '{run_id}', {cols} FROM {ACTIVITY}
-                            WHERE RUN_ID = '{prev}' AND DAY >= '{first}' AND DAY < '{since}'""").collect()
+                            WHERE RUN_ID = '{prev}' AND DAY >= '{first}' AND DAY < '{since}'""").collect(**TIMED)
         no_client = fallback(session, "SESSIONS", "AUTO")
-        session.sql(f"""INSERT INTO {ACTIVITY} (RUN_ID, {cols})
-            SELECT '{run_id}', A.* FROM ({activity_sql(since.isoformat(), no_client is None)}) A""").collect()
-        return "ACCOUNT_USAGE", no_client and f"{no_client}: no client"
+        sql = f"""INSERT INTO {ACTIVITY} (RUN_ID, {cols})
+            SELECT '{run_id}', A.* FROM ({activity_sql(since.isoformat(), no_client is None)}) A"""
+        ok = ("ACCOUNT_USAGE", no_client and f"{no_client}: no client")
+        return (since, sql, ok, no_client is None) if plan else later(session, ACTIVITY, run_id, sql, ok)
     except Exception as e:
-        session.sql(f"DELETE FROM {ACTIVITY} WHERE RUN_ID = '{run_id}'").collect()
-        return "UNAVAILABLE", first_line(e)
+        session.sql(f"DELETE FROM {ACTIVITY} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
+        return ready("UNAVAILABLE", first_line(e))
+
+
+def history_sql(use_since, act_since, client=True):
+    """use_sql(use_since) and activity_sql(act_since, client) as one statement that scans ACCESS_HISTORY once (A0,
+    from the earlier of the two cuts) for both. Each part keeps its own cut on A0, so it gives the rows of its own
+    read; PART = 'USE' rows carry use_sql's columns, 'ACT' rows activity_sql's, the rest NULL (split by
+    history_rows, or SP_ACCESS_SNAPSHOT's INSERT ALL). The same text is in access.py and SP_ACCESS_SNAPSHOT
+    (sql/1_setup.sql).
+    to verify: Snowflake computes A0 once for both references (one WithClause in the query profile), prunes
+    ACCESS_HISTORY on the LEAST() cut, and allows the parts' own WITH inside a subquery reading the outer A0."""
+    def own(sql):
+        return sql.replace(f"FROM {AU}.ACCESS_HISTORY WHERE", "FROM A0 WHERE")
+    return f"""WITH A0 AS (
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+            FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= LEAST('{use_since}'::TIMESTAMP_LTZ,
+                '{act_since} 00:00:00 +00:00'::TIMESTAMP_TZ::TIMESTAMP_LTZ))
+        SELECT 'USE' AS PART, USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED, NULL AS DAY, NULL AS ROLE_NAME,
+               NULL AS CLIENT, NULL AS QUERY_TYPE, NULL AS HOURS, NULL AS APP
+        FROM ({own(use_sql(use_since))}) U
+        UNION ALL
+        SELECT 'ACT', USER_NAME, OBJECT_NAME, NULL, ACTION, QUERIES, LAST_USED, DAY, ROLE_NAME, CLIENT, QUERY_TYPE, HOURS, APP
+        FROM ({own(activity_sql(act_since, client))}) V"""
+
+
+def history(session, run_id, why):
+    """[wait() of object_use, wait() of activity], read from one ACCESS_HISTORY scan: each step copies its earlier
+    rows first, then one INSERT ALL of history_sql fills both tables. When that INSERT fails (one statement: it
+    inserted nothing), each step reads on its own as before, so a failing read still fails only its own step; not
+    after a timeout (a read apart scans the same rows under the same limit) or once the run has failed (STOP).
+    to verify: INSERT ALL from an owner's-rights procedure, as an async child job."""
+    use, act = object_use(session, run_id, why, True), activity(session, run_id, why, True)
+    if callable(use) or callable(act):  # skipped, not readable or failed: the other step reads alone
+        return [use if callable(use) else later(session, OBJECT_USE, run_id, use[1], ("ACCOUNT_USAGE", None)),
+                act if callable(act) else later(session, ACTIVITY, run_id, act[1], act[2])]
+    ucols = "USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED"
+    acols = "DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED, HOURS, APP"
+    shared = later(session, None, run_id, f"""INSERT ALL
+            WHEN PART = 'USE' THEN INTO {OBJECT_USE} (RUN_ID, {ucols}) VALUES (RUN_ID, {ucols})
+            WHEN PART = 'ACT' THEN INTO {ACTIVITY} (RUN_ID, {acols}) VALUES (RUN_ID, {acols})
+            SELECT '{run_id}' AS RUN_ID, H.* FROM ({history_sql(use[0].isoformat(), act[0].isoformat(), act[3])}) H""", True)
+    alone = []
+
+    def step(i):
+        def wait():
+            got = shared()
+            if got is True:
+                return [("ACCOUNT_USAGE", None), act[2]][i]
+            if STOP or timed_out(got[1]):
+                return got
+            if not alone:
+                alone.extend([later(session, OBJECT_USE, run_id, use[1], ("ACCOUNT_USAGE", None)),
+                              later(session, ACTIVITY, run_id, act[1], act[2])])
+            return alone[i]()
+        return wait
+    return [step(0), step(1)]
 
 
 def run(session, p_source):
@@ -612,13 +829,17 @@ def run(session, p_source):
     run_id = str(uuid.uuid4())
     # insert first, then look (the app has a Refresh button): with a look first, two CALLs a moment apart both start;
     # with both rows in, the earliest RUNNING of the last hour goes on and the other steps back
-    session.sql(f"INSERT INTO {RUN} (RUN_ID, STARTED_AT, STATUS) SELECT '{run_id}', CURRENT_TIMESTAMP(), 'RUNNING'").collect()
+    session.sql(f"INSERT INTO {RUN} (RUN_ID, STARTED_AT, STATUS) SELECT '{run_id}', CURRENT_TIMESTAMP(), 'RUNNING'").collect(**TIMED)
     first = session.sql(f"""SELECT RUN_ID FROM {RUN} WHERE STATUS = 'RUNNING'
                             AND STARTED_AT > DATEADD(HOUR, -1, CURRENT_TIMESTAMP())
-                            ORDER BY STARTED_AT, RUN_ID LIMIT 1""").collect()[0]["RUN_ID"]
+                            ORDER BY STARTED_AT, RUN_ID LIMIT 1""").collect(**TIMED)[0]["RUN_ID"]
     if first != run_id:
-        session.sql(f"DELETE FROM {RUN} WHERE RUN_ID = '{run_id}'").collect()
+        session.sql(f"DELETE FROM {RUN} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
         return {"status": "SKIPPED", "notes": {"error": f"run {first} is still running"}}
+    global ASYNC
+    ASYNC = async_ok(session)
+    PENDING.clear()
+    STOP.clear()
     result = {"run_id": run_id, "sources": {}, "row_counts": {}, "notes": {}}
 
     def keep(name, source, note):
@@ -626,36 +847,59 @@ def run(session, p_source):
         if note:
             result["notes"][name] = note
 
+    waits = []  # wait() of the steps started as async jobs: each one ends before the counts and any cleanup
+    step = "access_history"  # the step running, named in a timeout
     try:
+        try:  # probed once for object use and activity; an error (P_SOURCE=ACCOUNT_USAGE) fails only those two steps
+            ah = fallback(session, "ACCESS_HISTORY", mode) if READ_ACTIVITY else "skipped (ACTIVITY=0)"
+        except Exception as e:
+            ah = first_line(e)
+        waits += history(session, run_id, ah)  # the heaviest reads start first
+        step = "grants"
         for name, (source, note) in grants(session, run_id, mode).items():
             keep(name, source, note)
+        step = "future_grants"
         keep("future_grants", *future(session, run_id))
+        step = "users"
         keep("users", *users(session, run_id, mode))
-        keep("usage", *usage(session, run_id, mode))
+        waits.append(usage(session, run_id, mode))
+        step = "tags"
         keep("tags", *tags(session, run_id, mode))
+        step = "policies"
         keep("policies", *policies(session, run_id, mode))
+        step = "streams"
         keep("streams", *streams(session, run_id))
-        keep("object_use", *object_use(session, run_id, mode))
-        keep("activity", *activity(session, run_id, mode))
+        step = "usage"
+        keep("usage", *waits[2]())
+        step = "object_use"
+        keep("object_use", *waits[0]())
+        step = "activity"
+        keep("activity", *waits[1]())
         result["status"] = "OK"
     except Exception as e:
-        result["status"], result["notes"]["error"] = "FAILED", first_line(e)
+        result["status"], result["notes"]["error"] = "FAILED", (f"{step}: " if timed_out(e) else "") + first_line(e)
+        STOP.append(1)
+        for w in waits:
+            try:
+                w()
+            except Exception:  # its error does not change FAILED; its rows go below
+                pass
     for name, t in [("grants", GRANT), ("user_roles", USER_ROLE), ("users", USER), ("usage", USAGE), ("tags", TAG),
                     ("policies", POLICY), ("streams", STREAM), ("object_use", OBJECT_USE), ("activity", ACTIVITY)]:
         result["row_counts"][name] = count(session, t, run_id)
     if result["status"] == "FAILED":  # drop this run's partial rows
         for t in DATA:
-            session.sql(f"DELETE FROM {t} WHERE RUN_ID = '{run_id}'").collect()
+            session.sql(f"DELETE FROM {t} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
     session.sql(f"""UPDATE {RUN} SET FINISHED_AT = CURRENT_TIMESTAMP(), STATUS = ?, SOURCES = PARSE_JSON(?),
                     ROW_COUNTS = PARSE_JSON(?), NOTES = PARSE_JSON(?) WHERE RUN_ID = ?""",
                 params=[result["status"], json.dumps(result["sources"]), json.dumps(result["row_counts"]),
-                        json.dumps(result["notes"]), run_id]).collect()
+                        json.dumps(result["notes"]), run_id]).collect(**TIMED)
     if result["status"] == "OK":  # only now, so the app always finds the rows of the last OK run; a run still
         # running (started over an hour ago, so not refused above) keeps its rows, one a day old is taken as dead
         for t in DATA:
             session.sql(f"""DELETE FROM {t} WHERE RUN_ID <> '{run_id}' AND RUN_ID NOT IN (SELECT RUN_ID FROM {RUN}
                             WHERE STATUS = 'RUNNING' AND STARTED_AT > DATEADD(DAY, -1, CURRENT_TIMESTAMP())
-                            AND RUN_ID IS NOT NULL)""").collect()
+                            AND RUN_ID IS NOT NULL)""").collect(**TIMED)
     return result
 $$;
 
@@ -757,23 +1001,26 @@ EDGE AS (
     FROM &DB.&SCHEMA.TBL_ACCESS_GRANT G JOIN LAST_RUN L ON G.RUN_ID = L.RUN_ID
     WHERE G.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND G.PRIVILEGE = 'USAGE'
       AND G.GRANTEE_ROLE NOT IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'SYSADMIN', 'USERADMIN', 'ORGADMIN')),
-UP (PRIV, PATH, ROLES, NODE, HOPS) AS (   -- grantee > ... > holder, walking up from each grant holder
-    SELECT CAST(P.PRIVILEGE AS VARCHAR), CAST(P.GRANTEE_ROLE AS VARCHAR), ARRAY_CONSTRUCT(P.GRANTEE_ROLE),
-           CAST(P.GRANTEE_ROLE AS VARCHAR), CAST(0 AS INTEGER)
+HELD AS (   -- the grants on the object; duplicates kept, each is a row of the result
+    SELECT P.GRANTEE_ROLE, P.PRIVILEGE
     FROM &DB.&SCHEMA.TBL_ACCESS_GRANT P JOIN LAST_RUN L ON P.RUN_ID = L.RUN_ID CROSS JOIN ARGS A
     WHERE P.OBJECT_NAME = A.A_OBJ AND (A.A_PRIV IS NULL OR P.PRIVILEGE = A.A_PRIV)
-      AND NOT (P.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND P.PRIVILEGE = 'USAGE')
+      AND NOT (P.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND P.PRIVILEGE = 'USAGE')),
+UP (HOLDER, PATH, ROLES, NODE, HOPS) AS (   -- grantee > ... > holder, walking up once per holder, not per privilege
+    SELECT CAST(H.GRANTEE_ROLE AS VARCHAR), CAST(H.GRANTEE_ROLE AS VARCHAR), ARRAY_CONSTRUCT(H.GRANTEE_ROLE),
+           CAST(H.GRANTEE_ROLE AS VARCHAR), CAST(0 AS INTEGER)
+    FROM (SELECT DISTINCT X.GRANTEE_ROLE FROM HELD X) H
     UNION ALL
-    SELECT U.PRIV, E.PARENT || ' > ' || U.PATH, ARRAY_APPEND(U.ROLES, E.PARENT), E.PARENT, U.HOPS + 1
+    SELECT U.HOLDER, E.PARENT || ' > ' || U.PATH, ARRAY_APPEND(U.ROLES, E.PARENT), E.PARENT, U.HOPS + 1
     FROM UP U JOIN EDGE E ON E.CHILD = U.NODE CROSS JOIN ARGS A
     WHERE U.HOPS < 50 AND (A.A_MAX IS NULL OR U.HOPS + 1 < A.A_MAX)
       AND NOT ARRAY_CONTAINS(E.PARENT::VARIANT, U.ROLES))
-SELECT U.NODE AS GRANTEE, 'role' AS GRANTEE_KIND, U.PRIV AS PRIVILEGE, U.HOPS + 1 AS DEPTH, U.PATH AS PATH
-FROM UP U CROSS JOIN ARGS A
+SELECT U.NODE AS GRANTEE, 'role' AS GRANTEE_KIND, H.PRIVILEGE AS PRIVILEGE, U.HOPS + 1 AS DEPTH, U.PATH AS PATH
+FROM UP U JOIN HELD H ON H.GRANTEE_ROLE = U.HOLDER CROSS JOIN ARGS A
 WHERE A.A_MAX IS NULL OR U.HOPS + 1 <= A.A_MAX
 UNION ALL
-SELECT M.USR, 'user', U.PRIV, U.HOPS + 1, M.USR || ' > ' || U.PATH
-FROM UP U JOIN MEMBER M ON M.NODE = U.NODE CROSS JOIN ARGS A
+SELECT M.USR, 'user', H.PRIVILEGE, U.HOPS + 1, M.USR || ' > ' || U.PATH
+FROM UP U JOIN HELD H ON H.GRANTEE_ROLE = U.HOLDER JOIN MEMBER M ON M.NODE = U.NODE CROSS JOIN ARGS A
 WHERE U.HOPS < 50 AND (A.A_MAX IS NULL OR U.HOPS + 1 <= A.A_MAX)
 $$;
 
@@ -783,12 +1030,47 @@ RETURNS TABLE (PATH VARCHAR, HOPS NUMBER, HOLDER VARCHAR, VIA_OWNERSHIP BOOLEAN)
 COMMENT = 'Access explorer: every path through which a user holds a privilege on an object, or OWNERSHIP of it; no rows = no'
 AS
 $$
--- to verify: a SQL UDTF may call another SQL UDTF in its FROM clause
-WITH ARGS AS (SELECT CAST(PRIVILEGE AS VARCHAR) AS A_PRIV, CAST(OBJECT_NAME AS VARCHAR) AS A_OBJ)
-SELECT T.PATH || ' > ' || T.OBJECT_NAME AS PATH, T.DEPTH AS HOPS, T.HOLDER AS HOLDER,
-       T.PRIVILEGE <> A.A_PRIV AS VIA_OWNERSHIP
-FROM TABLE(&DB.&SCHEMA.TF_ACCESS_OF(USER_NAME, NULL)) T CROSS JOIN ARGS A
-WHERE T.OBJECT_NAME = A.A_OBJ AND (T.PRIVILEGE = A.A_PRIV OR (T.PRIVILEGE = 'OWNERSHIP' AND A.A_PRIV <> 'OWNERSHIP'))
+WITH RECURSIVE   -- the TF_ACCESS_OF walk, with the object filter in the grant join instead of after it
+ARGS AS (SELECT CAST(USER_NAME AS VARCHAR) AS A_NAME, CAST(PRIVILEGE AS VARCHAR) AS A_PRIV,
+                CAST(OBJECT_NAME AS VARCHAR) AS A_OBJ),
+LAST_RUN AS (SELECT MAX_BY(R.RUN_ID, R.FINISHED_AT) AS RUN_ID FROM &DB.&SCHEMA.TBL_ACCESS_RUN R WHERE R.STATUS = 'OK'),
+UR AS (
+    SELECT U.USER_NAME, U.ROLE_NAME
+    FROM &DB.&SCHEMA.TBL_ACCESS_USER_ROLE U JOIN LAST_RUN L ON U.RUN_ID = L.RUN_ID),
+ALL_USERS AS (
+    SELECT U.USER_NAME AS USR FROM UR U
+    UNION
+    SELECT U.USER_NAME FROM &DB.&SCHEMA.TBL_ACCESS_USER U JOIN LAST_RUN L ON U.RUN_ID = L.RUN_ID),
+ME AS (
+    SELECT (SELECT COUNT(*) FROM ALL_USERS X JOIN ARGS A ON X.USR = A.A_NAME) AS IS_USER,
+           (SELECT COUNT(*) FROM UR U JOIN ARGS A ON U.USER_NAME = A.A_NAME WHERE U.ROLE_NAME = 'PUBLIC') AS HAS_PUBLIC),
+EDGE AS (
+    SELECT G.GRANTEE_ROLE AS PARENT, G.OBJECT_NAME AS CHILD
+    FROM &DB.&SCHEMA.TBL_ACCESS_GRANT G JOIN LAST_RUN L ON G.RUN_ID = L.RUN_ID
+    WHERE G.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND G.PRIVILEGE = 'USAGE'
+      AND G.GRANTEE_ROLE NOT IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'SYSADMIN', 'USERADMIN', 'ORGADMIN')),
+STARTS AS (
+    SELECT A.A_NAME || ' > ' || U.ROLE_NAME AS PATH, U.ROLE_NAME AS NODE, 1 AS HOPS, 1 AS IS_USER
+    FROM ARGS A JOIN UR U ON U.USER_NAME = A.A_NAME
+    UNION ALL
+    SELECT A.A_NAME || ' > PUBLIC', 'PUBLIC', 1, 1 FROM ARGS A CROSS JOIN ME M WHERE M.IS_USER > 0 AND M.HAS_PUBLIC = 0
+    UNION ALL
+    SELECT A.A_NAME, A.A_NAME, 0, 0 FROM ARGS A CROSS JOIN ME M WHERE M.IS_USER = 0),
+WALK (PATH, ROLES, NODE, HOPS, IS_USER) AS (
+    SELECT CAST(S.PATH AS VARCHAR), ARRAY_CONSTRUCT(S.NODE), CAST(S.NODE AS VARCHAR), CAST(S.HOPS AS INTEGER),
+           CAST(S.IS_USER AS INTEGER)
+    FROM STARTS S
+    UNION ALL
+    SELECT W.PATH || ' > ' || E.CHILD, ARRAY_APPEND(W.ROLES, E.CHILD), E.CHILD, W.HOPS + 1, W.IS_USER
+    FROM WALK W JOIN EDGE E ON E.PARENT = W.NODE
+    WHERE W.HOPS < 50 AND NOT ARRAY_CONTAINS(E.CHILD::VARIANT, W.ROLES))
+SELECT W.PATH || ' > ' || P.OBJECT_NAME AS PATH, W.HOPS + 1 - W.IS_USER AS HOPS, W.NODE AS HOLDER,
+       P.PRIVILEGE <> A.A_PRIV AS VIA_OWNERSHIP
+FROM WALK W CROSS JOIN ARGS A
+JOIN &DB.&SCHEMA.TBL_ACCESS_GRANT P ON P.GRANTEE_ROLE = W.NODE AND P.OBJECT_NAME = A.A_OBJ
+     AND (P.PRIVILEGE = A.A_PRIV OR (P.PRIVILEGE = 'OWNERSHIP' AND A.A_PRIV <> 'OWNERSHIP'))
+JOIN LAST_RUN L ON P.RUN_ID = L.RUN_ID
+WHERE NOT (P.GRANTED_ON IN ('ROLE', 'DATABASE_ROLE') AND P.PRIVILEGE = 'USAGE')
 $$;
 
 -- access.py on a stage, imported by SP_ACCESS_FINDINGS. &HERE = this folder (run_sql.py fills it in, SnowSQL reads it from settings)

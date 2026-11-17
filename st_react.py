@@ -3,6 +3,7 @@ Streamlit in Snowflake. app() runs every page: the app's API calls come back as 
 answers them with server.py, as the local server would, so both versions show the same pages."""
 import json
 import os
+import threading
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode
 
@@ -30,6 +31,8 @@ def answer(method, url, body, sid):
             return 200, server.meta(p, sid), sid
         if name == "mine":
             return 200, server.mine_state(sid), sid
+        if name == "progress":
+            return 200, server.progress(p.get("view")), sid
         if name == "reload":
             return 200, server.reload(body), sid
         if name == "mine/load":
@@ -48,12 +51,40 @@ def answer(method, url, body, sid):
         return 500, {"detail": "error", "message": f"{type(x).__name__}: {x}"}, sid
 
 
+def shown(box, r, sid):
+    """answer() in a thread while this script thread writes the lines of a load it starts (server.progress) into box,
+    about once a second: Python is busy during the load, so the frame cannot ask for them as the local version does.
+    The thread is kept in the session: a rerun meanwhile waits for it instead of reading Snowflake a second time.
+    to verify: inside Snowflake, the app's session (sf.connect) is used from this thread as from each()'s threads."""
+    import server
+    runs = st.session_state.setdefault("_ae_running", {})
+    if r["id"] not in runs:
+        out = []
+        t = threading.Thread(target=lambda: out.append(answer(r["method"], r["url"], r.get("body"), sid)), daemon=True)
+        t.start()
+        runs[r["id"]] = t, out
+    t, out = runs[r["id"]]
+    drawn = None  # the last line drawn
+    while t.is_alive():
+        t.join(1)
+        lines = server.progress()["lines"]
+        if lines and lines[-1] != drawn:
+            drawn = lines[-1]
+            box.code("Reading Snowflake: what the app is doing\n" + "\n".join(
+                f"{x['t']:7.1f} s  {x['text']}" for x in lines[-40:]), language=None)
+    if drawn:
+        box.empty()
+    runs.pop(r["id"], None)
+    return out[0] if out else (500, {"detail": "error", "message": "The request stopped without an answer."}, sid)
+
+
 def app(key="app"):
     """The whole React app (web/src/App.tsx) as one component: its API calls come back as the component value and are
     answered here with server.py, so both versions run the same pages. Returns once the page is drawn."""
     ss = st.session_state
     done = ss.setdefault("_ae_answers", {})
     now = st.query_params.to_dict()
+    box = st.empty()  # a load's progress lines (shown()), above the app
     v = _comp(component="app", props={}, answers=done, query=urlencode(now), key=key, default=None)
     if not v:
         return
@@ -62,7 +93,7 @@ def app(key="app"):
     new = False
     for r in reqs:
         if r["id"] not in done:
-            status, body, ss["_ae_sid"] = answer(r["method"], r["url"], r.get("body"), ss.get("_ae_sid"))
+            status, body, ss["_ae_sid"] = shown(box, r, ss.get("_ae_sid"))
             done[r["id"]] = {"status": status, "body": json.loads(_js(body))}
             new = True
     open_ids = {r["id"] for r in reqs}

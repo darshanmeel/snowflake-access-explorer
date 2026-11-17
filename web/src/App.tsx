@@ -1,9 +1,9 @@
 // App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
 // Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { clearCache, get, post, useApi } from "./api/client";
-import type { FindItem, Meta, MineState, Page } from "./api/types";
-import { Banner, Card, Combo, CsvOn, Root, SqlCtx, type ThemeName } from "./components";
+import { clearCache, get, peek, post, useApi } from "./api/client";
+import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
+import { Banner, Card, Combo, CsvOn, LoadLog, Root, SqlCtx, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -271,6 +271,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const view = loc.mine ? "mine" : "shared";
   const m = useApi<Meta>("meta", { view });
   const meta = m.data;
+  const poll = useCallback(() => peek<Progress>("progress"), []);
 
   const nav = useCallback((page: Page, params: Params = {}) => go({ page, params, mine: loc.mine }), [go, loc.mine]);
   const set = useCallback((patch: Record<string, string | null | undefined>) => {
@@ -343,6 +344,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
               <button type="button" className="ae-btn ae-btn-s" onClick={() => setNotice(null)}>Dismiss</button>
             </Banner>
           )}
+          <LoadLog active={!!busy || m.loading} poll={poll} />
           {m.error && <ErrorBox e={m.error} />}
           {!meta && !m.error && <p className="ae-muted">Loading…</p>}
           {needMine && (

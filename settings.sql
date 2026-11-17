@@ -17,3 +17,9 @@
 !define STREAMLIT_APP=ST_ACCESS_EXPLORER
 -- query tag on the local app's connection, left out of the activity (letters, digits, - and _ only); must match QUERY_TAG in .env and sis/.env
 !define QUERY_TAG=access-explorer
+-- seconds each statement of SP_ACCESS_SNAPSHOT may run, 0 = Snowflake's own (STATEMENT_TIMEOUT in .env: the app's)
+!define STATEMENT_TIMEOUT=300
+-- heavy reads of SP_ACCESS_SNAPSHOT at once (ACCESS_HISTORY, QUERY_HISTORY), 1 = one after another
+!define WORKERS=3
+-- 0: SP_ACCESS_SNAPSHOT reads no ACCESS_HISTORY (object use, activity: the Activity tabs and rules 24-28 are off)
+!define ACTIVITY=1

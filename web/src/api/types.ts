@@ -161,6 +161,13 @@ export interface MineState {
   notes?: Note[];
 }
 
+/** GET /api/progress: the lines of the read from Snowflake running now (none when idle). */
+export interface Progress {
+  running: boolean;
+  view: "shared" | "mine" | null;
+  lines: { t: number; text: string }[];
+}
+
 export interface RuleInfo {
   num: string;
   title: string;
@@ -742,6 +749,7 @@ export interface RulesPage {
   filters: { grantee: string; sev: Severity | "Passing" | ""; rule: string };
   counts: Record<Severity | "Passing", number>;
   per_rule: Record<string, number>;
+  skipped: Record<string, string>; // rules that did not run: HIERARCHY=0 / ACTIVITY=0 -> "skipped (...)"
   findings: Finding[];
   total: number;
   rows_unknown: string[];
@@ -933,6 +941,7 @@ export interface HomePage {
   risks: Record<Severity, number> | null;
   counts: { users: number; roles: number; objects: number; sensitive: number };
   per_rule: Record<string, number> | null; // findings per rule (shared only): Home's findings by area
+  skipped: Record<string, string> | null; // rules that did not run (shared only), as RulesPage.skipped
   protection: { unmasked: number; unmasked_names: string[]; dormant: number; dormant_names: string[]; tagged: number;
     masked: number; row_tables: number; row_list: { object: string; policies: string[] }[] } | null;
 }

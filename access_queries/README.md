@@ -75,7 +75,10 @@ names), then one path:
 
 - **Path A:** replace `AQ_DB.AQ_SCHEMA` with your database and schema, run the five `CREATE` cells (they may fail where
   functions cannot hold a recursive query: use B), then the eight example cells that call the functions.
-- **Path B:** the same eight examples as plain queries, nothing created.
+- **Path B:** the same eight examples as plain queries, nothing created. Its first cell reads the grants, user roles and
+  user names once and keeps the query id (`SET EDGES_ID = LAST_QUERY_ID()`); each example then reads that result with
+  `RESULT_SCAN($EDGES_ID)` instead of `ACCOUNT_USAGE`, so eight examples cost one read. Run it again after new grants
+  (a result stays readable 24 hours). The `.sql` files keep their own reads and run alone.
 - The eight: a user's roles; a user's access; does a user reach an object and how; everything a role grants; who holds a
   role (upwards, users included); which users can use an object; users that reach it through more than `MIN_DEPTH` roles;
   a user's access summed up as objects per privilege, by the closest role holding it.

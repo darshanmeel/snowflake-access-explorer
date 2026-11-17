@@ -207,17 +207,33 @@ def notebook():
         FAILS.append("notebook: create cells differ from functions.sql")
     for n, f in [("roles_of_user", "1_user_roles.sql"), ("access_of_user", "2_user_access.sql"),
                  ("access_of_role", "3_role_access.sql"), ("holders_of_role", "4_role_holders.sql")]:
-        if code.get(f"b_{n}") != body((HERE / f).read_text(encoding="utf-8")) + ";":
+        if code.get(f"b_{n}") != m.shared(body((HERE / f).read_text(encoding="utf-8"))) + ";":
             FAILS.append(f"notebook: b_{n} differs from {f}")
     for n, f in [("user_reaches_object", "2_user_access.sql"), ("users_of_object", "5_object_users.sql"),
                  ("deep_users", "5_object_users.sql"), ("access_summary", "2_user_access.sql")]:
         plain = re.sub(r"\nORDER BY [^\n]*$", "", body((HERE / f).read_text(encoding="utf-8")))
-        if plain not in code.get(f"b_{n}", ""):
+        if m.shared(plain) not in code.get(f"b_{n}", ""):
             FAILS.append(f"notebook: b_{n} does not hold the query of {f}")
     for n in [n for n in code if n.startswith("a_") and "$SHOW_BUILTIN" not in code[n]]:
         FAILS.append(f"notebook: {n} does not pass $SHOW_BUILTIN, so path A and B can differ")
-    if len(code) != 1 + len(fns) + 2 * len(m.EXAMPLES):
+    if len(code) != 2 + len(fns) + 2 * len(m.EXAMPLES):
         FAILS.append(f"notebook: {len(code)} code cells")
+    # path B reads the edges once: no B query reads ACCOUNT_USAGE, and each gives its file's rows (DuckDB: the edges
+    # cell's SELECT as table EDGES in place of RESULT_SCAN)
+    sel, pin = code["b_edges"].rsplit(";", 2)[:2]
+    if pin.split("--")[0].strip() != "SET EDGES_ID = LAST_QUERY_ID()":
+        FAILS.append("notebook: b_edges does not pin its query id right after the SELECT")
+    CON.execute(f"CREATE OR REPLACE TABLE EDGES AS {sel}")
+    sets = dict(re.findall(r"^SET (\w+) = (.*?);", m.INPUTS, re.M))
+
+    def duck(q):
+        return sorted(CON.execute(re.sub(r"\$(\w+)", lambda x: sets[x.group(1)], q.rstrip(";"))).fetchall(), key=str)
+    for name, _, _, query in m.EXAMPLES:
+        b = code[f"b_{name}"]
+        if "ACCOUNT_USAGE" in b or "TABLE(RESULT_SCAN($EDGES_ID))" not in b:
+            FAILS.append(f"notebook: b_{name} reads ACCOUNT_USAGE, not the edges cell")
+        elif duck(b.replace("TABLE(RESULT_SCAN($EDGES_ID))", "EDGES")) != duck(query):
+            FAILS.append(f"notebook: b_{name} gives other rows than its file's query")
 
 
 d = a.fake()

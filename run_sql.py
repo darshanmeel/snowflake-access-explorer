@@ -10,8 +10,8 @@ import pathlib
 import re
 import sys
 
-import access  # noqa: F401  (loads .env)
-from sf import connect
+import access  # loads .env; timeout hints
+from sf import connect, limit
 
 HERE = pathlib.Path(__file__).parent
 SETTINGS = HERE / "settings.local.sql" if (HERE / "settings.local.sql").exists() else HERE / "settings.sql"
@@ -26,6 +26,9 @@ def check_names():
     bad = [k for k in ("STREAMLIT_APP", "QUERY_TAG") if re.search(r"[\"'$\\]", NAMES.get(k, ""))]
     if bad:  # pasted into the procedure's Python and $$ block, where a quote or $ breaks it
         raise SystemExit(f"{SETTINGS.name}: {', '.join(bad)}: no quotes, $ or backslash (letters, digits, - and _).")
+    num = [k for k in ("STATEMENT_TIMEOUT", "WORKERS", "ACTIVITY") if not NAMES.get(k, "").isdigit()]
+    if num:  # int("&NAME") in the procedure
+        raise SystemExit(f"{SETTINGS.name}: {', '.join(num)}: a whole number (seconds, jobs at once, 0 or 1).")
     if todo:
         raise SystemExit(f"{SETTINGS.name}: {', '.join(todo)} not filled in. Copy settings.sql to settings.local.sql "
                          "and fill in the names (README > Setup).")
@@ -65,11 +68,14 @@ def main(path):
     for name, flags, sql in statements(text):
         may_fail, expect = "may fail" in flags, re.search(r"expect (\d+)", flags)
         try:
-            cur.execute(fill(sql))
+            p = limit(sql)  # STATEMENT_TIMEOUT of .env, none for the CALL in sql/2_snapshot.sql (sf.limit)
+            cur.execute(fill(sql), _statement_params=p) if p else cur.execute(fill(sql))
             rows = cur.fetchall() if cur.description else []
         except Exception as e:
+            if access.timed_out(e):
+                e = TimeoutError(f"{name}: {access.timeout_hint(e, bool(p))}" + " in .env" * bool(p))
             if not (may_fail or check):
-                raise
+                raise e
             print(f"{'SKIPPED' if may_fail else 'MISSING'}: {name}: {str(e).strip().splitlines()[-1]}")
             bad += [] if may_fail else [name]
             continue

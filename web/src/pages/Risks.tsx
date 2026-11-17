@@ -83,6 +83,12 @@ function Row({ head, count, n, max, open, onPick, children }: {
   );
 }
 
+/** " 3 rules skipped: skipped (HIERARCHY=0)." for the rules that did not run, else "". */
+export function skipNote(skipped: Record<string, string>) {
+  const why = [...new Set(Object.values(skipped))];
+  return why.length ? ` ${plural(Object.keys(skipped).length, "rule")} skipped: ${why.join(", ")}.` : "";
+}
+
 export function RisksTab({ d }: { d: RulesPage }) {
   const c = useApp();
   const o = useOpen(d.refs);
@@ -99,7 +105,7 @@ export function RisksTab({ d }: { d: RulesPage }) {
   const by = c.params.by === "person" || c.params.by === "object" || c.params.by === "grid" ? c.params.by : "rule";
   const onSev = by === "grid" && !c.params.sev ? "" : sev; // the heat grid opens on every severity
   const rules = c.meta.rules;
-  const pass = rules.filter((r) => !d.per_rule[r.num]).length;
+  const pass = rules.filter((r) => !d.per_rule[r.num] && !d.skipped[r.num]).length;
   const high = d.findings.filter((f) => f.severity === "High");
   const info = (num: string) => rules.find((r) => r.num === num);
   // per person the bar is that person's findings (counted over rules); else the people the findings reach
@@ -112,7 +118,7 @@ export function RisksTab({ d }: { d: RulesPage }) {
     <>
       <div className="ae-headrow">
         <p className="ae-answer">
-          {plural(rules.length, "rule")} checked, {pass} pass. {high.length > 0 && <b className="ae-bad">{plural(high.length, "high finding")}</b>}
+          {plural(rules.length - Object.keys(d.skipped).length, "rule")} checked, {pass} pass.{skipNote(d.skipped)} {high.length > 0 && <b className="ae-bad">{plural(high.length, "high finding")}</b>}
           {high.length > 0 && ` across ${plural(new Set(high.map((f) => f.num)).size, "rule")}.`} Fixes go into a plan you can test before touching Snowflake.
         </p>
         <FilterChips label="Group findings by" value={by} onPick={(k) => { c.set({ by: k === "rule" ? null : k }); setOpen(null); }}
@@ -297,7 +303,7 @@ export function RuleList({ d }: { d: RulesPage }) {
                     </button>
                     <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
                     {n ? <button type="button" className="ae-link" onClick={() => c.set({ show: "fixes", rule: r.num, sev: r.severity, open: null, by: null })}>{plural(n, "finding")}</button>
-                      : <span className="ae-muted">passes</span>}
+                      : <span className="ae-muted">{d.skipped[r.num] ?? "passes"}</span>}
                     <label className="ae-toggle"><input type="checkbox" checked={on} onChange={(e) => rulesOff.set(e.target.checked ? off.filter((x) => x !== r.num) : [...off, r.num])} />{on ? "On" : "Off"}</label>
                   </div>
                   {open === r.num && (

@@ -242,6 +242,14 @@ shared request answers 409 `shared_not_loaded`, also in `meta.error`, until this
 cache (everything read again); snapshot -> `CALL <WHERE>.SP_ACCESS_SNAPSHOT('AUTO')`, then drop the cache.
 Answer: `{"ok": true, "result": <the procedure's JSON or null>, "message": "..."}`. Mirrors `app.refresh()`.
 
+### GET /api/progress?view=
+
+What the read from Snowflake running now is doing (the latest of `view`, any when left out): `{"running": true, "view":
+"shared" | "mine", "lines": [{"t": 12.4, "text": "SHOW GRANTS TO ROLE: 340 of 2,000"}]}`, `t` = seconds since it started,
+the last 200 lines; idle: `{"running": false, "view": null, "lines": []}`. Never starts a load. The app asks about once a
+second while a load runs; inside Streamlit `st_react.shown()` writes the same lines above the app (Python is busy then).
+Producer: `server.progress()`, lines from `a.say()`.
+
 ### POST /api/mine/load
 
 Reads the logged-in user's own access (see sessions; `?fresh=1` reads Snowflake again, else the cached copy), sets `ae_sid`. Answer: `{"loaded": true, "user": "ENGINEER_01",
@@ -254,7 +262,8 @@ Reads the logged-in user's own access (see sessions; `?fresh=1` reads Snowflake 
 ### GET /api/home?view=
 
 Home: `me` (`user`: the default user, `DEMO_USER` when it exists, or the logged-in user for `view=mine`; `counts`: their
-read / change / own ladder), `risks` (rule findings per severity), `per_rule` (findings per rule number), `counts`
+read / change / own ladder), `risks` (rule findings per severity), `per_rule` (findings per rule number), `skipped`
+(rules that did not run, as on `/api/rules`; shared only), `counts`
 (users, roles, objects, sensitive objects) and `protection` (tagged, masked and unmasked sensitive objects with
 `unmasked_names`, row-policy tables `row_tables` / `row_list`, dormant users who reach sensitive data with
 `dormant_names`).
@@ -625,7 +634,7 @@ Screen 16, where sensitive data flows (shared only; `state` "mine" / "none" othe
 ### GET /api/rules?view=&grantee=&sev=&rule=
 
 Rule checks; works in mine (the rules run on the slice that was loaded). Producers:
-`a.cached("rows", a.rule_rows)`, `a.RULES`, `a.SEVERITY`, `a.admin_people()`, `a.row_terms` + `a.policies_of` (rows
+`a.cached("rows", a.rule_rows)`, `a.RULES`, `a.SEVERITY`, `a.skipped_rules()`, `a.admin_people()`, `a.row_terms` + `a.policies_of` (rows
 unknown note); rule texts per number are in `meta.rules`.
 
 ```jsonc
@@ -634,6 +643,7 @@ unknown note); rule texts per number are in `meta.rules`.
   "filters": {"grantee": "", "sev": "", "rule": ""},
   "counts": {"High": 12, "Medium": 20, "Low": 9, "Passing": 2},
   "per_rule": {"1": 2, "2": 1},
+  "skipped": {"14": "skipped (HIERARCHY=0)", "24": "skipped (HIERARCHY=0)", "25": "skipped (ACTIVITY=0)"},  // did not run
   "findings": [{"num": "10", "title": "...", "severity": "Medium", "why": "...",
                 "grantees": [{"id": "FIN_01", "kind": "user"}],   // same fix merged into one row
                 "detail": "...", "more": 13, "paths": [["..."]], "edge_cls": "write",

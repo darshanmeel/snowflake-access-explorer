@@ -4,7 +4,7 @@ import type { AdminPerson, Refs, RulesPage } from "../api/types";
 import { Banner, Card, DataTable, FindingList, PathText, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, Head, Load, NameLink } from "./common";
-import { RisksTab, RuleList } from "./Risks";
+import { RisksTab, RuleList, skipNote } from "./Risks";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 
@@ -56,7 +56,7 @@ export function RulesPageView() {
                 )}
                 <FindingList key={scope.join()} list={d.findings} kinds={d.refs.kinds} onOpen={o.open} csvName="findings"
                   whatIf={(p) => { const ch = changeOfPath(p, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; }} />
-                <p className="ae-muted">{d.counts.Passing} of {c.meta.rules.length} rules pass.</p>
+                <p className="ae-muted">{d.counts.Passing} of {c.meta.rules.length} rules pass.{skipNote(d.skipped)}</p>
               </Card>
             )}
             {tab === "admins" && (
@@ -71,7 +71,8 @@ export function RulesPageView() {
                   onRowClick={(r: Rule) => { c.set({ rule: r.num }); setTab("findings"); }}
                   columns={[col("n", "Rule", (r: Rule) => Number(r.num), { num: true, width: 50 }),
                     col("s", "Severity", (r: Rule) => r.severity, { wrap: "nowrap", render: (r: Rule) => <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span> }),
-                    col("t", "Check", (r: Rule) => r.title, { wrap: "wrap" }), col("a", "Area", (r: Rule) => r.area, { wrap: "nowrap" }),
+                    col("t", "Check", (r: Rule) => r.title, { wrap: "wrap",
+                      render: (r: Rule) => <>{r.title}{d.skipped[r.num] && <span className="ae-muted"> · {d.skipped[r.num]}</span>}</> }), col("a", "Area", (r: Rule) => r.area, { wrap: "nowrap" }),
                     col("f", "Found", (r: Rule) => d.per_rule[r.num] ?? 0, { num: true }),
                     col("m", "Meaning", (r: Rule) => r.meaning, { wrap: "wrap" }), col("x", "Fix", (r: Rule) => r.fix, { wrap: "wrap" })]} />
               </Card>

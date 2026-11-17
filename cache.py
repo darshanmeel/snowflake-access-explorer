@@ -21,7 +21,15 @@ DIR = pathlib.Path(__file__).with_name(".cache")
 HOURS = float(os.environ.get("CACHE_HOURS", "24"))
 TTL = 24 * 3600  # memory
 MEM = {}
-LOCK = threading.RLock()  # one read at a time: Streamlit runs a session per thread
+OLD = {}  # key -> what drop() took out of memory: last() still finds it where there is no local file (inside Snowflake)
+LOCK = threading.Lock()  # guards LOCKS
+LOCKS = {}  # key -> its lock: one read per key at a time (Streamlit runs a session per thread), other keys never wait
+SQL_LOCK = threading.Lock()  # every key writes the one .cache/access.duckdb
+
+
+def lock(key):
+    with LOCK:
+        return LOCKS.setdefault(key, threading.RLock())
 
 
 def config(env=os.environ):
@@ -41,11 +49,12 @@ def config(env=os.environ):
 
 
 def name(what, user=None, where=""):
-    """Cache name of one account + source (fake|direct|objects) + snapshot location + login, or of one user's "mine":
-    everything that changes what a read returns, so another ACCESS_SNAPSHOT, user or role never gets this copy."""
+    """Cache name of one account + source (fake|direct|objects) + snapshot location + login (+ ACTIVITY=0), or of one
+    user's "mine": everything that changes what a read returns, so another ACCESS_SNAPSHOT, user or role never gets
+    this copy."""
     e = os.environ
     return "_".join(filter(None, (e.get("SNOWFLAKE_ACCOUNT", "local"), what, where, user or e.get("SNOWFLAKE_USER"),
-                                  e.get("SNOWFLAKE_ROLE"))))
+                                  e.get("SNOWFLAKE_ROLE"), "noactivity" * (not access.ACTIVITY_ON))))
 
 
 def local():
@@ -93,7 +102,7 @@ def prev(key):
 def last(key):
     """The newest data kept for key (memory, the local file, the one drop() set aside, the previous one), else None:
     Direct mode then reads only the activity days it lacks."""
-    m = MEM.get(key)
+    m = MEM.get(key) or OLD.get(key)
     if m:
         return m[0]
     f = file(key)
@@ -109,7 +118,7 @@ def get(key, fn, disk=True):
     m = MEM.get(key)  # before the lock: a page whose data is in memory never waits for another key's read
     if m and time.time() - m[1] < TTL:
         return m
-    with LOCK:
+    with lock(key):
         m = MEM.get(key)  # another thread may have read it while this one waited
         if m and time.time() - m[1] < TTL:
             return m
@@ -130,6 +139,7 @@ def get(key, fn, disk=True):
                 tmp.write_bytes(pickle.dumps(m[0]))
                 tmp.replace(f)
         MEM[key] = m
+        OLD.pop(key, None)
         return m
 
 
@@ -145,9 +155,11 @@ def ready(key, disk=True):
 
 def drop(key):
     """Read again next time: out of memory, and the local file set aside (the previous snapshot once a new one is read).
-    Under LOCK: a read still running would otherwise store its older data after the drop."""
-    with LOCK:
-        MEM.pop(key, None)
+    Under the key's lock: a read still running would otherwise store its older data after the drop."""
+    with lock(key):
+        m = MEM.pop(key, None)
+        if m:
+            OLD[key] = m
         f = file(key)
         if f.is_file() and HOURS > 0:
             f.replace(f.with_suffix(".old.pkl"))
@@ -202,6 +214,15 @@ def stamp(at):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(at))
 
 
+def text(v):
+    """A value as the text its column is TRY_CAST from: dicts/lists (HOURS) as compact JSON, booleans as true/false."""
+    if v is None or isinstance(v, str):
+        return v
+    if isinstance(v, (bool, int, float, dict, list)):
+        return json.dumps(v, default=str, separators=(",", ":"))
+    return str(v)
+
+
 def sql_copy(key, d, at):
     """Write data set d to .cache/access.duckdb, schema schema(key): this read as the TBL_ACCESS_ tables, the read
     before as TBL_ACCESS_<name>_PREV (a read of the same snapshot run replaces only the current tables). COPIES (main
@@ -222,44 +243,41 @@ def sql_copy(key, d, at):
                         SOURCES=json.dumps(run.get("SOURCES") or {}, default=str),
                         ROW_COUNTS=json.dumps({t.lower(): len(v) for t, v in rows.items()}),
                         NOTES=json.dumps(run.get("NOTES") or {}, default=str))]
-    s, tmp = schema(key), DIR / f"sql-{os.getpid()}.ndjson"
+    s = schema(key)
     try:
         DIR.mkdir(exist_ok=True)
-        con = duckdb.connect(str(sql_file()))
-        try:
-            con.execute("SET enable_progress_bar = false")
-            con.execute("BEGIN")
-            con.execute("CREATE TABLE IF NOT EXISTS COPIES (SCHEMA_NAME VARCHAR, CACHE_KEY VARCHAR, RUN_ID VARCHAR, "
-                        "READ_AT TIMESTAMPTZ, PREV_RUN_ID VARCHAR)")
-            con.execute(f'CREATE SCHEMA IF NOT EXISTS "{s}"')
-            had = con.execute("SELECT RUN_ID, PREV_RUN_ID FROM COPIES WHERE SCHEMA_NAME = ?", [s]).fetchone()
-            turn = had is not None and had[0] != rid  # another run: the current tables become _PREV
-            for t, cols in COLUMNS.items():
-                name = f'"{s}".TBL_ACCESS_{t}'
-                if turn:
-                    con.execute(f'DROP TABLE IF EXISTS "{s}".TBL_ACCESS_{t}_PREV')
-                    con.execute(f"ALTER TABLE IF EXISTS {name} RENAME TO TBL_ACCESS_{t}_PREV")
-                con.execute(f"DROP TABLE IF EXISTS {name}")
-                con.execute(f"CREATE TABLE {name} ({cols})")
-                pairs = [c.split(" ") for c in cols.split(", ")]
-                if rows[t]:  # one bulk read of a JSON lines file: an INSERT per row takes minutes on a big account
-                    tmp.write_text("\n".join(json.dumps({c: rid if c == "RUN_ID" else r.get(c) for c, _ in pairs},
-                                                        default=str) for r in rows[t]), encoding="utf-8")
-                    path = tmp.as_posix().replace("'", "''")  # a folder like O'Brien
-                    spec = "{" + ", ".join(f"'{c}': 'VARCHAR'" for c, _ in pairs) + "}"
-                    con.execute(f"INSERT INTO {name} SELECT " + ", ".join(f"TRY_CAST({c} AS {ty})" for c, ty in pairs)
-                                + f" FROM read_json('{path}', format = 'newline_delimited', columns = {spec})")
-            con.execute("DELETE FROM COPIES WHERE SCHEMA_NAME = ?", [s])
-            con.execute("INSERT INTO COPIES VALUES (?, ?, ?, ?, ?)",
-                        [s, key, rid, stamp(at), had[0] if turn else (had[1] if had else None)])
-            con.execute("COMMIT")
-        finally:
-            con.close()
+        with SQL_LOCK:  # one access.duckdb for every key: a second writer would find the file locked
+            con = duckdb.connect(str(sql_file()))
+            try:
+                con.execute("SET enable_progress_bar = false")
+                con.execute("BEGIN")
+                con.execute("CREATE TABLE IF NOT EXISTS COPIES (SCHEMA_NAME VARCHAR, CACHE_KEY VARCHAR, RUN_ID VARCHAR, "
+                            "READ_AT TIMESTAMPTZ, PREV_RUN_ID VARCHAR)")
+                con.execute(f'CREATE SCHEMA IF NOT EXISTS "{s}"')
+                had = con.execute("SELECT RUN_ID, PREV_RUN_ID FROM COPIES WHERE SCHEMA_NAME = ?", [s]).fetchone()
+                turn = had is not None and had[0] != rid  # another run: the current tables become _PREV
+                for t, cols in COLUMNS.items():
+                    name = f'"{s}".TBL_ACCESS_{t}'
+                    if turn:
+                        con.execute(f'DROP TABLE IF EXISTS "{s}".TBL_ACCESS_{t}_PREV')
+                        con.execute(f"ALTER TABLE IF EXISTS {name} RENAME TO TBL_ACCESS_{t}_PREV")
+                    con.execute(f"DROP TABLE IF EXISTS {name}")
+                    con.execute(f"CREATE TABLE {name} ({cols})")
+                    pairs = [c.split(" ") for c in cols.split(", ")]
+                    if rows[t]:  # one bulk insert, a text list per column unnested side by side: one per row takes minutes
+                        con.execute(f"INSERT INTO {name} SELECT "
+                                    + ", ".join(f"TRY_CAST(UNNEST(?::VARCHAR[]) AS {ty})" for _, ty in pairs),
+                                    [[rid] * len(rows[t]) if c == "RUN_ID" else [text(r.get(c)) for r in rows[t]]
+                                     for c, _ in pairs])
+                con.execute("DELETE FROM COPIES WHERE SCHEMA_NAME = ?", [s])
+                con.execute("INSERT INTO COPIES VALUES (?, ?, ?, ?, ?)",
+                            [s, key, rid, stamp(at), had[0] if turn else (had[1] if had else None)])
+                con.execute("COMMIT")
+            finally:
+                con.close()
         SQL[key] = dict(run_id=rid, at=at)
     except Exception as e:
         SQL[key] = dict(note=f"The SQL copy was not written: {access.line(e)}")
-    finally:
-        tmp.unlink(missing_ok=True)
 
 
 def sql_info(key, disk=True):

@@ -49,10 +49,25 @@ def owned():
 
 
 def rows(conn, sql):
-    """(column names, rows) of one statement; every read of the app goes through here."""
+    """(column names, rows) of one statement; every read of the app goes through here. STATEMENT_TIMEOUT as a statement
+    parameter, not ALTER SESSION: the same on a local login and on the app's session inside Snowflake (to verify there).
+    A timeout says which step and how to give it longer."""
     cur = conn.cursor()
-    cur.execute(sql)
+    p = limit(sql)
+    try:
+        cur.execute(sql, _statement_params=p) if p else cur.execute(sql)
+    except Exception as e:
+        if access.timed_out(e):
+            raise TimeoutError(f"{access.step_name(sql)}: {access.timeout_hint(e, bool(p))}") from e
+        raise
     return [c[0] for c in cur.description or []], cur.fetchall()
+
+
+def limit(sql):
+    """STATEMENT_TIMEOUT as statement parameters, none for a CALL: SP_ACCESS_SNAPSHOT limits each of its own statements
+    (settings.local.sql), and a cut CALL would leave its run RUNNING, so the next CALLs answer SKIPPED for an hour."""
+    n = access.STATEMENT_TIMEOUT
+    return {"STATEMENT_TIMEOUT_IN_SECONDS": n} if n and not sql.lstrip().upper().startswith("CALL") else {}
 
 
 def run(sql, conn=None):

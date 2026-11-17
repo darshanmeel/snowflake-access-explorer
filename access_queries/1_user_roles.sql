@@ -12,6 +12,8 @@
 --   instead: remove the QUALIFY line. Role cycles stop by themselves.
 -- MAX_DEPTH (NULL = 50, the app's limit) cuts longer chains: roles past it are left out and WAYS counts only the
 --   paths within it, with no sign in the output; to check, rerun with a higher value and compare the row count.
+-- Paths are listed before they are counted: on hierarchies where roles are reached through many paths, lower
+--   MAX_DEPTH or use the app, which counts paths over the role graph.
 -- SHOW_BUILTIN = TRUE also lists Snowflake's own grants via PUBLIC (SNOWFLAKE.* database roles, system pools ...).
 
 SET USER_NAME = 'ANALYST_01';

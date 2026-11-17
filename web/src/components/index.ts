@@ -3,6 +3,7 @@ import "./styles.css";
 
 export { Graph, type GraphProps } from "./Graph";
 export { Legend } from "./Legend";
+export { LoadLog } from "./LoadLog";
 export { Combo, type ComboProps } from "./Combo";
 export { DataTable, Pager, type Column, type DataTableProps } from "./DataTable";
 export { AccessTag, PrivilegeTabs, type PrivilegeTabsProps } from "./PrivilegeTabs";

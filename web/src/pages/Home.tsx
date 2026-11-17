@@ -6,6 +6,7 @@ import type { FindItem, HomePage, Page } from "../api/types";
 import { Card, StackBar, type BarPart } from "../components";
 import { useApp } from "../ctx";
 import { Load } from "./common";
+import { skipNote } from "./Risks";
 
 const RECENT = "ae-recent";
 
@@ -150,6 +151,7 @@ export function HomePageView() {
                 <StackBar parts={sevParts(d.risks)} />
                 <p className="ae-muted">{d.counts.users} users · {d.counts.roles} roles · {d.counts.objects} objects</p>
                 {d.per_rule && <Areas perRule={d.per_rule} />}
+                {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
               </Card>
             )}
           </div>

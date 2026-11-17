@@ -305,7 +305,7 @@ def snowflake(answer, direct=False, where="D.S"):
     sent = []
 
     class Cur:
-        def execute(self, sql):
+        def execute(self, sql, **kw):  # kw: the STATEMENT_TIMEOUT statement parameter
             sent.append(sql)
             self.got = answer(sql)
             self.description = [(k,) for k in (self.got[0] if self.got else {})] or None
@@ -318,11 +318,13 @@ def snowflake(answer, direct=False, where="D.S"):
     server.MODE, server.DIRECT, server.WHERE, server.connect = "snowflake", direct, where, lambda: conn
     server.cache.HOURS = 0  # memory only: no test file in .cache/
     server.cache.MEM.pop(server.KEY, None)
+    server.cache.OLD.pop(server.KEY, None)
     try:
         yield sent
     finally:
         server.MODE, server.DIRECT, server.WHERE, server.connect, server.cache.HOURS = old
         server.cache.MEM.pop(server.KEY, None)
+        server.cache.OLD.pop(server.KEY, None)
 
 
 def test_read_only():
@@ -333,7 +335,7 @@ def test_read_only():
     show, _ = test_access.fake_snowflake(d, True)
     me = d["USER_ROLE"][0]["USER_NAME"]
     mine = [x["ROLE_NAME"] for x in d["USER_ROLE"] if x["USER_NAME"] == me]
-    table = re.compile(r"SELECT \* FROM D\.S\.TBL_ACCESS_(\w+) WHERE")
+    table = re.compile(r"SELECT \* EXCLUDE \(RUN_ID\) FROM D\.S\.TBL_ACCESS_(\w+) WHERE")
 
     def answer(sql):
         if "SP_ACCESS_SNAPSHOT" in sql:
@@ -343,9 +345,7 @@ def test_read_only():
         if table.match(sql):
             return [dict(x) for x in d.get(table.match(sql)[1]) or []]
         if sql.startswith("SELECT CURRENT_USER()"):
-            return [{"U": me}]
-        if sql.startswith("SELECT CURRENT_AVAILABLE_ROLES()"):
-            return [{"R": json.dumps(mine)}]
+            return [{"U": me, "D": None, "R": json.dumps(mine)}]
         if sql.startswith("SHOW GRANTS TO USER"):
             return [{"role": x} for x in mine]
         try:
@@ -371,6 +371,31 @@ def test_read_only():
         server.MINE.clear()
     assert any("SP_ACCESS_SNAPSHOT" in s for s in sent)
     assert all(READ_ONLY.match(s) for s in sent), [s for s in sent if not READ_ONLY.match(s)][:5]
+
+
+def test_same_run():
+    """Objects mode: a reload while the latest OK run is the one held keeps the held data after one small query, also
+    memory only (CACHE_HOURS=0, as inside Snowflake); a new run reads every table again."""
+    d, run = a.fake(), ["r1"]
+    table = re.compile(r"SELECT \* EXCLUDE \(RUN_ID\) FROM D\.S\.TBL_ACCESS_(\w+) WHERE RUN_ID = '(\w+)'")
+
+    def answer(sql):
+        if ".TBL_ACCESS_RUN " in sql:
+            return [{"RUN_ID": run[0], "FINISHED_AT": "2026-11-03 10:00", "SOURCES": "{}", "NOTES": "{}"}]
+        m = table.match(sql)
+        assert m and m[2] == run[0], sql
+        return [dict(x) for x in d.get(m[1]) or []]
+    with snowflake(answer) as sent:
+        first = server.load_shared()
+        assert sum(bool(table.match(s)) for s in sent) == len(a.TABLES + a.OPTIONAL)
+        sent.clear()
+        assert c.post("/api/reload", json={}).json()["ok"]
+        assert server.load_shared() is first and len(sent) == 1 and ".TBL_ACCESS_RUN " in sent[0], sent
+        sent.clear()
+        run[0] = "r2"
+        server.cache.drop(server.KEY)
+        assert server.load_shared()["run"]["RUN_ID"] == "r2"
+        assert sum(bool(table.match(s)) for s in sent) == len(a.TABLES + a.OPTIONAL)
 
 
 def test_rebuild_outcome():
@@ -770,7 +795,7 @@ def test_run_address():
 
 
 def test_cache_lock():
-    """A memory hit never waits for another key's read, and a drop during a read of its key wins."""
+    """A memory hit and a read of another key never wait for a key's read, and a drop during a read of its key wins."""
     import threading
     import time
     cache, go, began = server.cache, threading.Event(), threading.Event()
@@ -786,6 +811,7 @@ def test_cache_lock():
         began.wait(5)
         t0 = time.time()
         assert cache.get("t_hit", lambda: "read", False)[0] == "hit" and time.time() - t0 < 1
+        assert cache.get("t_cold", lambda: "cold", False)[0] == "cold" and time.time() - t0 < 1  # nor another key's read
         dropper = threading.Thread(target=cache.drop, args=("t_slow",))
         dropper.start()  # while slow() still reads
         time.sleep(0.2)
@@ -797,6 +823,8 @@ def test_cache_lock():
         go.set()
         cache.MEM.pop("t_hit", None)
         cache.MEM.pop("t_slow", None)
+        cache.OLD.pop("t_slow", None)
+        cache.MEM.pop("t_cold", None)
 
 
 def test_csv_formula():
@@ -819,6 +847,95 @@ def test_csv_off():  # CSV=0: every CSV route refuses in both versions and meta 
             assert st == 403 and body["detail"] == "csv_off", (n, st, body)
     finally:
         os.environ.pop("CSV")
+
+
+def test_switches():
+    """HIERARCHY=0: Risks & fixes lists the rules that walk role paths as skipped, not passing, in both versions (the
+    same JSON); a statement past STATEMENT_TIMEOUT answers JSON naming the step and the longer setting."""
+    import st_react
+
+    def fresh():  # answers and built data sets are kept per data set; this changes a setting
+        server.ANSWERS.clear(), a.built.clear(), a.memo.clear()
+    old = a.HIERARCHY_ON
+    try:
+        a.HIERARCHY_ON = False
+        fresh()
+        d = js("/api/rules", ["skipped", "per_rule"])
+        assert d["skipped"] == {n: a.SKIP_HIERARCHY for n in sorted(a.WALKS, key=int)}
+        assert not any(d["per_rule"][n] for n in a.WALKS)
+        assert d["counts"]["Passing"] == sum(not d["per_rule"][n] and n not in a.WALKS for n in a.RULES)
+        st, body, _ = st_react.answer("GET", "/api/rules", None, None)
+        assert st == 200 and body["skipped"] == d["skipped"]
+        assert js("/api/home", ["skipped"])["skipped"] == d["skipped"]  # Home says its counts leave them out
+    finally:
+        a.HIERARCHY_ON = old
+        fresh()
+    assert js("/api/rules")["skipped"] == {} and js("/api/home")["skipped"] == {}
+
+    def slow(sql):
+        raise RuntimeError("000630 (57014): Statement reached its statement or warehouse timeout of 300 second(s) and "
+                           "was canceled.")
+    t = a.STATEMENT_TIMEOUT
+    a.STATEMENT_TIMEOUT = 300
+    try:
+        with snowflake(slow):
+            r = c.post("/api/reload", json={"what": "rebuild"})
+            assert r.status_code == 503 and r.json()["message"] == (
+                "CALL D.S.SP_ACCESS_SNAPSHOT('AUTO'): stopped after 5 min by the warehouse or account "
+                "STATEMENT_TIMEOUT_IN_SECONDS, not the app's STATEMENT_TIMEOUT: an admin can raise it"), r.text
+    finally:
+        a.STATEMENT_TIMEOUT = t
+
+
+def test_progress():
+    """GET /api/progress: the lines of the read from Snowflake running now (asked here from inside a direct load on a
+    fake connection), none when idle; asking never starts a load; the same answer in Streamlit; the host and
+    Sec-Fetch checks hold for it as for every /api/ route."""
+    import st_react
+    from datetime import datetime
+    idle = {"running": False, "view": None, "lines": []}
+    server.PROGRESS.clear()
+    assert js("/api/progress") == idle == st_react.answer("GET", "/api/progress", None, None)[1]
+    seen = []
+
+    def answer(sql):
+        if sql.startswith("SELECT CURRENT_TIMESTAMP()"):
+            return [{"T": datetime(2026, 11, 3, 10)}]
+        if "GRANTS_TO_ROLES WHERE" in sql:  # the heavy read: the load is running, the page asks what it does
+            seen.append(c.get("/api/progress").json())
+        return []
+    with snowflake(answer, direct=True) as sent:
+        assert js("/api/progress") == idle and not sent  # idle with nothing loaded: asking reads nothing
+        assert c.post("/api/reload", json={"what": "load"}).json()["ok"]
+    p = seen[0]
+    assert p["running"] and p["view"] == "shared", p
+    texts = [x["text"] for x in p["lines"]]
+    assert texts[0].startswith("Connected") and any("GRANTS_TO_ROLES…" in x for x in texts), texts
+    assert all(isinstance(x["t"], float) for x in p["lines"])
+    assert js("/api/progress") == idle  # done
+    assert TestClient(server.make_app(), base_url="http://attacker.example").get("/api/progress").status_code == 400
+    assert c.get("/api/progress", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+
+    # Streamlit: Python is busy during the load, so st_react.shown() answers in a thread and writes the lines itself
+    import time
+    drawn = []
+    box = type("Box", (), {"code": lambda self, t, language=None: drawn.append(t), "empty": lambda self: drawn.append("")})()
+
+    def slow():
+        a.say("step one")
+        time.sleep(1.5)
+        a.say("step two")
+        time.sleep(1.2)
+        return a.fake()
+    old = server.read_shared
+    server.read_shared = slow
+    server.cache.drop(server.KEY)
+    try:
+        st, body, _ = st_react.shown(box, dict(id="p1", method="POST", url="/api/reload", body={"what": "load"}), None)
+    finally:
+        server.read_shared = old
+        server.cache.drop(server.KEY)
+    assert st == 200 and body["ok"] and drawn[-1] == "" and "step one" in drawn[0] and "step two" in drawn[-2], drawn
 
 
 if __name__ == "__main__":

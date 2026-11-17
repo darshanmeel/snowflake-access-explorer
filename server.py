@@ -53,6 +53,9 @@ LOCK = threading.RLock()  # access.py keeps its lookups in module globals: build
 LOAD = threading.Lock()  # one Snowflake read at a time
 MINE = {}
 S = dict(sens={}, rows=[], breaks={}, view="shared", known=None)  # per request, set under LOCK
+PROGRESS = {}  # cache key -> its last read from Snowflake: view, running, start, lines (what /api/progress shows)
+PLOCK = threading.Lock()  # lines come from each()'s threads too
+MAX_LINES = 200
 ANSWERS = {}  # (data, endpoint, params) -> answer: a page seen before skips LOCK, so users don't queue behind each other
 MAX_ANSWERS = 200
 
@@ -86,13 +89,42 @@ def with_query(fn):
             conn.close()
 
 
+def tracked(key, view, fn):
+    """fn() with the lines it reports (a.say) kept under key, timed from the start, for /api/progress while it runs."""
+    p = PROGRESS[key] = dict(view=view, running=True, start=time.time(), lines=[])
+
+    def add(text):
+        with PLOCK:
+            p["lines"].append((round(time.time() - p["start"], 1), text))
+            del p["lines"][:-MAX_LINES]
+    try:
+        with a.progress(add):
+            try:
+                return fn()
+            except Exception as x:
+                a.say(f"failed: {a.line(x)}")
+                raise
+    finally:
+        p["running"] = False
+
+
+def progress(view=None):
+    """The lines of the read running now (the latest of the view, any view when None); none when idle. Reads only
+    PROGRESS: asking never starts a load."""
+    p = max((p for p in list(PROGRESS.values()) if p["running"] and view in (None, p["view"])),
+            key=lambda p: p["start"], default=None)
+    with PLOCK:
+        lines = [dict(t=t, text=x) for t, x in p["lines"]] if p else []
+    return dict(running=bool(p), view=p["view"] if p else None, lines=lines)
+
+
 def read_shared():
     if MODE == "fake":
         return a.fake()
     if DIRECT:
-        old = cache.last(KEY)
-        return with_query(lambda q: a.live(q, (old or {}).get("ACTIVITY")))
-    return with_query(lambda q: a.snapshot(q, WHERE))
+        old = cache.last(KEY) or {}
+        return with_query(lambda q: a.live(q, old.get("ACTIVITY"), old.get("OBJECT_USE")))
+    return with_query(lambda q: a.snapshot(q, WHERE, old=cache.last(KEY)))  # the same run: one small query
 
 
 def load_shared(ask=False):
@@ -102,7 +134,7 @@ def load_shared(ask=False):
         raise ApiError(409, "shared_not_loaded", "The shared data is read from Snowflake on request: Load shared data.")
     with LOAD:
         try:
-            return cache.get(KEY, read_shared, disk=MODE == "snowflake")[0]
+            return cache.get(KEY, lambda: tracked(KEY, "shared", read_shared), disk=MODE == "snowflake")[0]
         except Exception as x:
             raise ApiError(503, "shared_unreadable", a.line(x))
 
@@ -165,7 +197,8 @@ def load_mine(sid, fresh=False):
         if fresh:
             cache.drop(ck)
         try:
-            d, at = cache.get(ck, lambda: with_query(lambda q: a.mine(q, WHERE.split(".")[0] or None)))
+            d, at = cache.get(ck, lambda: tracked(ck, "mine", lambda: with_query(
+                lambda q: a.mine(q, WHERE.split(".")[0] or None))))
         except Exception as x:  # a cancelled SSO, no warehouse, the network: the real message, as for the shared data
             raise ApiError(503, "mine_unreadable", a.line(x))
     else:
@@ -200,7 +233,8 @@ def session(view, sid, builtin=False):
         S["view"], S["known"] = view, None
         S["sens"] = a.cached("sens", a.sensitive)
         rows = S["rows"] = a.cached("rows", a.rule_rows) if a.roles else []
-        S["breaks"] = a.cached("breaks", lambda: breaks(rows, a.cached("ro", a.readonly_writes))) if rows else {}
+        ro = (lambda: a.cached("ro", a.readonly_writes)) if a.HIERARCHY_ON else list  # HIERARCHY=0: rule 17 off
+        S["breaks"] = a.cached("breaks", lambda: breaks(rows, ro())) if rows else {}
         yield d
 
 
@@ -378,6 +412,10 @@ IP = "IMPORTED PRIVILEGES on database SNOWFLAKE"
 def note_info(k, source, view):
     """A NOTES key in plain words: (title, what it means for the app, how to fix it or None)."""
     mine = view == "mine"
+    if source == "SKIPPED":  # ACTIVITY=0
+        return ({"activity": "Activity skipped", "object_use": "Object usage skipped"}.get(k, f"{k} skipped"),
+                "ACTIVITY=0: ACCESS_HISTORY is not read, so the Activity tabs, rules 24-28 and Granted vs used are off.",
+                "Set ACTIVITY=1 (the default) and read again.")
     if k == "usage":
         return (("Query history: 7 days only", "Roles and warehouses used before that look unused.",
                  f"{IP} gives 30 days.") if source == "INFORMATION_SCHEMA" else
@@ -1087,6 +1125,7 @@ def home_page(p, view):
         per_rule[x["num"]] = per_rule.get(x["num"], 0) + 1
     return dict(view=view, me=mine, risks=sev if view == "shared" else None, counts=counts,
                 per_rule=per_rule if view == "shared" else None,
+                skipped=a.skipped_rules() if view == "shared" else None,  # HIERARCHY=0 / ACTIVITY=0: not in the counts
                 protection=dict(unmasked=sum(x["num"] == "6" for x in S["rows"]), unmasked_names=unmasked,
                                 dormant=len(dormant), dormant_names=dormant[:8], tagged=g["tagged_objects"],
                                 masked=g["masked_columns"], row_tables=g["row_tables"],
@@ -1887,6 +1926,7 @@ def rules_page(p, view):
     who = p.get("grantee", "") if p.get("grantee", "") in gs else ""
     mine = [x for x in rows if not who or x["grantee"] == who]
     count = {n: sum(x["num"] == n for x in mine) for n in a.RULES}
+    skipped = a.skipped_rules()  # HIERARCHY=0 / ACTIVITY=0: did not run, so they do not pass either
     sev = p.get("sev", "") if p.get("sev", "") in SEVS + ["Passing"] else ""
     sel = p.get("rule", "") if p.get("rule", "") in a.RULES else ""
     lvl = lambda n: a.SEVERITY.get(n, "Low")
@@ -1896,8 +1936,8 @@ def rules_page(p, view):
     return dict(
         view=view, scope="mine" if view == "mine" else "account", filters=dict(grantee=who, sev=sev, rule=sel),
         counts={**{s: sum(count[n] for n in a.RULES if lvl(n) == s) for s in SEVS},
-                "Passing": sum(not count[n] for n in a.RULES)},
-        per_rule=count,
+                "Passing": sum(not count[n] and n not in skipped for n in a.RULES)},
+        per_rule=count, skipped=skipped,
         findings=[finding(x) for x in shown],
         total=len(shown), rows_unknown=[] if who else unknown,
         admins=[dict(user=x["user"], service=x["service"], roles=x["roles"], account=list(dict.fromkeys(pv for pv, _ in x["account"])),
@@ -2213,7 +2253,9 @@ def reload(body):
         res = None
         if not DIRECT:
             try:
-                r = with_query(lambda q: q(f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"))
+                sql = f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"
+                r = tracked(KEY, "shared", lambda: with_query(
+                    lambda q: a.say(f"{sql}: runs in Snowflake, its steps show when it ends") or q(sql)))
             except Exception as x:
                 raise ApiError(503, "rebuild_failed", a.line(x))
             res = json.loads(list(r[0].values())[0])
@@ -2340,6 +2382,7 @@ def make_app():
     from fastapi import FastAPI, Request
     from fastapi.responses import FileResponse, JSONResponse, Response
 
+    from starlette.concurrency import run_in_threadpool
     from starlette.middleware.gzip import GZipMiddleware
 
     app = FastAPI(title="Snowflake access explorer API")
@@ -2390,7 +2433,11 @@ def make_app():
             body = await request.json()
         except Exception:
             body = {}
-        return reload(body)
+        return await run_in_threadpool(reload, body)  # a load takes minutes: /api/progress answers meanwhile
+
+    @app.get("/api/progress")
+    def progress_(request: Request):
+        return progress(request.query_params.get("view"))
 
     @app.post("/api/mine/load")
     def mine_load(request: Request):

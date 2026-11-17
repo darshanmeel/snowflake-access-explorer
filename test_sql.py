@@ -4,6 +4,7 @@ import json
 import pathlib
 import re
 import sys
+import threading
 from collections import Counter
 from types import ModuleType, SimpleNamespace
 
@@ -54,7 +55,16 @@ def write(db, d):
 
 
 SETUP = (pathlib.Path(__file__).parent / "sql" / "1_setup.sql").read_text(encoding="utf-8")
+PROC_SETTINGS = {"&STATEMENT_TIMEOUT": "300", "&WORKERS": "3", "&ACTIVITY": "1"}  # settings.sql defaults
+
+
+def proc_text(body):
+    """SP_ACCESS_SNAPSHOT's Python with the names run_sql.py fills in."""
+    for k, v in PROC_SETTINGS.items():
+        body = body.replace(k, v)
+    return body.replace("&DB.&SCHEMA", "main").replace("&DB", "main")
 LIMITS = [None, 0, 1, 2, 3, 4, 6, 10]
+LOCK = threading.Lock()
 OBJS = ["SALES.CORE.TBL_CUSTOMER", "FINANCE.REPORT.TBL_REVENUE"]
 
 
@@ -81,9 +91,10 @@ def load(d, build=True):
 
 
 def query(con, sql, params=None):
-    cur = con.execute(sql, params or [])
-    cols = [c[0] for c in cur.description or []]
-    return [dict(zip(cols, r)) for r in cur.fetchall()] if cols else []
+    with LOCK:  # snapshot() reads the tables in parallel; one DuckDB connection runs one at a time
+        cur = con.execute(sql, params or [])
+        cols = [c[0] for c in cur.description or []]
+        return [dict(zip(cols, r)) for r in cur.fetchall()] if cols else []
 
 
 def rows(con, sql, params):
@@ -215,10 +226,10 @@ def fake_session(con):
     """The parts of a Snowpark session SP_ACCESS_FINDINGS uses, on DuckDB."""
     def sql(text, params=None):
         found = query(con, text, params)
-        return SimpleNamespace(collect=lambda: [Row(r) for r in found])
+        return SimpleNamespace(collect=lambda **k: [Row(r) for r in found])
 
     def create_dataframe(data, schema):
-        def save(table, mode, column_order):
+        def save(table, mode, column_order, **k):
             con.executemany(f"INSERT INTO {table} ({', '.join(schema)}) VALUES ({', '.join('?' * len(schema))})", data)
         return SimpleNamespace(write=SimpleNamespace(save_as_table=save))
 
@@ -261,7 +272,7 @@ def test_streams():
     con = load(a.fake(), build=False)
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
-    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    exec(proc_text(body), ns)
     session = fake_session(con)
     show = [dict(database_name="D", schema_name="S", name='"ST 1"', table_name='D.S."T"', source_type="Table")]
     sql = session.sql
@@ -269,7 +280,7 @@ def test_streams():
     def fake_sql(text, params=None):
         if not text.startswith("SHOW STREAMS"):
             return sql(text, params)
-        return SimpleNamespace(collect=lambda: [SimpleNamespace(as_dict=lambda r=r: r) for r in show])
+        return SimpleNamespace(collect=lambda **k: [SimpleNamespace(as_dict=lambda r=r: r) for r in show])
 
     session.sql = fake_sql
     assert ns["streams"](session, "run-9") == ("SHOW", None)
@@ -287,10 +298,11 @@ def test_object_use():
     con = load(a.fake(), build=False)
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
-    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
-    src, why = ns["object_use"](fake_session(con), "run-9", "AUTO")
+    exec(proc_text(body), ns)
+    session = fake_session(con)
+    src, why = ns["object_use"](session, "run-9", ns["fallback"](session, "ACCESS_HISTORY", "AUTO"))()  # run()'s probe
     assert src == "UNAVAILABLE" and "ACCESS_HISTORY" in why
-    assert ns["object_use"](fake_session(con), "run-9", "SHOW")[0] == "UNAVAILABLE"
+    assert ns["object_use"](session, "run-9", ns["fallback"](session, "ACCESS_HISTORY", "SHOW"))()[0] == "UNAVAILABLE"
     assert not con.execute("SELECT * FROM TBL_ACCESS_OBJECT_USE WHERE RUN_ID = 'run-9'").fetchall()
     assert "OBJECT_USE" in ns["DATA"][-2] and 'keep("object_use"' in body
 
@@ -303,10 +315,11 @@ def test_activity():
     con = load(a.fake(), build=False)
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
-    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main").replace("&QUERY_TAG", a.QUERY_TAG)
+    exec(proc_text(body).replace("&QUERY_TAG", a.QUERY_TAG)
          .replace("&STREAMLIT_APP", a.APP_ST), ns)
     assert ns["ACTIVITY_DAYS"] == a.ACTIVITY_DAYS and ns["QUERY_TAG"] == a.QUERY_TAG and ns["APP_ST"] == a.APP_ST
-    src, why = ns["activity"](fake_session(con), "run-9", "AUTO")
+    session = fake_session(con)
+    src, why = ns["activity"](session, "run-9", ns["fallback"](session, "ACCESS_HISTORY", "AUTO"))()
     assert src == "UNAVAILABLE" and "ACCESS_HISTORY" in why
     assert not con.execute("SELECT * FROM TBL_ACCESS_ACTIVITY WHERE RUN_ID = 'run-9'").fetchall()
     assert "ACTIVITY" in ns["DATA"][-1] and 'keep("activity"' in body
@@ -334,14 +347,16 @@ def test_show_fallback():
         con.execute(f"ALTER TABLE TBL_ACCESS_{t} ADD COLUMN IF NOT EXISTS {c} {k}")  # the full columns of 1_setup.sql
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
-    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    exec(proc_text(body), ns)
     session = fake_session(con)
     duck_sql = session.sql
 
+    sent = []  # statements started as async child jobs (many()); a refusal comes from result(), as in Snowpark
+
     def sql(text, params=None):
         if text.lstrip().upper().startswith("SHOW") or "ACCOUNT_USAGE" in text:
-            got = answer(text)
-            return SimpleNamespace(collect=lambda: [SimpleNamespace(as_dict=lambda r=r: r) for r in got])
+            got = lambda **k: [SimpleNamespace(as_dict=lambda r=r: r) for r in answer(text)]  # noqa: E731
+            return SimpleNamespace(collect=got, collect_nowait=lambda **k: sent.append(text) or SimpleNamespace(result=got))
         return duck_sql(text, params)
 
     session.sql = sql
@@ -364,6 +379,12 @@ def test_show_fallback():
     same(fut, Counter((g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"])
                       for g in live["GRANT"] if g["IS_FUTURE"]), "SHOW future grants")
     assert src == "SHOW" and why.startswith("1 database") and "SALES: " in why and sum(fut.values()) == 2
+    assert any(x.startswith("SHOW GRANTS OF ROLE") for x in sent) and any(x.startswith("SHOW FUTURE GRANTS") for x in sent)
+    ns["ASYNC"], sent[:] = False, []  # run()'s probe job gave no rows: the same result, one statement after another
+    assert ns["grants"](session, "run-11", "SHOW") == out and not sent
+    assert Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
+                   for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-11'")) == proc
+    ns["ASYNC"] = True
 
     def refused(text, params=None):  # SOURCE=direct inside Snowflake when even SHOW DATABASES is refused
         if text.lstrip().upper().startswith("SHOW DATABASES"):
@@ -378,7 +399,7 @@ def test_show_fallback():
 def snapshot_proc():
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
-    exec(body.replace("&DB.&SCHEMA", "main").replace("&DB", "main"), ns)
+    exec(proc_text(body), ns)
     return ns
 
 
@@ -401,7 +422,8 @@ def test_run_overlap():
 
     session.sql = sql
     step = lambda *x: ("SHOW", None)  # noqa: E731
-    ns.update({k: step for k in ("future", "users", "usage", "tags", "policies", "streams", "object_use", "activity")})
+    ns.update({k: step for k in ("future", "users", "tags", "policies", "streams")})
+    ns.update({k: lambda *x: lambda: ("SHOW", None) for k in ("usage", "object_use", "activity")})  # wait() of a job
 
     def grants(session, run_id, mode):
         con.execute(f"INSERT INTO TBL_ACCESS_GRANT (RUN_ID, GRANTEE_ROLE) VALUES ('{run_id}', 'R')")
@@ -422,6 +444,16 @@ def test_run_overlap():
     race.append("run-c")
     out = ns["run"](session, "SHOW")
     assert out == {"status": "SKIPPED", "notes": {"error": "run run-c is still running"}}, out
+    con.execute("DELETE FROM TBL_ACCESS_RUN WHERE RUN_ID = 'run-c'")
+    waited = []  # a step that fails the run: the jobs already started end before its rows are deleted
+
+    def broken(session, run_id, mode):
+        raise RuntimeError("SHOW ROLES refused")
+
+    ns["grants"] = broken
+    ns["object_use"] = lambda *x: lambda: waited.append(1) or ("ACCOUNT_USAGE", None)
+    out = ns["run"](session, "SHOW")
+    assert out["status"] == "FAILED" and waited == [1] and "object_use" not in out["sources"], out
 
 
 def test_usage_extra():
@@ -434,14 +466,88 @@ def test_usage_extra():
 
     def sql(text, params=None):
         if "ACCOUNT_USAGE.QUERY_HISTORY LIMIT 1" in text:
-            return SimpleNamespace(collect=lambda: [])
+            return SimpleNamespace(collect=lambda **k: [])
         if "ACCOUNT_USAGE.QUERY_HISTORY" in text:
             raise RuntimeError("Statement reached its statement or warehouse timeout")
         return duck_sql(text, params)
 
     session.sql = sql
-    assert ns["usage"](session, "run-9", "AUTO") == ("UNAVAILABLE", "Statement reached its statement or warehouse timeout")
+    timeout = ("UNAVAILABLE", "stopped after 5 min (STATEMENT_TIMEOUT=300); set STATEMENT_TIMEOUT=600 for 10 minutes in "
+               "settings.local.sql and run sql/1_setup.sql again; Statement reached its statement or warehouse timeout")
+    assert ns["usage"](session, "run-9", "AUTO")() == timeout
     assert not con.execute("SELECT * FROM TBL_ACCESS_USAGE WHERE RUN_ID = 'run-9'").fetchall()
+
+    def slow(text, params=None):  # started as an async job that fails later: its rows are deleted, the step alone fails
+        if "ACCOUNT_USAGE.QUERY_HISTORY" in text and "LIMIT 1" not in text:
+            con.execute("INSERT INTO TBL_ACCESS_USAGE (RUN_ID, USER_NAME) VALUES ('run-8', 'U')")  # a half-done insert
+            return SimpleNamespace(collect_nowait=lambda **k: SimpleNamespace(result=lambda: sql(text)))
+        return sql(text, params)
+
+    session.sql = slow
+    wait = ns["usage"](session, "run-8", "AUTO")
+    assert wait() == wait() == timeout
+    assert not con.execute("SELECT * FROM TBL_ACCESS_USAGE WHERE RUN_ID = 'run-8'").fetchall()
+
+
+def test_object_use_weeks():
+    """Object use copies the last OK run's weeks but its last two and reads ACCESS_HISTORY from that Monday on
+    (SP_ACCESS_SNAPSHOT, and access.use_start in Direct mode): the same rows as a read of every week of the window."""
+    import random
+    from datetime import datetime, timedelta
+    rnd, t0 = random.Random(7), datetime(2026, 11, 2, 7)
+    log = [(f"q{i}", rnd.choice("AB"), rnd.choice(["D.S.T1", "D.S.T2"]), rnd.choice(["READ", "WRITE"]),
+            t0 - timedelta(days=200) + timedelta(hours=rnd.randrange(24 * 215))) for i in range(3000)]
+
+    def read(since, now):  # what use_sql(since) gives at now: every query from since's midnight on
+        g = {}
+        for q, u, o, act, t in log:
+            if since <= t.date() and t <= now:
+                n, last = g.get((u, o, a.monday(t), act), (set(), t))
+                g[(u, o, a.monday(t), act)] = (n | {q}, max(last, t))
+        return [dict(USER_NAME=u, OBJECT_NAME=o, WEEK=w, ACTION=act, QUERIES=len(n), LAST_USED=last)
+                for (u, o, w, act), (n, last) in g.items()]
+
+    def first(now):
+        return a.monday(a.day(now) - timedelta(days=a.USE_DAYS))
+
+    def key(x):
+        return x["USER_NAME"], x["OBJECT_NAME"], a.day(x["WEEK"]), x["ACTION"], x["QUERIES"], x["LAST_USED"]
+
+    t1 = t0 + timedelta(days=10)
+    prev, full = read(first(t0), t0), Counter(map(key, read(first(t1), t1)))
+    keep, since = a.use_start(prev, t1)  # Direct mode
+    assert since.weekday() == 0 and since > first(t1) and keep
+    same(Counter(map(key, keep + read(since, t1))), full, "use_start")
+    assert a.use_start(None, t1) == ([], first(t1))
+
+    con = load(a.fake(), build=False)  # the procedure, with run-2 as the last OK run
+    con.execute("CREATE OR REPLACE TABLE TBL_ACCESS_OBJECT_USE (RUN_ID VARCHAR, USER_NAME VARCHAR, OBJECT_NAME VARCHAR, "
+                "WEEK DATE, ACTION VARCHAR, QUERIES BIGINT, LAST_USED TIMESTAMP)")
+    cols = COLS["OBJECT_USE"].split(", ")
+
+    def put(run_id, xs):
+        con.executemany("INSERT INTO TBL_ACCESS_OBJECT_USE VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [[run_id] + [x[c] for c in cols] for x in xs])
+
+    put("run-2", prev)
+    ns, session, scans = snapshot_proc(), fake_session(con), []
+    duck_sql = session.sql
+
+    def sql(text, params=None):
+        if text.strip() == "SELECT CURRENT_DATE() AS D":
+            return SimpleNamespace(collect=lambda **k: [Row(D=t1.date())])
+        if "ACCOUNT_USAGE.ACCESS_HISTORY" in text:
+            assert "CURRENT_TIMESTAMP" not in text and text.count("ACCOUNT_USAGE.ACCESS_HISTORY") == 1  # one scan
+            on = a.day(re.search(r"'([0-9-]+)'::TIMESTAMP_LTZ", text).group(1))
+            scans.append(on)
+            return SimpleNamespace(collect_nowait=lambda **k: SimpleNamespace(result=lambda: put("run-9", read(on, t1))))
+        return duck_sql(text, params)
+
+    session.sql = sql
+    assert ns["object_use"](session, "run-9", None)() == ("ACCOUNT_USAGE", None)
+    got = Counter(map(key, query(con, f"SELECT {COLS['OBJECT_USE']} FROM TBL_ACCESS_OBJECT_USE WHERE RUN_ID = 'run-9'")))
+    assert scans == [since], scans  # the same Monday as use_start
+    same(got, full, "SP_ACCESS_SNAPSHOT object use")
 
 
 def test_same_queries():
@@ -467,8 +573,108 @@ def test_same_queries():
         assert live[v] == proc[v], f"{v}:\n live {live[v]}\n proc {proc[v]}"
 
 
+def test_proc_settings():
+    """SP_ACCESS_SNAPSHOT's settings.sql names: every statement carries STATEMENT_TIMEOUT as a statement parameter,
+    later() runs at most WORKERS heavy jobs at once, ACTIVITY=0 skips object use and activity (SKIPPED, the run stays
+    OK), and a timeout that fails the run names its step."""
+    ns = snapshot_proc()
+    body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
+    assert ns["TIMED"] == {"statement_params": {"STATEMENT_TIMEOUT_IN_SECONDS": 300}} and ns["WORKERS"] == 3
+    assert ".collect()" not in body and ".collect_nowait()" not in body
+    log = []
+
+    def sql(text, params=None):
+        return SimpleNamespace(collect=lambda **k: log.append(("sync", text, k)) or [],
+                               collect_nowait=lambda **k: log.append(("start", text, k))
+                               or SimpleNamespace(result=lambda: log.append(("end", text))))
+    session = SimpleNamespace(sql=sql)
+    for workers, want in ((1, ["start A", "end A", "start B", "end B", "start C"]), (3, ["start A", "start B", "start C"])):
+        ns["WORKERS"], log[:] = workers, []
+        ns["PENDING"].clear()
+        for q in "ABC":
+            ns["later"](session, "T", "r", q, ("ACCOUNT_USAGE", None))
+        assert [f"{x[0]} {x[1]}" for x in log] == want, (workers, log)
+        assert all(x[2] == ns["TIMED"] for x in log if x[0] == "start")
+    ns["ASYNC"], log[:] = False, []  # a run that failed (STOP): a job that never started is not run while draining
+    ns["PENDING"].clear()
+    wait = ns["later"](session, "T", "r", "D", ("ACCOUNT_USAGE", None))
+    ns["STOP"].append(1)
+    assert wait() == ("UNAVAILABLE", "not run: the run failed") and not log, log
+    ns["ASYNC"] = True
+    ns["STOP"].clear()
+    for step in ("object_use", "activity"):
+        assert ns[step](session, "r", "skipped (ACTIVITY=0)")() == ("SKIPPED", "skipped (ACTIVITY=0)")
+
+    con = load(a.fake(), build=False)  # run() with ACTIVITY=0, then with a grants read that times out
+    con.execute("CREATE MACRO PARSE_JSON(x) AS x")
+    duck = fake_session(con)
+    session = SimpleNamespace(sql=lambda text, params=None: duck.sql(
+        re.sub(r"DATEADD\((\w+), (-?\d+), CURRENT_TIMESTAMP\(\)\)", r"(current_timestamp + INTERVAL (\2) \1)", text)
+        .replace("CURRENT_TIMESTAMP()", "current_timestamp"), params))
+    ns, seen = snapshot_proc(), []
+    ns.update({k: lambda *x: ("SHOW", None) for k in ("future", "users", "tags", "policies", "streams")})
+    ns["usage"] = lambda *x: lambda: ("SHOW", None)
+    ns["grants"] = lambda *x: {"grants": ("SHOW", None), "user_roles": ("SHOW", None)}
+    ns["fallback"] = lambda *x: seen.append(x[1]) or None
+    ns["READ_ACTIVITY"] = False
+    out = ns["run"](session, "AUTO")
+    assert out["status"] == "OK" and "ACCESS_HISTORY" not in seen, (out, seen)
+    assert out["sources"]["object_use"] == out["sources"]["activity"] == "SKIPPED"
+    assert out["notes"]["activity"] == "skipped (ACTIVITY=0)"
+
+    def slow(*x):
+        raise RuntimeError("Statement reached its statement or warehouse timeout of 300 second(s) and was canceled.")
+    ns["grants"] = slow
+    out = ns["run"](session, "AUTO")
+    assert out["status"] == "FAILED" and out["notes"]["error"].startswith(
+        "grants: stopped after 5 min (STATEMENT_TIMEOUT=300); set STATEMENT_TIMEOUT=600 for 10 minutes"), out
+
+
+def test_history_shared():
+    """SP_ACCESS_SNAPSHOT reads ACCESS_HISTORY once for object use and activity: one INSERT ALL of history_sql (the
+    same text as access.history_sql) fills both tables; when it fails, each step runs its own INSERT, and a step that
+    is skipped or fails leaves the other reading alone."""
+    import inspect
+    from datetime import date
+    assert inspect.getsource(a.history_sql) in SETUP
+    ns, log = snapshot_proc(), []
+    ns["object_use"] = lambda s, r, why, plan=False: ns["ready"]("SKIPPED", why) if why else (date(2026, 5, 4), "USE ALONE")
+    ok = ("ACCOUNT_USAGE", "no client")
+    ns["activity"] = lambda s, r, why, plan=False: ns["ready"]("SKIPPED", why) if why else (date(2026, 9, 4), "ACT ALONE", ok, False)
+
+    def sql(text, params=None):
+        def result():
+            log.append(text.split()[0] + " " + text.split()[1])
+            if text.startswith("INSERT ALL") and fail:
+                raise RuntimeError(fail)
+        return SimpleNamespace(collect_nowait=lambda **k: SimpleNamespace(result=result), collect=lambda **k: result())
+    session = SimpleNamespace(sql=sql)
+    for fail, want in ((False, ["INSERT ALL"]), ("SQL compilation error", ["INSERT ALL", "USE ALONE", "ACT ALONE"])):
+        log[:] = []
+        ns["PENDING"].clear()
+        waits = ns["history"](session, "r", None)
+        assert [w() for w in waits] == [("ACCOUNT_USAGE", None), ok] and log == want, (fail, log)
+    # a timeout, or a run that has failed (STOP): no read apart, both steps end with the shared read's note
+    for fail, stop in (("Statement reached its statement or warehouse timeout of 300 second(s)", False),
+                       ("SQL compilation error", True)):
+        log[:] = []
+        ns["PENDING"].clear()
+        ns["STOP"][:] = [1] * stop
+        got = [w() for w in ns["history"](session, "r", None)]
+        assert log == ["INSERT ALL"] and got[0] == got[1] and got[0][0] == "UNAVAILABLE", (fail, log, got)
+        assert ("set STATEMENT_TIMEOUT=600" in got[0][1]) != stop, got
+    ns["STOP"].clear()
+    ns["PENDING"].clear()
+    assert [w() for w in ns["history"](session, "r", "skipped (ACTIVITY=0)")] == [("SKIPPED", "skipped (ACTIVITY=0)")] * 2
+    ns["object_use"] = lambda *x: ns["ready"]("UNAVAILABLE", "x")  # one step fails: the other reads alone
+    log[:] = []
+    assert [w() for w in ns["history"](session, "r", None)] == [("UNAVAILABLE", "x"), ok] and log == ["ACT ALONE"]
+    text = ns["history_sql"]("2026-05-04", "2026-09-04", False)
+    assert text.count("ACCOUNT_USAGE.ACCESS_HISTORY") == 1 and text.count("FROM A0 WHERE") == 2
+
+
 if __name__ == "__main__":
     for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_activity, test_show_fallback,
-              test_run_overlap, test_usage_extra, test_same_queries):
+              test_run_overlap, test_usage_extra, test_object_use_weeks, test_same_queries, test_proc_settings, test_history_shared):
         t()
         print("ok", t.__name__)
