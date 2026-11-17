@@ -385,6 +385,12 @@ def test_show_fallback():
     assert Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                    for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-11'")) == proc
     ns["ASYNC"] = True
+    refuse.clear()  # a future grant row without a grantee: left out with a note, as tidy() does in Direct mode
+    show_before = show
+    show = lambda q: show_before(q) + ([dict(grant_to="ROLE", grantee_name=None, privilege="SELECT", grant_on="TABLE",  # noqa: E731
+                                             name="X.Y.<TABLE>")] if q.startswith("SHOW FUTURE GRANTS IN DATABASE") else [])
+    src, why = ns["future"](session, "run-12")
+    assert src == "SHOW" and re.fullmatch(r"[1-9]\d* future grant rows? without a name left out", why or ""), why
 
     def refused(text, params=None):  # SOURCE=direct inside Snowflake when even SHOW DATABASES is refused
         if text.lstrip().upper().startswith("SHOW DATABASES"):

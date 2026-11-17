@@ -1,3 +1,4 @@
 # Streamlit version (python run.py streamlit). Tests: requirements-dev.txt
 streamlit>=1.50,<2
 snowflake-connector-python>=3.12,<6  # Snowflake data (SOURCE, run_sql.py, sf.py)
+duckdb>=1.0  # the rule checks' role walk (access.duck) and the SQL copy .cache/access.duckdb

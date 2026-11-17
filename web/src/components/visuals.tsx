@@ -80,6 +80,7 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
   top?: number; colors?: string[]; // top: keys drawn before Other; colors: one per key instead of the palette
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  if (Number.isNaN(Date.parse(first ?? ""))) return null; // no first day: no days to place the bars on
   const top = series.slice(0, most);
   const rest = series.slice(most);
   const parts = rest.length ? [...top, { key: `Other (${rest.length})`, values: top[0].values.map((_, i) => rest.reduce((n, s) => n + s.values[i], 0)) }] : top;

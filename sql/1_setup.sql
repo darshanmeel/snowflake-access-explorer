@@ -310,7 +310,7 @@ def ident(name):
 
 
 def clean(name):  # SHOW quotes names with special characters; ACCOUNT_USAGE does not
-    return name.replace('"', "")
+    return (name or "").replace('"', "")
 
 
 def blank(v):
@@ -362,40 +362,56 @@ def count(session, table, run_id):
 
 def grants(session, run_id, mode):
     """Role -> object and role -> role (ACCOUNT_USAGE.GRANTS_TO_ROLES or SHOW GRANTS TO ROLE), role -> user
-    (GRANTS_TO_USERS or SHOW GRANTS OF ROLE)."""
+    (GRANTS_TO_USERS or SHOW GRANTS OF ROLE). A refused SHOW gives no rows and a note, never a failed run."""
     out = {}
     why = fallback(session, "GRANTS_TO_ROLES", mode) or fallback(session, "GRANTS_TO_USERS", mode)
     if why is None:
-        # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG;
-        # a database role grantee is a bare name: qualified with the database of what it is granted, DB.ROLE
-        session.sql(f"""INSERT INTO {GRANT} ({", ".join(GRANT_COLS)})
-            SELECT '{run_id}', IFF(GRANTED_TO = 'DATABASE_ROLE',
-                       IFF(GRANTED_ON = 'DATABASE', NAME, TABLE_CATALOG) || '.' || GRANTEE_NAME, GRANTEE_NAME),
-                   PRIVILEGE, GRANTED_ON,
-                   CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
-                        WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
-                        ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END,
-                   FALSE, GRANT_OPTION, GRANTED_BY
-            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')""").collect(**TIMED)
-        session.sql(f"""INSERT INTO {USER_ROLE} (RUN_ID, USER_NAME, ROLE_NAME, GRANTED_BY)
-            SELECT '{run_id}', GRANTEE_NAME, ROLE, GRANTED_BY FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""").collect(**TIMED)
-        out["grants"] = out["user_roles"] = ("ACCOUNT_USAGE", None)
-        return out
+        try:
+            # NAME holds only the object's own name; DATABASE rows may repeat it in TABLE_CATALOG;
+            # a database role grantee is a bare name: qualified with the database of what it is granted, DB.ROLE
+            session.sql(f"""INSERT INTO {GRANT} ({", ".join(GRANT_COLS)})
+                SELECT '{run_id}', IFF(GRANTED_TO = 'DATABASE_ROLE',
+                           IFF(GRANTED_ON = 'DATABASE', NAME, TABLE_CATALOG) || '.' || GRANTEE_NAME, GRANTEE_NAME),
+                       PRIVILEGE, GRANTED_ON,
+                       CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
+                            WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
+                            ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END,
+                       FALSE, GRANT_OPTION, GRANTED_BY
+                FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO IN ('ROLE', 'DATABASE_ROLE')""").collect(**TIMED)
+            session.sql(f"""INSERT INTO {USER_ROLE} (RUN_ID, USER_NAME, ROLE_NAME, GRANTED_BY)
+                SELECT '{run_id}', GRANTEE_NAME, ROLE, GRANTED_BY FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""").collect(**TIMED)
+            out["grants"] = out["user_roles"] = ("ACCOUNT_USAGE", None)
+            return out
+        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW, as access.live does
+            if mode == "ACCOUNT_USAGE":
+                raise
+            for t in (GRANT, USER_ROLE):
+                session.sql(f"DELETE FROM {t} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
+            why = f"{AU}.GRANTS_TO_ROLES / GRANTS_TO_USERS: {first_line(e)}"
     g, u, skipped = [], [], []
-    roles = [r["name"] for r in rows(session, "SHOW ROLES")]
+    try:  # refused: no grants, the rest of the run still loads and the note says why (as access.live)
+        roles = [r["name"] for r in rows(session, "SHOW ROLES") if r.get("name")]
+    except Exception as e:
+        roles = []
+        skipped.append(f"SHOW ROLES: {first_line(e)}")
     got = many(session, [f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [f"SHOW GRANTS OF ROLE {ident(r)}" for r in roles])
     for role, to, of in zip(roles, got[:len(roles)], got[len(roles):]):
         bad = next((x for x in (to, of) if isinstance(x, Exception)), None)
         if bad:  # both SHOWs before keeping either: a half-read role would look like it has no holders; a role the
             skipped.append(f"{role}: {first_line(bad)}")  # owner may not inspect: keep going, list it in NOTES
             continue
-        g += [[run_id, role, x["privilege"], x["granted_on"], clean(x["name"]), False,
+        g += [[run_id, role, x.get("privilege"), x.get("granted_on"), clean(x.get("name")), False,
                str(x.get("grant_option")).lower() == "true", x.get("granted_by")]
               for x in to if x.get("granted_to") in ("ROLE", None)]
-        u += [[run_id, x["grantee_name"], role, x.get("granted_by")] for x in of if x.get("granted_to") == "USER"]
+        u += [[run_id, x.get("grantee_name"), role, x.get("granted_by")] for x in of if x.get("granted_to") == "USER"]
     # database roles: per database, their grants under DB.ROLE
-    dbs = [d["name"] for d in rows(session, "SHOW DATABASES") if d.get("kind", "STANDARD") == "STANDARD"]
-    lists = many(session, [f"SHOW DATABASE ROLES IN DATABASE {ident(db)}" for db in dbs])
+    try:  # refused: no database roles; future() notes the same refusal
+        dbs = [d["name"] for d in rows(session, "SHOW DATABASES") if d.get("name") and d.get("kind", "STANDARD") == "STANDARD"]
+    except Exception as e:
+        dbs = []
+        skipped.append(f"database roles: SHOW DATABASES: {first_line(e)}")
+    lists = [rs if isinstance(rs, Exception) else [r for r in rs if r.get("name")]
+             for rs in many(session, [f"SHOW DATABASE ROLES IN DATABASE {ident(db)}" for db in dbs])]
     names = [(db, clean(r["name"])) for db, rs in zip(dbs, lists) if not isinstance(rs, Exception) for r in rs]
     held = dict(zip(names, many(session, [f"SHOW GRANTS TO DATABASE ROLE {ident(db)}.{ident(r)}" for db, r in names])))
     for db, rs in zip(dbs, lists):  # notes in database order, as when read one after the other
@@ -407,30 +423,34 @@ def grants(session, run_id, mode):
             if isinstance(got, Exception):
                 skipped.append(f"{q}: {first_line(got)}")
                 continue
-            g += [[run_id, q, x["privilege"], x["granted_on"], clean(x["name"]), False,
+            g += [[run_id, q, x.get("privilege"), x.get("granted_on"), clean(x.get("name")), False,
                    str(x.get("grant_option")).lower() == "true", x.get("granted_by")] for x in got]
+    n = len(g) + len(u)  # a row without a name or privilege: left out, as the app leaves it out (access.tidy)
+    g, u = [r for r in g if all(r[1:5])], [r for r in u if r[1]]
+    gone = n - len(g) - len(u)
     save(session, GRANT, GRANT_COLS, g)
     save(session, USER_ROLE, ["RUN_ID", "USER_NAME", "ROLE_NAME", "GRANTED_BY"], u)
-    note = why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else "")
+    note = (why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else "")
+            + (f"; {gone} rows without a name or privilege left out" if gone else ""))
     out["grants"] = out["user_roles"] = ("SHOW", note)
     return out
 
 
 def future(session, run_id):
     """Future grants: no ACCOUNT_USAGE view, so always SHOW FUTURE GRANTS IN DATABASE / SCHEMA."""
-    out, skipped = [], []
+    out, skipped, gone = [], [], 0
     try:  # when even SHOW DATABASES is refused, the rest of the run still loads (as access.live does)
         dbs = rows(session, "SHOW DATABASES")
     except Exception as e:
         return "UNAVAILABLE", f"SHOW DATABASES: {first_line(e)}"
-    dbs = [d["name"] for d in dbs if d.get("kind", "STANDARD") == "STANDARD"]  # shares, applications: not ours
+    dbs = [d["name"] for d in dbs if d.get("name") and d.get("kind", "STANDARD") == "STANDARD"]  # shares, applications: not ours
     places, nope = {}, {}  # every SHOW sent in async waves; the rows and notes then taken in database order
     for db, got in zip(dbs, many(session, [f"SHOW SCHEMAS IN DATABASE {ident(db)}" for db in dbs])):
         try:
             if isinstance(got, Exception):
                 raise got
             places[db] = [f"DATABASE {ident(db)}"] + [f"SCHEMA {ident(db)}.{ident(s['name'])}"
-                                                      for s in got if s["name"] != "INFORMATION_SCHEMA"]
+                                                      for s in got if s.get("name") not in (None, "INFORMATION_SCHEMA")]
         except Exception as e:
             nope[db] = f"{db}: {first_line(e)}"
     flat = [(db, p) for db, ps in places.items() for p in ps]
@@ -445,30 +465,44 @@ def future(session, run_id):
             if isinstance(got, Exception):
                 bad = bad or f"{db}: {first_line(got)}"
                 continue
-            for x in got:  # to a database role of this database: DB.ROLE
-                if x.get("grant_to") in ("ROLE", "DATABASE_ROLE"):
+            for x in got:  # to a database role of this database: DB.ROLE; a row without a name is left out
+                if x.get("grant_to") in ("ROLE", "DATABASE_ROLE") and not all(x.get(k) for k in ("grantee_name", "name", "privilege", "grant_on")):
+                    gone += 1
+                elif x.get("grant_to") in ("ROLE", "DATABASE_ROLE"):
                     who = x["grantee_name"] if x["grant_to"] == "ROLE" else clean(x["grantee_name"])
                     who = who if x["grant_to"] == "ROLE" or who.startswith(db + ".") else f"{db}.{who}"
-                    out.append([run_id, who, x["privilege"], x["grant_on"], clean(x["name"]), True,
+                    out.append([run_id, who, x.get("privilege"), x.get("grant_on"), clean(x["name"]), True,
                                 str(x.get("grant_option")).lower() == "true", None])
         if bad:
             skipped.append(bad)
     save(session, GRANT, GRANT_COLS, out)
-    return "SHOW", (f"{len(skipped)} database{'s' if len(skipped) != 1 else ''} skipped — " + " | ".join(skipped[:20]) if skipped else None)
+    note = [f"{len(skipped)} database{'s' if len(skipped) != 1 else ''} skipped — " + " | ".join(skipped[:20])] * bool(skipped)
+    note += [f"{gone} future grant row{'s' * (gone != 1)} without a name left out"] * bool(gone)  # as access.tidy does
+    return "SHOW", "; ".join(note) or None
 
 
 def users(session, run_id, mode):
     why = fallback(session, "USERS", mode)
     if why is None:
-        # OBJECT_CONSTRUCT(*): the secondary roles column name differs between Snowflake versions
-        session.sql(f"""INSERT INTO {USER} SELECT '{run_id}', J:NAME::STRING, J:TYPE::STRING, TRY_TO_BOOLEAN(J:DISABLED::STRING),
-                   J:DEFAULT_ROLE::STRING, COALESCE(J:DEFAULT_SECONDARY_ROLES, J:DEFAULT_SECONDARY_ROLE)::STRING,
-                   J:DEFAULT_WAREHOUSE::STRING, J:DEFAULT_NAMESPACE::STRING, TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING)
-            FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)""").collect(**TIMED)
-        return "ACCOUNT_USAGE", None
+        try:
+            # OBJECT_CONSTRUCT(*): the secondary roles column name differs between Snowflake versions
+            session.sql(f"""INSERT INTO {USER} SELECT '{run_id}', J:NAME::STRING, J:TYPE::STRING, TRY_TO_BOOLEAN(J:DISABLED::STRING),
+                       J:DEFAULT_ROLE::STRING, COALESCE(J:DEFAULT_SECONDARY_ROLES, J:DEFAULT_SECONDARY_ROLE)::STRING,
+                       J:DEFAULT_WAREHOUSE::STRING, J:DEFAULT_NAMESPACE::STRING, TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING)
+                FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)""").collect(**TIMED)
+            return "ACCOUNT_USAGE", None
+        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW USERS, as access.live does
+            if mode == "ACCOUNT_USAGE":
+                raise
+            session.sql(f"DELETE FROM {USER} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
+            why = f"{AU}.USERS: {first_line(e)}"
+    try:  # refused: no users, the rest of the run still loads
+        shown = rows(session, "SHOW USERS")
+    except Exception as e:
+        return "UNAVAILABLE", f"{why}; SHOW USERS: {first_line(e)}"
     data = [[run_id, x["name"], blank(x.get("type")), str(x.get("disabled")).lower() == "true", blank(x.get("default_role")),
              blank(x.get("default_secondary_roles")), blank(x.get("default_warehouse")), blank(x.get("default_namespace")),
-             blank(x.get("last_success_login"))] for x in rows(session, "SHOW USERS")]
+             blank(x.get("last_success_login"))] for x in shown if x.get("name")]
     save(session, USER, ["RUN_ID", "USER_NAME", "TYPE", "DISABLED", "DEFAULT_ROLE", "DEFAULT_SECONDARY_ROLES",
                          "DEFAULT_WAREHOUSE", "DEFAULT_NAMESPACE", "LAST_SUCCESS_LOGIN"], data)
     return "SHOW", why

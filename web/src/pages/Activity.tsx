@@ -47,9 +47,10 @@ export function localize(rows: ActivityRow[], tz: number, first: string, days: n
 const tzl = (w: Work) => `UTC${w.tz < 0 ? "−" : "+"}${Math.abs(w.tz)}`;
 /** Business hours as text: "07:00–19:00 UTC+2". */
 const biz = (w: Work) => `${hh(w.start)}–${hh(w.end)} ${tzl(w)}`;
-const short = (d: string) => new Date(d.slice(0, 10) + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+/** "3 Nov"; "–" for a missing or unreadable day. */
+export const short = (d?: string | null) => { const t = Date.parse((d ?? "").slice(0, 10) + "T00:00:00Z"); return Number.isNaN(t) ? "–" : new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }); };
 const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
-const initials = (n: string) => { const w = n.split(/[_\s.]+/).filter(Boolean); return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? w[0]?.[1] ?? "")).toUpperCase(); };
+const initials = (n?: string | null) => { const w = (n ?? "").split(/[_\s.]+/).filter(Boolean); return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? w[0]?.[1] ?? "")).toUpperCase(); };
 
 export function ActivityTab({ what, name, user }: { what: "object" | "user" | "role"; name: string; user?: string }) {
   const c = useApp();
@@ -106,7 +107,7 @@ function Activity({ d: raw }: { d: ActivityPage }) {
   const [work, setWork] = useState<Work>({ ...(raw.work ?? { start: 7, end: 19 }), tz: 0 });
   // everything below sees the rows in business time: days, hours, weekends and off-hours follow the slider
   const d = useMemo(() => {
-    if (!raw.rows || !work.tz) return raw;
+    if (!raw.rows || !work.tz || Number.isNaN(Date.parse(raw.first ?? ""))) return raw;
     const rows = localize(raw.rows, work.tz, raw.first!, raw.days ?? 60);
     return { ...raw, rows, daily: rows.reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(raw.days ?? 60).fill(0) as number[]),
       ddl: rows.filter((r) => r.action === "DDL") };
@@ -114,7 +115,7 @@ function Activity({ d: raw }: { d: ActivityPage }) {
   // each section's SQL with the slider's business time filled in
   const secSql = useMemo(() => Object.fromEntries(Object.entries(raw.section_sql ?? {}).map(([k, v]) => [k, v.replace("SET TZ_HOURS = 0;", `SET TZ_HOURS = ${work.tz};`)])), [raw.section_sql, work.tz]);
   if (d.what === "warehouse") return <Warehouse d={d} />;
-  if (!d.available) return <Card><EmptyState title="– No table activity" art="wait">{d.reason}</EmptyState></Card>;
+  if (!d.available || Number.isNaN(Date.parse(d.first ?? ""))) return <Card><EmptyState title="– No table activity" art="wait">{d.reason}</EmptyState></Card>;
   const rows = d.rows!;
   const open: Open = (k, v) => k === "object" ? c.nav("object", { name: v, show: "activity" })
     : k === "user" ? c.nav("access", { user: v, show: "activity" }) : k === "role" && v !== "–" ? c.nav("access", { role: v, show: "activity" }) : undefined;
@@ -296,7 +297,7 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
             return (
               <div key={g.key} className="ae-log-person">
                 <div className="ae-log-ph">
-                  <span className="ae-log-av">{initials(g.key.split(".").pop() ?? g.key)}</span>
+                  <span className="ae-log-av">{initials((g.key ?? "").split(".").pop())}</span>
                   <div><button type="button" className="ae-link ae-mono" onClick={() => open(by, g.key)}>{g.key}</button>
                     {by === "user" && kind.get(g.key) !== "person" && <span className={`ae-otag ae-log-k-${kind.get(g.key)}`}>{kind.get(g.key)}</span>}
                     {by === "object" && d.objects?.[g.key]?.sensitive && <span className="ae-otag ae-sens-tag">sensitive</span>}

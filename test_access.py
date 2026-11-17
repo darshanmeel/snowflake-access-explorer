@@ -665,7 +665,7 @@ def test_live_inside():
 
 def test_duckdb():
     """The SQL copy in .cache/access.duckdb: the TBL_ACCESS_ tables of sql/1_setup.sql with the same columns, one
-    schema per cache key, the read before as _PREV; off with DUCKDB=0, inside Snowflake and (unless DUCKDB=1) for fake
+    schema per cache key, the read before as _PREV; off inside Snowflake and (unless DUCKDB=1) for fake
     data; without duckdb one note and the read still works."""
     import shutil
     import tempfile
@@ -684,7 +684,8 @@ def test_duckdb():
         cache.DUCKDB, a.INSIDE = "", False
         assert cache.sql_wanted(True) and not cache.sql_wanted(False)  # Snowflake yes, fake only with DUCKDB=1
         d = a.fake()
-        cache.get("acct_direct", lambda: d)  # a read from Snowflake (disk): copied
+        cache.get("acct_direct", lambda: d)  # a read from Snowflake (disk): copied, in a thread
+        cache.COPYING["acct_direct"].join()
         con = duckdb.connect(str(cache.sql_file()), read_only=True)
         s = cache.schema("acct_direct")
         for tb in a.TABLES + a.OPTIONAL:
@@ -707,8 +708,6 @@ def test_duckdb():
         assert con.execute(f'SELECT RUN_ID FROM "{s}".TBL_ACCESS_RUN_PREV').fetchone()[0] == rid
         assert con.execute(f'SELECT COUNT(*) FROM "{s}".TBL_ACCESS_GRANT_PREV').fetchone()[0] == n
         con.close()
-        cache.DUCKDB = "0"
-        assert not cache.sql_wanted(True) and "DUCKDB=0" in cache.sql_info("x")["note"]
         cache.DUCKDB = "1"
         assert cache.sql_wanted(False)  # fake data when asked
         a.INSIDE = True
@@ -719,6 +718,7 @@ def test_duckdb():
             cache.MEM.clear()
             cache.drop("acct_direct")
             got, _ = cache.get("acct_direct", lambda: d)
+            cache.COPYING["acct_direct"].join()  # written in a thread
         finally:
             locked.close()
         assert got is d
@@ -788,6 +788,116 @@ def test_missing_names():
     a.build(d)
     assert None not in a.roles and "2 grant rows" in d["run"]["NOTES"]["missing_names"]
     a.build(a.fake())
+
+
+def test_empty_reads():
+    """Unreadable or odd data: empty results plus a note, never a crash, and never kept as if it were read."""
+    run = dict(RUN_ID="R1", FINISHED_AT="2026-11-01", SOURCES=None, NOTES=None)
+    down = {"on": True}
+
+    def query(sql):  # TBL_ACCESS_GRANT times out once; the other tables are empty
+        if "TBL_ACCESS_RUN" in sql:
+            return [dict(run)]
+        if "TBL_ACCESS_GRANT" in sql and down["on"]:
+            raise RuntimeError("statement timeout")
+        return []
+    d1 = a.snapshot(query, "DB.S")
+    assert d1["GRANT"] == [] and "TBL_ACCESS_GRANT" in d1["run"]["NOTES"]["grants"]
+    down["on"] = False
+    assert a.snapshot(query, "DB.S", old=d1) is not d1  # the table that failed is read again, not reused
+
+    def gone(sql):  # a lost session is no empty snapshot: the real error stops the load
+        raise ConnectionError("Connection lost")
+    try:
+        a.snapshot(gone, "DB.S")
+    except ConnectionError:
+        pass
+    else:
+        raise AssertionError("a lost session gave an empty snapshot")
+    # My access with DESC USER refused: no "run sql/1_setup.sql" columns note
+    a.build(dict(run=dict(RUN_ID="live", FINISHED_AT="now", SOURCES={}, NOTES={"users": "DESC USER: refused"}),
+                 GRANT=[], USER_ROLE=[dict(USER_NAME="ME", ROLE_NAME="R")], USER=[dict(USER_NAME="ME")],
+                 USAGE=[], TAG=[], POLICY=[], STREAM=[]))
+    assert "missing_columns" not in a.run["NOTES"]
+    d = a.fake()  # a nameless policy: the note stays short, without the policy body
+    d["POLICY"] = d["POLICY"] + [dict(d["POLICY"][0], POLICY_NAME=None, POLICY_BODY="CASE WHEN x " * 50)]
+    a.build(d)
+    assert "CASE WHEN" not in a.run["NOTES"]["missing_names"] and len(a.run["NOTES"]["missing_names"]) < 300
+    d = a.fake()  # names that are not text: read as text
+    d["GRANT"] = d["GRANT"] + [dict(GRANTEE_ROLE=123, PRIVILEGE="SELECT", GRANTED_ON="TABLE", OBJECT_NAME=456, IS_FUTURE=False)]
+    a.build(d)
+    assert "123" in a.roles
+    for r in ("null", "{}", "[1, null, \"X\"]", "not json"):  # CURRENT_AVAILABLE_ROLES() that is no role list
+        def q(sql, r=r):
+            if sql.startswith("SELECT CURRENT_USER()"):
+                return [dict(U="ENGINEER_01", D=None, R=r)]
+            if sql.startswith("USE"):
+                return []
+            raise RuntimeError("not authorized")
+        m = a.mine(q, None)
+        assert isinstance(m["GRANT"], list), r
+    base = a.fake()  # Direct mode on rows without any column: loads, with notes
+    real = fake_snowflake(base, True)[0]
+    m = a.live(lambda sql: [{} for _ in (real(sql) or [])])
+    a.build(m)
+    a.build(a.fake())
+
+
+def none_variants(full=True):
+    """(name, data set) of a.fake() with missing, NULL or empty data: every table [] / None / gone, every field None
+    in one row and (full) in every row, one row per field without that column, run None / {} / gone."""
+    import copy
+    base = a.fake()
+    for t in a.TABLES + a.OPTIONAL:
+        for v in ([], None, "gone"):
+            d = copy.deepcopy(base)
+            d.pop(t) if v == "gone" else d.__setitem__(t, v)
+            yield f"{t}={v}", d
+        fields = list(dict.fromkeys(f for r in base[t] for f in r))
+        d, n = copy.deepcopy(base), len(base[t])
+        for i, f in enumerate(fields):  # field i None in row i, so one data set covers every field
+            d[t][i * 7 % n][f] = None
+        yield f"{t}: each field None in one row", d
+        d = copy.deepcopy(base)
+        for i, f in enumerate(fields):
+            d[t][(i * 7 + 3) % n].pop(f, None)
+        yield f"{t}: each column missing in one row", d
+        for f in fields if full else ():
+            d = copy.deepcopy(base)
+            for r in d[t]:
+                r[f] = None
+            yield f"{t}[*].{f}=None", d
+    for v in (None, {}, "gone", dict(base["run"], SOURCES=None, NOTES="null")):
+        d = copy.deepcopy(base)
+        d.pop("run") if v == "gone" else d.__setitem__("run", v)
+        yield f"run={v}", d
+    yield "every table []", {t: [] for t in a.TABLES + a.OPTIONAL} | {"run": dict(base["run"])}
+
+
+def test_none_fuzz():
+    """The rule: missing, NULL or empty data gives empty results plus a note, never an exception. A row without a
+    name or day is left out (NOTES missing_names); a failed build never counts as built for its key."""
+    for name, d in none_variants():
+        try:
+            a.build(d, ("fuzz", name))
+            a.checks()
+            a.rule_rows()
+            a.build(d, ("fuzz", name))  # the same key again: the built lookups, not a half-built set
+        except Exception as e:
+            raise AssertionError(f"{name}: {type(e).__name__}: {e}") from e
+        assert isinstance(a.run.get("NOTES"), dict) and isinstance(a.run.get("SOURCES"), dict), name
+        assert None not in a.roles and None not in a.users and None not in a.objects, name
+    d = a.fake()
+    d["ACTIVITY"][0]["USER_NAME"] = None
+    del d["ACTIVITY"][1]["CLIENT"]
+    a.build(d)
+    assert "1 activity row" in a.run["NOTES"]["missing_names"] and "lacks CLIENT" in a.run["NOTES"]["missing_columns"]
+    d = a.fake()
+    d["STREAM"] = None
+    a.build(d)
+    assert a.run["SOURCES"]["streams"] == "UNAVAILABLE" and not a.streams
+    a.build(a.fake())
+    assert len({c[0] for c in a.checks()}) == 29  # good data: every rule as before
 
 
 def test_pages():
@@ -1011,6 +1121,26 @@ def test_fast():
     a.build(tiny([("B", "A"), ("C", "B"), ("C", "A"), ("A", "C")], [("A", "U")], [("C", "SELECT", "TABLE", "D.S.T")]))
     r = a.grants("U", True)[0]  # the loop C -> A is cut, both ways to C count
     assert r["count"] == 2 and r["paths"] == [["U", "A", "C", "D.S.T"], ["U", "A", "B", "C", "D.S.T"]] and not a.capped
+
+
+def test_duck_reach():
+    """The DuckDB walk (duck(): role path counts per hop) answers who loses access and the rule 17 / 23 pre-filter
+    exactly as the Python walk does: every fix edge of the fake data and big(); a loop falls back to Python."""
+    for d in (a.fake(), big()):
+        a.build(d)
+        es = [e for f in a.findings() for e in f["edges"]]
+        want = {a.lose_key(e): a.losing(e) for e in es}
+        a.lose_all(es)
+        assert all(a.memo[k] == v for k, v in want.items())
+        n17, n23 = a.readonly_writes(), a.rule23()
+        a.memo["shares"] = None  # the walk over every role
+        assert n17 == a.readonly_writes() and n23 == a.rule23()
+    d = a.fake()
+    d["GRANT"] = d["GRANT"] + [dict(GRANTEE_ROLE=a.TECH + "SALES_CORE_READ", PRIVILEGE="USAGE", GRANTED_ON="ROLE",
+                                    OBJECT_NAME=a.FUNC + "ENGINEER", IS_FUTURE=False)]
+    a.build(d)
+    assert a.loops() and a.duck() is None
+    a.build(a.fake())
 
 
 def test_counted():
@@ -1573,6 +1703,13 @@ def cache_steps():
     assert cache.prev("k")[0]["run"]["RUN_ID"] == "fake" and cache.get("k", read)[0]["run"]["RUN_ID"] == "newer"
     cache.MEM.clear()
     cache.get("k", read)  # expired file: the next read keeps it as the previous one too
+    assert cache.prev("k")[0]["run"]["RUN_ID"] == "fake"
+    cache.drop("k")  # no OK run read (TBL_ACCESS_RUN refused once): memory only, the previous snapshot stays
+    no_run = {t: [] for t in a.TABLES} | {"run": dict(RUN_ID=None, FINISHED_AT=None, SOURCES={}, NOTES={"no_run": "x"})}
+    cache.get("k", lambda: no_run)
+    assert not cache.file("k").exists() and cache.prev("k")[0]["run"]["RUN_ID"] == "fake"
+    cache.drop("k")
+    cache.get("k", newer)
     assert cache.prev("k")[0]["run"]["RUN_ID"] == "fake"
     cache.HOURS = 0  # memory only: nothing written
     cache.drop("k")

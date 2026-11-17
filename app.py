@@ -4,7 +4,11 @@ its API calls come back to Python and are answered by server.py (st_react.app), 
 Data, cache (cache.py), load on click, My access (hidden inside Snowflake, a.INSIDE) and the refresh live in server.py."""
 import streamlit as st
 
+import server
 import st_react
+
+server.BACKGROUND = False  # one call at a time here: a refresh shows its lines while it runs, as the first load does
+server.LOG_LINES = True  # the progress lines on the terminal (inside Snowflake: the app log) too
 
 st.set_page_config("Snowflake access explorer", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("<style>header[data-testid=stHeader],[data-testid=stSidebar],[data-testid=stSidebarCollapsedControl],"

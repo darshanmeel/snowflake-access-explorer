@@ -292,12 +292,42 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
     finally { running.current = false; clearCache(); setBusy(""); }
   };
   const loadMine = (fresh = false) => run("Loading your access…", async () => { await post<MineState>(fresh ? "mine/load?fresh=1" : "mine/load"); setView(true); });
-  const reload = () => run("Reading Snowflake…", () => post("reload", { what: "page" }));
   const loadShared = () => run("Reading Snowflake… this can take a few minutes", () => post("reload", { what: "load" }));
-  const rebuild = () => run("Rebuilding snapshot…", async () => {
-    const r = await post<{ ok: boolean; message: string }>("reload", { what: "rebuild" });
-    if (r.message) setNotice({ tone: r.ok ? "info" : "bad", title: r.ok ? "Snapshot rebuilt" : "Snapshot not rebuilt", text: r.message });
+  // Read Snowflake again / Rebuild snapshot: the server reads in the background (started) while the pages keep the
+  // data they have; inside Streamlit it answers when done
+  const [bg, setBg] = useState<{ job: number; what: string; line: string } | null>(null);
+  const [bgOpen, setBgOpen] = useState(false);
+  const title = (what: string, ok: boolean | null) => what === "rebuild" ? (ok ? "Snapshot rebuilt" : "Snapshot not rebuilt")
+    : ok ? "Read Snowflake again" : "Read Snowflake again failed";
+  const refresh = (what: "page" | "rebuild") => run(what === "rebuild" ? "Rebuilding snapshot…" : "Reading Snowflake…", async () => {
+    const r = await post<{ ok: boolean; message: string; started?: boolean; job?: number }>("reload", { what });
+    if (r.started && r.job) setBg({ job: r.job, what, line: r.message });
+    else if (r.message && (what === "rebuild" || !r.ok)) setNotice({ tone: r.ok ? "info" : "bad", title: title(what, r.ok), text: r.message });
   });
+  const reload = () => refresh("page");
+  const rebuild = () => refresh("rebuild");
+  useEffect(() => {
+    if (!bg) return;
+    let live = true, timer = 0;
+    const tick = () => {
+      timer = window.setTimeout(() => poll().then((p) => {
+        if (!live || !p) return;
+        const j = p.job;
+        if (j && j.id === bg.job && j.state !== "running") {  // done: the pages fetch the new data; failed: the old stays
+          clearCache();
+          setBg(null);
+          setBgOpen(false);
+          setNotice({ tone: j.ok ? "info" : "bad", title: title(bg.what, j.ok), text: j.message ?? "" });
+          return;
+        }
+        const last = p.lines[p.lines.length - 1]?.text;
+        if (last) setBg((b) => b && { ...b, line: last });
+        tick();
+      }, () => live && tick()), 1000);
+    };
+    tick();
+    return () => { live = false; clearTimeout(timer); };
+  }, [bg?.job]);
 
   const ctx: Ctx | null = useMemo(() => meta && {
     page: loc.page, params: loc.params, view, meta, theme, nav, set,
@@ -308,9 +338,18 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const Body = VIEWS[loc.page];
   const needMine = loc.mine && meta && !meta.mine.loaded;
   const needShared = !loc.mine && meta?.error?.detail === "shared_not_loaded";
+  const loadingShared = !loc.mine && meta?.error?.detail === "shared_loading";  // another tab's or the first page's load
+  useEffect(() => {  // ask again once that load is done
+    if (!loadingShared) return;
+    const t = window.setInterval(() => poll().then((p) => { if (p && !p.running) clearCache(); }, () => undefined), 1500);
+    return () => clearInterval(t);
+  }, [loadingShared, poll]);
+  // the first load: everything but its log waits (inert: no clicks, no keyboard); a refresh keeps the page usable
+  const lock = loadingShared || (!!busy && !meta?.loaded) ? ({ inert: "", "aria-busy": true } as Record<string, unknown>) : {};
+  const hasData = !!meta?.loaded;
   return (
     <Root theme={theme}>
-      <SqlCtx.Provider value={setSql}>
+      <SqlCtx.Provider value={hasData ? setSql : null}>
       <CsvOn.Provider value={meta?.csv !== false}>
       <div className="app">
         <header className="top">
@@ -318,33 +357,43 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
             Access explorer
           </button>
+          <div className="top-lock" {...lock}>
           <Find view={view} onOpen={(i) => openFound(i, nav)} />
           <div className="seg" role="group" aria-label="Data">
             <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)}>Shared snapshot</button>
             {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} disabled={!!busy && !meta?.mine.loaded} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
           </div>
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} disabled={!!busy} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
-          {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
+          {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
+          {bg && (
+            <button type="button" className="ae-btn top-bg" onClick={() => setBgOpen(!bgOpen)} aria-expanded={bgOpen}
+              title="The pages keep the data they have until the new read is ready. Click for the full log.">
+              <span className="ae-spin" aria-hidden /><b>{bg.what === "rebuild" ? "Rebuilding" : "Reading again"}:</b>&nbsp;<span className="top-bg-line">{bg.line}</span>
+            </button>
+          )}
           <span className="top-right">
-            {meta && <DataTime meta={meta} reload={reload} busy={!!busy} />}
+            {meta && <DataTime meta={meta} reload={reload} busy={!!busy || !!bg} />}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
-            <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner; right-click works too">{"</>"} on any card: its SQL</span>
-            <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (or right-click the page)">{"</>"} SQL</button>
+            {hasData && <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner; right-click works too">{"</>"} on any card: its SQL</span>}
+            {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (or right-click the page)">{"</>"} SQL</button>}
             <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           </span>
+          </div>
           {busy && <span className="ae-muted top-busy" role="status"><span className="ae-spin" aria-hidden />{busy}</span>}
         </header>
+        <div className="top-lock" {...lock}>
         {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
+        </div>
         {/* right-click the page: the SQL behind it (Shift + right-click keeps the browser's menu) */}
-        <main className="main" onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault();
+        <main className="main" onContextMenu={(e) => { if (e.shiftKey || !hasData) return; e.preventDefault();
           setSql((e.target as HTMLElement).closest(".ae-card")?.querySelector("h3")?.textContent ?? ""); }}>
-          {sql !== null && <SqlPanel page={loc.page} hint={sql} params={{ ...(PERSON.has(loc.page) && !["user", "role", "name", "a"].some((k) => loc.params[k]) ? { user: meta?.default_user ?? undefined } : {}), ...loc.params, view }} onClose={() => setSql(null)} />}
+          {sql !== null && hasData && <SqlPanel page={loc.page} hint={sql} params={{ ...(PERSON.has(loc.page) && !["user", "role", "name", "a"].some((k) => loc.params[k]) ? { user: meta?.default_user ?? undefined } : {}), ...loc.params, view }} onClose={() => setSql(null)} />}
           {notice && (
             <Banner tone={notice.tone} title={notice.title} lines={[notice.text]}>
               <button type="button" className="ae-btn ae-btn-s" onClick={() => setNotice(null)}>Dismiss</button>
             </Banner>
           )}
-          <LoadLog active={!!busy || m.loading} poll={poll} />
+          <LoadLog active={!!busy || m.loading || loadingShared || bgOpen} poll={poll} />
           {m.error && <ErrorBox e={m.error} />}
           {!meta && !m.error && <p className="ae-muted">Loading…</p>}
           {needMine && (
@@ -363,7 +412,8 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
               </div>
             </Card>
           )}
-          {ctx && !needMine && !needShared && (
+          {loadingShared && !busy && <p className="ae-muted" role="status">The shared data is being read from Snowflake: the pages open when it is done.</p>}
+          {ctx && !needMine && !needShared && !loadingShared && (
             <AppCtx.Provider value={ctx}>
               <Body key={`${view}:${loc.page}`} />
             </AppCtx.Provider>

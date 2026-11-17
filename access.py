@@ -3,10 +3,12 @@
 Data: fake() (layered RBAC model), snapshot() (the TBL_ACCESS_ tables filled by SP_ACCESS_SNAPSHOT, sql/1_setup.sql)
 or mine() (the logged-in user's own access, live). All return the same dict; build() turns it into the lookups below.
 """
+import atexit
 import contextvars
 import difflib
 import fnmatch
 import functools
+import hashlib
 import itertools
 import json
 import os
@@ -63,6 +65,28 @@ FUNC, TECH = os.environ.get("ROLE_PREFIXES", "F_,T_").split(",")
 BUILD = os.environ.get("BUILD_ROLES", FUNC + "DEPLOY").split(",")
 TABLES = ["GRANT", "USER_ROLE", "USER", "USAGE", "TAG", "POLICY", "STREAM"]
 OPTIONAL = ["OBJECT_USE", "ACTIVITY"]  # snapshot tables an older setup may lack: read when there, else empty
+# the TBL_ACCESS_ tables of sql/1_setup.sql, same names and columns (test_duckdb checks them against that file)
+COLUMNS = {
+    "RUN": "RUN_ID VARCHAR, STARTED_AT TIMESTAMPTZ, FINISHED_AT TIMESTAMPTZ, STATUS VARCHAR, SOURCES JSON, "
+           "ROW_COUNTS JSON, NOTES JSON",
+    "GRANT": "RUN_ID VARCHAR, GRANTEE_ROLE VARCHAR, PRIVILEGE VARCHAR, GRANTED_ON VARCHAR, OBJECT_NAME VARCHAR, "
+             "IS_FUTURE BOOLEAN, GRANT_OPTION BOOLEAN, GRANTED_BY VARCHAR",
+    "USER_ROLE": "RUN_ID VARCHAR, USER_NAME VARCHAR, ROLE_NAME VARCHAR, GRANTED_BY VARCHAR",
+    "USER": "RUN_ID VARCHAR, USER_NAME VARCHAR, TYPE VARCHAR, DISABLED BOOLEAN, DEFAULT_ROLE VARCHAR, "
+            "DEFAULT_SECONDARY_ROLES VARCHAR, DEFAULT_WAREHOUSE VARCHAR, DEFAULT_NAMESPACE VARCHAR, "
+            "LAST_SUCCESS_LOGIN TIMESTAMPTZ",
+    "USAGE": "RUN_ID VARCHAR, USER_NAME VARCHAR, KIND VARCHAR, NAME VARCHAR, QUERIES BIGINT, LAST_USED TIMESTAMPTZ",
+    "TAG": "RUN_ID VARCHAR, OBJECT_NAME VARCHAR, DOMAIN VARCHAR, COLUMN_NAME VARCHAR, TAG_NAME VARCHAR, "
+           "TAG_VALUE VARCHAR, APPLY_METHOD VARCHAR",
+    "POLICY": "RUN_ID VARCHAR, POLICY_NAME VARCHAR, POLICY_KIND VARCHAR, OBJECT_NAME VARCHAR, COLUMN_NAME VARCHAR, "
+              "ARG_COLUMNS VARCHAR, TAG_NAME VARCHAR, POLICY_BODY VARCHAR",
+    "STREAM": "RUN_ID VARCHAR, STREAM_NAME VARCHAR, SOURCE_NAME VARCHAR, SOURCE_TYPE VARCHAR",
+    "OBJECT_USE": "RUN_ID VARCHAR, USER_NAME VARCHAR, OBJECT_NAME VARCHAR, WEEK DATE, ACTION VARCHAR, QUERIES BIGINT, "
+                  "LAST_USED TIMESTAMPTZ",
+    "ACTIVITY": "RUN_ID VARCHAR, DAY DATE, USER_NAME VARCHAR, ROLE_NAME VARCHAR, CLIENT VARCHAR, OBJECT_NAME VARCHAR, "
+                "ACTION VARCHAR, QUERY_TYPE VARCHAR, QUERIES BIGINT, LAST_USED TIMESTAMPTZ, HOURS JSON, "
+                "APP VARCHAR",
+}
 USE_DAYS = int(os.environ.get("USE_DAYS", "180"))  # object usage read from ACCESS_HISTORY (Granted vs used)
 ACTIVITY_DAYS = int(os.environ.get("ACTIVITY_DAYS", "60"))  # Activity tabs and rules 24-28: days of ACCESS_HISTORY
 QUERY_TAG = os.environ.get("QUERY_TAG", "access-explorer")  # set on the app's own connection; its queries are left out of the activity
@@ -451,6 +475,15 @@ def day(v):
     return v if isinstance(v, date) else date.fromisoformat(str(v).strip()[:10])
 
 
+def dated(v):
+    """Whether v is a day day() reads."""
+    try:
+        day(v)
+        return v is not None
+    except (TypeError, ValueError):
+        return False
+
+
 def monday(v):
     """Start (Monday) of the week of v: weeks are counted the same whatever WEEK_START the account uses."""
     d = day(v)
@@ -480,18 +513,30 @@ def snapshot(query, where, tries=3, old=None):
                            "ORDER BY FINISHED_AT DESC LIMIT 1")
     t0 = time.monotonic()
     say(f"Reading the last OK run of {where}.TBL_ACCESS_RUN…")
-    runs = latest()
-    if not runs:
-        raise RuntimeError(f"No OK run in {where}.TBL_ACCESS_RUN: CALL SP_ACCESS_SNAPSHOT() first (sql/2_snapshot.sql)")
+    try:
+        runs, why = latest(), f"No OK run in {where}.TBL_ACCESS_RUN: CALL SP_ACCESS_SNAPSHOT() first (sql/2_snapshot.sql)"
+    except Exception as e:  # no setup here, or no SELECT on it; a lost session is no empty snapshot
+        if lost(e):
+            raise
+        runs, why = [], f"{where}.TBL_ACCESS_RUN: {line(e)}"
+    if not runs or runs[0].get("RUN_ID") is None:  # a fresh setup, every run failed, or no run id: empty pages that say so
+        say(why)
+        return {t: [] for t in TABLES + OPTIONAL} | {"run": dict(
+            RUN_ID=None, FINISHED_AT=None, SOURCES={k: "UNAVAILABLE" for k in SRC.values()}, NOTES={"no_run": why})}
     run = runs[0]
     names = TABLES + OPTIONAL * ACTIVITY_ON
     if (isinstance(old, dict) and (old.get("run") or {}).get("RUN_ID") == run["RUN_ID"]
             and all(isinstance(old.get(t), list) and not (old[t] and "RUN_ID" in old[t][0]) for t in names)
-            and not (old.get("ACTIVITY") and isinstance(old["ACTIVITY"][0].get("HOURS"), str))):
+            and not (old.get("ACTIVITY") and isinstance(old["ACTIVITY"][0].get("HOURS"), str))
+            and not old["run"].get("UNREAD")):  # a table that failed to read is read again
         say(f"Run {run['RUN_ID']} is the one held: nothing read again, done in {took(t0)}")
         return old
-    for k in ("SOURCES", "NOTES"):  # VARIANT comes back as JSON text
-        run[k] = json.loads(run[k]) if isinstance(run[k], str) else run[k] or {}
+    for k in ("SOURCES", "NOTES"):  # VARIANT comes back as JSON text; a NULL or a JSON null is none
+        try:
+            v = json.loads(run.get(k)) if isinstance(run.get(k), str) else run.get(k)
+        except ValueError:
+            v = None
+        run[k] = v if isinstance(v, dict) else {}
     # EXCLUDE, not a column list: a table made by an older setup may lack a newer column; RUN_ID is the same on every row
     sqls = [f"SELECT * EXCLUDE (RUN_ID) FROM {where}.TBL_ACCESS_{t} WHERE RUN_ID = '{run['RUN_ID']}'" for t in names]
     # to verify: concurrent cursors on the Streamlit in Snowflake session; WORKERS=1 reads one after another
@@ -499,10 +544,19 @@ def snapshot(query, where, tries=3, old=None):
     got = each(query, sqls, WORKERS, [f"TBL_ACCESS_{t}" for t in names])
     d = {}
     for t, g in zip(names, got):
-        if isinstance(g, Exception) and t not in OPTIONAL:
-            raise g
         d[t] = None if isinstance(g, Exception) else g  # an OPTIONAL table a setup from before it lacks: the screen says so
-    if tries > 1 and latest()[0]["RUN_ID"] != run["RUN_ID"]:
+        if isinstance(g, Exception) and t not in OPTIONAL:  # missing or not readable: empty, and the note says why
+            d[t] = []
+            run["SOURCES"][SRC[t]] = "UNAVAILABLE"
+            run["NOTES"][SRC[t]] = f"TBL_ACCESS_{t}: {line(g)}"
+            run.setdefault("UNREAD", []).append(t)
+    try:  # none when no OK row is left (a run deleting it now), or it can't be read: what was read stays
+        new = latest() if tries > 1 else None
+    except Exception as e:
+        if lost(e):
+            raise
+        new = None
+    if new and new[0]["RUN_ID"] != run["RUN_ID"]:
         say("A newer run finished while reading: reading it")
         return snapshot(query, where, tries - 1, old)
     if not ACTIVITY_ON:  # the tables are not read: the screens and rules 24-28 say so
@@ -515,7 +569,7 @@ def snapshot(query, where, tries=3, old=None):
 
 def hours_of(rows):
     """ACTIVITY rows with HOURS as a dict: a VARIANT comes back as JSON text."""
-    return rows if rows is None else [x | {"HOURS": json.loads(x["HOURS"])} if isinstance(x.get("HOURS"), str) else x
+    return rows if rows is None else [x | {"HOURS": hours(x["HOURS"])} if isinstance(x.get("HOURS"), str) else x
                                       for x in rows]
 
 
@@ -525,6 +579,13 @@ def ident(name):
 
 def line(e):
     return " ".join(str(e).split())[:300]
+
+
+def lost(e):
+    """Whether e means the session is gone (a dropped connection, an expired login), not a table this role can't read:
+    that stops the load with its real message. to verify: errno 390111 / 390112 / 390114 for an ended session."""
+    return (isinstance(e, ConnectionError) or type(e).__name__ in ("OperationalError", "InterfaceError")
+            or getattr(e, "errno", None) in (390111, 390112, 390114))
 
 
 def timed_out(e):
@@ -567,27 +628,56 @@ SHOW_THREADS = int(os.environ.get("SHOW_THREADS", "16"))  # statements sent at o
 
 _sink = contextvars.ContextVar("progress", default=None)  # where say() sends a line; each() hands it to its threads
 _worker = threading.local()  # n: the worker number of an each() thread
+BEAT = 60  # seconds between the "still working" lines of a long load
 
 
 @contextmanager
 def progress(fn):
     """The reads inside report what they do as fn(line) ("SHOW GRANTS TO ROLE: 340 of 2,000"): server.py keeps the
-    lines for the page. A context variable, so two loads at once (shared and My access) keep their own lines."""
-    t = _sink.set(fn)
+    lines for the page. A context variable, so two loads at once (shared and My access) keep their own lines.
+    Every BEAT seconds one more line says how long it has run and what is still running (or the last line), so a
+    statement that takes many minutes still shows signs of life."""
+    s = dict(fn=fn, last=None, running={})
+    stop, t0 = threading.Event(), time.monotonic()
+
+    def beat():
+        while not stop.wait(BEAT):
+            now, run = time.monotonic(), dict(s["running"])
+            what = ", ".join(f"{k} ({(now - v) / 60:.0f} min)" for k, v in run.items()) or s["last"] or "starting"
+            fn(f"Still working after {(now - t0) / 60:.0f} min: {what}")
+    t = _sink.set(s)
+    threading.Thread(target=beat, daemon=True).start()
     try:
         yield
     finally:
+        stop.set()
         _sink.reset(t)
 
 
 def say(text):
-    fn = _sink.get()
-    if fn:
-        fn(text)
+    s = _sink.get()
+    if s:
+        s["last"] = text
+        s["fn"](text)
 
 
 def took(t0):
     return f"{time.monotonic() - t0:.0f} s"
+
+
+@contextmanager
+def step(name):
+    """A build step: a line when it starts, one with its time when it ends, and the heartbeat names it while it runs."""
+    s, t0 = _sink.get(), time.monotonic()
+    if s:
+        s["running"][name] = t0
+    say(f"{name}…")
+    try:
+        yield
+    finally:
+        if s:
+            s["running"].pop(name, None)
+    say(f"{name}: done in {took(t0)}")
 
 
 def one(query, sql):
@@ -602,17 +692,25 @@ def each(query, sqls, n=None, what=None):
     """query(sql) for every sql, n at a time (SHOW_THREADS; WORKERS for heavy reads), in order: the rows, or the
     exception of a failed one. what: progress lines (say), a label for a wave of like statements ("SHOW GRANTS TO
     ROLE: 340 of 2,000", a timeout on its own line), or one name per statement for a few heavy reads ("[w2] USAGE ...")."""
+    keep = getattr(query, "keep", None)  # cache.parted(): reads already kept as parts come from disk
+    if keep:
+        return keep(list(sqls), what, lambda q, s, w: each(q, s, n, w))
     sqls, n = list(sqls), n or SHOW_THREADS
     names = what if isinstance(what, list) else None
     done, lock, step = [0], threading.Lock(), max(1, len(sqls) // 10)
 
     def run(i):
         tag = f"[w{_worker.n}] " if names and getattr(_worker, "n", 0) else ""
+        s = _sink.get()
         if names:
             say(f"{tag}{names[i]}…")
+            if s:
+                s["running"][names[i]] = time.monotonic()
         t0 = time.monotonic()
         r = one(query, sqls[i])
         if names:
+            if s:
+                s["running"].pop(names[i], None)
             say(f"{tag}{names[i]}: " + (f"failed: {line(r)}" if isinstance(r, Exception) else f"{len(r):,} rows in {took(t0)}"))
         elif what:
             with lock:
@@ -658,9 +756,22 @@ def mine(query, db):
     (None: the current one, else one the user's roles can use)."""
     t0 = time.monotonic()
     say("Reading your roles…")
-    query("USE SECONDARY ROLES ALL")  # every granted role counts, as with DEFAULT_SECONDARY_ROLES = ('ALL')
-    c = query("SELECT CURRENT_USER() AS U, CURRENT_DATABASE() AS D, CURRENT_AVAILABLE_ROLES() AS R")[0]
-    me, db, roles = c["U"], db or c["D"], json.loads(c["R"])  # roles: granted + inherited, always readable
+    src, notes, grants, skipped = {}, {}, [], []
+    try:  # every granted role counts, as with DEFAULT_SECONDARY_ROLES = ('ALL'); a policy may refuse it
+        query("USE SECONDARY ROLES ALL")
+    except Exception as e:
+        notes["secondary_roles"] = f"USE SECONDARY ROLES ALL: {line(e)}"
+    c = (query("SELECT CURRENT_USER() AS U, CURRENT_DATABASE() AS D, CURRENT_AVAILABLE_ROLES() AS R") or [{}])[0]
+    try:  # roles: granted + inherited, always readable
+        v = json.loads(c.get("R") or "[]")
+    except (TypeError, ValueError):
+        v = None
+    roles = [r for r in v if r and isinstance(r, str)] if isinstance(v, list) else []
+    if not isinstance(v, list):
+        notes["roles"] = f"CURRENT_AVAILABLE_ROLES() gave no role list: {line(c.get('R'))}"
+    me, db = c.get("U") or "", db or c.get("D")
+    if not me:
+        notes["user"] = "CURRENT_USER() gave no user: nothing to read"
     who, agg = me.replace("'", "''"), """
             SELECT 'ROLE' AS KIND, ROLE_NAME AS NAME, COUNT(*) AS QUERIES, MAX(START_TIME) AS LAST_USED FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 2
             UNION ALL
@@ -678,13 +789,15 @@ def mine(query, db):
             raise r
         return r
 
-    src, notes, grants, skipped = {}, {}, [], []
+    def grant(r, x):  # a SHOW GRANTS row; one without a name is left out by build() with a note
+        return dict(GRANTEE_ROLE=r, PRIVILEGE=x.get("privilege"), GRANTED_ON=x.get("granted_on"),
+                    OBJECT_NAME=(x.get("name") or "").replace('"', ""), IS_FUTURE=False)
+
     for r, got in zip(roles, wave[:len(roles)]):
         if isinstance(got, Exception):
             skipped.append(f"{r} ({line(got)})")
         else:
-            grants += [dict(GRANTEE_ROLE=r, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
-                            OBJECT_NAME=x["name"].replace('"', ""), IS_FUTURE=False) for x in got]
+            grants += [grant(r, x) for x in got]
     todo, seen, bad = held_db_roles(grants), set(), []  # database roles: their own SHOW, recursively, a wave at a time
     while todo:
         wave = sorted(set(todo) - seen)
@@ -695,8 +808,7 @@ def mine(query, db):
             if isinstance(got, Exception):
                 bad.append(f"{r} ({line(got)})")
                 continue
-            got = [dict(GRANTEE_ROLE=r, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
-                        OBJECT_NAME=x["name"].replace('"', ""), IS_FUTURE=False) for x in got]
+            got = [grant(r, x) for x in got]
             grants += got
             todo += held_db_roles(got)
     if bad:
@@ -712,14 +824,14 @@ def mine(query, db):
         applicable, notes["applicable_roles"] = [], line(e)
     if skipped:
         bad = {s.split(" (")[0] for s in skipped}
-        grants += [dict(GRANTEE_ROLE=x["GRANTEE"], PRIVILEGE="USAGE", GRANTED_ON="ROLE", OBJECT_NAME=x["ROLE_NAME"],
-                        IS_FUTURE=False) for x in applicable if x["GRANTEE"] in bad]
+        grants += [dict(GRANTEE_ROLE=x.get("GRANTEE"), PRIVILEGE="USAGE", GRANTED_ON="ROLE", OBJECT_NAME=x.get("ROLE_NAME"),
+                        IS_FUTURE=False) for x in applicable if x.get("GRANTEE") in bad]
         notes["grants"] = f"{len(skipped)} roles not readable, their links from APPLICABLE_ROLES: " + " | ".join(skipped[:10])
     try:
-        direct = [x["role"] for x in take(shown)]
+        direct = [x["role"] for x in take(shown) if x.get("role")]
         src["user_roles"] = "SHOW GRANTS TO USER"
     except Exception as e:
-        direct = [x["ROLE_NAME"] for x in applicable if x["GRANTEE"] == me]
+        direct = [x.get("ROLE_NAME") for x in applicable if x.get("GRANTEE") == me]
         src["user_roles"] = "APPLICABLE_ROLES"
         if not direct:  # last resort: the available roles no other available role holds
             held = {g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "ROLE" and g["PRIVILEGE"] == "USAGE"}
@@ -789,7 +901,7 @@ def live(query, old=None, old_use=None):
         query("USE SECONDARY ROLES ALL")  # Streamlit in Snowflake (owner's rights): the owner role alone counts there
     except Exception:
         pass
-    now = query("SELECT CURRENT_TIMESTAMP() AS T")[0]["T"]
+    now = (query("SELECT CURRENT_TIMESTAMP() AS T") or [{}])[0].get("T") or datetime.now()
     try:  # a context function: an owner's-rights app (Streamlit in Snowflake) may need READ SESSION for it
         db = query("SELECT CURRENT_DATABASE() AS D")[0]["D"]
     except Exception:
@@ -910,13 +1022,19 @@ def live(query, old=None, old_use=None):
 
     why, shown = unread["GRANTS_TO_ROLES"] or unread["GRANTS_TO_USERS"], None  # shown: SHOW DATABASES, read once
     if why is None:
-        d["GRANT"] = take("GRANT")
-        d["USER_ROLE"] = take("USER_ROLE")
-        note("grants", "ACCOUNT_USAGE", None)
-    else:
+        try:
+            d["GRANT"], d["USER_ROLE"] = take("GRANT"), take("USER_ROLE")
+            note("grants", "ACCOUNT_USAGE", None)
+        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW, as when the probe fails
+            why = f"{AU}.GRANTS_TO_ROLES / GRANTS_TO_USERS: {line(e)}"
+    if why is not None:
         skipped = []
         say("SHOW ROLES…")
-        roles = [r["name"] for r in rows("SHOW ROLES")]
+        try:  # refused: no grants, the rest still loads and the note says why
+            roles = [r["name"] for r in rows("SHOW ROLES") if r.get("name")]
+        except Exception as e:
+            roles = []
+            skipped.append(f"SHOW ROLES: {line(e)}")
         got = many([f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [f"SHOW GRANTS OF ROLE {ident(r)}" for r in roles],
                    "SHOW GRANTS TO / OF ROLE")
         for role, to, of in zip(roles, got[:len(roles)], got[len(roles):]):
@@ -924,27 +1042,31 @@ def live(query, old=None, old_use=None):
             if bad:  # a role this role may not inspect: keep going, list it in the notes
                 skipped.append(f"{role}: {line(bad)}")
                 continue
-            d["GRANT"] += [dict(GRANTEE_ROLE=role, PRIVILEGE=x["privilege"], GRANTED_ON=x["granted_on"],
-                                OBJECT_NAME=clean(x["name"]), IS_FUTURE=False,
+            d["GRANT"] += [dict(GRANTEE_ROLE=role, PRIVILEGE=x.get("privilege"), GRANTED_ON=x.get("granted_on"),
+                                OBJECT_NAME=clean(x.get("name")), IS_FUTURE=False,
                                 GRANT_OPTION=str(x.get("grant_option")).lower() == "true", GRANTED_BY=x.get("granted_by"))
                            for x in to if x.get("granted_to") in ("ROLE", None)]
-            d["USER_ROLE"] += [dict(USER_NAME=x["grantee_name"], ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
+            d["USER_ROLE"] += [dict(USER_NAME=x.get("grantee_name"), ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
                                for x in of if x.get("granted_to") == "USER"]
-        dbs = shown = [x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+        try:  # refused: no database roles here; the future grants below note it too
+            dbs = shown = [x["name"] for x in rows("SHOW DATABASES") if x.get("name") and x.get("kind", "STANDARD") == "STANDARD"]
+        except Exception as e:
+            dbs = []
+            skipped.append(f"database roles: SHOW DATABASES: {line(e)}")
         qs = []  # database roles: per database, their grants under DB.ROLE
         for name, got in zip(dbs, many([f"SHOW DATABASE ROLES IN DATABASE {ident(x)}" for x in dbs],
                                        "SHOW DATABASE ROLES")):
             if isinstance(got, Exception):
                 skipped.append(f"database roles in {name}: {line(got)}")
             else:
-                qs += [(name, f"{name}.{clean(r['name'])}") for r in got]
+                qs += [(name, f"{name}.{clean(r.get('name'))}") for r in got if r.get("name")]
         for (name, q), got in zip(qs, many([f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}" for _, q in qs],
                                            "SHOW GRANTS TO DATABASE ROLE")):
             if isinstance(got, Exception):  # one unreadable database role skips only itself (as SP_ACCESS_SNAPSHOT)
                 skipped.append(f"{q}: {line(got)}")
                 continue
-            d["GRANT"] += [dict(GRANTEE_ROLE=q, PRIVILEGE=g["privilege"], GRANTED_ON=g["granted_on"],
-                                OBJECT_NAME=clean(g["name"]), IS_FUTURE=False,
+            d["GRANT"] += [dict(GRANTEE_ROLE=q, PRIVILEGE=g.get("privilege"), GRANTED_ON=g.get("granted_on"),
+                                OBJECT_NAME=clean(g.get("name")), IS_FUTURE=False,
                                 GRANT_OPTION=str(g.get("grant_option")).lower() == "true",
                                 GRANTED_BY=g.get("granted_by")) for g in got]
         note("grants", "SHOW", why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else ""))
@@ -953,7 +1075,7 @@ def live(query, old=None, old_use=None):
     skipped = []  # future grants: no ACCOUNT_USAGE view; shares and applications: their grants are not ours
     try:  # SHOW only: when even SHOW DATABASES is refused, the rest still loads and the note says so
         dbs = shown if shown is not None else [
-            x["name"] for x in rows("SHOW DATABASES") if x.get("kind", "STANDARD") == "STANDARD"]
+            x["name"] for x in rows("SHOW DATABASES") if x.get("name") and x.get("kind", "STANDARD") == "STANDARD"]
     except Exception as e:
         dbs, nodb = [], f"SHOW DATABASES: {line(e)}"
     else:
@@ -964,16 +1086,16 @@ def live(query, old=None, old_use=None):
             skipped.append(f"{name}: {line(got)}")
             continue
         places += [(name, f"DATABASE {ident(name)}")] + [
-            (name, f"SCHEMA {ident(name)}.{ident(s['name'])}") for s in got if s["name"] != "INFORMATION_SCHEMA"]
+            (name, f"SCHEMA {ident(name)}.{ident(s['name'])}") for s in got if s.get("name") not in (None, "INFORMATION_SCHEMA")]
     for (name, p), got in zip(places, many([f"SHOW FUTURE GRANTS IN {p}" for _, p in places], "SHOW FUTURE GRANTS")):
         if isinstance(got, Exception):
             if name not in failed:  # one note per database
                 failed.add(name)
                 skipped.append(f"{name}: {line(got)}")
             continue
-        d["GRANT"] += [dict(GRANTEE_ROLE=f["grantee_name"] if f["grant_to"] == "ROLE" else  # to a database role: DB.ROLE
-                            qualify(name, clean(f["grantee_name"])), PRIVILEGE=f["privilege"],
-                            GRANTED_ON=f["grant_on"], OBJECT_NAME=clean(f["name"]), IS_FUTURE=True,
+        d["GRANT"] += [dict(GRANTEE_ROLE=f.get("grantee_name") if f["grant_to"] == "ROLE" else  # to a database role: DB.ROLE
+                            qualify(name, clean(f.get("grantee_name"))), PRIVILEGE=f.get("privilege"),
+                            GRANTED_ON=f.get("grant_on"), OBJECT_NAME=clean(f.get("name")), IS_FUTURE=True,
                             GRANT_OPTION=str(f.get("grant_option")).lower() == "true", GRANTED_BY=None)
                        for f in got if f.get("grant_to") in ("ROLE", "DATABASE_ROLE")]
     if nodb:
@@ -983,17 +1105,23 @@ def live(query, old=None, old_use=None):
 
     why = unread["USERS"]
     if why is None:
-        d["USER"] = take("USER")
-        note("users", "ACCOUNT_USAGE", None)
-    else:
-        d["USER"] = [dict(USER_NAME=x["name"], TYPE=blank(x.get("type")), DISABLED=str(x.get("disabled")).lower() == "true",
-                          DEFAULT_ROLE=blank(x.get("default_role")),
-                          DEFAULT_SECONDARY_ROLES=blank(x.get("default_secondary_roles")),
-                          DEFAULT_WAREHOUSE=blank(x.get("default_warehouse")),
-                          DEFAULT_NAMESPACE=blank(x.get("default_namespace")),
-                          LAST_SUCCESS_LOGIN=blank(x.get("last_success_login")))
-                     for x in say("SHOW USERS…") or rows("SHOW USERS")]
-        note("users", "SHOW", why)
+        try:
+            d["USER"] = take("USER")
+            note("users", "ACCOUNT_USAGE", None)
+        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW USERS
+            why = f"{AU}.USERS: {line(e)}"
+    if why is not None:
+        try:
+            d["USER"] = [dict(USER_NAME=x.get("name"), TYPE=blank(x.get("type")),
+                              DISABLED=str(x.get("disabled")).lower() == "true", DEFAULT_ROLE=blank(x.get("default_role")),
+                              DEFAULT_SECONDARY_ROLES=blank(x.get("default_secondary_roles")),
+                              DEFAULT_WAREHOUSE=blank(x.get("default_warehouse")),
+                              DEFAULT_NAMESPACE=blank(x.get("default_namespace")),
+                              LAST_SUCCESS_LOGIN=blank(x.get("last_success_login")))
+                         for x in say("SHOW USERS…") or rows("SHOW USERS")]
+            note("users", "SHOW", why)
+        except Exception as e:
+            note("users", "UNAVAILABLE", why + f"; SHOW USERS: {line(e)}")
 
     why = unread["QUERY_HISTORY"]
     if why is None:
@@ -1010,8 +1138,8 @@ def live(query, old=None, old_use=None):
         except Exception as e:
             note("usage", "UNAVAILABLE", why + f"; INFORMATION_SCHEMA.QUERY_HISTORY: {line(e)}")
 
-    objs = sorted({g["OBJECT_NAME"] for g in d["GRANT"] if not g["IS_FUTURE"]
-                   and ("TABLE" in g["GRANTED_ON"] or "VIEW" in g["GRANTED_ON"])})  # for the per-object fallbacks
+    objs = sorted({g["OBJECT_NAME"] for g in d["GRANT"] if not g.get("IS_FUTURE") and isinstance(g.get("OBJECT_NAME"), str)
+                   and g["OBJECT_NAME"] and any(k in str(g.get("GRANTED_ON") or "") for k in ("TABLE", "VIEW"))})  # for the per-object fallbacks
 
     def capped(why, skipped):
         out = [why]
@@ -1232,8 +1360,8 @@ def history_sql(use_since, act_since, client=True):
 
 def history_rows(rows):
     """(OBJECT_USE rows, ACTIVITY rows) of a history_sql read, each with its own read's columns."""
-    return ([{c: x[c] for c in USE_COLS} for x in rows if x["PART"] == "USE"],
-            [{c: x[c] for c in ACT_COLS} for x in rows if x["PART"] == "ACT"])
+    return ([{c: x.get(c) for c in USE_COLS} for x in rows if x.get("PART") == "USE"],
+            [{c: x.get(c) for c in ACT_COLS} for x in rows if x.get("PART") == "ACT"])
 
 
 def use_start(old, now):
@@ -1242,6 +1370,7 @@ def use_start(old, now):
     hours), so a refresh reads one or two weeks and gives the same rows as a read of every week. SP_ACCESS_SNAPSHOT
     does the same in SQL."""
     first = monday(day(now) - timedelta(days=USE_DAYS))
+    old = [x for x in old or [] if dated(x.get("WEEK"))]  # a row without a week is read again, not an error
     last = max((day(x["WEEK"]) for x in old or []), default=None)
     since = max(first, last - timedelta(days=7)) if last else first
     return [x for x in old or [] if first <= day(x["WEEK"]) < since], since
@@ -1252,6 +1381,7 @@ def activity_start(old, now):
     is kept up to the day before its last day, which is read again (ACCESS_HISTORY lags up to 3 hours), so a refresh
     reads only the days it lacks. SP_ACCESS_SNAPSHOT does the same in SQL."""
     first = day(now) - timedelta(days=ACTIVITY_DAYS)
+    old = [x for x in old or [] if dated(x.get("DAY"))]  # a row without a day is read again, not an error
     last = max((day(x["DAY"]) for x in old or []), default=None)
     since = max(first, last - timedelta(days=1)) if last else first
     return [x for x in old or [] if first <= day(x["DAY"]) < since], since
@@ -1313,20 +1443,12 @@ def build(d, key=None, builtin=False):
         restore(built.pop((key, builtin)))
         return
     memo.clear()
-    memo["key"] = (key, builtin)
+    tidy(d)
     source.update(data=d, builtin=builtin)
     for x in (role_grants, user_grants, privs, holds, held_by, users_of, roles_of, profile, used, kinds, granted, on,
               capped, tags, policies, sens, streams, db_roles, hidden, obj_use, acts):
         x.clear()
-    gaps = [g for g in d["GRANT"] if not (g["GRANTEE_ROLE"] and g["OBJECT_NAME"])] + [
-        g for g in d["USER_ROLE"] if not (g["ROLE_NAME"] and g["USER_NAME"])]
-    if gaps:  # a row Snowflake gave without a role, user or object name (one None breaks every sort): left out
-        d["run"].setdefault("NOTES", {})["missing_names"] = (
-            f"{len(gaps)} grant rows without a role, user or object name left out, e.g. "
-            + " | ".join(str({k: v for k, v in g.items() if v not in (None, False)}) for g in gaps[:3]))
     for g in d["GRANT"]:
-        if not (g["GRANTEE_ROLE"] and g["OBJECT_NAME"]):
-            continue
         if not builtin and builtin_grant(g):
             hidden.append(g)
             continue
@@ -1344,7 +1466,7 @@ def build(d, key=None, builtin=False):
             db_roles.add(g["OBJECT_NAME"])
         if "." in (g["GRANTEE_ROLE"] or ""):  # a grantee DB.ROLE: account role names have no dot (unless quoted)
             db_roles.add(g["GRANTEE_ROLE"])
-    user_grants.extend((g["ROLE_NAME"], g["USER_NAME"]) for g in d["USER_ROLE"] if g["ROLE_NAME"] and g["USER_NAME"])
+    user_grants.extend((g["ROLE_NAME"], g["USER_NAME"]) for g in d["USER_ROLE"])
     for child, parent in role_grants:
         holds.setdefault(parent, []).append(child)
         held_by.setdefault(child, []).append(parent)
@@ -1361,17 +1483,109 @@ def build(d, key=None, builtin=False):
     users = sorted(set(roles_of) | set(profile))
     objects = sorted(kinds)
     run = d["run"]
-    tags.extend(d.get("TAG", []))  # older data sets have no TAG / POLICY
-    policies.extend(d.get("POLICY", []))
-    streams.update({x["STREAM_NAME"]: x["SOURCE_NAME"] for x in d.get("STREAM", [])})
-    for x in d.get("OBJECT_USE") or []:
+    tags.extend(d["TAG"])
+    policies.extend(d["POLICY"])
+    streams.update({x["STREAM_NAME"]: x["SOURCE_NAME"] for x in d["STREAM"]})
+    for x in d["OBJECT_USE"] or []:
         obj_use.setdefault(x["USER_NAME"], []).append(x)
-    acts.extend(d.get("ACTIVITY") or [])
+    acts.extend(d["ACTIVITY"] or [])
     rules = tag_rules()
     for o in objects:
         hit = [t for t in tags_of(o) if tag_hit(rules, t[1], t[2])]
         if hit:
             sens[o] = hit
+    memo["key"] = (key, builtin)  # only now: a build that stopped half way never counts as done
+
+
+COLS = {t: [c.split()[0] for c in v.split(", ")][1:] for t, v in COLUMNS.items() if t != "RUN"}  # RUN_ID left out
+QUIET = {"GRANT_OPTION", "GRANTED_BY"}  # columns some reads never give (fake data, My access): filled without a note
+NEED = dict(GRANT=("GRANTEE_ROLE", "PRIVILEGE", "GRANTED_ON", "OBJECT_NAME"), USER_ROLE=("USER_NAME", "ROLE_NAME"),
+            USER=("USER_NAME",), USAGE=("USER_NAME", "KIND", "NAME"), TAG=("OBJECT_NAME", "TAG_NAME"),
+            POLICY=("POLICY_NAME",), STREAM=("STREAM_NAME",), OBJECT_USE=("USER_NAME", "OBJECT_NAME", "WEEK"),
+            ACTIVITY=("DAY", "USER_NAME", "OBJECT_NAME", "ACTION"))  # a row without one of them is left out
+SRC = dict(GRANT="grants", USER_ROLE="user_roles", USER="users", USAGE="usage", TAG="tags", POLICY="policies",
+           STREAM="streams", OBJECT_USE="object_use", ACTIVITY="activity")  # each table's SOURCES / NOTES key
+LONG = {"POLICY_BODY", "HOURS"}  # left out of the missing_names examples: a note stays short
+ROW = dict(GRANT="grant", USER_ROLE="grant", USER="user", USAGE="usage", TAG="tag", POLICY="policy", STREAM="stream",
+           OBJECT_USE="object use", ACTIVITY="activity")  # each table's rows in the missing_names note
+
+
+def hours(v):
+    """An ACTIVITY row's HOURS as {hour text: queries}: a VARIANT comes back as JSON text; bad text or a null is none."""
+    if isinstance(v, str):
+        try:
+            v = json.loads(v)
+        except ValueError:
+            v = None
+    out = {}
+    for h, n in (v.items() if isinstance(v, dict) else ()):
+        try:
+            if n is not None and 0 <= int(h) < 24:
+                out[str(int(h))] = int(n)
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def usable(t, r):
+    """Whether row r of table t has what the walks need: its names, a day that parses, a known action."""
+    if not all(r[c] for c in NEED[t]):
+        return False
+    if t not in ("OBJECT_USE", "ACTIVITY"):
+        return True
+    return dated(r["DAY" if t == "ACTIVITY" else "WEEK"]) and (t == "OBJECT_USE" or r["ACTION"] in ("READ", "WRITE", "DDL"))
+
+
+def tidy(d):
+    """Data set d (fake, snapshot, live, mine), in place, in the shape build() reads: run a dict with SOURCES and NOTES,
+    every table a list of rows with every column of sql/1_setup.sql (None where the read gave none), no row without
+    the names and days the walks need. Missing, NULL or unreadable data gives empty results plus a note, never an
+    error. An OPTIONAL table that is None stays None: use_state / act_state say the setup predates it."""
+    run = d.get("run") if isinstance(d.get("run"), dict) else {}
+    run = d["run"] = dict(run, SOURCES=run.get("SOURCES") if isinstance(run.get("SOURCES"), dict) else {},
+                          NOTES=run.get("NOTES") if isinstance(run.get("NOTES"), dict) else {})
+    gone, lacks = {}, {}
+    for t, cols in COLS.items():
+        rows = d.get(t)
+        if not isinstance(rows, list):
+            d[t] = None if t in OPTIONAL else []
+            if t not in OPTIONAL:
+                run["SOURCES"][SRC[t]] = "UNAVAILABLE"
+                run["NOTES"].setdefault(SRC[t], f"TBL_ACCESS_{t} not in the data read: shown empty")
+            continue
+        keep = []
+        for r in rows:
+            if isinstance(r, dict):
+                for c in cols:
+                    if c not in r:
+                        r[c] = None
+                        if c not in QUIET:
+                            lacks.setdefault(t, set()).add(c)
+                for c in NEED[t]:  # a name the walks sort and match on is text (VARCHAR is; a hand-made data set may not be)
+                    if r[c] is not None and not isinstance(r[c], str) and c not in ("DAY", "WEEK"):
+                        r[c] = str(r[c])
+                if t == "ACTIVITY":
+                    r["HOURS"] = hours(r["HOURS"])
+            if isinstance(r, dict) and usable(t, r):
+                keep.append(r)
+            else:
+                gone.setdefault(t, []).append(r)
+        if len(keep) < len(rows):
+            d[t] = keep
+    if gone:  # one None breaks every sort, a bad day every date: left out
+        n = Counter()
+        for t, rs in gone.items():
+            n[ROW[t]] += len(rs)
+        eg = [r for rs in gone.values() for r in rs][:3]
+        run["NOTES"]["missing_names"] = (", ".join(f"{v} {k} row{'s' * (v != 1)}" for k, v in n.items())
+                                         + " without a name, day or action left out, e.g. "
+                                         + " | ".join(str({k: v for k, v in r.items() if v not in (None, False)
+                                                           and k not in LONG} if isinstance(r, dict) else r)[:120]
+                                                      for r in eg))
+    if lacks and run.get("RUN_ID") not in ("live", "direct"):  # only the snapshot tables have a setup to run again
+        run["NOTES"]["missing_columns"] = ("; ".join(f"TBL_ACCESS_{t} lacks {', '.join(sorted(c))}" for t, c in lacks.items())
+                                           + ": those values are empty (run sql/1_setup.sql again)")
+    return d
 
 
 def builtin_info():
@@ -1794,6 +2008,11 @@ def bfs(path):
                     nxt.append(p + [r])
         todo = nxt
     return best
+
+
+def below(role):
+    """bfs([role]), once per data set: rules 3 and 14 ask it for the same roles again and again."""
+    return cached(("below", role), lambda: bfs([role]))
 
 
 def users_through(name, user=False):
@@ -2420,8 +2639,13 @@ def when(v):
     if v in (None, "", "now"):
         return None
     if isinstance(v, str):
-        v = datetime.fromisoformat(v.strip()[:19].replace("T", " "))
-    return v.replace(tzinfo=None)
+        try:
+            v = datetime.fromisoformat(v.strip()[:19].replace("T", " "))
+        except ValueError:  # text Snowflake or an older copy gave that is no time: unknown
+            return None
+    if isinstance(v, datetime):
+        return v.replace(tzinfo=None)
+    return datetime(v.year, v.month, v.day) if isinstance(v, date) else None
 
 
 def ref_time():
@@ -3581,7 +3805,7 @@ def with_sql(c):
 def lose(e):
     """Users who lose something when grant edge e goes, net of their other paths: a role edge -> users who no longer
     reach the role; a privilege edge -> users who no longer hold that privilege on the object. Once per edge."""
-    return cached(("lose",) + tuple(e.values()), lambda: losing(e))
+    return cached(lose_key(e), lambda: losing(e))
 
 
 def losing(e):
@@ -3596,6 +3820,135 @@ def losing(e):
         elif not any(h in cnt for h in hs):
             out.add(v)
     return out
+
+
+def rules_stamp():
+    """What rule results depend on besides the data: this code and the settings it reads from the environment."""
+    src = pathlib.Path(__file__).read_bytes()
+    names = sorted(set(re.findall(rb'environ\.get\("(\w+)"', src)))
+    return hashlib.sha1(src + repr([(n, os.environ.get(n.decode())) for n in names]).encode()).hexdigest()
+
+
+DUCKS = []  # every duck() connection: closed at exit, before the interpreter tears DuckDB down
+
+
+@atexit.register
+def close_ducks():
+    for con in DUCKS:
+        try:
+            con.close()
+        except Exception:  # already closed
+            pass
+    DUCKS.clear()
+
+
+def duck_table(con, name, cols, rows):
+    """Table name (cols: "NAME TYPE, ...") from Python rows, one list per column unnested side by side."""
+    pairs = [c.split(" ") for c in cols.split(", ")]
+    vals = [list(v) for v in zip(*rows)] or [[] for _ in pairs]
+    con.execute(f"CREATE OR REPLACE TABLE {name} AS SELECT "
+                + ", ".join(f"UNNEST(?::{t}[]) AS {c}" for c, t in pairs), vals)
+
+
+def duck():
+    """An in-memory DuckDB connection holding this data set's role links (E: parent, child, K grant rows), the start
+    roles of every user (S) and the path counts between roles (RP: role, reached role, paths, itself included), from one
+    SQL walk, one INSERT ... GROUP BY per hop; once per data set. A user's paths to a role are the sum over its start
+    roles (= fast(user, True)'s counts). None without duckdb, or when a loop or MAX_HOPS makes the counted walk differ
+    (the Python walk handles those)."""
+    def make():
+        try:
+            import duckdb
+        except ImportError:
+            return None
+        if loops():
+            return None
+        con = duckdb.connect()
+        DUCKS.append(con)
+        con.execute("SET enable_progress_bar = false")
+        duck_table(con, "E", "P VARCHAR, C VARCHAR", [(r, c) for r, cs in holds.items() for c in cs])
+        duck_table(con, "S", "V VARCHAR, R VARCHAR", [(v, r) for v in dict.fromkeys(list(users) + list(roles_of)) for r in
+                                                      roles_of.get(v, []) + ([] if "PUBLIC" in roles_of.get(v, []) else ["PUBLIC"])])
+        con.execute("CREATE OR REPLACE TABLE E AS SELECT P, C, COUNT(*) AS K FROM E GROUP BY P, C")  # K: as dag() counts duplicates
+        con.execute("CREATE TABLE CUR AS SELECT DISTINCT R, R AS X, 1::HUGEINT AS N FROM (SELECT P AS R FROM E UNION "
+                    "SELECT C FROM E UNION SELECT R FROM S UNION SELECT UNNEST(?::VARCHAR[]))", [list(roles)])
+        con.execute("CREATE TABLE RP AS SELECT * FROM CUR")
+        for _ in range(MAX_HOPS - 1):  # a user's hop 1 is its start role
+            con.execute("CREATE OR REPLACE TABLE CUR AS SELECT CUR.R, E.C AS X, SUM(CUR.N * E.K)::HUGEINT AS N "
+                        "FROM CUR JOIN E ON E.P = CUR.X GROUP BY CUR.R, E.C")
+            if not con.execute("SELECT COUNT(*) FROM CUR").fetchone()[0]:
+                break
+            con.execute("INSERT INTO RP SELECT * FROM CUR")
+        else:
+            return None  # paths longer than MAX_HOPS: counts() caps them
+        con.execute("CREATE OR REPLACE TABLE RP AS SELECT R, X, SUM(N)::HUGEINT AS N FROM RP GROUP BY R, X")
+        return con
+    return cached("duck", make)
+
+
+def read_shares():
+    """{role: (data objects reached, of them read only, of them written or owned, of them owned, schema CREATE grants
+    reached)} for every role, from
+    the roles each role reaches (RP in duck(), itself included) joined with the holders' own data grants,
+    once per data set: rules 17 and 23 then walk only the roles they can flag. None without duck()."""
+    def make():
+        con = duck()
+        if con is None:
+            return None
+        duck_table(con, "OWN", "X VARCHAR, O VARCHAR, C VARCHAR", [(x, o, c) for x in roles for o, cs in own_use(x).items() for c in cs])
+        got = con.execute("""SELECT R, COUNT(*), COUNT(*) FILTER (WHERE RD AND NOT WR), COUNT(*) FILTER (WHERE WR),
+                COUNT(*) FILTER (WHERE OW)
+            FROM (SELECT RP.R, OWN.O, BOOL_OR(OWN.C = 'read') AS RD, BOOL_OR(OWN.C IN ('write', 'own')) AS WR,
+                         BOOL_OR(OWN.C = 'own') AS OW
+                  FROM RP JOIN OWN ON OWN.X = RP.X GROUP BY RP.R, OWN.O) GROUP BY R""").fetchall()
+        duck_table(con, "CR", "X VARCHAR", [(x,) for x in roles for pv, k, _ in granted.get(x, [])
+                                             if k == "SCHEMA" and pv.startswith("CREATE ")])
+        made = dict(con.execute("SELECT RP.R, COUNT(*) FROM RP JOIN CR ON CR.X = RP.X GROUP BY RP.R").fetchall())
+        out = {r: (n, ro, st, ow, made.get(r, 0)) for r, n, ro, st, ow in got}
+        return out | {r: (0, 0, 0, 0, k) for r, k in made.items() if r not in out}
+    return cached("shares", make)
+
+
+def lose_all(edges):
+    """lose(e) for many edges at once: role links from one DuckDB query (a user loses the role when every path to it
+    uses the link: paths(user, grantee) x links(grantee, role) = paths(user, role)); privilege edges as users who reach
+    the grantee and no other holder. Without duck() each edge walks per user in lose()."""
+    con = duck()
+    todo = {lose_key(e): e for e in edges if lose_key(e) not in memo}
+    if con is None or not todo:
+        return
+    # a role link G -> X (K grant rows) or a user's grant of X (U set): who has no path to X without it
+    ask = list(dict.fromkeys((e["grantee"], e["to"], bool(e.get("user"))) for e in todo.values() if e["priv"] is None))
+    got = {}
+    if ask:
+        duck_table(con, "Q", "G VARCHAR, X VARCHAR, U BOOLEAN", ask)
+        # a user's paths to a role: the sum over its start roles S of the role paths RP
+        sql = """WITH UG AS (SELECT Q.G, Q.X, S.V, SUM(RP.N) AS N FROM Q JOIN RP ON RP.X = Q.G JOIN S ON S.R = RP.R
+                             WHERE NOT Q.U GROUP BY Q.G, Q.X, S.V),
+                      UX AS (SELECT Q.G, Q.X, S.V, SUM(RP.N) AS N FROM Q JOIN RP ON RP.X = Q.X JOIN S ON S.R = RP.R
+                             WHERE NOT Q.U GROUP BY Q.G, Q.X, S.V),
+                      ME AS (SELECT Q.G, Q.X, SUM(RP.N) AS N FROM Q JOIN S ON S.V = Q.G JOIN RP ON RP.R = S.R AND RP.X = Q.X
+                             WHERE Q.U GROUP BY Q.G, Q.X)
+                 SELECT UG.G, UG.X, FALSE, UG.V FROM UG JOIN UX USING (G, X, V) JOIN E ON E.P = UG.G AND E.C = UG.X
+                 WHERE UG.N * E.K = UX.N
+                 UNION ALL
+                 SELECT ME.G, ME.X, TRUE, ME.G FROM ME
+                 JOIN (SELECT V, R, COUNT(*) AS K FROM S GROUP BY V, R) D ON D.V = ME.G AND D.R = ME.X WHERE ME.N = D.K"""
+        for g, x, u, v in con.execute(sql).fetchall():
+            got.setdefault((g, x, u), set()).add(v)
+    for k, e in todo.items():
+        g, x = e["grantee"], e["to"]
+        if e["priv"] is None:
+            memo[k] = got.get((g, x, bool(e.get("user"))), set())
+        elif e.get("user"):
+            memo[k] = losing(e)
+        else:
+            hs = {r for r, pv, _ in on.get(x, []) if pv == e["priv"]} - {g}
+            memo[k] = set(users_through(g)).difference(*(ups(h)[1] for h in hs))
+
+
+def lose_key(e):
+    return ("lose",) + tuple(e.values())
 
 
 def losers(edges, privs, obj):
@@ -4585,7 +4938,7 @@ def activity(name, what, user=None):
     for x in acts:
         if not inside(x[field]) or (user and x["USER_NAME"] != user):
             continue
-        d, q, last, act = day(x["DAY"]), int(x["QUERIES"] or 0), str(x["LAST_USED"])[:16], x["ACTION"].lower()
+        d, q, last, act = day(x["DAY"]), int(x["QUERIES"] or 0), str(x["LAST_USED"] or "")[:16], x["ACTION"].lower()
         hrs = x.get("HOURS") or {}  # older snapshots have none
         if 0 <= (d - first).days < ACTIVITY_DAYS:
             daily[(d - first).days] += q
@@ -4969,7 +5322,7 @@ def app_use(app, rows):
 def warehouse_use(wh):
     """Who ran queries on a warehouse (QUERY_HISTORY, as the snapshot read it: USAGE rows) and who can use it but did
     not: dict(used [dict(user, queries, last)], unused [users reaching USAGE or OPERATE on it])."""
-    use = sorted((dict(user=u, queries=int(x["QUERIES"] or 0), last=str(x["LAST_USED"])[:16]) for u, xs in used.items()
+    use = sorted((dict(user=u, queries=int(x["QUERIES"] or 0), last=str(x["LAST_USED"] or "")[:16]) for u, xs in used.items()
                   for x in xs if x["KIND"] == "WAREHOUSE" and x["NAME"] == wh), key=lambda r: -r["queries"])
     can = {x for r, pv, _ in on.get(wh, []) if pv in ("USAGE", "OPERATE", "OWNERSHIP") for (x, u) in up_rows(r) if u}
     return dict(used=use, unused=sorted(can - {r["user"] for r in use}))
@@ -5390,7 +5743,10 @@ def rule_rows():
     exposed", "—"), same_fix (rule label of an earlier finding with the same fix), edges (grant edges the fix removes),
     edge ((from, to, privilege) the finding applies to, privilege None for a role link; None for an object finding)."""
     out, seen = [], {}
-    for f in cached("findings", findings):
+    fs = cached("findings", findings)
+    if HIERARCHY_ON:
+        lose_all([e for f in fs for e in f["edges"]])
+    for f in fs:
         iac, sql = f.get("fix") or fix_text(f["edges"])
         n, t = f["num"], RULES[f["num"]][0]
         affects, impact, who = f.get("affects"), f.get("impact"), []
@@ -5463,13 +5819,17 @@ def readonly_writes(role=None, only=None):
     but it writes/owns some. Row per (role, object): role, object, privileges, holder, path (role->...->holder->object),
     via {privilege: path role->...->holder}, inherited (holder is another role), how (name | behaviour | both),
     read_only, objects (counts for behaviour)."""
-    out = []
+    out, shares = [], read_shares() if role is None else None
     for r in [role] if role else roles:
         if r in ADMIN or r == "PUBLIC" or is_build(r) or not inside(only, r, "17"):
             continue
-        cls = data_use(r)[1]
         bad = {"own"} if r.upper().endswith("_WRITE") else \
             {"write", "own"} if READ_ROLE_PATTERNS.search(r) or r.upper().endswith("_EXECUTE") else set()
+        n, ro_n, st, ow, _ = (shares or {}).get(r, (0, 0, 0, 0, 0))
+        hit = (ow if bad == {"own"} else st) if bad else 0  # objects the name heuristic can flag
+        if shares is not None and not hit and not (n >= READ_MIN_OBJECTS and st and ro_n / n >= READ_SHARE):
+            continue  # neither heuristic can flag it: no walk
+        cls = data_use(r)[1]
         ro = [o for o, c in cls.items() if c == {"read"}]
         stray = {o for o, c in cls.items() if c & {"write", "own"}}
         beh = len(cls) >= READ_MIN_OBJECTS and stray and len(ro) / len(cls) >= READ_SHARE
@@ -5519,7 +5879,7 @@ def rules_model(only=None):
     # one finding per (consumer, held role, READ role), shortest path
     for g, direct, u in consumers if HIERARCHY_ON else ():
         for d in direct if inside(only, g, "3") else ():
-            best = bfs([d])
+            best = below(d)
             for t in dict.fromkeys(direct):
                 p = best.get(t)
                 if t != d and p and role_kind(t) == "technical" and t.endswith("_READ"):
@@ -5541,7 +5901,7 @@ def rules_model(only=None):
     # 14: per role granted to users, the deepest grant
     for r in sorted(x for x in users_of if HIERARCHY_ON and inside(only, x, "14")):
         deep = None  # the first grant of the longest chain, a data object first; shorter chains can't win
-        for x, p in sorted(bfs([r]).items(), key=lambda t: -len(t[1])):
+        for x, p in sorted(below(r).items(), key=lambda t: -len(t[1])):
             if deep and len(p) < deep[0]:
                 break
             for pv, k, o in granted.get(x, []):
@@ -5776,12 +6136,15 @@ def rule22():
 def rule23(only=None):
     """Rule 23: CREATE ... on a schema reached by a read-only role (rule 17's name or behaviour heuristic; behaviour
     here: share of data objects it only reads >= READ_SHARE over >= READ_MIN_OBJECTS objects)."""
-    out = []
+    out, shares = [], read_shares()
     for r in roles:
         if r in ADMIN or r == "PUBLIC" or is_build(r) or not inside(only, r, "23"):
             continue
-        cls = data_use(r)[1]
         name = bool(READ_ROLE_PATTERNS.search(r))
+        n, ro_n, _, _, made = (shares or {}).get(r, (0, 0, 0, 0, 0))
+        if shares is not None and not (made and (name or (n >= READ_MIN_OBJECTS and ro_n / n >= READ_SHARE))):
+            continue  # no CREATE on a schema reached, or neither heuristic: no walk
+        cls = data_use(r)[1]
         beh = len(cls) >= READ_MIN_OBJECTS and sum(c == {"read"} for c in cls.values()) / max(len(cls), 1) >= READ_SHARE
         if not (name or beh):
             continue
@@ -5825,7 +6188,7 @@ def rules_activity():
                     n[x["QUERY_TYPE"] or x["ACTION"]] += int(x["QUERIES"] or 0)
                 r = Counter(x["ROLE_NAME"] for x in ch).most_common(1)[0][0]
                 out.append(find("24", u, ", ".join(f"{t} {q}" for t, q in n.most_common()) + f" on {o} as {r}, last "
-                                + max(str(x["LAST_USED"])[:10] for x in ch), [u, r, o], user=True, fix=review))
+                                + max(str(x["LAST_USED"] or "")[:10] for x in ch), [u, r, o], user=True, fix=review))
         ds = min(day(x["DAY"]) for x in xs)
         if seen[u] < cut - timedelta(days=NEW_DAYS) and ds >= cut:  # the user was active before: not a new user
             q = sum(int(x["QUERIES"] or 0) for x in xs)
@@ -5845,7 +6208,7 @@ def rules_activity():
             c[client_label(x["CLIENT"])] += int(x["QUERIES"] or 0)
         out.append(find("25", u, ", ".join(f"{k} {v}" for k, v in c.most_common()) + " queries on "
                         + plural(len({x["OBJECT_NAME"] for x in xs}), "table") + ", last "
-                        + max(str(x["LAST_USED"])[:10] for x in xs), [u], user=True, fix=review))
+                        + max(str(x["LAST_USED"] or "")[:10] for x in xs), [u], user=True, fix=review))
     for (u, r), xs in sorted(adm.items()):
         objs = sorted({x["OBJECT_NAME"] for x in xs})
         w = {x["OBJECT_NAME"] for x in xs if x["ACTION"] != "READ"}
@@ -5858,10 +6221,18 @@ def findings(only=None):
     """Every rule finding, in rule order: dict(num, grantee, detail, path, edges [grant edges the fix removes], edge
     (see find()), fix, paths, affects, impact). only: {rule: users and roles it checks} for the per-grantee rules
     (SCOPED), the other rules check everything (what_if: only what a change can touch)."""
-    walks = (rule17(only) + rule18() + rule19() + rules_operate() + rule22() + rule23(only) + rule29()
-             if HIERARCHY_ON else [])
-    out = (rules_model(only) + rules_admin(only) + rules_sensitive(only) + rules_users() + walks
-           + cached("activity", rules_activity))
+    groups = [lambda: rules_model(only), lambda: rules_admin(only), lambda: rules_sensitive(only), rules_users]
+    if HIERARCHY_ON:
+        groups += [lambda: rule17(only), rule18, rule19, rules_operate, rule22, lambda: rule23(only), rule29]
+    out, slow = [], []
+    for g in groups + [lambda: cached("activity", rules_activity)]:
+        t0 = time.monotonic()
+        got = g()
+        out += got
+        slow.append((time.monotonic() - t0, sorted({f["num"] for f in got}, key=int)))
+    slow = [(t, n) for t, n in sorted(slow, reverse=True)[:3] if t >= 1 and n]  # the load log names the slow ones
+    if slow:
+        say("Slowest rules: " + ", ".join(f"{'/'.join(n)} {t:.0f} s" for t, n in slow))
     return sorted(out, key=lambda f: int(f["num"]))
 
 

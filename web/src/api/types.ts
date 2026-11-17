@@ -166,6 +166,8 @@ export interface Progress {
   running: boolean;
   view: "shared" | "mine" | null;
   lines: { t: number; text: string }[];
+  /** The last refresh (Rebuild snapshot / Read Snowflake again) run in the background, null before any. */
+  job?: { id: number; what: string; state: "running" | "done" | "failed"; ok: boolean | null; message: string | null } | null;
 }
 
 export interface RuleInfo {

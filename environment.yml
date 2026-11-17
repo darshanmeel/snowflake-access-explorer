@@ -7,3 +7,4 @@ channels:
 dependencies:
   - streamlit=1.52.*
   - snowflake-snowpark-python
+  - duckdb  # the rule checks' role walk in memory (access.duck); without it they walk in Python, slower

@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import os
+import pickle
 import pathlib
 import re
 import threading
@@ -21,6 +22,7 @@ import ui
 MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|objects (README > Settings)
 DIRECT = SOURCE == "direct"  # no tables: read the grants straight from Snowflake (a.live)
 KEY = cache.name(SOURCE, where=WHERE)  # another snapshot location, user or role: another copy
+OFFLINE = os.environ.get("BUILD_ONLY") == "1"  # run.py --build: built from the parts kept, never a Snowflake read
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
 TTL = cache.TTL  # shared data and My access stay in memory this long (seconds)
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
@@ -55,6 +57,9 @@ MINE = {}
 S = dict(sens={}, rows=[], breaks={}, view="shared", known=None)  # per request, set under LOCK
 PROGRESS = {}  # cache key -> its last read from Snowflake: view, running, start, lines (what /api/progress shows)
 PLOCK = threading.Lock()  # lines come from each()'s threads too
+LOG_LINES = False  # python server.py: progress lines also on the terminal
+JOB = {}  # the last refresh (Rebuild snapshot / Read Snowflake again): id, what, state running|done|failed, ok, message
+BACKGROUND = not a.INSIDE  # refresh in a thread; inside Snowflake on the script's own thread, with the app's session
 MAX_LINES = 200
 ANSWERS = {}  # (data, endpoint, params) -> answer: a page seen before skips LOCK, so users don't queue behind each other
 MAX_ANSWERS = 200
@@ -73,20 +78,30 @@ def connect():  # one connection per load; st_react.py may replace this
     return sf()
 
 
-def with_query(fn):
-    """fn(query) with query(sql) -> list of dicts, on a fresh connection."""
+def with_query(fn, key=None):
+    """fn(query) with query(sql) -> list of dicts, on a fresh connection, made at the first statement: a load whose
+    parts are all kept logs in to nothing. key: every read kept as a part of key (cache.parted), so a load that stops
+    resumes where it stopped; OFFLINE: from the parts only, never a connection."""
     import sf
-    conn = connect()
+    conn, clock = [], threading.Lock()
 
     def query(sql):
-        cols, got = sf.rows(conn, sql)
+        with clock:  # one login, also when each()'s threads ask at once; a failed one fails every statement the same
+            if not conn:
+                try:
+                    conn.append(connect())
+                except Exception as x:
+                    conn.append(x)
+        if isinstance(conn[0], Exception):  # a ConnectionError: no part keeps it, the load stops with its message
+            raise ConnectionError(str(conn[0])) from conn[0]
+        cols, got = sf.rows(conn[0], sql)
         return [dict(zip(cols, r)) for r in got]
 
     try:
-        return fn(query)
+        return fn(cache.parted(query, key, OFFLINE) if key and cache.local() else query)
     finally:
-        if sf.owned():  # inside Snowflake it is the app's session: keep it open
-            conn.close()
+        if conn and not isinstance(conn[0], Exception) and sf.owned():  # inside Snowflake: the app's session, kept open
+            conn[0].close()
 
 
 def tracked(key, view, fn):
@@ -97,6 +112,8 @@ def tracked(key, view, fn):
         with PLOCK:
             p["lines"].append((round(time.time() - p["start"], 1), text))
             del p["lines"][:-MAX_LINES]
+        if LOG_LINES:  # the server's terminal shows the same lines as the page
+            print(f"{time.strftime('%H:%M:%S')} [{view}] {text}", flush=True)
     try:
         with a.progress(add):
             try:
@@ -115,33 +132,73 @@ def progress(view=None):
             key=lambda p: p["start"], default=None)
     with PLOCK:
         lines = [dict(t=t, text=x) for t, x in p["lines"]] if p else []
-    return dict(running=bool(p), view=p["view"] if p else None, lines=lines)
+    return dict(running=bool(p), view=p["view"] if p else None, lines=lines, job=dict(JOB) or None)
 
 
-def read_shared():
+def read_shared(key=KEY):
+    """The shared data from its source, its reads kept as parts of key (refresh: a key of its own until it is built)."""
     if MODE == "fake":
         return a.fake()
     if DIRECT:
-        old = cache.last(KEY) or {}
-        return with_query(lambda q: a.live(q, old.get("ACTIVITY"), old.get("OBJECT_USE")))
-    return with_query(lambda q: a.snapshot(q, WHERE, old=cache.last(KEY)))  # the same run: one small query
+        old = cache.old(key, KEY)  # kept with the parts: a resumed load asks for the same activity days
+        return with_query(lambda q: a.live(q, old.get("ACTIVITY"), old.get("OBJECT_USE")), key)
+    # the same run: one small query; with parts each table is a part of its own, read once
+    return with_query(lambda q: a.snapshot(q, WHERE, old=None if cache.local() else cache.last(KEY)), key)
+
+
+def shared_key(d):
+    run = d.get("run") or {}  # build() makes it a dict; the key is taken before
+    return "shared", run.get("RUN_ID"), str(run.get("FINISHED_AT"))
+
+
+def stages():
+    """Stage 1, the reads (parts from disk, the missing ones from Snowflake), then stage 2: the local and SQL copies
+    (cache.get), the lookups and the rule checks, so the first page does not build them unseen."""
+    t0 = time.monotonic()
+    d = cache.get(KEY, read_shared, disk=MODE == "snowflake")[0]
+    built(d)
+    a.say(f"Ready in {a.took(t0)}")
+    return d
+
+
+def built(d):
+    """Stage 2's lookups and rule checks of data set d, timed step by step in the load log."""
+    with LOCK:
+        with a.step("Building the role graph"):
+            a.build(d, shared_key(d))
+        a.say(f"Role graph: {len(a.roles):,} roles, {len(a.users):,} users, {len(a.objects):,} objects")
+        if a.roles and not ("rows" in a.memo or kept_rules("shared", shared_key(d), False)):
+            with a.step("Checking the rules"):
+                a.cached("rows", a.rule_rows)
+            kept_rules("shared", shared_key(d), False, save=True)
 
 
 def load_shared(ask=False):
     """ask: a page wants it. Read directly from Snowflake (SOURCE=direct) only on a click (reload what=load): it can
-    take minutes, and someone may want only My access; a copy in memory or .cache/ is used at once."""
-    if ask and MODE == "snowflake" and DIRECT and not cache.ready(KEY):
+    take minutes, and someone may want only My access; a copy in memory or .cache/, or the parts kept, are used at once."""
+    disk = MODE == "snowflake"
+    if ask and disk and DIRECT and not cache.ready(KEY) and not cache.parts_read_at(KEY):
         raise ApiError(409, "shared_not_loaded", "The shared data is read from Snowflake on request: Load shared data.")
-    with LOAD:
-        try:
-            return cache.get(KEY, lambda: tracked(KEY, "shared", read_shared), disk=MODE == "snowflake")[0]
-        except Exception as x:
-            raise ApiError(503, "shared_unreadable", a.line(x))
+    if cache.ready(KEY, disk):  # every page asks: no progress entry for an answer from memory or the local file
+        return cache.get(KEY, read_shared, disk)[0]
+    if not LOAD.acquire(blocking=not ask):  # a page never waits behind a read: it says so and asks again after it
+        raise ApiError(409, "shared_loading", "The shared data is being read: the pages open when it is done.")
+    try:
+        if cache.ready(KEY, disk):  # read by the load this one waited for
+            return cache.get(KEY, read_shared, disk)[0]
+        return tracked(KEY, "shared", stages)
+    except ApiError:
+        raise
+    except Exception as x:
+        raise ApiError(503, "shared_unreadable", a.line(x))
+    finally:
+        LOAD.release()
 
 
 def fetched():
-    """When the shared data was read from its source (memory or the local file)."""
-    return datetime.fromtimestamp(cache.MEM[KEY][1]).strftime("%Y-%m-%d %H:%M") if KEY in cache.MEM else None
+    """When the shared data was read from its source: its oldest part, else the read itself (memory or local file)."""
+    t = (cache.parts_read_at(KEY) or cache.MEM[KEY][1]) if KEY in cache.MEM else None
+    return datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M") if t else None
 
 
 def mine_entry(sid):
@@ -195,10 +252,13 @@ def load_mine(sid, fresh=False):
     if MODE == "snowflake":
         ck = cache.name("mine", os.environ.get("SNOWFLAKE_USER") or sid, WHERE)
         if fresh:
+            if OFFLINE:
+                raise ApiError(409, "build_only", BUILD_ONLY_NOTE)
+            cache.clear_parts(ck)
             cache.drop(ck)
         try:
             d, at = cache.get(ck, lambda: tracked(ck, "mine", lambda: with_query(
-                lambda q: a.mine(q, WHERE.split(".")[0] or None))))
+                lambda q: a.mine(q, WHERE.split(".")[0] or None), ck)))
         except Exception as x:  # a cancelled SSO, no warehouse, the network: the real message, as for the shared data
             raise ApiError(503, "mine_unreadable", a.line(x))
     else:
@@ -221,7 +281,7 @@ def session(view, sid, builtin=False):
         raise ApiError(400, "bad_param", "view must be shared or mine")
     if view == "shared":
         d = load_shared(ask=True)
-        key = ("shared", d["run"].get("RUN_ID"), str(d["run"].get("FINISHED_AT")))
+        key = shared_key(d)
     else:
         m = mine_entry(sid)
         if not m:
@@ -232,10 +292,37 @@ def session(view, sid, builtin=False):
         a.capped.clear()
         S["view"], S["known"] = view, None
         S["sens"] = a.cached("sens", a.sensitive)
+        had = "rows" in a.memo or kept_rules(view, key, builtin)
         rows = S["rows"] = a.cached("rows", a.rule_rows) if a.roles else []
         ro = (lambda: a.cached("ro", a.readonly_writes)) if a.HIERARCHY_ON else list  # HIERARCHY=0: rule 17 off
         S["breaks"] = a.cached("breaks", lambda: breaks(rows, ro())) if rows else {}
+        if not had and a.roles:
+            kept_rules(view, key, builtin, save=True)
         yield d
+
+
+KEPT = ("findings", "rows", "ro", "breaks")  # the rule results a restart need not check again
+
+
+def kept_rules(view, key, builtin, save=False):
+    """The shared data's rule results kept in .cache/<key>.rules.pkl across restarts, while the data set, the settings
+    and access.py are the ones that made them: put back into a.memo (True when they were), or written (save)."""
+    if view != "shared" or MODE != "snowflake" or not cache.local():
+        return False
+    f, stamp = cache.file(KEY).with_suffix(".rules.pkl"), (key, builtin, a.rules_stamp())
+    if save:
+        f.parent.mkdir(exist_ok=True)
+        tmp = f.with_suffix(".tmp")
+        tmp.write_bytes(pickle.dumps(dict(stamp=stamp, memo={k: a.memo[k] for k in KEPT if k in a.memo})))
+        tmp.replace(f)
+        return True
+    got = cache.load(f) if f.is_file() else None
+    if not (isinstance(got, dict) and got.get("stamp") == stamp):
+        return False
+    for k, v in got["memo"].items():
+        a.memo.setdefault(k, v)
+    a.say("Rule results kept from the last check of this data: not checked again")
+    return True
 
 
 # ---------- small helpers ----------
@@ -421,6 +508,10 @@ def note_info(k, source, view):
                  f"{IP} gives 30 days.") if source == "INFORMATION_SCHEMA" else
                 ("No query history", "No 'last used' for roles and warehouses. Grants and paths are complete.",
                  f"{IP}." if not mine else "None needed: grants and paths are complete."))
+    if source == "UNAVAILABLE" and k in ("grants", "user_roles"):  # unreadable, not read the slow way
+        return ("Grants unread" if k == "grants" else "User roles unread",
+                "Shown empty: no role reaches anything." if k == "grants" else "Shown empty: no user holds a role.",
+                f"{IP}, or SELECT on the snapshot tables.")
     return {
         "applicable_roles": ("Role list fallback unread", "Only a fallback: role links come from SHOW GRANTS.", None),
         "grants": ("Some roles unreadable", "Their privileges are missing; their role links are shown.",
@@ -449,6 +540,13 @@ def note_info(k, source, view):
         "database_roles": ("Database roles partly read", "What the database roles in the error give is missing.",
                            "USAGE on those databases."),
         "error": ("Snapshot run failed", "The last SP_ACCESS_SNAPSHOT run failed.", "Run sql/2_snapshot.sql and read its error."),
+        "no_run": ("No snapshot yet", "There is no OK SP_ACCESS_SNAPSHOT run to read: every page is empty.",
+                   "Run sql/1_setup.sql and sql/2_snapshot.sql, then Read Snowflake again."),
+        "missing_names": ("Rows left out", "Rows Snowflake gave without a name, day or action are not shown.", None),
+        "missing_columns": ("Columns missing", "The snapshot tables lack newer columns: those values are empty.",
+                            "Run sql/1_setup.sql again, then rebuild the snapshot."),
+        "secondary_roles": ("Secondary roles off", "Only privileges of your primary role's tree count.", None),
+        "user": ("No user", "Snowflake named no logged-in user: My access is empty.", "Log in again."),
     }.get(k, (k.replace("_", " ").capitalize(), "Read with a fallback, or partly.", None))
 
 
@@ -857,8 +955,8 @@ def usage(u):
     for x in rows:
         if x["KIND"] in ("ROLE", "SECONDARY ROLE"):
             y = by.setdefault(x["NAME"], dict(queries=0, last_used="", secondary=True))
-            y["queries"] += x["QUERIES"]
-            y["last_used"] = max(y["last_used"], str(x["LAST_USED"])[:16])
+            y["queries"] += int(x["QUERIES"] or 0)
+            y["last_used"] = max(y["last_used"], str(x["LAST_USED"] or "")[:16])
             y["secondary"] &= x["KIND"] == "SECONDARY ROLE"
     dr = (a.profile.get(u) or {}).get("DEFAULT_ROLE")
     roles = []
@@ -871,7 +969,7 @@ def usage(u):
     roles.sort(key=lambda r: (r["status"] != "unused", -r["queries"], r["role"]))
     return dict(days=days, source=f"Query history, last {days} days, from {'INFORMATION_SCHEMA' if days == 7 else 'ACCOUNT_USAGE'}",
                 readable=src != "UNAVAILABLE", roles=roles,
-                warehouses=[dict(name=x["NAME"], queries=x["QUERIES"], last_used=str(x["LAST_USED"])[:16])
+                warehouses=[dict(name=x["NAME"], queries=int(x["QUERIES"] or 0), last_used=str(x["LAST_USED"] or "")[:16])
                             for x in rows if x["KIND"] == "WAREHOUSE"])
 
 
@@ -1110,7 +1208,7 @@ def access_page(p, view):
 
 def home_page(p, view):
     """Home: the default (or own) user's ladder counts, account risks by severity, data protection tiles."""
-    me = a.users[0] if view == "mine" else (DEMO_USER if DEMO_USER in a.users else a.users[0] if a.users else None)
+    me = (a.users[0] if a.users else None) if view == "mine" else (DEMO_USER if DEMO_USER in a.users else a.users[0] if a.users else None)
     mine = None
     if me:
         objs = a.access_objects(a.grants(me, True), True)
@@ -1302,7 +1400,7 @@ def sensitivity(o):
         rows.append(dict(
             column=c, tags=[dict(label=a.tag_label(t, v), sensitive=a.tag_hit(rules, t, v)) for t, v in ct
                             if not t.upper().endswith("SEMANTIC_CATEGORY")],
-            semantic=", ".join(v for t, v in ct if t.upper().endswith("SEMANTIC_CATEGORY")),
+            semantic=", ".join(v or "" for t, v in ct if t.upper().endswith("SEMANTIC_CATEGORY")),
             masking=[x["name"] for x in mp], clear_for=[dict(role=r, how=h) for r, h in (clr[0].items() if clr else [])],
             clear_known=bool(mp) and clr is not None, unmasked_everyone=sens and not mp))
     bodies = {x["name"]: x["body"] for ps_ in ps["columns"].values() for x in ps_} | {x["name"]: x["body"] for x in ps["rows"]}
@@ -2245,35 +2343,95 @@ def protection():
                 unmasked=sum(x["num"] == "6" for x in S["rows"]))
 
 
+BUILD_ONLY_NOTE = ("Started with run.py --build: built from the parts kept, Snowflake is not read. "
+                   "Restart without --build to read it again.")
+
+
 def reload(body):
+    """load (the first read) reads the parts still missing and waits for them; rebuild (objects: the CALL first) and
+    page (Read Snowflake again) read every part again in the background (refresh)."""
     what = (body or {}).get("what", "page")
-    if what == "rebuild":
-        if MODE != "snowflake":
+    if OFFLINE and what != "load" and MODE == "snowflake":
+        return dict(ok=False, result=None, message=BUILD_ONLY_NOTE)
+    if what == "load":  # the click that reads the shared data (SOURCE=direct)
+        load_shared()
+        return dict(ok=True, result=None, message="Loaded.")
+    if MODE != "snowflake":
+        if what == "rebuild":
             return dict(ok=False, result=None, message="Demo: the CALL runs only on Snowflake (not FAKE=1).")
+        cache.drop(KEY)
+        return dict(ok=True, result=None, message="Reloaded.")
+    return refresh(what)
+
+
+def refresh(what):
+    """Rebuild snapshot / Read Snowflake again, in a thread (BACKGROUND): the pages keep answering from the data they
+    have, the new read replaces it only once built, and a failure keeps it. JOB says how it went (/api/progress)."""
+    with PLOCK:
+        if JOB.get("state") == "running":
+            return dict(ok=False, result=None, message="A refresh is already running: see its progress.")
+        n = JOB.get("id", 0) + 1
+        JOB.clear()
+        JOB.update(id=n, what=what, state="running", ok=None, message=None)
+
+    def job():
+        try:
+            out = renew(what)
+        except Exception as x:
+            JOB.update(state="failed", ok=False, message=x.message if isinstance(x, ApiError) else a.line(x))
+            raise
+        JOB.update(state="done" if out["ok"] else "failed", ok=out["ok"], message=out["message"])
+        return out
+    if not BACKGROUND:
+        return job()
+
+    def run():
+        try:
+            job()
+        except Exception:  # its message is in JOB and in the load log
+            pass
+    threading.Thread(target=run, daemon=True).start()
+    return dict(ok=True, started=True, job=n, result=None, message="Reading Snowflake in the background.")
+
+
+def renew(what):
+    """The CALL (rebuild, objects mode), then every part read again under a key of its own, built, and swapped in."""
+    new = KEY + ".new"
+
+    def work():
         res = None
-        if not DIRECT:
-            try:
-                sql = f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"
-                r = tracked(KEY, "shared", lambda: with_query(
-                    lambda q: a.say(f"{sql}: runs in Snowflake, its steps show when it ends") or q(sql)))
-            except Exception as x:
-                raise ApiError(503, "rebuild_failed", a.line(x))
-            res = json.loads(list(r[0].values())[0])
+        if what == "rebuild" and not DIRECT:
+            res = call_snapshot()
             st = (res or {}).get("status")
             if st != "OK":  # SKIPPED (another run still going) or FAILED: say so, and keep the copy we have
                 err = ((res or {}).get("notes") or {}).get("error") or "no reason given"
                 return dict(ok=False, result=res, message=f"Snapshot {str(st or 'not rebuilt').lower()}: {err}")
-        cache.drop(KEY)
-        if DIRECT:  # a click: read now, not at the next page
-            load_shared()
-        return dict(ok=True, result=res, message="Snapshot rebuilt." if not DIRECT else "Read Snowflake again.")
-    if what == "load":  # the click that reads the shared data (SOURCE=direct)
-        load_shared()
-        return dict(ok=True, result=None, message="Loaded.")
-    cache.drop(KEY)  # read the source again (Snowflake), not the local copy
-    if MODE == "snowflake" and DIRECT:  # a click: read now, not at the next page
-        load_shared()
-    return dict(ok=True, result=None, message="Reloaded.")
+        cache.clear_parts(new)
+        try:
+            d = read_shared(new)
+            built(d)
+            cache.swap(KEY, new, d)
+        finally:
+            cache.clear_parts(new)
+        return dict(ok=True, result=res, message="Snapshot rebuilt." if what == "rebuild" and not DIRECT
+                    else "Read Snowflake again.")
+    with LOAD:
+        return tracked(KEY, "shared", work)
+
+
+def call_snapshot():
+    """CALL SP_ACCESS_SNAPSHOT: the procedure's JSON outcome as a dict; none, NULL or other text: None."""
+    sql = f"CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')"
+    try:
+        r = with_query(lambda q: a.say(f"{sql}: runs in Snowflake, its steps show when it ends") or q(sql))
+    except Exception as x:
+        raise ApiError(503, "rebuild_failed", a.line(x))
+    v = next(iter(r[0].values()), None) if r else None
+    try:
+        res = json.loads(v) if isinstance(v, str) else v
+    except ValueError:
+        res = None
+    return res if isinstance(res, dict) else None
 
 
 # ---------- refs ----------
@@ -2321,7 +2479,7 @@ CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 def data_key(view, sid):
     """Which data set a request answers from (the run, or one My access load), None when it isn't loaded."""
     if view == "shared":
-        run = load_shared(ask=True)["run"]
+        run = load_shared(ask=True).get("run") or {}
         return "shared", run.get("RUN_ID"), str(run.get("FINISHED_AT"))
     m = mine_entry(sid) if view == "mine" else None
     return m and m["key"]
@@ -2494,6 +2652,47 @@ def __getattr__(name):  # `uvicorn server:app` builds the app on first use
     raise AttributeError(name)
 
 
+def quiet_log():
+    """uvicorn's logging without the access line of GET /api/progress: the page asks it every second during a load."""
+    import uvicorn.config
+    c = json.loads(json.dumps(uvicorn.config.LOGGING_CONFIG))
+    c["filters"] = {"progress": {"()": f"{__name__}.NoProgress"}}
+    c["handlers"]["access"]["filters"] = ["progress"]
+    return c
+
+
+class NoProgress:  # a logging filter: logging.config builds it from its dotted name
+    def filter(self, r):
+        return "/api/progress" not in r.getMessage()
+
+
+def export(fresh=False):
+    """Stage 1 only (run.py --export): the shared data's missing parts read from Snowflake (fresh: every part), the
+    progress lines on the terminal, nothing built. 0 when every part is kept, else 1 (run it again to resume)."""
+    if MODE != "snowflake" or not cache.local():
+        print("Nothing to export: " + ("FAKE=1 reads no Snowflake." if MODE != "snowflake" else
+                                       "CACHE_HOURS=0 or inside Snowflake: nothing is kept on disk."))
+        return 1
+    if fresh:
+        cache.clear_parts(KEY)
+    t0 = time.time()
+    try:
+        with a.progress(lambda x: print(f"{time.time() - t0:7.0f} s  {x}", flush=True)):
+            read_shared()
+    except Exception as x:
+        print(f"Export stopped: {a.line(x)}. Run it again: only the parts still missing are read.")
+        return 1
+    m = cache.parts_of(KEY)
+    bad = [k for k, v in m.items() if v["status"] != "ok"]
+    print(f"{len(m)} parts in {cache.parts_dir(KEY)}"
+          + (f"; {len(bad)} timed out, read again by the next export or load: " + ", ".join(bad) if bad else ""))
+    return 1 if bad else 0
+
+
 if __name__ == "__main__":
+    import sys
+    if "--export" in sys.argv:
+        sys.exit(export("--fresh" in sys.argv))
     import uvicorn
-    uvicorn.run(make_app(), host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("WEB_PORT", "8000")))
+    LOG_LINES = True
+    uvicorn.run(make_app(), log_config=quiet_log(), host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("WEB_PORT", "8000")))

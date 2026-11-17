@@ -745,3 +745,9 @@ div.ae-tile { cursor: default; }
 .top-sqlnote { font-size: 12px; white-space: nowrap; }
 .ae-sqlpanel-for { margin: 0; font-size: 13px; }
 .ae-card:not(:has(> .ae-card-head)) > .ae-card-body { padding-right: 40px; }
+
+/* first load: the rest waits (inert); a background refresh shows its latest line */
+.top-lock { display: contents; }
+.top-lock[inert] > * { opacity: .5; }
+.top-bg { display: inline-flex; align-items: center; max-width: 360px; font-size: 12.5px; }
+.top-bg-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

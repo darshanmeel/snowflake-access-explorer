@@ -12,6 +12,7 @@ import server  # noqa: E402
 
 c = TestClient(server.make_app(), base_url="http://localhost")
 a = server.a
+server.BACKGROUND = False  # a refresh answers when it is done; test_background runs it in its thread
 
 USER = {"view", "user", "filters", "banners", "findings", "findings_total", "kpis", "account", "graph", "tabs", "privileges",
         "roles", "multi", "can_read", "sensitive", "granted", "usage", "capped", "refs"}
@@ -406,7 +407,8 @@ def test_rebuild_outcome():
         with snowflake(lambda sql, res=res: [{"R": json.dumps(res)}]):
             server.cache.MEM[server.KEY] = (a.fake(), 0)
             r = c.post("/api/reload", json={"what": "rebuild"}).json()
-            assert r["ok"] is ok and r["message"].startswith(word) and (server.KEY in server.cache.MEM) is not ok, r
+            kept = server.cache.MEM.get(server.KEY, (None,))[0]
+            assert r["ok"] is ok and r["message"].startswith(word) and (kept is not None and kept["run"]["RUN_ID"] == "fake") is not ok, r
 
     def boom(sql):
         raise RuntimeError("Warehouse WH is suspended")
@@ -723,6 +725,41 @@ def test_every_page():  # every page key: a label, a nav group, an endpoint that
             get(f"/api/{e}{'&' if '?' in e else '?'}view=mine")
 
 
+def test_pages_empty():
+    """The rule on every page: missing, NULL or empty data answers empty plus a note in the Data from box, never a 500,
+    shared and mine, CSVs included. Only a lost connection may stop a load (test_rebuild_outcome)."""
+    import test_access
+    urls = [f"/api/{API.get(k, k)}" for k in server.PAGES] + [
+        f"/api/{u}" for u in ("user?name=ENGINEER_01", f"role?name={a.FUNC}ENGINEER", "object?name=SALES.CORE.TBL_CUSTOMER",
+                              "check?name=ENGINEER_01&obj=HR.PEOPLE.TBL_EMPLOYEE", "usage?user=ENGINEER_01",
+                              "activity?name=SALES.CORE.TBL_CUSTOMER", "activity?user=ENGINEER_01",
+                              f"activity?role={a.FUNC}ENGINEER", "activity?name=SALES", "who?preset=admin",
+                              "compare?a=ENGINEER_01&b=ANALYST_01", "rules.csv", "review.csv?db=*")]
+    mine = {p["key"] for p in js("/api/meta?view=mine")["pages"]} if c.post("/api/mine/load").status_code == 200 else set()
+    old = server.read_shared
+    try:
+        for name, d in test_access.none_variants(full=False):
+            server.read_shared = lambda d=d: d
+            server.cache.MEM.pop(server.KEY, None)
+            server.ANSWERS.clear()
+            a.memo.clear()  # every variant has the same run, so the same key: built again, not taken from the last one
+            a.built.clear()
+            notes = {n["key"] for n in js("/api/meta")["notes"]}
+            assert "missing_names" in notes or "None in one row" not in name, (name, notes)
+            assert c.post("/api/mine/load").status_code == 200, name
+            for u in urls + [f"/api/{API.get(k, k)}{'&' if '?' in API.get(k, k) else '?'}view=mine" for k in mine]:
+                r = c.get(u)
+                assert r.status_code < 500, (name, u, r.status_code, r.text[:300])
+    finally:
+        server.read_shared = old
+        server.cache.MEM.pop(server.KEY, None)
+        server.ANSWERS.clear()
+        server.MINE.clear()
+        a.memo.clear()
+        a.built.clear()
+        a.build(a.fake())
+
+
 def test_review_fixes():  # search answers, row policy list, defaults that exist, compare without users
     f = {i["id"]: i for i in js("/api/find?q=ENGINEER_01")["items"]}
     me = js("/api/home")["me"]
@@ -792,6 +829,128 @@ def test_run_address():
     for env, want in (({}, "127.0.0.1"), ({"HOST": "0.0.0.0"}, "0.0.0.0")):
         cmd, _ = run.command(["streamlit"], env)
         assert cmd[cmd.index("--server.address") + 1] == want, cmd
+
+
+def test_background():
+    """Read Snowflake again runs in a thread: the pages keep the old data (and answer at once) until the new read is
+    built, then switch; a failed read keeps the old data and says why in /api/progress."""
+    import threading
+    import time
+    from datetime import datetime
+    go, began = threading.Event(), threading.Event()
+
+    def answer(sql):
+        if sql.startswith("SELECT CURRENT_TIMESTAMP()"):
+            return [{"T": datetime(2026, 11, 3, 10)}]
+        if "GRANTS_TO_ROLES WHERE" in sql:
+            began.set()
+            go.wait(5)
+        return []
+
+    def boom(d):  # a load tolerates views it cannot read: the build is what fails here
+        raise RuntimeError("Warehouse WH is suspended")
+    built = server.built
+    server.BACKGROUND = True
+    try:
+        for bad in (False, True):
+            with snowflake(answer, direct=True):
+                old = a.fake()
+                server.cache.MEM[server.KEY] = (old, time.time())
+                go.clear(), began.clear()
+                server.built = boom if bad else built
+                r = c.post("/api/reload", json={"what": "page"}).json()
+                assert r["ok"] and r["started"], r
+                assert began.wait(5)
+                t0 = time.time()
+                assert js("/api/meta")["run"]["run_id"] == "fake" and time.time() - t0 < 1  # old data, no wait
+                assert js("/api/progress")["job"]["state"] == "running"
+                assert c.post("/api/reload", json={"what": "page"}).json()["ok"] is False  # one at a time
+                go.set()
+                while js("/api/progress")["job"]["state"] == "running":
+                    time.sleep(0.05)
+                job = js("/api/progress")["job"]
+                now = server.cache.MEM[server.KEY][0]
+                if bad:
+                    assert job["state"] == "failed" and "suspended" in job["message"] and now is old, job
+                else:
+                    assert job["state"] == "done" and now["run"]["RUN_ID"] == "direct", job
+    finally:
+        server.BACKGROUND, server.built = False, built
+        server.JOB.clear()
+
+
+def test_kept_rules():
+    """After a restart the shared data's rule results come from .cache/ (not checked again) while the data, the
+    settings and access.py are the same; another setting checks them again."""
+    import pathlib
+    import tempfile
+    import time
+    cache = server.cache
+    old = cache.DIR, cache.HOURS, server.MODE, a.rule_rows
+    cache.DIR, cache.HOURS, server.MODE = pathlib.Path(tempfile.mkdtemp()), 24, "snowflake"
+    d = a.fake()
+    try:
+        cache.MEM[server.KEY] = (d, time.time())
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()  # as after a start: nothing checked yet
+        want = js("/api/rules")
+        assert cache.file(server.KEY).with_suffix(".rules.pkl").is_file()
+
+        def boom():
+            raise AssertionError("checked again")
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        a.rule_rows = boom
+        assert js("/api/rules") == want  # a restart: kept
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        os.environ["DORMANT_DAYS"] = "91"
+        try:
+            c.get("/api/rules")
+            raise RuntimeError("kept after a settings change")
+        except AssertionError as x:  # another setting: checked again
+            assert "checked again" in str(x)
+    finally:
+        os.environ.pop("DORMANT_DAYS", None)
+        cache.DIR, cache.HOURS, server.MODE, a.rule_rows = old
+        cache.MEM.pop(server.KEY, None)
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+
+
+def test_parts():
+    """Every read is kept as a part: the next load reads only the part that timed out, --build reads nothing, a fresh
+    export reads every part again; run.py hands the stage flags on."""
+    import pathlib
+    import tempfile
+    import run
+    cache, a = server.cache, server.a
+    old = cache.DIR, cache.HOURS
+    cache.DIR, cache.HOURS = pathlib.Path(tempfile.mkdtemp()), 24
+    asked, slow = [], [True]
+
+    def query(sql):
+        asked.append(sql)
+        if sql == "SELECT 3 FROM B" and slow[0]:
+            raise TimeoutError("timeout")
+        return [{"N": len(sql), "S": sql}]
+
+    def load(offline=False):
+        asked.clear()
+        q = cache.parted(query, "k", offline)
+        return q("SELECT 1 FROM A"), a.each(q, ["SELECT 2 FROM B", "SELECT 3 FROM B"], what=["two", "three"])
+
+    try:
+        first = load()
+        assert isinstance(first[1][1], TimeoutError) and len(asked) == 3
+        slow[0] = False
+        second = load()
+        assert asked == ["SELECT 3 FROM B"], asked
+        assert second[0] == first[0] and second[1][0] == first[1][0] and second[1][1] == [{"N": 15, "S": "SELECT 3 FROM B"}]
+        assert load(offline=True) == second and asked == []
+        cache.clear_parts("k")
+        assert load() == second and len(asked) == 3
+    finally:
+        cache.DIR, cache.HOURS = old
+    assert run.command(["--export", "--fresh"], {})[0][1:] == ["server.py", "--export", "--fresh"]
+    assert run.command(["--build"], {})[1]["BUILD_ONLY"] == "1"
+    assert "BUILD_ONLY" not in run.command([], {})[1]
 
 
 def test_cache_lock():
@@ -893,8 +1052,8 @@ def test_progress():
     Sec-Fetch checks hold for it as for every /api/ route."""
     import st_react
     from datetime import datetime
-    idle = {"running": False, "view": None, "lines": []}
-    server.PROGRESS.clear()
+    idle = {"running": False, "view": None, "lines": [], "job": None}
+    server.PROGRESS.clear(), server.JOB.clear()
     assert js("/api/progress") == idle == st_react.answer("GET", "/api/progress", None, None)[1]
     seen = []
 

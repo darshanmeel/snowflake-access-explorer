@@ -113,7 +113,7 @@ Every mode after install ([step 1](#1-install-once-powershell-needs-python-310-a
 | Your account, snapshot objects, Streamlit | the same, `requirements.txt` | `python run.py streamlit --objects` | http://localhost:8501 |
 | Both versions side by side | two terminals | `python run.py` and `python run.py streamlit` | :8000 and :8501 |
 | Another port | | `python run.py --port 9000` | http://localhost:9000 |
-| DuckDB SQL copy | `requirements-web.txt` (has `duckdb`) | on by default after each Snowflake read; off: `$env:DUCKDB="0"; python run.py`; also for fake data: `$env:DUCKDB="1"; python run.py --fake` | `.cache\access.duckdb`, see [Query the data with SQL](#query-the-data-with-sql-duckdb) |
+| DuckDB SQL copy | `duckdb` (in both requirements files) | after each Snowflake read; also for fake data: `$env:DUCKDB="1"; python run.py --fake` | `.cache\access.duckdb`, see [Query the data with SQL](#query-the-data-with-sql-duckdb) |
 | Memory only, nothing in `.cache/` | | `$env:CACHE_HOURS="0"; python run.py` | |
 | Shared server for a team | key-pair login in `.env` | `$env:HOST="0.0.0.0"; python run.py` | `http://<server>:8000`, [details](#on-a-shared-server-local-web-app-or-streamlit) |
 | Streamlit in Snowflake, snapshot objects | objects setup, `sis/.env` with `INSIDE=1`, `SOURCE=objects`, `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` | `python run_sql.py sql/4_streamlit.sql` | Snowsight > Projects > Streamlit, [details](#streamlit-in-snowflake-sis) |
@@ -159,7 +159,10 @@ python run.py --fake             # fake data, no Snowflake, no .env
 python run.py streamlit          # the Streamlit version (pip install -r requirements.txt): http://localhost:8501
 python run.py --direct | --objects   # SOURCE for this run
 python run.py --port 9000        # another port
+python run.py --export           # stage 1 only: Snowflake -> .cache/reads/ parts, then exit (--fresh: every part again)
+python run.py --build            # stage 2 only: build from the parts kept, never read Snowflake, then serve
 ```
+A load runs two stages. **Export** keeps every Snowflake read as a Parquet part in `.cache/reads/<key>/` (`parts.json` lists the finished ones), so a load that stops resumes with only the missing parts. **Build** makes the role graph, the rules and the DuckDB copy from the parts. A part is read again only on a manual **Rebuild snapshot** / **Read Snowflake again**, or `--export --fresh`; a part that timed out is read again on the next load.
 Both apps can run side by side to compare them: `APP=web|streamlit` picks the default, `WEB_PORT` (8000) and `STREAMLIT_PORT` (8501) the ports. Stop with Ctrl+C.
 
 The fake account has users, functional, technical and group roles, admin holders, sensitive tags, masking policies and at least one finding for each of the 29 rules. **My access** shows one demo user's slice (`ENGINEER_01`, or `DEMO_USER=<name>`).
@@ -213,7 +216,7 @@ SNOWFLAKE_HOST=<org>-<account>.privatelink.snowflakecomputing.com
 | `HIERARCHY` | `1` | `0` = skip the rule checks that walk role paths (rules 3, 5, 7, 10, 11, 14, 17-24, 29; rule 6 runs without its reader count, and no finding counts who loses access). Risks & fixes lists them as "skipped (HIERARCHY=0)"; every page still draws and walks paths |
 | `SNOWFLAKE_HOST` | unset | Snowflake host to connect to instead of `<account>.snowflakecomputing.com`: the PrivateLink host ([PrivateLink](#privatelink)) |
 | `HOST` | `127.0.0.1` | Address the local web app (and `run.py streamlit`) listens on; `0.0.0.0` on a shared server ([Deploy](#deploy)) |
-| `DUCKDB` | unset | The [SQL copy](#query-the-data-with-sql-duckdb) in `.cache/access.duckdb`: unset = after each read from Snowflake, `0` = off, `1` = also of the fake data |
+| `DUCKDB` | unset | The [SQL copy](#query-the-data-with-sql-duckdb) in `.cache/access.duckdb` follows each read from Snowflake; `1` = also of the fake data |
 | `QUERY_TAG` | `access-explorer` | Query tag on the app's own connection; Activity leaves these queries out. Same value in `.env`, `sis/.env` (Direct mode) and `settings.local.sql` |
 | `STREAMLIT_APP` | `ST_ACCESS_EXPLORER` | Name of the app inside Snowflake; Activity leaves its queries out. Same value in `.env`, `sis/.env` and `settings.local.sql` |
 | `CSV` | unset (on) | `0` = no CSV export: every CSV button is hidden and the CSV downloads are refused, locally and inside Snowflake. Whoever can open the app still reads what is on screen, so who gets `APP_ROLE` or the server is the real control |
@@ -230,9 +233,9 @@ only for you. It holds the `TBL_ACCESS_` tables of `sql/1_setup.sql` with the sa
   `myorg_myacct_direct_jdoe_analyst`; the table `COPIES` lists them (`SCHEMA_NAME`, `CACHE_KEY`, `RUN_ID`, `READ_AT`, `PREV_RUN_ID`);
 - each new read **replaces** that schema's tables, and the read before stays as `TBL_ACCESS_<name>_PREV` (a read of the same
   snapshot run replaces only the current tables). Direct reads and My access get a `RUN_ID` per read (`direct-20261110080000`).
-- The side menu's **Data from** box names the file and schema. Not inside Snowflake (no disk there), not with `DUCKDB=0`
-  or `CACHE_HOURS=0`, not for fake data unless `DUCKDB=1`. Without the `duckdb` package (it is in `requirements-web.txt`;
-  the Streamlit version needs `pip install duckdb`) the app runs as before and the box says why there is no copy. While
+- The side menu's **Data from** box names the file and schema. Not inside Snowflake (no disk there), not with
+  `CACHE_HOURS=0`, not for fake data unless `DUCKDB=1`. Without the `duckdb` package (in both requirements files) the
+  app runs, slower on big accounts (the rule checks walk in Python), and the box says why there is no copy. While
   another program has the file open for writing, the copy is skipped with a note: close it and read again.
 
 ```
