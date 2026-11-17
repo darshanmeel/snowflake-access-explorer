@@ -1318,7 +1318,15 @@ def build(d, key=None, builtin=False):
     for x in (role_grants, user_grants, privs, holds, held_by, users_of, roles_of, profile, used, kinds, granted, on,
               capped, tags, policies, sens, streams, db_roles, hidden, obj_use, acts):
         x.clear()
+    gaps = [g for g in d["GRANT"] if not (g["GRANTEE_ROLE"] and g["OBJECT_NAME"])] + [
+        g for g in d["USER_ROLE"] if not (g["ROLE_NAME"] and g["USER_NAME"])]
+    if gaps:  # a row Snowflake gave without a role, user or object name (one None breaks every sort): left out
+        d["run"].setdefault("NOTES", {})["missing_names"] = (
+            f"{len(gaps)} grant rows without a role, user or object name left out, e.g. "
+            + " | ".join(str({k: v for k, v in g.items() if v not in (None, False)}) for g in gaps[:3]))
     for g in d["GRANT"]:
+        if not (g["GRANTEE_ROLE"] and g["OBJECT_NAME"]):
+            continue
         if not builtin and builtin_grant(g):
             hidden.append(g)
             continue
@@ -1336,7 +1344,7 @@ def build(d, key=None, builtin=False):
             db_roles.add(g["OBJECT_NAME"])
         if "." in (g["GRANTEE_ROLE"] or ""):  # a grantee DB.ROLE: account role names have no dot (unless quoted)
             db_roles.add(g["GRANTEE_ROLE"])
-    user_grants.extend((g["ROLE_NAME"], g["USER_NAME"]) for g in d["USER_ROLE"])
+    user_grants.extend((g["ROLE_NAME"], g["USER_NAME"]) for g in d["USER_ROLE"] if g["ROLE_NAME"] and g["USER_NAME"])
     for child, parent in role_grants:
         holds.setdefault(parent, []).append(child)
         held_by.setdefault(child, []).append(parent)

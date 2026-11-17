@@ -779,6 +779,17 @@ def test_db_roles():
             assert mine_got == want and "database_roles" not in m["run"]["NOTES"]
 
 
+def test_missing_names():
+    """A grant or user-role row without a name (Snowflake gave None) is left out with a note, never a crash in sort."""
+    d = a.fake()
+    d["GRANT"] = d["GRANT"] + [dict(GRANTEE_ROLE=None, PRIVILEGE="USAGE", GRANTED_ON="ROLE", OBJECT_NAME=F + "ENGINEER",
+                                    IS_FUTURE=False)]
+    d["USER_ROLE"] = d["USER_ROLE"] + [dict(USER_NAME="ENGINEER_01", ROLE_NAME=None)]
+    a.build(d)
+    assert None not in a.roles and "2 grant rows" in d["run"]["NOTES"]["missing_names"]
+    a.build(a.fake())
+
+
 def test_pages():
     """app.py (Streamlit) runs for every page key without an exception and hands the page to the React component
     (st_react.app). AppTest can't draw the component; test_server.py checks the content of every page."""
