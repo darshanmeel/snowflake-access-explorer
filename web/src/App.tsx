@@ -313,7 +313,14 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
       timer = window.setTimeout(() => poll().then((p) => {
         if (!live || !p) return;
         const j = p.job;
-        if (j && j.id === bg.job && j.state !== "running") {  // done: the pages fetch the new data; failed: the old stays
+        if (!j || j.id !== bg.job) {  // the server restarted: that refresh is gone
+          clearCache();
+          setBg(null);
+          setBgOpen(false);
+          setNotice({ tone: "bad", title: title(bg.what, false), text: "The server restarted during it: click again." });
+          return;
+        }
+        if (j.state !== "running") {  // done: the pages fetch the new data; failed: the old stays
           clearCache();
           setBg(null);
           setBgOpen(false);

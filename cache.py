@@ -7,6 +7,7 @@ Streamlit in Snowflake (access.INSIDE) has no local disk: memory only there.
 sql_copy(): each read from Snowflake also goes to .cache/access.duckdb, the TBL_ACCESS_ tables to query with SQL
 (always, DUCKDB=1: also fake data); the app itself keeps reading the .pkl files.
 """
+import contextvars
 import datetime as dt
 import decimal
 import hashlib
@@ -146,7 +147,8 @@ def store(key, d, disk=True):
     kept = run_of(d)[0] is not None  # no OK run read: memory only, never a snapshot on disk or in SQL
     disk = disk and local() and kept
     if kept and sql_wanted(disk):  # in a thread: the app does not read it, and on millions of rows it takes minutes
-        COPYING[key] = threading.Thread(target=sql_copy, args=(key, d, m[1]), daemon=True)
+        run = contextvars.copy_context().run  # its lines go to the load log of the read that made d
+        COPYING[key] = threading.Thread(target=run, args=(sql_copy, key, d, m[1]), daemon=True)
         COPYING[key].start()
     if disk:
         DIR.mkdir(exist_ok=True)
@@ -387,7 +389,8 @@ def write_part(f, rows):
     if engine() == "pyarrow":
         import pyarrow as pa
         import pyarrow.parquet as pq
-        pq.write_table(pa.Table.from_pylist(rows), tmp)
+        cols = list(dict.fromkeys(k for r in rows for k in r))  # a wave's statements may answer other columns
+        pq.write_table(pa.table({c: [r.get(c) for r in rows] for c in cols}), tmp)
     else:  # DuckDB: one typed list per column, as sql_copy() inserts
         import duckdb
         cols = list(dict.fromkeys(k for r in rows for k in r))
@@ -431,9 +434,9 @@ def parted(query, key, offline=False):
     d, mlock, ulock, said, uses = parts_dir(key), threading.Lock(), threading.Lock(), [], []
     man, eng = parts_of(key), engine()
 
-    def take(name):  # the kept results of a part (rows, or an exception, per statement), else None: read it
-        m = man.get(name)
-        if not m or (m["status"] == "failed" and not offline):
+    def take(name, timed_out=False):  # the kept results of a part (rows, or an exception, per statement), else None
+        m = man.get(name)  # timed_out: a part with timed-out statements too (a wave reads only those again)
+        if not m or (m["status"] == "failed" and not offline and not timed_out):
             return None
         try:
             got = read_part(d / m["file"]) if m["file"] else []
@@ -529,13 +532,20 @@ def parted(query, key, offline=False):
                     got[i] = [r]
             return [g[0] for g in got]
         name = part_name(what or (access.step_name(sqls[0]) if sqls else "none"), sqls)
-        got = take(name)
-        if got is not None:
+        got = take(name, True)
+        redo = [] if got is None or offline else [i for i, r in enumerate(got) if isinstance(r, TimeoutError)]
+        if got is not None and not redo:
             if what:
                 access.say(f"{what}: from the part kept ({len(sqls):,} statements)")
             return got
-        got = run(ask, sqls, what)
+        if redo:  # the statements that timed out last time, not the whole wave
+            access.say(f"{what or name}: {len(sqls) - len(redo):,} statements from the part kept, {len(redo):,} read again")
+            for i, r in zip(redo, run(ask, [sqls[i] for i in redo], what)):
+                got[i] = r
+        else:
+            got = run(ask, sqls, what)
         put(name, got)
         return got
     q.keep = keep
+    q.fresh = (lambda sql: q(sql)) if offline else ask  # what may change between loads (the last OK run): not kept
     return q

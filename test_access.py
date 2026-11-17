@@ -1,4 +1,5 @@
 """Walker tests on the fake data. Run: python test_access.py (no pytest needed)."""
+import gc
 import json
 import os
 import random
@@ -1141,6 +1142,15 @@ def test_duck_reach():
     a.build(d)
     assert a.loops() and a.duck() is None
     a.build(a.fake())
+    a.readonly_writes()
+    n = len(a.DUCKS)  # earlier tests' data sets kept in built hold theirs
+    a.what_if([{"op": "drop_role", "role": a.FUNC + "ENGINEER"}])  # What if opens no DuckDB
+    assert len(a.DUCKS) == n
+    for i in range(a.KEEP_BUILT + 3):  # a data set dropped from built frees its own
+        a.build(a.fake(), ("k", i))
+        a.readonly_writes()
+    gc.collect()
+    assert len(a.DUCKS) <= n + a.KEEP_BUILT + 1, (n, len(a.DUCKS))
 
 
 def test_counted():

@@ -399,6 +399,39 @@ def test_same_run():
         assert sum(bool(table.match(s)) for s in sent) == len(a.TABLES + a.OPTIONAL)
 
 
+def test_newer_run():
+    """Objects mode with parts: the last OK run is asked every load, never kept as a part, so a newer snapshot run shows
+    once the local copy is gone (CACHE_HOURS), and an unchanged run reads no table again."""
+    import pathlib
+    import tempfile
+    cache, run = server.cache, ["r1"]
+    table = re.compile(r"SELECT \* EXCLUDE \(RUN_ID\) FROM D\.S\.TBL_ACCESS_(\w+) WHERE RUN_ID = '(\w+)'")
+    d = a.fake()
+
+    def answer(sql):
+        if ".TBL_ACCESS_RUN " in sql:
+            return [{"RUN_ID": run[0], "FINISHED_AT": "2026-11-03 10:00", "SOURCES": "{}", "NOTES": "{}"}]
+        m = table.match(sql)
+        return [dict(x) for x in d.get(m[1]) or []] if m else []
+    with snowflake(answer) as sent:
+        cache.HOURS, old_dir = 24, cache.DIR
+        cache.DIR = pathlib.Path(tempfile.mkdtemp())
+        try:
+            assert server.load_shared()["run"]["RUN_ID"] == "r1"
+            run[0] = "r2"
+            cache.MEM.pop(server.KEY)
+            cache.file(server.KEY).unlink()  # the local copy expired
+            sent.clear()
+            assert server.load_shared()["run"]["RUN_ID"] == "r2"
+            assert sum(bool(table.match(s)) for s in sent) == len(a.TABLES + a.OPTIONAL)
+            cache.MEM.pop(server.KEY)
+            cache.file(server.KEY).unlink()
+            sent.clear()
+            assert server.load_shared()["run"]["RUN_ID"] == "r2" and not any(table.match(s) for s in sent)
+        finally:
+            cache.DIR = old_dir
+
+
 def test_rebuild_outcome():
     """Rebuild snapshot says what the procedure returned: FAILED or SKIPPED is no success, and the copy stays."""
     for res, ok, word in (({"status": "FAILED", "notes": {"error": "x broke"}}, False, "Snapshot failed: x broke"),
@@ -915,8 +948,9 @@ def test_kept_rules():
 
 
 def test_parts():
-    """Every read is kept as a part: the next load reads only the part that timed out, --build reads nothing, a fresh
-    export reads every part again; run.py hands the stage flags on."""
+    """Every read is kept as a part: the next load reads only the part that timed out (in a wave: only its timed-out
+    statements), a wave's statements keep their own columns, --build reads nothing, a fresh export reads every part
+    again; run.py hands the stage flags on."""
     import pathlib
     import tempfile
     import run
@@ -927,25 +961,27 @@ def test_parts():
 
     def query(sql):
         asked.append(sql)
-        if sql == "SELECT 3 FROM B" and slow[0]:
+        if sql in ("SELECT 3 FROM B", "SHOW 6 IN W") and slow[0]:
             raise TimeoutError("timeout")
-        return [{"N": len(sql), "S": sql}]
+        return [{"A": 1}] if sql == "SHOW 4 IN W" else [{"N": len(sql), "S": sql}]  # a wave of two shapes
 
     def load(offline=False):
         asked.clear()
         q = cache.parted(query, "k", offline)
-        return q("SELECT 1 FROM A"), a.each(q, ["SELECT 2 FROM B", "SELECT 3 FROM B"], what=["two", "three"])
+        return (q("SELECT 1 FROM A"), a.each(q, ["SELECT 2 FROM B", "SELECT 3 FROM B"], what=["two", "three"]),
+                a.each(q, ["SHOW 4 IN W", "SHOW 5 IN W", "SHOW 6 IN W"], what="SHOW W"))
 
     try:
         first = load()
-        assert isinstance(first[1][1], TimeoutError) and len(asked) == 3
+        assert isinstance(first[1][1], TimeoutError) and isinstance(first[2][2], TimeoutError) and len(asked) == 6
         slow[0] = False
         second = load()
-        assert asked == ["SELECT 3 FROM B"], asked
+        assert asked == ["SELECT 3 FROM B", "SHOW 6 IN W"], asked
         assert second[0] == first[0] and second[1][0] == first[1][0] and second[1][1] == [{"N": 15, "S": "SELECT 3 FROM B"}]
+        assert second[2][:2] == first[2][:2] == [[{"A": 1}], [{"N": 11, "S": "SHOW 5 IN W"}]], second[2]
         assert load(offline=True) == second and asked == []
         cache.clear_parts("k")
-        assert load() == second and len(asked) == 3
+        assert load() == second and len(asked) == 6
     finally:
         cache.DIR, cache.HOURS = old
     assert run.command(["--export", "--fresh"], {})[0][1:] == ["server.py", "--export", "--fresh"]

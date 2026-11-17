@@ -3,6 +3,7 @@ Data: Snowflake via sf.py (SOURCE=direct, or objects = the TBL_ACCESS_ tables), 
 No logic of its own: every number, path and rule comes from access.py; this file picks, filters, renames to JSON.
 FastAPI is imported only in make_app(), so st_react.py can `import server` and call serve() for the same JSON."""
 import csv
+import hashlib
 import io
 import json
 import os
@@ -143,7 +144,7 @@ def read_shared(key=KEY):
         old = cache.old(key, KEY)  # kept with the parts: a resumed load asks for the same activity days
         return with_query(lambda q: a.live(q, old.get("ACTIVITY"), old.get("OBJECT_USE")), key)
     # the same run: one small query; with parts each table is a part of its own, read once
-    return with_query(lambda q: a.snapshot(q, WHERE, old=None if cache.local() else cache.last(KEY)), key)
+    return with_query(lambda q: a.snapshot(q, WHERE, old=cache.last(KEY)), key)
 
 
 def shared_key(d):
@@ -261,6 +262,7 @@ def load_mine(sid, fresh=False):
                 lambda q: a.mine(q, WHERE.split(".")[0] or None), ck)))
         except Exception as x:  # a cancelled SSO, no warehouse, the network: the real message, as for the shared data
             raise ApiError(503, "mine_unreadable", a.line(x))
+        at = cache.parts_read_at(ck) or at  # built from parts: when they were read
     else:
         d0 = load_shared()
         with LOCK:
@@ -302,6 +304,7 @@ def session(view, sid, builtin=False):
 
 
 KEPT = ("findings", "rows", "ro", "breaks")  # the rule results a restart need not check again
+SERVER_STAMP = hashlib.sha1(pathlib.Path(__file__).read_bytes()).hexdigest()  # breaks() is this file's
 
 
 def kept_rules(view, key, builtin, save=False):
@@ -309,7 +312,8 @@ def kept_rules(view, key, builtin, save=False):
     and access.py are the ones that made them: put back into a.memo (True when they were), or written (save)."""
     if view != "shared" or MODE != "snowflake" or not cache.local():
         return False
-    f, stamp = cache.file(KEY).with_suffix(".rules.pkl"), (key, builtin, a.rules_stamp())
+    f = cache.file(KEY).with_suffix(".rules.pkl")
+    stamp = (key, builtin, a.rules_stamp(), SERVER_STAMP)
     if save:
         f.parent.mkdir(exist_ok=True)
         tmp = f.with_suffix(".tmp")
@@ -2406,13 +2410,11 @@ def renew(what):
             if st != "OK":  # SKIPPED (another run still going) or FAILED: say so, and keep the copy we have
                 err = ((res or {}).get("notes") or {}).get("error") or "no reason given"
                 return dict(ok=False, result=res, message=f"Snapshot {str(st or 'not rebuilt').lower()}: {err}")
-        cache.clear_parts(new)
-        try:
-            d = read_shared(new)
-            built(d)
-            cache.swap(KEY, new, d)
-        finally:
+        if time.time() - (cache.parts_read_at(new) or 0) > 3600:  # a refresh that failed within the hour resumes
             cache.clear_parts(new)
+        d = read_shared(new)
+        built(d)
+        cache.swap(KEY, new, d)  # its parts become the key's
         return dict(ok=True, result=res, message="Snapshot rebuilt." if what == "rebuild" and not DIRECT
                     else "Read Snowflake again.")
     with LOAD:
@@ -2686,7 +2688,10 @@ def export(fresh=False):
     bad = [k for k, v in m.items() if v["status"] != "ok"]
     print(f"{len(m)} parts in {cache.parts_dir(KEY)}"
           + (f"; {len(bad)} timed out, read again by the next export or load: " + ", ".join(bad) if bad else ""))
-    return 1 if bad else 0
+    if bad:
+        return 1
+    cache.drop(KEY)  # the next start builds from these parts, not from an older local copy
+    return 0
 
 
 if __name__ == "__main__":

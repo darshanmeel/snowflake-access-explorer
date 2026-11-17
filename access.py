@@ -17,6 +17,7 @@ import re
 import statistics
 import threading
 import time
+import weakref
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -509,8 +510,9 @@ def snapshot(query, where, tries=3, old=None):
     finishes while we read deletes the rows we read from, so the read starts again on the new run. old: the data held
     (cache.last), returned when it holds the same run in the shape this code reads: a finished run's rows never change,
     but a pickle from older code may lack a table or still carry RUN_ID."""
-    latest = lambda: query(f"SELECT RUN_ID, FINISHED_AT, SOURCES, NOTES FROM {where}.TBL_ACCESS_RUN WHERE STATUS = 'OK' "  # noqa: E731
-                           "ORDER BY FINISHED_AT DESC LIMIT 1")
+    ask = getattr(query, "fresh", query)  # cache.parted(): never from a part, a newer run must show
+    latest = lambda: ask(f"SELECT RUN_ID, FINISHED_AT, SOURCES, NOTES FROM {where}.TBL_ACCESS_RUN WHERE STATUS = 'OK' "  # noqa: E731
+                         "ORDER BY FINISHED_AT DESC LIMIT 1")
     t0 = time.monotonic()
     say(f"Reading the last OK run of {where}.TBL_ACCESS_RUN…")
     try:
@@ -544,6 +546,8 @@ def snapshot(query, where, tries=3, old=None):
     got = each(query, sqls, WORKERS, [f"TBL_ACCESS_{t}" for t in names])
     d = {}
     for t, g in zip(names, got):
+        if isinstance(g, Exception) and lost(g):  # a lost session is no empty table: the load stops and says so
+            raise g
         d[t] = None if isinstance(g, Exception) else g  # an OPTIONAL table a setup from before it lacks: the screen says so
         if isinstance(g, Exception) and t not in OPTIONAL:  # missing or not readable: empty, and the note says why
             d[t] = []
@@ -1542,7 +1546,10 @@ def tidy(d):
     """Data set d (fake, snapshot, live, mine), in place, in the shape build() reads: run a dict with SOURCES and NOTES,
     every table a list of rows with every column of sql/1_setup.sql (None where the read gave none), no row without
     the names and days the walks need. Missing, NULL or unreadable data gives empty results plus a note, never an
-    error. An OPTIONAL table that is None stays None: use_state / act_state say the setup predates it."""
+    error. An OPTIONAL table that is None stays None: use_state / act_state say the setup predates it. Once per data
+    set and code version (_tidy): a restart or What if does not scan millions of rows again."""
+    if d.get("_tidy") == tidy_stamp():
+        return
     run = d.get("run") if isinstance(d.get("run"), dict) else {}
     run = d["run"] = dict(run, SOURCES=run.get("SOURCES") if isinstance(run.get("SOURCES"), dict) else {},
                           NOTES=run.get("NOTES") if isinstance(run.get("NOTES"), dict) else {})
@@ -3824,24 +3831,30 @@ def losing(e):
     return out
 
 
+def tidy_stamp():
+    """This code's version, for tidy(): a data set tidied by older code is tidied again."""
+    return cached_stamp()[:12]
+
+
+@functools.cache
+def cached_stamp():
+    return hashlib.sha1(pathlib.Path(__file__).read_bytes()).hexdigest()
+
+
 def rules_stamp():
     """What rule results depend on besides the data: this code and the settings it reads from the environment."""
     src = pathlib.Path(__file__).read_bytes()
-    names = sorted(set(re.findall(rb'environ\.get\("(\w+)"', src)))
+    names = sorted(set(re.findall(rb'environ\.get\(\s*"(\w+)"', src)))  # the name may sit on the next line
     return hashlib.sha1(src + repr([(n, os.environ.get(n.decode())) for n in names]).encode()).hexdigest()
 
 
-DUCKS = []  # every duck() connection: closed at exit, before the interpreter tears DuckDB down
+DUCKS = weakref.WeakSet()  # the duck() connections alive: a dropped data set's goes with it; the rest closed at exit
 
 
 @atexit.register
 def close_ducks():
-    for con in DUCKS:
-        try:
-            con.close()
-        except Exception:  # already closed
-            pass
-    DUCKS.clear()
+    for con in list(DUCKS):
+        con.close()
 
 
 def duck_table(con, name, cols, rows):
@@ -3866,7 +3879,7 @@ def duck():
         if loops():
             return None
         con = duckdb.connect()
-        DUCKS.append(con)
+        DUCKS.add(con)
         con.execute("SET enable_progress_bar = false")
         duck_table(con, "E", "P VARCHAR, C VARCHAR", [(r, c) for r, cs in holds.items() for c in cs])
         duck_table(con, "S", "V VARCHAR, R VARCHAR", [(v, r) for v in dict.fromkeys(list(users) + list(roles_of)) for r in
@@ -3875,15 +3888,19 @@ def duck():
         con.execute("CREATE TABLE CUR AS SELECT DISTINCT R, R AS X, 1::HUGEINT AS N FROM (SELECT P AS R FROM E UNION "
                     "SELECT C FROM E UNION SELECT R FROM S UNION SELECT UNNEST(?::VARCHAR[]))", [list(roles)])
         con.execute("CREATE TABLE RP AS SELECT * FROM CUR")
-        for _ in range(MAX_HOPS - 1):  # a user's hop 1 is its start role
-            con.execute("CREATE OR REPLACE TABLE CUR AS SELECT CUR.R, E.C AS X, SUM(CUR.N * E.K)::HUGEINT AS N "
-                        "FROM CUR JOIN E ON E.P = CUR.X GROUP BY CUR.R, E.C")
-            if not con.execute("SELECT COUNT(*) FROM CUR").fetchone()[0]:
-                break
-            con.execute("INSERT INTO RP SELECT * FROM CUR")
-        else:
-            return None  # paths longer than MAX_HOPS: counts() caps them
-        con.execute("CREATE OR REPLACE TABLE RP AS SELECT R, X, SUM(N)::HUGEINT AS N FROM RP GROUP BY R, X")
+        try:
+            for _ in range(MAX_HOPS - 1):  # a user's hop 1 is its start role
+                con.execute("CREATE OR REPLACE TABLE CUR AS SELECT CUR.R, E.C AS X, SUM(CUR.N * E.K)::HUGEINT AS N "
+                            "FROM CUR JOIN E ON E.P = CUR.X GROUP BY CUR.R, E.C")
+                if not con.execute("SELECT COUNT(*) FROM CUR").fetchone()[0]:
+                    break
+                con.execute("INSERT INTO RP SELECT * FROM CUR")
+            else:
+                raise OverflowError("paths longer than MAX_HOPS")  # counts() caps them
+            con.execute("CREATE OR REPLACE TABLE RP AS SELECT R, X, SUM(N)::HUGEINT AS N FROM RP GROUP BY R, X")
+        except (duckdb.Error, OverflowError):  # more than 2^127 paths, or MAX_HOPS: the Python walk answers
+            con.close()
+            return None
         return con
     return cached("duck", make)
 
@@ -3936,7 +3953,11 @@ def lose_all(edges):
                  UNION ALL
                  SELECT ME.G, ME.X, TRUE, ME.G FROM ME
                  JOIN (SELECT V, R, COUNT(*) AS K FROM S GROUP BY V, R) D ON D.V = ME.G AND D.R = ME.X WHERE ME.N = D.K"""
-        for g, x, u, v in con.execute(sql).fetchall():
+        try:
+            rows = con.execute(sql).fetchall()
+        except Exception:  # duckdb.Error, e.g. a product past HUGEINT: lose() walks per edge
+            return
+        for g, x, u, v in rows:
             got.setdefault((g, x, u), set()).add(v)
     for k, e in todo.items():
         g, x = e["grantee"], e["to"]
@@ -5821,7 +5842,7 @@ def readonly_writes(role=None, only=None):
     but it writes/owns some. Row per (role, object): role, object, privileges, holder, path (role->...->holder->object),
     via {privilege: path role->...->holder}, inherited (holder is another role), how (name | behaviour | both),
     read_only, objects (counts for behaviour)."""
-    out, shares = [], read_shares() if role is None else None
+    out, shares = [], read_shares() if role is None and only is None else None  # what_if: a few roles, no DuckDB
     for r in [role] if role else roles:
         if r in ADMIN or r == "PUBLIC" or is_build(r) or not inside(only, r, "17"):
             continue
@@ -6138,7 +6159,7 @@ def rule22():
 def rule23(only=None):
     """Rule 23: CREATE ... on a schema reached by a read-only role (rule 17's name or behaviour heuristic; behaviour
     here: share of data objects it only reads >= READ_SHARE over >= READ_MIN_OBJECTS objects)."""
-    out, shares = [], read_shares()
+    out, shares = [], read_shares() if only is None else None
     for r in roles:
         if r in ADMIN or r == "PUBLIC" or is_build(r) or not inside(only, r, "23"):
             continue
