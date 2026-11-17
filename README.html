@@ -125,7 +125,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <a href="#map">Access graph</a><a href="#see">What they see</a><a href="#compare">Compare</a><a href="#rules">Risks &amp; fixes</a><a href="#whatif">What if</a>
   <a href="#review">Review</a><a href="#sensitive">Sensitive data</a><a href="#dataflow">Data flow</a><a href="#usage">Granted vs used</a><a href="#changes">What changed</a>
   <a href="#detail">User / Role paths</a><a href="#big">Big accounts</a><a href="#mine">My access</a>
-  <a href="#run">Run modes and setup</a><a href="#model">Role model</a><a href="#sql">SQL</a><a href="#sources">Data sources</a><a href="#side">Settings and limits</a>
+  <a href="#start">Get started</a><a href="#run">Run modes and setup</a><a href="#model">Role model</a><a href="#sql">SQL</a><a href="#sources">Data sources</a><a href="#side">Settings and limits</a>
 </nav>
 
 <section class="card" id="overview">
@@ -609,10 +609,38 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   </div>
 </section>
 
+<section class="card" id="start">
+  <div class="eyebrow">Side view · get started</div>
+  <h2>Get started</h2>
+  <p class="key">Clone, install, try it on fake data, then point it at your account. Default mode reads Snowflake directly with your role and creates nothing there.</p>
+<pre>git clone https://github.com/darshanmeel/snowflake-access-explorer.git
+cd snowflake-access-explorer
+python -m venv .venv; .venv\Scripts\activate     # macOS/Linux: python3 -m venv .venv; source .venv/bin/activate
+pip install -r requirements-web.txt
+python run.py --fake                              # fake data: http://localhost:8000</pre>
+  <h3>Your own account</h3>
+<ol><li><code>copy .env.example .env</code> (macOS/Linux: <code>cp</code>).</li><li>Fill in <code>SNOWFLAKE_ACCOUNT</code> (<code>&lt;org&gt;-&lt;account&gt;</code>), <code>SNOWFLAKE_USER</code>, <code>SNOWFLAKE_ROLE</code>, <code>SNOWFLAKE_WAREHOUSE</code>. PrivateLink: also <code>SNOWFLAKE_HOST=&lt;org&gt;-&lt;account&gt;.privatelink.snowflakecomputing.com</code> (<a href="#privatelink">Login</a>).</li><li><code>python run.py</code>: a browser tab opens for the Snowflake login (key pair instead: <code>SNOWFLAKE_PRIVATE_KEY_FILE</code>), then http://localhost:8000.</li></ol>
+  <h3>What a run does</h3>
+<pre>python run.py ─► login (browser SSO, or key pair)
+             ─► reads grants, users, usage, activity (WORKERS heavy reads at once; progress lines on screen)
+             ─► builds the role graph in Python, checks the 29 rules
+             ─► keeps it 24 h in .cache/ (git-ignored); "Read Snowflake again" reads again</pre>
+  <h3>Other ways</h3>
+<table><thead><tr><th>Want</th><th>Run</th></tr></thead><tbody>
+<tr><td>Streamlit instead of the web app</td><td><code>pip install -r requirements.txt</code>, <code>python run.py streamlit</code> (http://localhost:8501)</td></tr>
+<tr><td>Snapshot objects in Snowflake</td><td>The objects setup once (<a href="#run">Run modes</a>), then <code>python run.py --objects</code></td></tr>
+<tr><td>Inside Snowflake (Streamlit in Snowflake)</td><td><code>sis/.env</code> from <code>sis.env.example</code>, then <code>python run_sql.py sql/4_streamlit.sql</code></td></tr>
+<tr><td>Shared server for a team</td><td>Key-pair login, <code>$env:HOST="0.0.0.0"; python run.py</code></td></tr>
+<tr><td>Another port</td><td><code>python run.py --port 9000</code></td></tr>
+</tbody></table>
+  <h3>Big accounts</h3>
+<ul><li><code>STATEMENT_TIMEOUT=600</code>: 10 minutes per statement instead of 5.</li><li><code>WORKERS=1</code>: heavy reads one after another (default 3 at once).</li><li><code>ACTIVITY=0</code>: no ACCESS_HISTORY reads. <code>HIERARCHY=0</code>: skip the rules that walk role paths.</li><li>All settings: <a href="#side">Settings and limits</a>.</li></ul>
+</section>
+
 <section class="card" id="run">
   <div class="eyebrow">Side view · setup</div>
   <h2>Run modes and what you need</h2>
-  <p class="key">Set the mode in <code>.env</code> (or <code>run.py --fake | --direct | --objects</code>); then <code>python run.py</code> (local web app, http://localhost:8000) or <code>python run.py streamlit</code> (http://localhost:8501). Install steps: README.md.</p>
+  <p class="key">Set the mode in <code>.env</code> (or <code>run.py --fake | --direct | --objects</code>); then <code>python run.py</code> (local web app, http://localhost:8000) or <code>python run.py streamlit</code> (http://localhost:8501). Install steps: <a href="#start">Get started</a>.</p>
   <h3>Which way to run it</h3>
   <p class="key">Pick by what your role can do. When in doubt, run it locally first: the side menu's <b>Incomplete</b> box lists what your role could not read and which grant would add it.</p>
 <table><thead><tr><th>Your role has</th><th>Run</th><th>You get</th></tr></thead><tbody>
