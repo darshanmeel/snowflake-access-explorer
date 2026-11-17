@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type { Finding, Severity } from "../api/types";
 import { PathText } from "./PathText";
-import { download, toCsv } from "./table";
+import { download, toCsv, useCsv } from "./table";
 
 export const SEVERITIES: Severity[] = ["Critical", "High", "Medium", "Low"];
 
@@ -100,6 +100,7 @@ export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, cs
   const hidden = inTab.length - shown.length;
   const why = [area && `area = ${area}`, people && "people only", ql && `search "${q.trim()}"`].filter(Boolean).join(", ");
   const groups = groupByRule(shown);
+  const csvOn = useCsv();
   if (!list.length) return null;
 
   const summary = SEVERITIES.filter((s) => count(s)).map((s) => (
@@ -134,7 +135,7 @@ export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, cs
           )}
           <input className="ae-input" placeholder="Search findings" value={q} onChange={(e) => setQ(e.target.value)} />
           <label className="ae-check"><input type="checkbox" checked={people} onChange={(e) => setPeople(e.target.checked)} /> People affected only</label>
-          <button className="ae-btn ae-btn-s" onClick={csv}>CSV</button>
+          {csvOn && <button className="ae-btn ae-btn-s" onClick={csv}>CSV</button>}
         </div>
       )}
       {hidden > 0 && <p className="ae-muted ae-fd-hidden">{hidden} hidden: {why}</p>}

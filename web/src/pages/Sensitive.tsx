@@ -70,7 +70,7 @@ export function SensitivePageView() {
             ]} />
             {part === "catalog" && <Catalog rows={d.catalog} />}
             {part === "objects" && <Card title="Sensitive objects" scroll>
-              <DataTable csv="sensitive_objects.csv" rows={d.objects} limit={300}
+              <DataTable csv="sensitive_objects.csv" rows={d.objects}
                 columns={[
                   col("o", "Object", (r: O) => r.object, { render: (r: O) => <span className="ae-objcell"><NameLink id={r.object} refs={d.refs} /><span className="ae-muted ae-osub">{r.type.toLowerCase()}</span></span>, wrap: "wrap" }),
                   col("g", "Tags", (r: O) => r.tags.map((t) => t.label).join(", "), { render: (r: O) => <span className="ae-objtags0">{r.tags.map(tagChip)}</span>, wrap: "wrap" }),
@@ -88,7 +88,7 @@ export function SensitivePageView() {
                 <span><span className="ae-dotm ae-dotm-ok" /> masked column</span><span><span className="ae-dotm ae-dotm-bad" /> not masked</span></div>
             </Card>}
             {part === "readers" && <Card title="Who can read them" sub="One row per user; the shortest path to a sensitive object" scroll>
-              <DataTable csv="sensitive_readers.csv" rows={d.readers} limit={300} rowTone={(r: R) => (r.via_admin ? "bad" : r.status !== "active" ? "warn" : null)}
+              <DataTable csv="sensitive_readers.csv" rows={d.readers} rowTone={(r: R) => (r.via_admin ? "bad" : r.status !== "active" ? "warn" : null)}
                 columns={[
                   col("u", "User", (r: R) => r.user, { render: (r: R) => <NameLink id={r.user} refs={d.refs} /> }),
                   col("t", "Type", (r: R) => r.type), col("s", "Status", (r: R) => r.status), col("l", "Last login", (r: R) => r.last_login_text),

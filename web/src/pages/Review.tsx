@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { PrivClass, ReviewPage, ReviewRow } from "../api/types";
-import { AccessTag, Banner, Card, DataTable, KpiRow, StatusDot, Tabs } from "../components";
+import { AccessTag, Banner, Card, DataTable, KpiRow, StatusDot, Tabs, useCsv } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
 import { ReviewGrid } from "./ReviewGrid";
@@ -27,11 +27,12 @@ export function ReviewPageView() {
 
 function OldReview() {
   const c = useApp();
+  const csvOn = useCsv();
   const [tab, setTab] = useState(c.params.part ?? "sens");
   const s = useApi<ReviewPage>("review", apiParams(c));
   return (
     <>
-      <div className="ae-row ae-right"><button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button></div>
+      {csvOn && <div className="ae-row ae-right"><button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button></div>}
       <Load s={s}>{(d) => {
         const f = d.filters, k = d.kpis;
         const t = tab === "sens" && !d.rows.some((r) => r.sensitive.length) ? "all" : tab;
@@ -58,7 +59,7 @@ function OldReview() {
             ]} />
             <Card scroll>
               <DataTable key={t} csv={`access_review_${f.db === "*" ? "ALL" : f.db}_${t}.csv`} rows={t === "sens" ? d.rows.filter((r) => r.sensitive.length) : d.rows}
-                limit={400} maxHeight={640} sort={{ key: "o" }}
+                maxHeight={640} sort={{ key: "o" }}
                 rowTone={(r: ReviewRow) => (r.admin ? "bad" : r.status !== "active" ? "warn" : null)}
                 columns={[
                   col("o", "Object", (r: ReviewRow) => `${r.database}.${r.schema}.${r.object}`, { wrap: "nowrap", render: (r: ReviewRow) => (

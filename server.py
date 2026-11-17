@@ -2154,7 +2154,7 @@ def meta(p, sid):
     view = p.get("view", "shared")
     base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
                 mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0,
-                sql_copy=sql_copy(view, sid), inside=a.INSIDE, pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
+                sql_copy=sql_copy(view, sid), inside=a.INSIDE, csv=csv_on(), pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
@@ -2305,7 +2305,13 @@ def serve(name, params=None, sid=None):
     return out
 
 
+def csv_on():
+    return os.environ.get("CSV", "1") != "0"
+
+
 def serve_csv(name, params=None, sid=None):
+    if not csv_on():
+        raise ApiError(403, "csv_off", "CSV export is off here (CSV=0).")
     p = {k: str(v) for k, v in (params or {}).items()}
     with session(p.get("view", "shared"), sid, p.get("builtin") == "1"):
         return CSV[name](p, p.get("view", "shared"))

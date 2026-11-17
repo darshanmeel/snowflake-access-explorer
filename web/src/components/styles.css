@@ -68,6 +68,8 @@ button.ae-chip { cursor: pointer; }
   background: var(--ae-sunk); color: var(--ae-ink); cursor: pointer; }
 .ae-btn:hover { border-color: var(--ae-accent); }
 .ae-more { margin-top: 8px; }
+.ae-pager { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 12px; }
+.ae-pager-size { flex: none; padding: 3px 6px; font-size: 12px; }
 .ae-table-scroll { overflow: auto; border: 1px solid var(--ae-line); border-radius: 8px; max-width: 100%; }
 .ae-table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .ae-table th { position: sticky; top: 0; background: var(--ae-sunk); text-align: left; font-weight: 600; font-size: 12px;

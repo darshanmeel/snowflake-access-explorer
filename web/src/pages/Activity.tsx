@@ -4,10 +4,10 @@
 // of use (UTC, working hours on a slider), objects busiest first, an object in detail (clients, statements, role x
 // client, per day), who used it, sensitive data seen, grant paths, every query as copy-only SQL, the checks.
 // ACCESS_HISTORY + QUERY_HISTORY + SESSIONS metadata only, never query text.
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApi } from "../api/client";
 import type { ActivityBy, ActivityKey, ActivityPage, ActivityRow, ActivitySensitive } from "../api/types";
-import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips } from "../components";
+import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips, Pager } from "../components";
 import { useApp } from "../ctx";
 import { col, GraphCard, Load, Pick } from "./common";
 
@@ -462,6 +462,10 @@ function Detail({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) 
   const rows = one ? d.rows! : d.rows!.filter((r) => r.object === obj);
   const users = (o: string) => new Set(d.rows!.filter((r) => r.object === o).map((r) => r.user)).size;
   const shown = list.filter((b) => (!q || b.key.toLowerCase().includes(q.toLowerCase())) && (only === "all" || d.objects?.[b.key]?.sensitive));
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [q, only, list]);
+  const size = 50;
+  const at = Math.min(page, Math.max(0, Math.ceil(shown.length / size) - 1));
   const top = Math.max(1, ...list.map(sum));
   return (
     <>
@@ -471,7 +475,7 @@ function Detail({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) 
             <Seg label="Objects shown" value={only} items={[["all", "All"], ["sens", "Sensitive"]]} onPick={setOnly} /></div>}>
           <table className="ae-log-table">
             <thead><tr><th>Object</th><th>Kind</th><th>Activity</th><th className="num">Reads</th><th className="num">Writes</th><th className="num">DDL</th><th className="num">Users</th><th>Last</th></tr></thead>
-            <tbody>{shown.slice(0, 50).map((b) => (
+            <tbody>{shown.slice(at * size, at * size + size).map((b) => (
               <tr key={b.key} className={`ae-log-click${b.key === sel ? " on" : ""}`} onClick={() => setSel(b.key)}>
                 <td><span className="ae-mono">{b.key}</span>{d.objects?.[b.key]?.sensitive && <span className="ae-otag ae-sens-tag">sensitive</span>}{b.key === sel && <span className="ae-otag">details below</span>}</td>
                 <td className="ae-muted">{d.objects?.[b.key]?.kind}</td>
@@ -480,7 +484,7 @@ function Detail({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) 
               </tr>
             ))}</tbody>
           </table>
-          {shown.length > 50 && <p className="ae-muted">First 50 of {shown.length}; filter to find the rest.</p>}
+          {shown.length > size && <Pager at={at} size={size} total={shown.length} onPage={setPage} />}
           <Legend />
         </Sec>
       )}

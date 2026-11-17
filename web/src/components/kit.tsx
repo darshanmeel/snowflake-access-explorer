@@ -2,6 +2,7 @@
 // code output (SQL / Terraform / ticket), identity card, empty state. Colours only from --ae-* variables.
 import { useRef, useState, type ReactNode } from "react";
 import { sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";
+import { useCsv } from "./table";
 
 export const LEVEL_WORD: Record<string, string> = { names: "Can see names", use: "Can use", read: "Read", change: "Read + change", own: "Owns", admin: "Admin" };
 
@@ -76,6 +77,7 @@ export function FilterChips({ items, value, onPick, label }: { items: FilterItem
 export function ListToolbar({ children, search, onSearch, onCsv }: {
   children?: ReactNode; search?: string; onSearch?: (s: string) => void; onCsv?: () => void;
 }) {
+  const csvOn = useCsv();
   return (
     <div className="ae-toolbar">
       {children}
@@ -85,7 +87,7 @@ export function ListToolbar({ children, search, onSearch, onCsv }: {
           <input type="search" className="ae-input" placeholder="Filter" value={search} onChange={(e) => onSearch(e.target.value)} />
         </label>
       )}
-      {onCsv && <button type="button" className="ae-btn ae-toolbar-csv" onClick={onCsv}>CSV</button>}
+      {onCsv && csvOn && <button type="button" className="ae-btn ae-toolbar-csv" onClick={onCsv}>CSV</button>}
     </div>
   );
 }

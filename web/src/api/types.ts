@@ -197,6 +197,7 @@ export interface Meta {
   mine_available: boolean; // false inside Snowflake (owner's rights)
   cache_hours: number; // hours a copy stays in .cache/ (0: memory only, as inside Snowflake)
   inside?: boolean; // Streamlit in Snowflake: reads run with the app owner's role
+  csv?: boolean; // false: CSV=0 on the server, every CSV button hidden
   /** DuckDB copy of the data shown (cache.sql_info): file + schema, or why there is none */
   sql_copy?: { on: boolean; path: string; schema: string | null; note: string | null; written_at: string | null };
   error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click

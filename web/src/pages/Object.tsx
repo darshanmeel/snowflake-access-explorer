@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
-import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, toCsv } from "../components";
+import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, toCsv, useCsv } from "../components";
 import { download } from "../components/table";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
@@ -40,6 +40,7 @@ export function ObjectPageView() {
 
 function Who({ d }: { d: WhoPage }) {
   const c = useApp();
+  const csvOn = useCsv();
   const o = d.object, admin = o.preset === "admin";
   useEffect(() => { if (o.id) remember({ page: "object", id: o.id, label: o.id }); }, [o.id]);
   const show = c.params.show === "who" || ((c.params.show === "history" || c.params.show === "activity") && !admin) ? c.params.show : "detail";
@@ -62,7 +63,7 @@ function Who({ d }: { d: WhoPage }) {
               : o.owner_note && <span className="ae-otag ae-otag-warn">{o.owner_note[0].toUpperCase() + o.owner_note.slice(1)}</span>}
           </div>
         </div>
-        <button type="button" className="ae-btn" onClick={save}>Export CSV</button>
+        {csvOn && <button type="button" className="ae-btn" onClick={save}>Export CSV</button>}
       </div>
       <For d={d} />
       {d.app && <AppNote app={d.app} />}

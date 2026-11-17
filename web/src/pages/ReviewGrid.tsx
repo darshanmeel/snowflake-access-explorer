@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useApi } from "../api/client";
 import type { GridPage } from "../api/types";
-import { Card, EmptyState, FilterChips, LEVEL_WORD, ListToolbar, Toggle } from "../components";
+import { Card, EmptyState, FilterChips, LEVEL_WORD, ListToolbar, Toggle, useCsv } from "../components";
 import { download } from "../components/table";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { addTo, plan, saved, useSaved } from "./changeplan";
@@ -22,6 +22,7 @@ export function ReviewGrid() {
 
 function Grid({ d }: { d: GridPage }) {
   const c = useApp();
+  const csvOn = useCsv();
   const o = useOpen(d.refs);
   const [all, setAll] = useState(false);
   const [reviewer, setReviewer] = useState("");
@@ -119,12 +120,14 @@ function Grid({ d }: { d: GridPage }) {
         <span className="ae-signbar-act">
           <button type="button" className="ae-btn" disabled={!revokes.length} title="Adds the granted roles of each revoked person to the change plan (simulation only)"
             onClick={() => { plan.set(addTo(plan.get(), revokesOf(rows, dec))); c.nav("whatif", { show: "plan" }); }}>Test revokes in the change plan</button>
-          <label className="ae-signbar-who"><span className="ae-sr">Reviewer</span>
-            <input className="ae-input" placeholder="Reviewer name" value={reviewer} onChange={(e) => setReviewer(e.target.value)} /></label>
-          <button type="button" className="ae-btn ae-btn-primary" disabled={!reviewer.trim()} title={reviewer.trim() ? "Downloads the sign-off as CSV" : "Type the reviewer name first"} onClick={sign}>Sign off review</button>
+          {csvOn && <>
+            <label className="ae-signbar-who"><span className="ae-sr">Reviewer</span>
+              <input className="ae-input" placeholder="Reviewer name" value={reviewer} onChange={(e) => setReviewer(e.target.value)} /></label>
+            <button type="button" className="ae-btn ae-btn-primary" disabled={!reviewer.trim()} title={reviewer.trim() ? "Downloads the sign-off as CSV" : "Type the reviewer name first"} onClick={sign}>Sign off review</button>
+          </>}
         </span>
       </section>
-      <p className="ae-muted ae-small">Keep / Revoke are saved in this browser only. Sign off downloads a CSV (reviewer, decision, time); nothing is written to Snowflake and no revoke runs.</p>
+      <p className="ae-muted ae-small">Keep / Revoke are saved in this browser only.{csvOn ? " Sign off downloads a CSV (reviewer, decision, time);" : " CSV export is off here, so there is no sign-off file;"} nothing is written to Snowflake and no revoke runs.</p>
     </>
   );
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { ListItem, Refs, WhatIfChange, WhatIfPage, WhatIfUser } from "../api/types";
-import { Card, CodeOutput, CutPath, EmptyState, FilterChips, MiniBar, StackBar } from "../components";
+import { Card, CodeOutput, CutPath, EmptyState, FilterChips, MiniBar, StackBar, useCsv } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { Load, Pick, Sel } from "./common";
 import { addTo, changeText, cutLinks, lossGroups, objectImpact, plan, planTexts, useSaved } from "./changeplan";
@@ -87,6 +87,7 @@ export function LossGroups({ users, changes, refs, max = 50 }: { users: WhatIfUs
 
 function Impact({ d, list }: { d: WhatIfPage; list: WhatIfChange[] }) {
   const c = useApp();
+  const csvOn = useCsv();
   const o = useOpen(d.refs);
   const k = d.counts;
   const objs = objectImpact(d.users);
@@ -122,7 +123,7 @@ function Impact({ d, list }: { d: WhatIfPage; list: WhatIfChange[] }) {
         ) : <EmptyState title="No finding changes" art="search" />)}
       </Card>
       <Card title="Text to apply" sub="Copy it into your infrastructure as code or a ticket. This app never runs it."
-        right={<button type="button" className="ae-btn" onClick={() => download("whatif.csv", { view: c.view, changes: JSON.stringify(list) }, "what_if.csv")}>Download CSV</button>}>
+        right={csvOn && <button type="button" className="ae-btn" onClick={() => download("whatif.csv", { view: c.view, changes: JSON.stringify(list) }, "what_if.csv")}>Download CSV</button>}>
         <CodeOutput changes={[]} name="what_if" texts={planTexts(list, d.sql)} />
       </Card>
     </>

@@ -210,6 +210,7 @@ SNOWFLAKE_HOST=<org>-<account>.privatelink.snowflakecomputing.com
 | `DUCKDB` | unset | The [SQL copy](#query-the-data-with-sql-duckdb) in `.cache/access.duckdb`: unset = after each read from Snowflake, `0` = off, `1` = also of the fake data |
 | `QUERY_TAG` | `access-explorer` | Query tag on the app's own connection; Activity leaves these queries out. Same value in `.env`, `sis/.env` (Direct mode) and `settings.local.sql` |
 | `STREAMLIT_APP` | `ST_ACCESS_EXPLORER` | Name of the app inside Snowflake; Activity leaves its queries out. Same value in `.env`, `sis/.env` and `settings.local.sql` |
+| `CSV` | unset (on) | `0` = no CSV export: every CSV button is hidden and the CSV downloads are refused, locally and inside Snowflake. Whoever can open the app still reads what is on screen, so who gets `APP_ROLE` or the server is the real control |
 | `KEEP_BUILT` | `3` | Data sets kept built in memory besides the loaded one (shared, My access, `builtin=1`): switching back costs no rebuild |
 
 More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, `MAX_PATHS`, ...): README.html. Path counts are exact and counted over the role graph; full chains are listed up to `MAX_PATHS`, so big accounts stay quick (README.html > Limits).

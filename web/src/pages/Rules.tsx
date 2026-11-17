@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { AdminPerson, Refs, RulesPage } from "../api/types";
-import { Banner, Card, DataTable, FindingList, PathText, Tabs } from "../components";
+import { Banner, Card, DataTable, FindingList, PathText, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, Head, Load, NameLink } from "./common";
 import { RisksTab, RuleList } from "./Risks";
@@ -10,6 +10,7 @@ import { changeOfPath, WhatIfButton } from "./Whatif";
 
 export function RulesPageView() {
   const c = useApp();
+  const csvOn = useCsv();
   const s = useApi<RulesPage>("rules", apiParams(c));
   const [tab, setTab] = useState(c.params.part ?? "findings"); // part=: an old sub-tab, linkable
   const o = useOpen(s.data?.refs);
@@ -18,7 +19,7 @@ export function RulesPageView() {
   return (
     <>
       <Head title="Risks & fixes" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
-        right={<button className="ae-btn" onClick={() => download("rules.csv", apiParams(c), "findings.csv")}>Download CSV</button>} />
+        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", apiParams(c), "findings.csv")}>Download CSV</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
         return (

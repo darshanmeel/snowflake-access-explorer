@@ -1,4 +1,9 @@
 // Pure table helpers: sort, filter, CSV.
+import { createContext, useContext } from "react";
+
+/** CSV export on (meta.csv; CSV=0 on the server turns it off): every CSV button reads this. */
+export const CsvOn = createContext(true);
+export const useCsv = () => useContext(CsvOn);
 
 export type Cell = string | number | boolean | null | undefined | string[];
 

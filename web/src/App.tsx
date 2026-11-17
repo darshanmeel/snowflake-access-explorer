@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearCache, get, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page } from "./api/types";
-import { Banner, Card, Combo, Root, SqlCtx, type ThemeName } from "./components";
+import { Banner, Card, Combo, CsvOn, Root, SqlCtx, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -310,6 +310,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   return (
     <Root theme={theme}>
       <SqlCtx.Provider value={setSql}>
+      <CsvOn.Provider value={meta?.csv !== false}>
       <div className="app">
         <header className="top">
           <button type="button" className="top-logo" onClick={() => nav("home")} aria-label="Access explorer: home">
@@ -367,6 +368,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           )}
         </main>
       </div>
+      </CsvOn.Provider>
       </SqlCtx.Provider>
     </Root>
   );

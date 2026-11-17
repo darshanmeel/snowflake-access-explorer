@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, WhatIfPage, WhatIfUser } from "../api/types";
-import { Banner, Card, DataTable, EmptyState, KpiRow, Tabs } from "../components";
+import { Banner, Card, DataTable, EmptyState, KpiRow, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
 import { col, Controls, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
 import { LoseKeep, LossGroups, PlanTab } from "./Plan";
@@ -115,6 +115,7 @@ function UserRow({ u, refs }: { u: WhatIfUser; refs: WhatIfPage["refs"] }) {
 
 function Result({ d }: { d: WhatIfPage }) {
   const c = useApp();
+  const csvOn = useCsv();
   const o = useOpen(d.refs);
   const [tab, setTab] = useState(c.params.part ?? "users");
   const k = d.counts;
@@ -186,7 +187,7 @@ function Result({ d }: { d: WhatIfPage }) {
           {d.sql && <><p className="ae-muted">The same as SQL:</p><pre className="ae-code">{d.sql}</pre></>}
         </Card>
       )}
-      <p><button className="ae-btn" onClick={() => download("whatif.csv", apiParams(c), "what_if.csv")}>Download CSV</button></p>
+      {csvOn && <p><button className="ae-btn" onClick={() => download("whatif.csv", apiParams(c), "what_if.csv")}>Download CSV</button></p>}
     </>
   );
 }

@@ -806,6 +806,21 @@ def test_csv_formula():
     assert get("/api/rules.csv?grantee=%3D1%2B1").text.splitlines()[0] == "Rule checks,'=1+1"  # a head row from the link
 
 
+
+def test_csv_off():  # CSV=0: every CSV route refuses in both versions and meta tells the app to hide the buttons
+    import st_react
+    assert js("/api/meta")["csv"] is True and get("/api/rules.csv").status_code == 200
+    os.environ["CSV"] = "0"
+    try:
+        assert js("/api/meta")["csv"] is False
+        for n in server.CSV:
+            assert get(f"/api/{n}.csv", 403).json()["detail"] == "csv_off"
+            st, body, _ = st_react.answer("GET", f"/api/{n}.csv", None, None)
+            assert st == 403 and body["detail"] == "csv_off", (n, st, body)
+    finally:
+        os.environ.pop("CSV")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
