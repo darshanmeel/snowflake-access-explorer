@@ -742,8 +742,10 @@ def activity_sql(since, client=True):
     SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
     col = "S.CLIENT" if client else "NULL"
     tag, app = (v.replace("\\", "\\\\").replace("'", "''") for v in (QUERY_TAG, APP_ST))  # quotes cannot end the strings
+    # SESSIONS from a week before since: unbounded it scans a year of sessions; a session open longer has no CLIENT
     join = (f"""LEFT JOIN (SELECT SESSION_ID, REGEXP_REPLACE(CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
-                       FROM {AU}.SESSIONS) S ON S.SESSION_ID = Q.SESSION_ID""" if client else "")
+                       FROM {AU}.SESSIONS WHERE CREATED_ON >= DATEADD(DAY, -7, '{since} 00:00:00 +00:00'::TIMESTAMP_TZ)) S
+                ON S.SESSION_ID = Q.SESSION_ID""" if client else "")
     return f"""WITH A AS (
             SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL,
                    CONVERT_TIMEZONE('UTC', QUERY_START_TIME) AS L

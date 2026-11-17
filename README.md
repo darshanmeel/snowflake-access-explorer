@@ -390,7 +390,7 @@ Only metadata, never table data: `ACCOUNT_USAGE` grants, users, query history, t
 `ACCOUNT_USAGE` is not readable). Granted vs used also reads `ACCOUNT_USAGE.ACCESS_HISTORY` (Enterprise edition),
 aggregated per user, object and week (180 days, `USE_DAYS`, in whole weeks; a new read copies the weeks the last one has
 and reads only its last two weeks again); without it that screen explains why it is empty. The Activity tabs (object, person,
-role) and rules 24-28 read `ACCESS_HISTORY` with `QUERY_HISTORY` (role, statement type) and `SESSIONS` (client) for the
+role) and rules 24-28 read `ACCESS_HISTORY` with `QUERY_HISTORY` (role, statement type) and `SESSIONS` (client; only sessions opened from a week before the first day read, so Snowflake does not scan a year of them) for the
 last 60 days (`ACTIVITY_DAYS`), aggregated per UTC day, user, role, client, object, Streamlit app (from the query tag) and statement, with the queries
 per UTC hour (`HOURS`): query metadata, never query text. Off-hours are worked out in the app from `HOURS` and
 `WORK_HOURS`. To keep the cost down, a new read copies the days the last one already has and reads only the days after them
