@@ -1594,6 +1594,7 @@ def tidy(d):
     if lacks and run.get("RUN_ID") not in ("live", "direct"):  # only the snapshot tables have a setup to run again
         run["NOTES"]["missing_columns"] = ("; ".join(f"TBL_ACCESS_{t} lacks {', '.join(sorted(c))}" for t, c in lacks.items())
                                            + ": those values are empty (run sql/1_setup.sql again)")
+    d["_tidy"] = tidy_stamp()
     return d
 
 

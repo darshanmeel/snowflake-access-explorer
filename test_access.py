@@ -788,6 +788,10 @@ def test_missing_names():
     d["USER_ROLE"] = d["USER_ROLE"] + [dict(USER_NAME="ENGINEER_01", ROLE_NAME=None)]
     a.build(d)
     assert None not in a.roles and "2 grant rows" in d["run"]["NOTES"]["missing_names"]
+    assert d["_tidy"] == a.tidy_stamp()  # tidied once: a rebuild (restart, What if) does not scan the rows again
+    d["GRANT"].append(None)
+    a.tidy(d)
+    assert None in d["GRANT"]  # skipped
     a.build(a.fake())
 
 

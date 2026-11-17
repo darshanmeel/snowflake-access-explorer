@@ -235,20 +235,26 @@ sensitive = sensitive objects.
 
 ### POST /api/reload
 
-Body `{"what": "load" | "page" | "rebuild"}`. `load`: read the shared data now (with `SOURCE=direct` on Snowflake every
-shared request answers 409 `shared_not_loaded`, also in `meta.error`, until this click or a copy in memory or `.cache/`).
-`page`: drop the shared cache, memory and `.cache/` file (Snowflake is read again on the next request; direct: at once).
-`rebuild`: fake -> `{"ok": false, "message": "Demo: the CALL runs only on Snowflake (not FAKE=1)."}`; direct -> drop the
-cache (everything read again); snapshot -> `CALL <WHERE>.SP_ACCESS_SNAPSHOT('AUTO')`, then drop the cache.
-Answer: `{"ok": true, "result": <the procedure's JSON or null>, "message": "..."}`. Mirrors `app.refresh()`.
+Body `{"what": "load" | "page" | "rebuild"}`. `load`: read the shared data now, the parts still missing (with
+`SOURCE=direct` on Snowflake every shared request answers 409 `shared_not_loaded`, also in `meta.error`, until this click,
+a copy in memory or `.cache/`, or the parts kept); answers when done. While any load runs, a shared request that would
+have to wait answers 409 `shared_loading` at once (also in `meta.error`): the app shows the load log and asks again.
+`page` (Read Snowflake again) and `rebuild` (snapshot: `CALL <WHERE>.SP_ACCESS_SNAPSHOT('AUTO')` first) read every part
+again under a key of their own, build it, then swap it in (`server.refresh` / `renew`). Locally they run in a thread and
+answer at once: `{"ok": true, "started": true, "job": <id>, "result": null, "message": "Reading Snowflake in the
+background."}`, the pages keep the data they have meanwhile, and `/api/progress` `job` says how it ends. Inside Streamlit
+(`server.BACKGROUND = False`) they answer when done: `{"ok": ..., "result": <the procedure's JSON or null>, "message":
+"..."}`. A second refresh while one runs: `ok: false`. Fake: `page` drops the cache; `rebuild` -> `{"ok": false, "message":
+"Demo: the CALL runs only on Snowflake (not FAKE=1)."}`. `run.py --build`: `ok: false` with why.
 
 ### GET /api/progress?view=
 
 What the read from Snowflake running now is doing (the latest of `view`, any when left out): `{"running": true, "view":
-"shared" | "mine", "lines": [{"t": 12.4, "text": "SHOW GRANTS TO ROLE: 340 of 2,000"}]}`, `t` = seconds since it started,
-the last 200 lines; idle: `{"running": false, "view": null, "lines": []}`. Never starts a load. The app asks about once a
-second while a load runs; inside Streamlit `st_react.shown()` writes the same lines above the app (Python is busy then).
-Producer: `server.progress()`, lines from `a.say()`.
+"shared" | "mine", "lines": [{"t": 12.4, "text": "SHOW GRANTS TO ROLE: 340 of 2,000"}], "job": ...}`, `t` = seconds since
+it started, the last 200 lines; idle: `{"running": false, "view": null, "lines": [], "job": ...}`. `job`: the last
+background refresh, `{"id", "what", "state": "running" | "done" | "failed", "ok", "message"}`, null before any. Never
+starts a load. The app asks about once a second while a load or refresh runs; inside Streamlit `st_react.shown()` writes
+the same lines above the app (Python is busy then). Producer: `server.progress()`, lines from `a.say()`.
 
 ### POST /api/mine/load
 
