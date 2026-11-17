@@ -15,6 +15,7 @@ flowchart LR
 - Two versions, one logic — CLAUDE.md:27: local web (run.py), SiS via st_react, committed bundles, 4_streamlit.sql, host checks, read-only test, change both versions together.
 - RBAC model — CLAUDE.md:53: account + database roles, FUNC/TECH prefixes, admin roles in red, What if never runs — CLAUDE.md:64.
 - Code style — CLAUDE.md:69: `access_queries/` is standalone ACCOUNT_USAGE SQL kept equal to `access.py` by `access_queries/test_queries.py`; change order file -> `functions.sql` -> `make_notebook.py` — CLAUDE.md:70; allowed packages, file roles, SQL file conventions, cache, walks, graph styles, UI tabs with one exception: the Activity tab is one access log of stacked sections shaped by the object's type — CLAUDE.md:96-97; test_sql keeps SQL functions equal — CLAUDE.md:81-82.
+- DuckDB: the SQL copy `.cache/access.duckdb` is always on (`DUCKDB=1` also copies fake data), duckdb is in both requirements files — CLAUDE.md:11-13; allowed packages include duckdb — CLAUDE.md:72; the rule checks over every user and role use the counted walk in an in-memory DuckDB (`a.duck()`, `lose_all`, `read_shares`), equal to the Python walk (`test_duck_reach`), Python without duckdb or with a role loop — CLAUDE.md:80.
 - Verify before saying done — CLAUDE.md:102-117, incl. `python access_queries/test_queries.py` green — CLAUDE.md:115 (see processes/test.md).
 
 ## Relates to

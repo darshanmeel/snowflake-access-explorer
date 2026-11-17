@@ -17,14 +17,16 @@ flowchart LR
   MINE --> D
   FAKE[access.fake] --> D
   D --> B[access.build lookups]
+  SNAP & LIVE & MINE -.every read.-> PRT[(.cache/reads/key/*.parquet<br/>parts.json)]
   D --> PKL[.cache/key.pkl + .prev.pkl]
+  B --> RUL[.cache/key.rules.pkl<br/>rule results]
   D --> DUCK[(.cache/access.duckdb<br/>TBL_ACCESS_* + _PREV)]
   T --> TF[TF_ACCESS_OF / TF_WHO_CAN / TF_CAN]
   SNAP --> FIND[SP_ACCESS_FINDINGS] --> F[(TBL_ACCESS_FINDING)]
 ```
 
-- SP writes: `sql/1_setup.sql:825-903`; snapshot read: `access.py:474-513`; live: `access.py:767-1143`; mine: `access.py:655-753`.
-- Cache / DuckDB: `cache.py:116-143`, `cache.py:226-281`. Findings: `sql/1_setup.sql:1114-1145`.
+- SP writes: `sql/1_setup.sql:861-939`; snapshot read: `access.py:508-571`; live: `access.py:883-1275`; mine: `access.py:757-869`.
+- Cache / DuckDB: `cache.py:122-141`, `cache.py:234-301`. Findings: `sql/1_setup.sql:1150-1181`.
 
 ## ER diagram (logical; no PK/FK declared in DDL)
 
@@ -58,34 +60,36 @@ erDiagram
   TBL_ACCESS_ACTIVITY { varchar RUN_ID FK date DAY varchar USER_NAME varchar ROLE_NAME varchar CLIENT varchar OBJECT_NAME varchar ACTION varchar QUERY_TYPE number QUERIES variant HOURS varchar APP }
 ```
 
-- Role link: `GRANTED_ON IN ('ROLE','DATABASE_ROLE') AND PRIVILEGE='USAGE'`, grantee not an admin role: `sql/1_setup.sql:940-944`, `access.py:1325-1329`.
-- Tag inheritance: a tag row counts for an object when its `OBJECT_NAME` equals the object (own or column tag), or equals the object's `DB.SCHEMA` (SCHEMA row) or `DB` (DATABASE row) from `split_name(obj)`: exact matches, not a prefix match (`access.py:2496-2512`).
-- Tag-based policy (`OBJECT_NAME` empty) joins by `TAG_NAME`: `access.py:2566-2569`.
-- Stream → sensitive source (rule 22): `access.py:5748-5760`.
-- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:5811`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:4889-4891`).
+- Role link: `GRANTED_ON IN ('ROLE','DATABASE_ROLE') AND PRIVILEGE='USAGE'`, grantee not an admin role: `sql/1_setup.sql:976-980`, `access.py:1461-1465`.
+- Tag inheritance: a tag row counts for an object when its `OBJECT_NAME` equals the object (own or column tag), or equals the object's `DB.SCHEMA` (SCHEMA row) or `DB` (DATABASE row) from `split_name(obj)`: exact matches, not a prefix match (`access.py:2737-2753`).
+- Tag-based policy (`OBJECT_NAME` empty) joins by `TAG_NAME`: `access.py:2807-2810`.
+- Stream → sensitive source (rule 22): `access.py:6139-6151`.
+- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:6205`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:5273-5275`).
 - Full list with evidence: `data/model.json` → `relationships`.
 
 ## Versioning
 
-- Every data row carries `RUN_ID`; after an OK run all other runs' rows are deleted, except those of a run still RUNNING and started within the last day (an older one is taken as dead): `sql/1_setup.sql:897-902`.
-- FAILED run deletes its own rows: `sql/1_setup.sql:890-892`. A second CALL within 1 h of a RUNNING one is SKIPPED (insert first, then look: the run's RUNNING row goes in, then the earliest RUNNING run of the last hour (ORDER BY STARTED_AT, RUN_ID) goes on and any other deletes its own row and returns SKIPPED, so two CALLs a moment apart can no longer both start): `sql/1_setup.sql:830-838`.
-- `TBL_ACCESS_ACTIVITY` is carried forward: the new run copies the previous OK run's rows older than the day before its last day, then reads only from there (`sql/1_setup.sql:752-762`); 60 days kept (`ACTIVITY_DAYS`, `sql/1_setup.sql:209`). Its `DAY` and `HOURS` are UTC (`sql/1_setup.sql:120`, `sql/1_setup.sql:715`).
+- Every data row carries `RUN_ID`; after an OK run all other runs' rows are deleted, except those of a run still RUNNING and started within the last day (an older one is taken as dead): `sql/1_setup.sql:933-938`.
+- FAILED run deletes its own rows: `sql/1_setup.sql:926-928`. A second CALL within 1 h of a RUNNING one is SKIPPED (insert first, then look: the run's RUNNING row goes in, then the earliest RUNNING run of the last hour (ORDER BY STARTED_AT, RUN_ID) goes on and any other deletes its own row and returns SKIPPED, so two CALLs a moment apart can no longer both start): `sql/1_setup.sql:866-874`.
+- `TBL_ACCESS_ACTIVITY` is carried forward: the new run copies the previous OK run's rows older than the day before its last day, then reads only from there (`sql/1_setup.sql:788-798`); 60 days kept (`ACTIVITY_DAYS`, `sql/1_setup.sql:209`). Its `DAY` and `HOURS` are UTC (`sql/1_setup.sql:120`, `sql/1_setup.sql:751`).
 - The nine data tables keep no Time Travel (`DATA_RETENTION_TIME_IN_DAYS = 0` in each CREATE and the `RETENTION_*` statements, `sql/1_setup.sql:133-158`): each run deletes older runs' rows anyway.
-- `TBL_ACCESS_OBJECT_USE` is carried forward by week: the previous OK run's weeks but its last two are copied, then ACCESS_HISTORY is read from that Monday, in the same scan as the activity (`sql/1_setup.sql:671-695`, `sql/1_setup.sql:792-822`).
-- `TBL_ACCESS_RUN` keeps every run (`sql/1_setup.sql:13`). `TBL_ACCESS_FINDING` keeps only the last run: each `SP_ACCESS_FINDINGS` call deletes every row, then appends, in one transaction (`sql/1_setup.sql:1131-1133`).
-- Readers take the newest OK run: `access.py:476-479` (ORDER BY FINISHED_AT), `sql/1_setup.sql:929` (MAX_BY).
+- `TBL_ACCESS_OBJECT_USE` is carried forward by week: the previous OK run's weeks but its last two are copied, then ACCESS_HISTORY is read from that Monday, in the same scan as the activity (`sql/1_setup.sql:705-729`, `sql/1_setup.sql:828-858`).
+- `TBL_ACCESS_RUN` keeps every run (`sql/1_setup.sql:13`). `TBL_ACCESS_FINDING` keeps only the last run: each `SP_ACCESS_FINDINGS` call deletes every row, then appends, in one transaction (`sql/1_setup.sql:1167-1169`).
+- Readers take the newest OK run: `access.py:510-513` (ORDER BY FINISHED_AT), `sql/1_setup.sql:965` (MAX_BY).
 
 ## Views and derived sets
 
 | View | Built from | Rows |
 |---|---|---|
-| `TF_ACCESS_OF(NAME, MAX_DEPTH)` (`sql/1_setup.sql:920-979`) | RUN, USER_ROLE, USER, GRANT (last OK run) | one per path × privilege a user/role reaches |
-| `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` (`sql/1_setup.sql:981-1025`) | RUN, USER_ROLE, USER, GRANT | one per role or user × path to the object |
-| `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` (`sql/1_setup.sql:1027-1074`) | `TF_ACCESS_OF` | one per path; no rows = no access |
-| snapshot dict (`access.py:474-513`) | TBL_ACCESS_* of last OK run, or live / mine / fake | one list of row dicts per table + `run` |
-| DuckDB `TBL_ACCESS_*` (`cache.py:258-272`) | snapshot dict of one read | same as the Snowflake table |
-| DuckDB `TBL_ACCESS_*_PREV` (`cache.py:260-262`) | DuckDB tables of the read before | same as the Snowflake table |
-| `.cache/<key>.prev.pkl` (`cache.py:81-99`) | replaced `.pkl` of another run | whole dict (What changed, `server.py:1769`) |
+| `TF_ACCESS_OF(NAME, MAX_DEPTH)` (`sql/1_setup.sql:956-1015`) | RUN, USER_ROLE, USER, GRANT (last OK run) | one per path × privilege a user/role reaches |
+| `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)` (`sql/1_setup.sql:1017-1061`) | RUN, USER_ROLE, USER, GRANT | one per role or user × path to the object |
+| `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)` (`sql/1_setup.sql:1063-1110`) | `TF_ACCESS_OF` | one per path; no rows = no access |
+| snapshot dict (`access.py:508-571`) | TBL_ACCESS_* of last OK run, or live / mine / fake | one list of row dicts per table + `run` |
+| DuckDB `TBL_ACCESS_*` (`cache.py:271-291`) | snapshot dict of one read | same as the Snowflake table |
+| DuckDB `TBL_ACCESS_*_PREV` (`cache.py:273-275`) | DuckDB tables of the read before | same as the Snowflake table |
+| `.cache/<key>.prev.pkl` (`cache.py:87-105`) | replaced `.pkl` of another run | whole dict (What changed, `server.py:1871`) |
+| `.cache/reads/<key>/<label>-<hash>.parquet` + `parts.json` (`cache.py:314-551`) | one Snowflake read (a heavy ACCOUNT_USAGE read, a SHOW wave, a snapshot table) | the statement's rows, `__i` = statement index; `parts.json`: file, rows, read_at, statements, colsets, errors, status |
+| `.cache/<key>.rules.pkl` (`server.py:310-329`) | rule checks of the shared data | `stamp` (build key, builtin, `rules_stamp()`) + `memo` findings, rows, ro, breaks |
 
 ## Pages
 
@@ -95,5 +99,5 @@ erDiagram
 ## Unclear
 
 - No PK, UNIQUE or FK constraints in any DDL (`sql/1_setup.sql:13-171`): every key is logical.
-- Source column semantics marked "to verify" in setup: tags `sql/1_setup.sql:538-539`, policies `:421-422`, DESCRIBE body `:447`, SHOW STREAMS columns `:466`.
-- `TBL_ACCESS_FINDING`: no reader in the app (grep of `access.py`, `server.py`); not in the DuckDB copy (`cache.py:172-192`).
+- Source column semantics marked "to verify" in setup: tags `sql/1_setup.sql:572-573`, policies `:421-422`, DESCRIBE body `:447`, SHOW STREAMS columns `:466`.
+- `TBL_ACCESS_FINDING`: no reader in the app (grep of `access.py`, `server.py`); not in the DuckDB copy (`access.py:70-90`).

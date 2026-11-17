@@ -19,9 +19,10 @@ sequenceDiagram
 
 ## app.py
 
-- `st.set_page_config(..., layout="wide")` and CSS that hides Streamlit chrome (app.py:9-13).
-- "component did not load" hint until `st_react.UP` is set in session (app.py:14-17, app.py:19-20).
-- Runs `st_react.app()` (app.py:18). No other logic (CLAUDE.md "Two versions, one logic").
+- `st.set_page_config(..., layout="wide")` and CSS that hides Streamlit chrome (app.py:13-17).
+- "component did not load" hint until `st_react.UP` is set in session (app.py:18-21, app.py:23-24).
+- Imports `server` and sets `server.BACKGROUND = False` (a refresh runs on the script thread with the app's session and shows its lines as the first load does) and `server.LOG_LINES = True` (progress lines in the terminal, inside Snowflake the app log) (app.py:7-11).
+- Runs `st_react.app()` (app.py:22). No other logic (CLAUDE.md "Two versions, one logic").
 
 ## st_react.py
 
@@ -36,6 +37,6 @@ sequenceDiagram
 
 - `mine/load` makes a new sid and drops the old MINE entry, as the local server does (st_react.py:38-42).
 - Unknown endpoint -> 404 `not_found` (st_react.py:47).
-- Inside Snowflake: deployed by sql/4_streamlit.sql (`MAIN_FILE = 'app.py'`, sql/4_streamlit.sql:65-70); My access hidden there (server.py:170-172).
+- Inside Snowflake: deployed by sql/4_streamlit.sql (`MAIN_FILE = 'app.py'`, sql/4_streamlit.sql:65-70); My access hidden there (server.py:228-230).
 - Progress inside Snowflake: Python is busy during a load, so the frame cannot poll `/api/progress`; `shown()` writes the lines itself ([flows/load-progress.md](../flows/load-progress.md)).
-- Tests: `test_pages` hands every page to the component (test_access.py:782), `test_streamlit_bridge` (test_server.py:267), `test_progress` (`shown` from a thread, test_server.py:890-938).
+- Tests: `test_pages` hands every page to the component (test_access.py:904), `test_streamlit_bridge` (test_server.py:268), `test_progress` (`shown` from a thread, test_server.py:1085-1133).

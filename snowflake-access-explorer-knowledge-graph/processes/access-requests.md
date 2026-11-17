@@ -15,17 +15,17 @@ flowchart LR
 
 ## Rules
 - App is read-only; never runs GRANT, REVOKE, CREATE, ALTER or DROP; RBAC changes go through IaC; manual grants get removed by reconciliation — CLAUDE.md:6-7.
-- Roles and grants are managed as IaC; the app only reads them — README.md:457.
-- "Real set-up: schema, roles and grants via infrastructure as code" — sql/1_setup.sql:4; what DEV_ROLE needs "(real set-up: infrastructure as code)" — sql/1_setup.sql:1205.
-- Grant `APP_ROLE` to people who use the app "through your infrastructure as code" — README.html:655.
+- Roles and grants are managed as IaC; the app only reads them — README.md:460.
+- "Real set-up: schema, roles and grants via infrastructure as code" — sql/1_setup.sql:4; what DEV_ROLE needs "(real set-up: infrastructure as code)" — sql/1_setup.sql:1241.
+- Grant `APP_ROLE` to people who use the app "through your infrastructure as code" — README.html:686.
 - What if prints REVOKE / IaC text, never runs it — CLAUDE.md:64.
 
 ## App roles (who needs what)
-- `DEV_ROLE`, `APP_ROLE` privileges: see deploy-snowflake.md > Roles and grants needed (README.md:277, README.html:659, sql/1_setup.sql:1148-1148, sql/4_streamlit.sql:72-83).
-- The setup scripts do issue `GRANT ... TO ROLE &APP_ROLE` on the app's own DB/schema/WH/tables/functions/procedure/Streamlit, all `(may fail)` except `GRANT_STREAMLIT` — sql/1_setup.sql:1148-1203, sql/4_streamlit.sql:72-83. POC note: app role may equal developer role, so they are skipped or no-ops — sql/1_setup.sql:1148.
-- Developer account-read grants (`IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS`) are given as comments only, not executed — sql/1_setup.sql:1205-1209.
-- Optional admin step `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE` (login reuse ~4 h) — README.md:180, README.html:645, README.html:655.
-- Viewers only need `APP_ROLE` — README.md:277.
+- `DEV_ROLE`, `APP_ROLE` privileges: see deploy-snowflake.md > Roles and grants needed (README.md:280, README.html:690, sql/1_setup.sql:1184-1184, sql/4_streamlit.sql:72-83).
+- The setup scripts do issue `GRANT ... TO ROLE &APP_ROLE` on the app's own DB/schema/WH/tables/functions/procedure/Streamlit, all `(may fail)` except `GRANT_STREAMLIT` — sql/1_setup.sql:1184-1239, sql/4_streamlit.sql:72-83. POC note: app role may equal developer role, so they are skipped or no-ops — sql/1_setup.sql:1184.
+- Developer account-read grants (`IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS`) are given as comments only, not executed — sql/1_setup.sql:1241-1245.
+- Optional admin step `ALTER ACCOUNT SET ALLOW_ID_TOKEN = TRUE` (login reuse ~4 h) — README.md:183, README.html:676, README.html:686.
+- Viewers only need `APP_ROLE` — README.md:280.
 
 ## Request access page (in-app, text only)
 - Answers: which existing role to ask for, who approves, what text goes in the PR or ticket — README.html:327-329.

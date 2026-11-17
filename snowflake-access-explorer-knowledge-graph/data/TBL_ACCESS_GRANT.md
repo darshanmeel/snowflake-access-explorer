@@ -22,13 +22,13 @@ DDL: `sql/1_setup.sql:24-33`. Grain: run x grantee x privilege x granted_on x ob
 | OBJECT_NAME | VARCHAR(2000) | `DB.SCHEMA.OBJECT` unquoted; future: `DB.SCHEMA.<TABLE>` | 29 |
 | IS_FUTURE | BOOLEAN | future grant | 30 |
 | GRANT_OPTION | BOOLEAN | with grant option | 31 |
-| GRANTED_BY | VARCHAR(255) | granting role; NULL on future grants (`sql/1_setup.sql:453`) | 32 |
+| GRANTED_BY | VARCHAR(255) | granting role; NULL on future grants (`sql/1_setup.sql:475`) | 32 |
 
 - ACCOUNT_USAGE path: `sql/1_setup.sql:371-379` (`DELETED_ON IS NULL`, `GRANTED_TO IN ('ROLE','DATABASE_ROLE')`; DB role grantee qualified `DB.ROLE` at `:213-214`; OBJECT_NAME built at `:216-218`).
-- SHOW path: roles `sql/1_setup.sql:385-390`, database roles `:237-253`, saved `:254`.
-- Future grants: `sql/1_setup.sql:419-457` (STANDARD databases only `:269`; INFORMATION_SCHEMA skipped `:275`).
-- Role link = USAGE on ROLE / DATABASE_ROLE, admin grantees dropped: `access.py:1325-1329`, `sql/1_setup.sql:940-944`.
-- Other rows -> `privs` / `kinds`: `access.py:1331-1334`. Database roles collected: `access.py:1335-1338`.
-- Built-in grants hidden unless `builtin=1`: `access.py:1296-1298,917-919`.
-- Same shape from `live()`: `access.py:807-838,622-642,666-670`; from `mine()`: `access.py:686-700` (no GRANT_OPTION / GRANTED_BY keys).
-- Per-object fallbacks of tags / policies list tables and views from this table: `sql/1_setup.sql:507-511`.
+- SHOW path: roles `sql/1_setup.sql:392-401`, database roles `:237-253`, saved `:254`.
+- Future grants: `sql/1_setup.sql:439-479` (STANDARD databases only `:269`; INFORMATION_SCHEMA skipped `:275`).
+- Role link = USAGE on ROLE / DATABASE_ROLE, admin grantees dropped: `access.py:1461-1465`, `sql/1_setup.sql:976-980`.
+- Other rows -> `privs` / `kinds`: `access.py:1467-1470`. Database roles collected: `access.py:1471-1474`.
+- Built-in grants hidden unless `builtin=1`: `access.py:1432-1434,917-919`.
+- Same shape from `live()`: `access.py:923-954,622-642,666-670`; from `mine()`: `access.py:804-816` (no GRANT_OPTION / GRANTED_BY keys).
+- Per-object fallbacks of tags / policies list tables and views from this table: `sql/1_setup.sql:541-545`.

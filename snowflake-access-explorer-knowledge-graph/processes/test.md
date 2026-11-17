@@ -18,28 +18,30 @@ flowchart LR
 - `python access_queries/test_queries.py` green: query files and `functions.sql` equal to `access.py`, notebook current — CLAUDE.md:115 (modules/access-queries.md > Test).
 - `test_pages` (app.py hands every page to the component) and `test_server.py` (what each page answers) — CLAUDE.md:116-117.
 - Test packages: `requirements-dev.txt` — CLAUDE.md:113, requirements-dev.txt:1-4.
-- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:455.
+- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:458.
 
 ## test_access.py
-- Forces `FAKE=1` — test_access.py:13.
-- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:2006-2025.
-- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1235-1253.
-- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:571, CLAUDE.md:22; `test_pages` — test_access.py:782; `test_sis_upload` — test_access.py:815; `test_counted` — test_access.py:1005; `test_readme_rules` (README.html generated parts up to date) — test_access.py:1933-1943.
+- Forces `FAKE=1` — test_access.py:14.
+- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:2164-2183.
+- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1386-1404.
+- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:572, CLAUDE.md:22; `test_pages` — test_access.py:904; `test_sis_upload` — test_access.py:937; `test_counted` — test_access.py:1156; `test_readme_rules` (README.html generated parts up to date) — test_access.py:2091-2101.
+- Missing data never fails: `test_missing_names`, `test_empty_reads`, `test_none_fuzz` (test_access.py:783-901); the DuckDB walk equals the Python walk: `test_duck_reach` (test_access.py:1127-1144).
 
 ## test_sql.py
 - Forces `FAKE=1`, imports `duckdb` (so requirements-web.txt / dev needed) — test_sql.py:13-15, requirements-dev.txt:3.
 - Loads a data set into DuckDB as the `TBL_ACCESS_` tables — test_sql.py:33, test_sql.py:82.
-- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:676-680.
-- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:907.
+- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:682-686.
+- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:943.
 
 ## test_server.py
-- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:941-946.
-- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:330, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:267; `test_same_site` — test_server.py:448; `test_bundles_fresh` — test_server.py:488.
+- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:1136-1141.
+- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:331, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:268; `test_same_site` — test_server.py:483; `test_bundles_fresh` — test_server.py:523.
+- Load stages and refresh: `test_parts` (parts, `--build`, `--export --fresh`), `test_background` (refresh in a thread), `test_kept_rules` (rule results across restarts), `test_pages_empty` (every page on empty / NULL data) — test_server.py:761-989.
 - Uses FastAPI TestClient via httpx — requirements-dev.txt:4.
 
 ## Web (vitest)
 - `npm test` = `vitest run` — web/package.json:11; jsdom, `pool: "threads"` (forks pool times out on Windows) — web/vite.config.ts:43-44.
-- Test files: `web/src/components/*.test.ts(x)` (codegen, helpers, render, visuals) — repo file list.
+- Test files: `web/src/components/*.test.ts(x)` (codegen, helpers, render, visuals, loadlog, pager, review1110, nulls), `web/src/pages/*.test.ts` and `web/src/app.test.tsx` (the App shell during a load) — repo file list.
 - `npm run typecheck` = `tsc --noEmit` — web/package.json:10.
 
 ## Unclear

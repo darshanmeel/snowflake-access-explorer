@@ -18,7 +18,7 @@ sequenceDiagram
     S-->>W: meta.error = shared_not_loaded (409, no copy yet)
     U->>W: click "Load shared data"
     W->>S: POST /api/reload {what:"load"} (thread pool; LoadLog polls /api/progress)
-    S->>C: get(KEY, tracked(KEY, "shared", read_shared))
+    S->>C: tracked(KEY, "shared", stages) -> get(KEY, read_shared), every read a part
     C->>C: last(KEY): ACTIVITY and OBJECT_USE rows kept from the read before
     C->>A: with_query(a.live(q, old, old_use))
     A->>F: USE SECONDARY ROLES ALL (may fail), CURRENT_TIMESTAMP, CURRENT_DATABASE
@@ -39,22 +39,23 @@ sequenceDiagram
 
 ## Steps
 
-1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:39-44; `DIRECT = SOURCE == "direct"` — server.py:22.
-2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` — server.py:130-137, cache.py:146-153.
-3. `meta()` catches it and sends `error` so the UI shows the load card; the React app posts `reload {what:"load"}` — server.py:2193, web/src/App.tsx:296.
-4. `reload({"what":"load"})` runs in a thread pool (so `/api/progress` answers) -> `load_shared()` -> `cache.get(KEY, tracked(...))` — server.py:2436, server.py:137, server.py:92-108 ([flows/load-progress.md](load-progress.md)).
-5. `read_shared()` -> `a.live(q, old, old_use)` with the ACTIVITY and OBJECT_USE rows of `cache.last(KEY)` — server.py:121-127, cache.py:102-113.
-6. Setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` — access.py:787-796.
-7. Wave 1: every `SELECT 1 FROM ACCOUNT_USAGE.<view> LIMIT 1` probe at once through `each()`; `ACTIVITY=0` probes neither ACCESS_HISTORY nor SESSIONS and notes `skipped (ACTIVITY=0)` — access.py:820-826.
-8. Wave 2: the SQL of every readable view (grants with `DB.ROLE` for database role grantees, users, usage grouped before the JSON of secondary roles is parsed, tags, policies) sent `WORKERS` (3) at a time, each named in the progress lines — access.py:827-873, access.py:895.
-9. Object use and activity: `use_start` / `activity_start` keep the weeks / days the last read has; both reads share one ACCESS_HISTORY scan (`history_sql`, split by `history_rows`); if it fails they are read apart, after a timeout both fail — access.py:875-904 ([logic/activity.md](../logic/activity.md)).
-10. `take(k)` raises a wave-2 failure at the step it belongs to — access.py:906-909.
-11. Grants fallback: `SHOW ROLES`, `SHOW GRANTS TO / OF ROLE` per role, database roles per database (SHOW_THREADS waves); `SHOW DATABASES` read once and reused for future grants — access.py:911-951, access.py:953-982.
-12. Users, usage, tags, policies: the wave-2 rows, else SHOW USERS / INFORMATION_SCHEMA (usage 7 days); per-object tag and policy fallbacks up to `TAG_FALLBACK_MAX` (300) as `many()` waves, policies described once each — access.py:984-1109.
-13. Object use / activity notes `ACCOUNT_USAGE`, `SKIPPED` (ACTIVITY=0) or `UNAVAILABLE`; streams: `SHOW STREAMS IN ACCOUNT` — access.py:1111-1141.
-14. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)`; says `done in N s` — access.py:1142-1143.
-15. Kept with `cache.get` (memory + file) under the key's own lock; SQL copy gets run id `direct-<timestamp>` — cache.py:116-143.
-16. Must stay in step with `SP_ACCESS_SNAPSHOT` (docstring) — access.py:767-771; checked by `test_live`, `test_live_inside`, `test_switches`, `test_progress` — test_access.py:571, test_access.py:485, test_access.py:1972.
+1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:45-50; `DIRECT = SOURCE == "direct"` — server.py:24.
+2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` or parts are kept (`cache.parts_read_at`), and `409 shared_loading` while a load runs — server.py:177-186, cache.py:174-181.
+3. `meta()` catches it and sends `error` so the UI shows the load card; the React app posts `reload {what:"load"}` — server.py:2295, web/src/App.tsx:295.
+4. `reload({"what":"load"})` runs in a thread pool (so `/api/progress` answers) -> `load_shared()` -> `tracked(KEY, "shared", stages)` — server.py:2596, server.py:2360-2362, server.py:190, server.py:108-126 ([flows/load-progress.md](load-progress.md)).
+5. `read_shared()` -> `with_query(a.live(q, old, old_use), KEY)` with the ACTIVITY and OBJECT_USE rows of `cache.old(key, KEY)` (kept as `old.pkl` with the parts, so a resumed load asks for the same days and every read part is reused) — server.py:139-146, cache.py:344-359, [flows/two-stage-load.md](two-stage-load.md).
+6. Setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` — access.py:903-912.
+7. Wave 1: every `SELECT 1 FROM ACCOUNT_USAGE.<view> LIMIT 1` probe at once through `each()`; `ACTIVITY=0` probes neither ACCESS_HISTORY nor SESSIONS and notes `skipped (ACTIVITY=0)` — access.py:936-942.
+8. Wave 2: the SQL of every readable view (grants with `DB.ROLE` for database role grantees, users, usage grouped before the JSON of secondary roles is parsed, tags, policies) sent `WORKERS` (3) at a time, each named in the progress lines — access.py:943-989, access.py:1011.
+9. Object use and activity: `use_start` / `activity_start` keep the weeks / days the last read has; both reads share one ACCESS_HISTORY scan (`history_sql`, split by `history_rows`); if it fails they are read apart, after a timeout both fail — access.py:991-1020 ([logic/activity.md](../logic/activity.md)).
+10. `take(k)` raises a wave-2 failure at the step it belongs to — access.py:1022-1025.
+11. Grants fallback: `SHOW ROLES`, `SHOW GRANTS TO / OF ROLE` per role, database roles per database (SHOW_THREADS waves); `SHOW DATABASES` read once and reused for future grants — access.py:1027-1077, access.py:1079-1108.
+11a. A view readable for LIMIT 1 but refused or timed out in full (GRANTS_TO_ROLES / GRANTS_TO_USERS, USERS) falls back to SHOW as when the probe fails; a refused `SHOW ROLES`, `SHOW DATABASES` or `SHOW USERS` gives empty rows and a note (UNAVAILABLE for users), never a failed load — access.py:1028-1042, access.py:1055-1059, access.py:1110-1128.
+12. Users, usage, tags, policies: the wave-2 rows, else SHOW USERS / INFORMATION_SCHEMA (usage 7 days); per-object tag and policy fallbacks up to `TAG_FALLBACK_MAX` (300) as `many()` waves, policies described once each — access.py:1110-1241.
+13. Object use / activity notes `ACCOUNT_USAGE`, `SKIPPED` (ACTIVITY=0) or `UNAVAILABLE`; streams: `SHOW STREAMS IN ACCOUNT` — access.py:1243-1273.
+14. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)`; says `done in N s` — access.py:1274-1275.
+15. Kept with `cache.get` -> `store()` (memory + file) under the key's own lock; SQL copy (in a thread) gets run id `direct-<timestamp>` — cache.py:122-161.
+16. Must stay in step with `SP_ACCESS_SNAPSHOT` (docstring) — access.py:883-887; checked by `test_live`, `test_live_inside`, `test_switches`, `test_progress` — test_access.py:572, test_access.py:486, test_access.py:2130.
 
 ## Example (mock query that answers everything empty; no Snowflake)
 

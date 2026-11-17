@@ -23,7 +23,7 @@ DDL: `sql/1_setup.sql:44-54`. Grain: run x user.
 | DEFAULT_NAMESPACE | VARCHAR(500) | | 52 |
 | LAST_SUCCESS_LOGIN | TIMESTAMP_LTZ | last login (personal activity data) | 53 |
 
-- Written: `sql/1_setup.sql:464-467` (`OBJECT_CONSTRUCT(*)`: the secondary-roles column name varies, `:301`) or `:307-311` (SHOW).
-- Read: `access.py:1349` (`profile`); `login_days` `access.py:2424-2426`; service / disabled `access.py:2431-2435`; default role `access.py:1825,3254`.
-- My access: from `DESC USER`; LAST_SUCCESS_LOGIN None + `LOGIN_UNKNOWN=True` (`access.py:728-733`).
+- Written: `sql/1_setup.sql:488-491` (`OBJECT_CONSTRUCT(*)`: the secondary-roles column name varies, `:301`) or `:307-311` (SHOW).
+- Read: `access.py:1485` (`profile`); `login_days` `access.py:2665-2667`; service / disabled `access.py:2672-2676`; default role `access.py:2061,3254`.
+- My access: from `DESC USER`; LAST_SUCCESS_LOGIN None + `LOGIN_UNKNOWN=True` (`access.py:844-849`).
 - Which rules use which column (dormant, disabled, default role): inferred from CLAUDE.md rule list, not traced per rule here.

@@ -7,6 +7,8 @@ Root scripts that start the app, run the SQL files, and fill README.html: run.py
 flowchart LR
   R[python run.py] -->|web, default| S[server.py -> uvicorn :WEB_PORT 8000]
   R -->|streamlit| A[streamlit run app.py :STREAMLIT_PORT 8501]
+  R -->|--export| E[server.py --export: parts only, exit]
+  R -->|--build| B[BUILD_ONLY=1: serve from the parts]
   RS[python run_sql.py sql/n_x.sql] --> F[fill &NAME from settings.local.sql or settings.sql]
   F --> C[sf.connect]
   C --> X[each -- name: statement]
@@ -16,14 +18,15 @@ flowchart LR
 
 | Step | path:line |
 |---|---|
-| Usage: web / `--fake` / `streamlit` / `--port` / `--direct` / `--objects`; `APP` env sets the default | run.py:1-10 |
-| `import access` loads `.env` (so ports can live there) | run.py:16 |
-| Args: `app` (web / streamlit, default `APP` or web), `--fake`, `--port`, `--direct`, `--objects` | run.py:28-34 |
-| `--fake` -> `FAKE=1`; source -> `SOURCE` | run.py:35-35 |
-| `command(argv, env)` builds `(cmd, env)` (testable; `test_run_address`, test_server.py:789) | run.py:26-42 |
-| streamlit: `python -m streamlit run app.py --server.port N --server.address $HOST --server.headless true` (HOST default 127.0.0.1) | run.py:33-38 |
-| web: `WEB_PORT` then `python server.py` | run.py:39-41 |
-| `__main__`: runs the command as a subprocess in the repo folder | run.py:45-47 |
+| Usage: web / `--fake` / `streamlit` / `--port` / `--direct` / `--objects` / `--export` / `--build`; `APP` env sets the default | run.py:1-15 |
+| `import access` loads `.env` (so ports can live there) | run.py:21 |
+| Args: `app` (web / streamlit, default `APP` or web), `--fake`, `--port`, `--direct`, `--objects`; `--export` / `--build` (one of them) and `--fresh` | run.py:27-35 |
+| `--fake` -> `FAKE=1`; source -> `SOURCE` | run.py:38-41 |
+| `--fresh` without `--export` is an error; `--export [--fresh]` -> `python server.py --export [--fresh]` (stage 1 only, then exit, `server.export`); `--build` -> `BUILD_ONLY=1` (built from the parts kept, never Snowflake) — [flows/two-stage-load.md](../flows/two-stage-load.md) | run.py:42-47 |
+| `command(argv, env)` builds `(cmd, env)` (testable; `test_run_address`, `test_parts`) | run.py:24-57 |
+| streamlit: `python -m streamlit run app.py --server.port N --server.address $HOST --server.headless true` (HOST default 127.0.0.1) | run.py:48-53 |
+| web: `WEB_PORT` then `python server.py` | run.py:54-56 |
+| `__main__`: runs the command as a subprocess in the repo folder | run.py:60-62 |
 
 ## run_sql.py
 
@@ -49,7 +52,7 @@ flowchart LR
 
 - Fills README.html between `<!--map:NAME-->` markers: overview, flow, rules (docs/make_readme.py:1-4).
 - Imports access.py for rule titles and severities (docs/make_readme.py:12); areas from `server.RULE_INFO` (docs/make_readme.py:4).
-- `rules()` (docs/make_readme.py:125), `inject()` (docs/make_readme.py:142); checked by `test_readme_rules` (test_access.py:1933).
+- `rules()` (docs/make_readme.py:125), `inject()` (docs/make_readme.py:142); checked by `test_readme_rules` (test_access.py:2091).
 
 ## Other root files (not scripts)
 

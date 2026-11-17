@@ -5,77 +5,87 @@ The 29 rule checks in `access.findings()`: 1-23 flag risky grants, 24-28 flag ta
 
 ```mermaid
 flowchart LR
-  B["build(d)<br/>access.py:1301-1366"] --> F["findings(only)<br/>access.py:5849-5857"]
-  F --> M["rules_model 1-4,13,14<br/>5494-5546"]
-  F --> A["rules_admin 5,9,12<br/>5549-5572"]
-  F --> S["rules_sensitive 6,7,10,11,15<br/>5575-5630"]
-  F --> U["rules_users 8,16<br/>5633-5645"]
-  F --> W["walks (HIERARCHY on): rule17, rule18, rule19,<br/>rules_operate 20,21, rule22, rule23, rule29<br/>5648-5792, 4970-4985"]
-  F --> RA["rules_activity 24-28<br/>5795-5846"]
-  F --> C["checks()<br/>5402-5404"]
-  F --> RR["rule_rows() page rows<br/>5378-5399"]
-  K["skipped_rules()<br/>5866-5871"] -.-> RR
+  B["build(d)<br/>access.py:1437-1503"] --> F["findings(only)<br/>access.py:6243-6259"]
+  F --> M["rules_model 1-4,13,14<br/>5864-5916"]
+  F --> A["rules_admin 5,9,12<br/>5919-5942"]
+  F --> S["rules_sensitive 6,7,10,11,15<br/>5945-6000"]
+  F --> U["rules_users 8,16<br/>6003-6015"]
+  F --> W["walks (HIERARCHY on): rule17, rule18, rule19,<br/>rules_operate 20,21, rule22, rule23, rule29<br/>6018-6165, 5333-5348"]
+  F --> RA["rules_activity 24-28<br/>6168-6219"]
+  F --> C["checks()<br/>5768-5770"]
+  F --> RR["rule_rows() page rows<br/>5741-5765"]
+  K["skipped_rules()<br/>6247-6252"] -.-> RR
+  D["duck(): role path counts in DuckDB<br/>3855-3888"] -.-> RR
+  D -.-> W
 ```
 
 ## How a finding is made
-- Titles and "why" text: `RULES` dict, `access.py:100-140`. Severity: `SEVERITY`, `access.py:141-144` ("edit freely").
-- `find(num, grantee, detail, path, edges, edge, user, **kw)` builds one finding dict; `edges` = grant edges the fix removes, `edge` = graph edge it is drawn on (`access.py:5407-5416`).
-- `findings(only)` concatenates all rule groups, sorted by rule number; the walking groups only when `HIERARCHY_ON` (`access.py:5849-5857`).
-- `checks()` = `(num, title, grantee, detail, path)` tuples (`access.py:5402-5404`); the CLAUDE.md verify command uses it.
-- `rule_rows()` adds severity, IaC/SQL fix text (`fix_text`, `access.py:3547-3554`), users who lose access (`lose`, `access.py:3573-3590`) and `same_fix` (`access.py:5378-5399`).
-- `SCOPED` rules (3,5,7,10,11,14,17,23) can be rechecked for a subset of names (What if); `GROW` (14,17,23) can be started by a removed grant (`access.py:5485-5491`).
-- Hidden built-ins never produce rule 9 / 13 findings (`access.py:5527`, `access.py:5561-5564`).
+- Titles and "why" text: `RULES` dict, `access.py:125-165`. Severity: `SEVERITY`, `access.py:166-169` ("edit freely").
+- `find(num, grantee, detail, path, edges, edge, user, **kw)` builds one finding dict; `edges` = grant edges the fix removes, `edge` = graph edge it is drawn on (`access.py:5794-5803`).
+- `findings(only)` runs the rule groups one after another, each timed, sorted by rule number; the walking groups only when `HIERARCHY_ON`; the load log names the up to 3 slowest groups over 1 s ("Slowest rules: ...") (`access.py:6243-6259`).
+- `checks()` = `(num, title, grantee, detail, path)` tuples (`access.py:5789-5791`); the CLAUDE.md verify command uses it.
+- `rule_rows()` adds severity, IaC/SQL fix text (`fix_text`, `access.py:3788-3795`), users who lose access (`lose`, `access.py:3814-3831`; with HIERARCHY on, `lose_all` answers every fix edge first in one DuckDB query, `access.py:5770-5771`) and `same_fix` (`access.py:5762-5786`).
+- `SCOPED` rules (3,5,7,10,11,14,17,23) can be rechecked for a subset of names (What if); `GROW` (14,17,23) can be started by a removed grant (`access.py:5876-5882`).
+- Hidden built-ins never produce rule 9 / 13 findings (`access.py:5918`, `access.py:5952-5955`).
+
+## Speed on big accounts
+- `duck()` (`access.py:3868-3905`): an in-memory DuckDB per data set with the role links `E` (parent, child, K grant rows), the start roles `S` of every user (plus PUBLIC) and the path counts `RP` (role, reached role, paths), one `INSERT ... GROUP BY` per hop up to `MAX_HOPS`. None without duckdb, with a role loop (`loops()`), past `MAX_HOPS` or on a DuckDB error (more than 2^127 paths): the Python walk runs then; What if (`only` set) opens no DuckDB ([business_rule:duck_walk](rules.md)).
+- `lose_all(edges)` (`access.py:3931-3970`): who loses access for every fix edge in one query: a user loses a role when every path to it uses the link, `paths(user, grantee) x K = paths(user, role)`; privilege edges: users reaching the grantee and no other holder (`access.py:3966-3970`).
+- `read_shares()` (`access.py:3908-3928`): per role the data objects reached, read only, written / owned, owned, and schema CREATE grants reached; `readonly_writes` (rule 17, `access.py:5845-5854`) and `rule23` (`access.py:6162-6169`) walk only the roles one of the heuristics can flag ([business_rule:rule_prefilter](rules.md)).
+- `below(role)` (`access.py:2022-2024`): `bfs([role])` once per data set for rules 3 and 14 (`access.py:5905`, `access.py:5927`).
+- Equal to the Python walk: `test_duck_reach` (`test_access.py:1127-1144`) on the fake data and `big()`.
+- Rule results kept across restarts: `server.kept_rules` writes `findings`, `rows`, `ro`, `breaks` to `.cache/<key>.rules.pkl` with `(build key, builtin, a.rules_stamp(), SERVER_STAMP)`; reused while the data, the settings `access.py` reads, `access.py` and `server.py` are unchanged (`server.py:306-329`, `access.py:3844-3848`; `test_kept_rules`, `test_server.py:915-947`).
 
 ## Switches: rules that do not run
-- `HIERARCHY=0` (`config:HIERARCHY`, `access.py:73`): the checks in `WALKS` = {3, 5, 7, 10, 11, 14, 17, 18, 19, 20, 21, 22, 23, 24, 29} do not run; rule 6 runs without its reader count (`affects` None); `rule_rows` counts no "who loses access"; rule 17's What-if breaks list is off (`server.py:236`) — `access.py:5859-5862`, `access.py:5389`, `access.py:5583`. Pages still walk.
-- `ACTIVITY=0` (`config:ACTIVITY`): no activity rows, so rules 24-28 (`ACTIVITY_RULES`) are skipped — `access.py:5863`, `access.py:5869-5870`.
-- `skipped_rules()` -> `{rule: "skipped (HIERARCHY=0)" | "skipped (ACTIVITY=0)"}` — `access.py:5866-5871`. Risks & fixes and Home send it as `skipped`; `Passing` leaves skipped rules out (`server.py:1929-1940`, `server.py:1128`); the React pages say "N rules skipped: ..." (`skipNote`, `web/src/pages/Risks.tsx:86-90`, `web/src/pages/Rules.tsx:59`, `web/src/pages/Home.tsx:154`) and show the reason instead of "passes" (`web/src/pages/Risks.tsx:306`).
-- At the defaults nothing is skipped and every rule has a finding on the fake data (`test_switches`, `test_access.py:485-529`; both versions answer the same JSON, `test_server.py:852-887`).
+- `HIERARCHY=0` (`config:HIERARCHY`, `access.py:98`): the checks in `WALKS` = {3, 5, 7, 10, 11, 14, 17, 18, 19, 20, 21, 22, 23, 24, 29} do not run; rule 6 runs without its reader count (`affects` None); `rule_rows` counts no "who loses access"; rule 17's What-if breaks list is off (`server.py:299`) — `access.py:6261-6264`, `access.py:5776`, `access.py:5974`. Pages still walk.
+- `ACTIVITY=0` (`config:ACTIVITY`): no activity rows, so rules 24-28 (`ACTIVITY_RULES`) are skipped — `access.py:6265`, `access.py:6271-6272`.
+- `skipped_rules()` -> `{rule: "skipped (HIERARCHY=0)" | "skipped (ACTIVITY=0)"}` — `access.py:6268-6273`. Risks & fixes and Home send it as `skipped`; `Passing` leaves skipped rules out (`server.py:2031-2042`, `server.py:1230`); the React pages say "N rules skipped: ..." (`skipNote`, `web/src/pages/Risks.tsx:86-90`, `web/src/pages/Rules.tsx:59`, `web/src/pages/Home.tsx:154`) and show the reason instead of "passes" (`web/src/pages/Risks.tsx:306`).
+- At the defaults nothing is skipped and every rule has a finding on the fake data (`test_switches`, `test_access.py:486-530`; both versions answer the same JSON, `test_server.py:1047-1082`).
 
 ## Rule table
 Examples: output of `.venv\Scripts\python -c "import access as a; a.build(a.fake()); a.checks()"`, first finding per rule (count = findings for that rule on fake data). Fake names only.
 
 | # | Name (`RULES`) | Plain words | Sev. | Code | Input -> output example (fake data) |
 |---|---|---|---|---|---|
-| 1 | Technical role granted to a user or group role | A `T_` role sits directly on a user, or a group role holds a `T_` role | Medium | `access.py:5497-5502` | user ANALYST_02 holds T_SALES_MART_READ -> `ANALYST_02 > T_SALES_MART_READ` (2) |
-| 2 | Direct privilege on a functional role | An `F_` role holds a privilege itself instead of via a `T_` role | Medium | `access.py:5503-5506` | F_SECURITY -> `MANAGE GRANTS on ACCOUNT` (2) |
-| 3 | READ held directly and through another role | A consumer holds a `..._READ` role directly and also through another held role | Low | `access.py:5507-5518` | ANALYST_02 -> T_SALES_MART_READ, path `ANALYST_02 > GRP_ANALYSTS > F_ANALYST > T_SALES_MART_READ` (3) |
-| 4 | OWNER role held by a consumer | A `..._OWNER` technical role held by a user or a non-build, non-technical role | High | `access.py:5519-5525` | F_ENGINEER holds T_SALES_MART_OWNER (1) |
-| 5 | Admin role held by a person | A non-service user reaches an admin role (not via another admin role); paths from `admin_paths()`, capped per admin role (`MAX_PATHS` each, shortest first, `access.py:2308-2314`), so 200 paths to SYSADMIN never hide ACCOUNTADMIN | High | `access.py:5553-5559` | ADMIN_01 -> SYSADMIN via `ADMIN_01 > F_SECURITY > SYSADMIN` (3) |
-| 6 | Sensitive column without a masking policy | A tagged-sensitive column has no masking policy | Medium | `access.py:5578-5587` | SALES.CORE.TBL_CUSTOMER -> `column BIRTH_DATE: PRIVACY_CATEGORY=QUASI_IDENTIFIER` (3) |
-| 7 | Dormant or disabled person can read sensitive data | Inactive non-service user still reads a sensitive object | High | `access.py:5588-5597` | ANALYST_02 -> `last login 109 days ago; reads 3 sensitive: ...` (4) |
-| 8 | Disabled user still holds roles | Disabled user with role grants | Low | `access.py:5636-5639` | FIN_14 -> `holds GRP_EMEA_ALL` (1) |
-| 9 | Privilege granted to PUBLIC | PUBLIC holds a privilege or role (default account privileges and built-ins excluded) | High | `access.py:5560-5565` | PUBLIC -> `USAGE on WAREHOUSE WH_SALES_XS` (1) |
-| 10 | Person can write to a sensitive object | Non-service user reaches write/own on a sensitive object | Medium | `access.py:5598-5611` | ANALYST_01 -> `INSERT on SHARED.LOGGING.TBL_LOGGING` via `GRP_ANALYSTS > T_SHARED_LOGGING_READ` (17) |
-| 11 | Sensitive object reachable through a group role | A group role reaches sensitive objects | Low | `access.py:5612-5620` | GRP_ANALYSTS -> `reads 3 sensitive: ...; 2 users` (2) |
-| 12 | Admin role is a user's default role | `DEFAULT_ROLE` in `ADMIN` | High | `access.py:5566-5571` | OPS_01 -> `default role SYSADMIN` (1) |
-| 13 | Orphan role: no users and no parent roles | Functional/group role nobody holds (technical roles exempt by design) | Low | `access.py:5526-5532` | F_LEGACY_REPORTING -> `holds 1 role: T_SALES_MART_READ; 0 privileges of its own` (1) |
-| 14 | Chain deeper than `MAX_DEPTH_RULE` (5) roles | Shortest chain from a user-held role to its deepest grant is > 5 | Low | `access.py:5533-5545`, `access.py:88` | GRP_EMEA_ALL -> `10 roles deep to SELECT on FINANCE.REPORT.TBL_REVENUE; held by 14 users` (1) |
-| 15 | Future grant in a schema that holds sensitive data | Read future grant on tables/views in a schema with sensitive objects (not build/admin) | Medium | `access.py:5621-5629` | T_SALES_CORE_READ -> `SELECT on future tables in SALES.CORE` (1) |
-| 16 | Dormant user (no login for `DORMANT_DAYS`=90) still holds roles | Not disabled (that is rule 8), not service | Medium | `access.py:5640-5644`, `access.py:87` | ANALYST_02 -> `last login 109 days ago; holds GRP_ANALYSTS, T_SALES_MART_READ` (3) |
-| 17 | Read-only role can write | Name (`READ_ROLE_PATTERNS`) or behaviour (>= 80% read-only over >= 5 objects) says read-only, but it writes/owns | High | `access.py:5648-5664`, `readonly_writes` `access.py:5451-5482`, `access.py:89-93` | F_FINANCE_REPORTING -> `DELETE, INSERT, TRUNCATE, UPDATE on FINANCE.REPORT.TBL_REVENUE via T_FINANCE_REPORT_WRITE (inherited); heuristic: name` (4) |
-| 18 | Unusual privilege set | Role suffix `_READ/_WRITE/_EXECUTE/_OWNER` -> `CAP_PRIVS`; extra or missing privileges | Low | `access.py:5696-5709`, `unusual` `access.py:5667-5693`, `CAP_PRIVS` `access.py:95-99` | T_SALES_PIPELINE_EXECUTE -> `EXECUTE role holds OPERATE on task ...TSK_LOAD_CUSTOMER; standard EXECUTE: USAGE; extra OPERATE` (3) |
-| 19 | EXECUTE TASK held by a person or consumer role | Account `EXECUTE TASK` reaches a non-service user or F/group role (not build) | Medium | `access.py:5712-5726` | ENGINEER_01 -> `EXECUTE TASK on ACCOUNT via F_ENGINEER > T_SALES_PIPELINE_EXECUTE` (2) |
-| 20 | OPERATE on a task outside owner/build roles | Task OPERATE held by a role that is not build/admin/owner side | High | `access.py:5734-5745`, `owner_side` `access.py:5729-5731` | T_SALES_PIPELINE_EXECUTE -> `OPERATE on task ...; runs as its owner T_SALES_PIPELINE_OWNER; 1 user reaches it` (1) |
-| 21 | Warehouse MODIFY or OPERATE outside owner/build roles | Same for warehouses | Medium | `access.py:5734-5745` | T_SALES_CORE_EXECUTE -> `OPERATE on warehouse WH_SALES_XS; owner T_WAREHOUSE_OWNER` (1) |
-| 22 | Stream on sensitive table readable without the table | Consumer reads a stream whose source is sensitive but cannot read the source | High | `access.py:5748-5765` | F_SUPPORT -> `reads stream SALES.PIPELINE.STR_CUSTOMER on sensitive SALES.CORE.TBL_CUSTOMER, but cannot read ...` (1) |
-| 23 | CREATE privilege on a schema held by a read-only role | Read-only role (rule 17 heuristics) reaches `CREATE ...` on a schema | High | `access.py:5768-5792` | F_FINANCE_REPORTING -> `CREATE VIEW on schema FINANCE.REPORT via T_FINANCE_REPORT_READ (inherited); heuristic: name` (4) |
-| 24 | Person changed data or a table's definition | A person (not a service user) ran WRITE or DDL on a table with a role that does not own it | Medium | `access.py:5810-5820` | ENGINEER_01 -> `INSERT 28, ALTER_TABLE_ADD_COLUMN 3 on SALES.CORE.TBL_CUSTOMER as F_ENGINEER, last 2026-10-30` (1) |
-| 25 | Service user used from an interactive client | A service user's queries came from Snowsight, SnowSQL or the Snowflake CLI (`INTERACTIVE`) | High | `access.py:5834-5840` | SVC_DEPLOY -> `Snowsight 7 queries on 1 table, last 2026-10-31` (1) |
-| 26 | Admin role used to read or change data | Queries on a table ran with an `ADMIN` role | High | `access.py:5841-5845` | OPS_01 -> `as SYSADMIN: read 1 object, changed 0: FINANCE.REPORT.TBL_REVENUE` (1) |
-| 27 | First access to a table in the last 7 days | An active user touched a table for the first time within `NEW_DAYS` (7) | Low | `access.py:5821-5825` | ENGINEER_01 -> `HR.PEOPLE.TBL_EMPLOYEE first on 2026-10-30 (9 queries), none in the 53 days before` (1) |
-| 28 | Unusual volume on a table | A day >= 50 queries and > 3x the user's median day on that table (`SPIKE`) | Medium | `access.py:5826-5833` | REPORT_01 -> `400 queries on SALES.MART.VW_CUSTOMER on 2026-10-29, 19x the usual day (median 21)` (1) |
-| 29 | Streamlit app shows its owner's sensitive data to people who cannot read it | A role holds USAGE on a Streamlit app whose owner role reads sensitive data, and some of its users cannot read that data through their own roles; the app runs with its owner's rights | High | `access.py:4970-4985`, `app_exposure` `access.py:4930-4943` | T_SALES_MART_EXECUTE -> `opens SALES.MART.ST_CUSTOMER_LOOKUP; its owner T_SALES_MART_OWNER reads sensitive SALES.MART.VW_CUSTOMER; 1 user can't read it themselves: SUPPORT_01` (1) |
+| 1 | Technical role granted to a user or group role | A `T_` role sits directly on a user, or a group role holds a `T_` role | Medium | `access.py:5888-5893` | user ANALYST_02 holds T_SALES_MART_READ -> `ANALYST_02 > T_SALES_MART_READ` (2) |
+| 2 | Direct privilege on a functional role | An `F_` role holds a privilege itself instead of via a `T_` role | Medium | `access.py:5894-5897` | F_SECURITY -> `MANAGE GRANTS on ACCOUNT` (2) |
+| 3 | READ held directly and through another role | A consumer holds a `..._READ` role directly and also through another held role | Low | `access.py:5898-5909` | ANALYST_02 -> T_SALES_MART_READ, path `ANALYST_02 > GRP_ANALYSTS > F_ANALYST > T_SALES_MART_READ` (3) |
+| 4 | OWNER role held by a consumer | A `..._OWNER` technical role held by a user or a non-build, non-technical role | High | `access.py:5910-5916` | F_ENGINEER holds T_SALES_MART_OWNER (1) |
+| 5 | Admin role held by a person | A non-service user reaches an admin role (not via another admin role); paths from `admin_paths()`, capped per admin role (`MAX_PATHS` each, shortest first, `access.py:2544-2550`), so 200 paths to SYSADMIN never hide ACCOUNTADMIN | High | `access.py:5944-5950` | ADMIN_01 -> SYSADMIN via `ADMIN_01 > F_SECURITY > SYSADMIN` (3) |
+| 6 | Sensitive column without a masking policy | A tagged-sensitive column has no masking policy | Medium | `access.py:5969-5978` | SALES.CORE.TBL_CUSTOMER -> `column BIRTH_DATE: PRIVACY_CATEGORY=QUASI_IDENTIFIER` (3) |
+| 7 | Dormant or disabled person can read sensitive data | Inactive non-service user still reads a sensitive object | High | `access.py:5979-5988` | ANALYST_02 -> `last login 109 days ago; reads 3 sensitive: ...` (4) |
+| 8 | Disabled user still holds roles | Disabled user with role grants | Low | `access.py:6027-6030` | FIN_14 -> `holds GRP_EMEA_ALL` (1) |
+| 9 | Privilege granted to PUBLIC | PUBLIC holds a privilege or role (default account privileges and built-ins excluded) | High | `access.py:5951-5956` | PUBLIC -> `USAGE on WAREHOUSE WH_SALES_XS` (1) |
+| 10 | Person can write to a sensitive object | Non-service user reaches write/own on a sensitive object | Medium | `access.py:5989-6002` | ANALYST_01 -> `INSERT on SHARED.LOGGING.TBL_LOGGING` via `GRP_ANALYSTS > T_SHARED_LOGGING_READ` (17) |
+| 11 | Sensitive object reachable through a group role | A group role reaches sensitive objects | Low | `access.py:6003-6011` | GRP_ANALYSTS -> `reads 3 sensitive: ...; 2 users` (2) |
+| 12 | Admin role is a user's default role | `DEFAULT_ROLE` in `ADMIN` | High | `access.py:5957-5962` | OPS_01 -> `default role SYSADMIN` (1) |
+| 13 | Orphan role: no users and no parent roles | Functional/group role nobody holds (technical roles exempt by design) | Low | `access.py:5917-5923` | F_LEGACY_REPORTING -> `holds 1 role: T_SALES_MART_READ; 0 privileges of its own` (1) |
+| 14 | Chain deeper than `MAX_DEPTH_RULE` (5) roles | Shortest chain from a user-held role to its deepest grant is > 5 | Low | `access.py:5924-5936`, `access.py:113` | GRP_EMEA_ALL -> `10 roles deep to SELECT on FINANCE.REPORT.TBL_REVENUE; held by 14 users` (1) |
+| 15 | Future grant in a schema that holds sensitive data | Read future grant on tables/views in a schema with sensitive objects (not build/admin) | Medium | `access.py:6012-6020` | T_SALES_CORE_READ -> `SELECT on future tables in SALES.CORE` (1) |
+| 16 | Dormant user (no login for `DORMANT_DAYS`=90) still holds roles | Not disabled (that is rule 8), not service | Medium | `access.py:6031-6035`, `access.py:112` | ANALYST_02 -> `last login 109 days ago; holds GRP_ANALYSTS, T_SALES_MART_READ` (3) |
+| 17 | Read-only role can write | Name (`READ_ROLE_PATTERNS`) or behaviour (>= 80% read-only over >= 5 objects) says read-only, but it writes/owns | High | `access.py:6039-6055`, `readonly_writes` `access.py:5838-5873`, `access.py:114-118` | F_FINANCE_REPORTING -> `DELETE, INSERT, TRUNCATE, UPDATE on FINANCE.REPORT.TBL_REVENUE via T_FINANCE_REPORT_WRITE (inherited); heuristic: name` (4) |
+| 18 | Unusual privilege set | Role suffix `_READ/_WRITE/_EXECUTE/_OWNER` -> `CAP_PRIVS`; extra or missing privileges | Low | `access.py:6087-6100`, `unusual` `access.py:6058-6084`, `CAP_PRIVS` `access.py:120-124` | T_SALES_PIPELINE_EXECUTE -> `EXECUTE role holds OPERATE on task ...TSK_LOAD_CUSTOMER; standard EXECUTE: USAGE; extra OPERATE` (3) |
+| 19 | EXECUTE TASK held by a person or consumer role | Account `EXECUTE TASK` reaches a non-service user or F/group role (not build) | Medium | `access.py:6103-6117` | ENGINEER_01 -> `EXECUTE TASK on ACCOUNT via F_ENGINEER > T_SALES_PIPELINE_EXECUTE` (2) |
+| 20 | OPERATE on a task outside owner/build roles | Task OPERATE held by a role that is not build/admin/owner side | High | `access.py:6125-6136`, `owner_side` `access.py:6120-6122` | T_SALES_PIPELINE_EXECUTE -> `OPERATE on task ...; runs as its owner T_SALES_PIPELINE_OWNER; 1 user reaches it` (1) |
+| 21 | Warehouse MODIFY or OPERATE outside owner/build roles | Same for warehouses | Medium | `access.py:6125-6136` | T_SALES_CORE_EXECUTE -> `OPERATE on warehouse WH_SALES_XS; owner T_WAREHOUSE_OWNER` (1) |
+| 22 | Stream on sensitive table readable without the table | Consumer reads a stream whose source is sensitive but cannot read the source | High | `access.py:6139-6156` | F_SUPPORT -> `reads stream SALES.PIPELINE.STR_CUSTOMER on sensitive SALES.CORE.TBL_CUSTOMER, but cannot read ...` (1) |
+| 23 | CREATE privilege on a schema held by a read-only role | Read-only role (rule 17 heuristics) reaches `CREATE ...` on a schema | High | `access.py:6159-6186` | F_FINANCE_REPORTING -> `CREATE VIEW on schema FINANCE.REPORT via T_FINANCE_REPORT_READ (inherited); heuristic: name` (4) |
+| 24 | Person changed data or a table's definition | A person (not a service user) ran WRITE or DDL on a table with a role that does not own it | Medium | `access.py:6204-6214` | ENGINEER_01 -> `INSERT 28, ALTER_TABLE_ADD_COLUMN 3 on SALES.CORE.TBL_CUSTOMER as F_ENGINEER, last 2026-10-30` (1) |
+| 25 | Service user used from an interactive client | A service user's queries came from Snowsight, SnowSQL or the Snowflake CLI (`INTERACTIVE`) | High | `access.py:6228-6234` | SVC_DEPLOY -> `Snowsight 7 queries on 1 table, last 2026-10-31` (1) |
+| 26 | Admin role used to read or change data | Queries on a table ran with an `ADMIN` role | High | `access.py:6235-6239` | OPS_01 -> `as SYSADMIN: read 1 object, changed 0: FINANCE.REPORT.TBL_REVENUE` (1) |
+| 27 | First access to a table in the last 7 days | An active user touched a table for the first time within `NEW_DAYS` (7) | Low | `access.py:6215-6219` | ENGINEER_01 -> `HR.PEOPLE.TBL_EMPLOYEE first on 2026-10-30 (9 queries), none in the 53 days before` (1) |
+| 28 | Unusual volume on a table | A day >= 50 queries and > 3x the user's median day on that table (`SPIKE`) | Medium | `access.py:6220-6227` | REPORT_01 -> `400 queries on SALES.MART.VW_CUSTOMER on 2026-10-29, 19x the usual day (median 21)` (1) |
+| 29 | Streamlit app shows its owner's sensitive data to people who cannot read it | A role holds USAGE on a Streamlit app whose owner role reads sensitive data, and some of its users cannot read that data through their own roles; the app runs with its owner's rights | High | `access.py:5354-5369`, `app_exposure` `access.py:5314-5327` | T_SALES_MART_EXECUTE -> `opens SALES.MART.ST_CUSTOMER_LOOKUP; its owner T_SALES_MART_OWNER reads sensitive SALES.MART.VW_CUSTOMER; 1 user can't read it themselves: SUPPORT_01` (1) |
 
 ## Notes per rule
-- 3: no name parsing; only consumer -> technical `_READ` reached through another held role; technical-to-technical links not checked (`access.py:5507-5510`).
-- 4: build roles (`BUILD_ROLES`, default `F_DEPLOY`, fnmatch) may hold OWNER roles (`access.py:62-63`, `is_build` `access.py:5419-5420`).
-- 5: reach first via `ups()` (no paths) to skip non-admin users (`access.py:5552`).
-- 6/7/10/11/15/22: "sensitive" = tags matching `SENSITIVE_TAGS` (`access.py:83-85`), filled in `build()` (`access.py:1362-1366`); `SENS_RULES` = {6,7,10,11,15,22} (`access.py:5262`).
-- 12, 13, 14, 6, 18: custom `fix=` text (ALTER USER / DROP ROLE / masking policy / "shorten the chain") instead of REVOKE (`access.py:5532`, `4616`, `4639-4641`, `4656-4657`, `4774-4775`).
-- 17: an inherited write on a name-only match that is not mostly read gets a review hint, no SQL (`access.py:5658-5661`).
-- 18: standard list sorted with name as tie-breaker so findings are stable across processes (`access.py:5700`).
+- 3: no name parsing; only consumer -> technical `_READ` reached through another held role; technical-to-technical links not checked (`access.py:5898-5901`).
+- 4: build roles (`BUILD_ROLES`, default `F_DEPLOY`, fnmatch) may hold OWNER roles (`access.py:65-66`, `is_build` `access.py:5806-5807`).
+- 5: reach first via `ups()` (no paths) to skip non-admin users (`access.py:5943`).
+- 6/7/10/11/15/22: "sensitive" = tags matching `SENSITIVE_TAGS` (`access.py:108-110`), filled in `build()` (`access.py:1498-1502`); `SENS_RULES` = {6,7,10,11,15,22} (`access.py:5646`).
+- 12, 13, 14, 6, 18: custom `fix=` text (ALTER USER / DROP ROLE / masking policy / "shorten the chain") instead of REVOKE (`access.py:5923`, `4616`, `4639-4641`, `4656-4657`, `4774-4775`).
+- 17: an inherited write on a name-only match that is not mostly read gets a review hint, no SQL (`access.py:6049-6052`).
+- 18: standard list sorted with name as tie-breaker so findings are stable across processes (`access.py:6091`).
 - Fake data keeps >= 1 finding per rule (CLAUDE.md "Keep FAKE=1 ... at least one finding per rule"; verified: all 29 present above).
-- 24-28: input is `acts` (TBL_ACCESS_ACTIVITY or the Direct-mode ACTIVITY rows), not grants; the fix is a review, no SQL (`access.py:5798`); conditions and thresholds in [activity.md](activity.md); cached per data set (`cached("activity", rules_activity)`, `access.py:5854`); one finding each from `fake_activity` (`access.py:410-444`), checked by `test_activity` (`test_access.py:1834-1837`).
-- 29: not in `SENS_RULES` or `SCOPED`, so What if rechecks it in full; the finding sits on the role's USAGE edge to the app, so revoking that USAGE fixes it (`access.py:4984`, `test_access.py:1890-1891`); UI area "Sensitive data", fix hint: revoke the USAGE, use a caller's rights connection, or an owner role without the sensitive data (`server.py:401-403`); fake data: app SALES.MART.ST_CUSTOMER_LOOKUP owned by T_SALES_MART_OWNER, USAGE via T_SALES_MART_EXECUTE held by F_SUPPORT (`access.py:151`, `access.py:190-191`, `access.py:229`).
-- Tests: `test_rules` (`test_access.py:263`); switches: `test_switches` (`test_access.py:485`, `test_server.py:852`); 24-28: `test_activity` (`test_access.py:1826`), `test_server.test_activity` (`test_server.py:659`); 29: `test_activity` (`test_access.py:1888-1891`).
+- 24-28: input is `acts` (TBL_ACCESS_ACTIVITY or the Direct-mode ACTIVITY rows), not grants; the fix is a review, no SQL (`access.py:6192`); conditions and thresholds in [activity.md](activity.md); cached per data set (`cached("activity", rules_activity)`, `access.py:6248`); one finding each from `fake_activity` (`access.py:435-469`), checked by `test_activity` (`test_access.py:1992-1995`).
+- 29: not in `SENS_RULES` or `SCOPED`, so What if rechecks it in full; the finding sits on the role's USAGE edge to the app, so revoking that USAGE fixes it (`access.py:5368`, `test_access.py:2048-2049`); UI area "Sensitive data", fix hint: revoke the USAGE, use a caller's rights connection, or an owner role without the sensitive data (`server.py:492-494`); fake data: app SALES.MART.ST_CUSTOMER_LOOKUP owned by T_SALES_MART_OWNER, USAGE via T_SALES_MART_EXECUTE held by F_SUPPORT (`access.py:176`, `access.py:215-216`, `access.py:254`).
+- Tests: `test_rules` (`test_access.py:264`); switches: `test_switches` (`test_access.py:486`, `test_server.py:1047`); 24-28: `test_activity` (`test_access.py:1984`), `test_server.test_activity` (`test_server.py:694`); 29: `test_activity` (`test_access.py:2046-2049`).

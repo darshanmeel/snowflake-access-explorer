@@ -3,23 +3,23 @@ DuckDB copy: after each read from Snowflake, `cache.sql_copy` writes the snapsho
 
 ```mermaid
 flowchart LR
-  G[cache.get: fresh read] -->|sql_wanted| C[cache.sql_copy]
+  G[cache.store: fresh read with an OK run] -->|sql_wanted, COPYING thread| C[cache.sql_copy]
   D{{snapshot dict}} --> C
-  C -->|SQL_LOCK, one bulk INSERT per table: UNNEST of text lists| S[(schema per cache key<br/>TBL_ACCESS_RUN .. OBJECT_USE, ACTIVITY)]
+  C -->|SQL_LOCK, one INSERT per table: Arrow table or UNNEST of text lists| S[(schema per cache key<br/>TBL_ACCESS_RUN .. OBJECT_USE, ACTIVITY)]
   S -->|other run id: RENAME| P[(TBL_ACCESS_*_PREV)]
   C --> K[(main.COPIES)]
 ```
 
 ## Layout
 
-- File: `.cache/access.duckdb` (`cache.py:196-197`); git-ignored `.cache/` (`.gitignore:7`).
-- One schema per cache key: `schema(key)` = key with non-word chars -> `_`, lower case (`cache.py:200-202`); key from `cache.name` (`cache.py:51-57`).
-- Tables: the 9 `TBL_ACCESS_` data + run tables, columns from `COLUMNS` (`cache.py:172-192`); `TBL_ACCESS_FINDING` is not copied.
-- `COPIES` in main: SCHEMA_NAME, CACHE_KEY, RUN_ID, READ_AT, PREV_RUN_ID (`cache.py:253-254`), one row per schema (delete + insert `cache.py:273-275`).
+- File: `.cache/access.duckdb` (`cache.py:204-205`); git-ignored `.cache/` (`.gitignore:7`).
+- One schema per cache key: `schema(key)` = key with non-word chars -> `_`, lower case (`cache.py:208-210`); key from `cache.name` (`cache.py:57-63`).
+- Tables: the 9 `TBL_ACCESS_` data + run tables, columns from `COLUMNS` (`access.py:70-90`, `cache.py:199`); `TBL_ACCESS_FINDING` is not copied.
+- `COPIES` in main: SCHEMA_NAME, CACHE_KEY, RUN_ID, READ_AT, PREV_RUN_ID (`cache.py:266-267`), one row per schema (delete + insert `cache.py:292-294`).
 
 ## Type mapping (Snowflake -> DuckDB)
 
-| Snowflake (`sql/1_setup.sql`) | DuckDB (`cache.py:172-192`) |
+| Snowflake (`sql/1_setup.sql`) | DuckDB (`access.py:70-90`) |
 |---|---|
 | VARCHAR(n) | VARCHAR |
 | TIMESTAMP_LTZ | TIMESTAMPTZ |
@@ -27,24 +27,24 @@ flowchart LR
 | NUMBER (QUERIES) | BIGINT |
 | BOOLEAN, DATE | BOOLEAN, DATE |
 
-- Values loaded as VARCHAR then `TRY_CAST` to the column type (`cache.py:270-272`): bad values become NULL.
+- Values loaded as text then `TRY_CAST` to the column type (`cache.py:281-291`): bad values become NULL.
 
-## Write steps (`cache.py:226-280`)
+## Write steps (`cache.py:234-300`)
 
-1. Skip with a note when duckdb is not installed (`cache.py:231-235`). The whole write holds `SQL_LOCK`: every cache key writes the one file (`cache.py:249`).
-2. Run id: snapshot RUN_ID; for `""`, `direct`, `live`, `fake` -> `<rid or read>-YYYYmmddHHMMSS` per read (`cache.py:236-239`).
-3. `TBL_ACCESS_RUN` row is synthesized: STARTED_AT NULL, STATUS OK, ROW_COUNTS from the dict lists (`cache.py:241-245`).
-4. One transaction (`cache.py:252,233`); if `COPIES` has another run id for this schema -> drop old `_PREV`, rename current to `_PREV` (`cache.py:256-262`).
-5. Recreate each table and bulk load it with one `INSERT ... SELECT TRY_CAST(UNNEST(?::VARCHAR[]) AS <type>), ...`: one text list per column (`text()`: dicts / lists as compact JSON, booleans true / false), RUN_ID repeated as the run id; no temp file (`cache.py:264-271`, `cache.py:217-223`).
-6. Record in `COPIES`; PREV_RUN_ID = the replaced run (`cache.py:273-275`). Failure -> note in `SQL[key]` (`cache.py:279-280`); nothing to clean up.
+1. Skip with a note when duckdb is not installed (`cache.py:239-243`). The whole write holds `SQL_LOCK` and runs as `access.step("DuckDB copy (access.duckdb)")` in the load log: every cache key writes the one file (`cache.py:261`).
+2. Run id: snapshot RUN_ID; for `""`, `direct`, `live`, `fake` -> `<rid or read>-YYYYmmddHHMMSS` per read (`cache.py:248-251`).
+3. `TBL_ACCESS_RUN` row is synthesized: STARTED_AT NULL, STATUS OK, ROW_COUNTS from the dict lists (`cache.py:253-257`).
+4. One transaction (`cache.py:265`, `cache.py:295`); if `COPIES` has another run id for this schema -> drop old `_PREV`, rename current to `_PREV` (`cache.py:269-275`).
+5. Recreate each table and load it in one INSERT, with a line "DuckDB copy: TBL_ACCESS_<t>, N rows": one text list per column (`text()` only for values not text yet: dicts / lists as compact JSON, booleans true / false), RUN_ID repeated as the run id; with pyarrow the lists are registered as an Arrow table `src` and inserted with `TRY_CAST("<col>" AS <type>) FROM src` (one scan, about 5x faster on a million rows), else `TRY_CAST(UNNEST(?::VARCHAR[]) AS <type>)`; no temp file (`cache.py:276-291`, `cache.py:225-231`).
+6. Record in `COPIES`; PREV_RUN_ID = the replaced run (`cache.py:292-294`). Failure -> note in `SQL[key]` (`cache.py:299-300`); nothing to clean up.
 
 ## When it is written
 
-- `sql_wanted`: never inside Snowflake or with `DUCKDB=0`; fake data only with `DUCKDB=1`; Snowflake reads when a local copy may be kept (`CACHE_HOURS > 0`) (`cache.py:205-210`).
-- Called from `cache.get` only on a fresh read, before the `.pkl` write (`cache.py:131-134`).
-- UI info: `sql_info` (`cache.py:283-291`), sent by `server.py:2197,2108`.
-- Example queries (EXCEPT against `_PREV`): `README.md:237-252`.
+- `sql_wanted`: never inside Snowflake; fake data only with `DUCKDB=1`; Snowflake reads when a local copy may be kept (`CACHE_HOURS > 0`); there is no off switch (`cache.py:213-218`).
+- Started by `cache.store` in a daemon thread (`COPYING[key]`, `cache.py:149-152`) after a fresh read that has an OK run (a no-run read is never copied, `cache.py:147`); the app never waits for it; `sql_info` says "Being written now" while the thread runs (`cache.py:309-311`).
+- UI info: `sql_info` (`cache.py:303-312`), sent by `server.py:2299,2108`.
+- Example queries (EXCEPT against `_PREV`): `README.md:240-255`.
 
 ## Unclear
 
-- `COPIES` grows one row per cache key and is never pruned (inferred from `cache.py:273-275`; no delete of other schemas found).
+- `COPIES` grows one row per cache key and is never pruned (inferred from `cache.py:292-294`; no delete of other schemas found).

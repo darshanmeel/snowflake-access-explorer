@@ -5,42 +5,52 @@ Data is read once and kept: `cache.get` (memory 24 h + `.cache/*.pkl` for `CACHE
 
 ```mermaid
 flowchart TD
-  LS["server.load_shared<br/>server.py:130-139"] --> G["cache.get(KEY, read_shared)<br/>cache.py:116-143"]
+  LS["server.load_shared<br/>server.py:177-196"] --> G["cache.get(KEY, read_shared)<br/>cache.py:122-141"]
   G -->|"MEM < 24 h"| M[memory]
   G -->|".pkl < CACHE_HOURS"| P[".cache/&lt;key&gt;.pkl"]
-  G -->|"else, under lock(key)"| R["fn() = tracked(read_shared): fake / live(old) / snapshot(old)<br/>server.py:121-137"]
-  R --> KP["keep_prev(): old file -> .prev.pkl<br/>cache.py:81-90"]
-  R --> SQ["sql_copy -> access.duckdb<br/>cache.py:226"]
-  G --> B["a.build(d, key, builtin)<br/>server.py:230-231"]
-  B --> KB["built{} up to KEEP_BUILT=3<br/>access.py:1288-1314"]
+  G -->|"else, under lock(key)"| R["fn() = read_shared: fake / live(old) / snapshot<br/>server.py:139-147"]
+  R --> PT[".cache/reads/&lt;key&gt;/ parts<br/>cache.parted, cache.py:429-551"]
+  R --> ST["store(): memory, .pkl, SQL copy thread<br/>cache.py:144-161"]
+  ST --> KP["keep_prev(): old file -> .prev.pkl<br/>cache.py:87-96"]
+  LS --> B["built(d): a.build + rule checks<br/>server.py:165-174"]
+  B --> KB["built{} up to KEEP_BUILT=3<br/>access.py:1437-1503"]
+  B --> KR[".cache/&lt;key&gt;.rules.pkl<br/>server.kept_rules, server.py:310-329"]
 ```
 
-## Cache key (`cache.name`, `cache.py:51-57`)
-- `SNOWFLAKE_ACCOUNT` (or `local`) + what (source / `mine`) + snapshot location + user + role, + `_noactivity` under `ACTIVITY=0` (`cache.py:57`); another location, user, role or ACTIVITY setting never shares a copy.
-- Shared key: `KEY = cache.name(SOURCE, where=WHERE)` (`server.py:23`); My access: `cache.name("mine", user or sid, WHERE)` (`server.py:196`).
-- `config()` picks mode/source/where: `FAKE=1`, `SOURCE=direct|objects`, `ACCESS_SNAPSHOT` (`cache.py:35-48`).
+## Cache key (`cache.name`, `cache.py:57-63`)
+- `SNOWFLAKE_ACCOUNT` (or `local`) + what (source / `mine`) + snapshot location + user + role, + `_noactivity` under `ACTIVITY=0` (`cache.py:63`); another location, user, role or ACTIVITY setting never shares a copy.
+- Shared key: `KEY = cache.name(SOURCE, where=WHERE)` (`server.py:25`); My access: `cache.name("mine", user or sid, WHERE)` (`server.py:254`).
+- `config()` picks mode/source/where: `FAKE=1`, `SOURCE=direct|objects`, `ACCESS_SNAPSHOT` (`cache.py:41-54`).
 
 ## Lifetimes
-- `HOURS = CACHE_HOURS` (default 24) for the file; `TTL = 24*3600` for memory (`cache.py:21-22`).
-- `local()`: file only when `CACHE_HOURS > 0` and not inside Snowflake (`cache.py:60-62`).
-- `get()`: memory checked first without a lock, so a page whose data is in memory never waits (`cache.py:118-120`); then under the key's own `RLock` (`lock(key)`: `LOCKS` guarded by `LOCK`, `cache.py:24-32`) memory again, file, `fn()`, stores both (`cache.py:121-143`). A read of one key never waits on another (shared and My access load side by side).
-- `ready()`: answers without reading the source (`cache.py:146-153`); used to require a click before a direct read (`server.py:133-134`).
-- `drop()`: under the key's lock, out of memory (the copy kept in `OLD`, so `last()` still finds it where there is no file, inside Snowflake), file set aside as `.old.pkl` (`cache.py:156-166`); the lock stops a read still running from storing its older data after the drop; called on refresh and fresh My access loads.
+- `HOURS = CACHE_HOURS` (default 24) for the file; `TTL = 24*3600` for memory (`cache.py:27-28`).
+- `local()`: file only when `CACHE_HOURS > 0` and not inside Snowflake (`cache.py:66-68`).
+- `get()`: memory checked first without a lock, so a page whose data is in memory never waits (`cache.py:124-126`); then under the key's own `RLock` (`lock(key)`: `LOCKS` guarded by `LOCK`, `cache.py:30-38`) memory again, file, else `store(key, fn())` (`cache.py:127-141`). A read of one key never waits on another (shared and My access load side by side).
+- `store()`: memory, `.pkl` and the SQL copy; a read with no OK run (`run_of` RUN_ID None) stays in memory only, so an empty read never replaces a snapshot on disk (`cache.py:144-161`, [business_rule:no_run_empty](rules.md)).
+- `ready()`: answers without reading the source (`cache.py:174-181`); used to require a click before a direct read and to answer pages without a progress entry (`server.py:181-184`).
+- `drop()`: under the key's lock, out of memory (the copy kept in `OLD`, so `last()` still finds it where there is no file, inside Snowflake), file set aside as `.old.pkl` (`cache.py:184-194`); the lock stops a read still running from storing its older data after the drop; called on refresh and fresh My access loads.
+
+## Parts (stage 1)
+- Every Snowflake read is kept as `.cache/reads/<key>/<label>-<hash>.parquet`, listed in `parts.json`; the next load reads only the missing or timed-out parts; parts have no age and are read again only on a manual refresh (`clear_parts`, `swap`), a fresh My access load or `run.py --export --fresh` (`cache.py:314-551`; [flows/two-stage-load.md](../flows/two-stage-load.md), [business_rule:read_parts](rules.md)).
+- A refresh reads under `KEY + ".new"` and `swap()`s it in once built, so the pages keep the old data until then (`server.py:2401-2421`, `cache.py:164-171`; [flows/background-refresh.md](../flows/background-refresh.md)).
 
 ## Reads that reuse what is held
-- `last(key)`: newest data kept (memory, `OLD`, `.pkl`, `.old.pkl`, `.prev.pkl`) — `cache.py:102-113`.
-- Objects mode: `snapshot(q, WHERE, old=cache.last(KEY))` returns `old` after one `TBL_ACCESS_RUN` query when the last OK run is the one held (`access.py:487-492`, [business_rule:snapshot_same_run](rules.md)); a refresh with no new run costs one small query (test_server.test_same_run, `test_server.py:376-398`).
-- Direct mode: `live(q, old ACTIVITY, old OBJECT_USE)` reads only the days / weeks they lack (`server.py:124-126`).
+- `last(key)`: newest data kept (memory, `OLD`, `.pkl`, `.old.pkl`, `.prev.pkl`) — `cache.py:108-119`.
+- Objects mode: `snapshot(q, WHERE, old=cache.last(KEY))` asks the last OK run on every load (`query.fresh`, never a part) and returns `old` after that one `TBL_ACCESS_RUN` query when it is the run held (`access.py:513-535`, [business_rule:snapshot_same_run](rules.md)); a refresh with no new run reads no table again (test_server.test_same_run, test_newer_run, `test_server.py:377-432`).
+- Direct mode: `live(q, old ACTIVITY, old OBJECT_USE)` from `cache.old(key, KEY)` reads only the days / weeks they lack; `old` is kept with the parts so a resumed load asks for the same days (`server.py:143-145`, `cache.py:344-359`).
 
 ## Previous snapshot (`.prev.pkl`)
-- `keep_prev(f, new)`: the replaced file (or `.old.pkl`) becomes `<key>.prev.pkl` unless it is the same run (`run_of`: RUN_ID, FINISHED_AT) (`cache.py:76-90`).
-- `prev(key)`: returns it with its mtime, or None (`cache.py:93-99`); used by What changed (`server.py:1769`).
+- `keep_prev(f, new)`: the replaced file (or `.old.pkl`) becomes `<key>.prev.pkl` unless it is the same run (`run_of`: RUN_ID, FINISHED_AT) (`cache.py:82-96`).
+- `prev(key)`: returns it with its mtime, or None (`cache.py:99-105`); used by What changed (`server.py:1871`).
 
 ## Built data sets (`access.py`)
-- `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1285`, `974-978`).
-- `build(d, key, builtin)`: same `(key, builtin)` as loaded -> no work; the loaded one is saved to `built`, at most `KEEP_BUILT` (3) kept (oldest dropped); a key in `built` is restored instead of rebuilt (`access.py:1288-1314`).
-- Shared build key: `("shared", RUN_ID, FINISHED_AT)` (`server.py:224`); My access gets a random key per load (`server.py:208-210`).
-- Test: `test_built` (`test_access.py:1058`), `test_cache` (`test_access.py:1521`).
+- `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1421`, `access.py:1611-1615`).
+- `build(d, key, builtin)`: same `(key, builtin)` as loaded -> no work; the loaded one is saved to `built`, at most `KEEP_BUILT` (3) kept (oldest dropped); a key in `built` is restored instead of rebuilt (`access.py:1424-1450`).
+- Shared build key: `("shared", RUN_ID, FINISHED_AT)` (`shared_key`, `server.py:150-152`, used at `server.py:286`); My access gets a random key per load (`server.py:270-272`).
+- Test: `test_built` (`test_access.py:1209`), `test_cache` (`test_access.py:1672`).
+
+## Rule results across restarts
+- `server.kept_rules(view, key, builtin, save)`: shared data in Snowflake mode, disk allowed: `findings`, `rows`, `ro`, `breaks` of `a.memo` in `.cache/<key>.rules.pkl` with the stamp `(build key, builtin, a.rules_stamp(), SERVER_STAMP)`; restored while the stamp matches (`server.py:306-329`). `rules_stamp()` hashes `access.py` and every `environ.get` setting it names with its value (`access.py:3844-3848`); `SERVER_STAMP` hashes `server.py` (`server.py:307`).
 
 ## SQL copy (DuckDB)
-- `DUCKDB` env (`0` off, `1` also fake); `sql_copy(key, d, at)` writes the TBL_ACCESS_ tables after each read (`cache.py:133-134`, `cache.py:226-280`): one schema per key, the read before as `_PREV`, one bulk `INSERT ... SELECT TRY_CAST(UNNEST(?::VARCHAR[]) AS <type>)` per table from text lists (`text()`: dicts / lists as compact JSON, booleans as true/false, `cache.py:217-223`), all under `SQL_LOCK` because every key writes the one `.cache/access.duckdb` (`cache.py:249-271`).
+- `DUCKDB` env (unset: after each Snowflake read; `1` also fake); `store()` starts `sql_copy(key, d, at)` in a `COPYING` thread (`cache.py:149-152`, `cache.py:234-300`): one schema per key, the read before as `_PREV`, per table one INSERT from an Arrow table of text columns (pyarrow) or UNNESTed text lists (`text()`: dicts / lists as compact JSON, booleans as true/false, `cache.py:225-231`), all under `SQL_LOCK` because every key writes the one `.cache/access.duckdb` (`cache.py:261-291`). Details: [data/duckdb-copy.md](../data/duckdb-copy.md).

@@ -19,9 +19,13 @@ flowchart LR
 - server.py (ROUTES), access.py, web/src/api/client.ts, web/src/api/types.ts; processes/access-requests.md (request endpoint).
 
 ## Caching as documented
-- Shared data and My access: 24 h in memory (`TTL`), `.cache/` for `CACHE_HOURS`, cookie `Max-Age` 86400, answers kept in `ANSWERS` — web/API.md:65-95; matches cache.py:21-22, server.py:25, server.py:59-60.
+- Shared data and My access: 24 h in memory (`TTL`), `.cache/` for `CACHE_HOURS`, cookie `Max-Age` 86400, answers kept in `ANSWERS` — web/API.md:65-95; matches cache.py:27-28, server.py:28, server.py:65-66.
 - `/api/home` and `/api/access` have their own sections.
 
 ## Added with the progress lines and switches
 - `GET /api/progress?view=`: `{running, view, lines: [{t, text}]}` of the read running now; never starts a load; producer `server.progress()`, lines from `a.say()` — web/API.md:245-251.
 - `skipped` on `/api/home` and `/api/rules`: rules that did not run (`a.skipped_rules()`, HIERARCHY=0 / ACTIVITY=0) — web/API.md:265, web/API.md:637-646.
+
+## Code vs docs
+
+- conflict: `POST /api/reload` and `GET /api/progress` (web/API.md:236-251) describe the cache being dropped and no `job`; the code runs page / rebuild as a background refresh (`{ok, started, job}`, old data kept until the new read is built), sends `job` in `/api/progress`, and answers 409 `shared_loading` while a load runs — server.py:2354-2421, server.py:136, server.py:185-186 ([flows/background-refresh.md](../flows/background-refresh.md)).

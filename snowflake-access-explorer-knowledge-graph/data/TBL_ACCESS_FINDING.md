@@ -7,7 +7,7 @@ flowchart LR
   R -->|DELETE all + append| F[(TBL_ACCESS_FINDING)]
 ```
 
-DDL: `sql/1_setup.sql:161-171`. Grain: one row per finding of the last run (`DELETE FROM` the whole table before the append, `sql/1_setup.sql:1133`).
+DDL: `sql/1_setup.sql:161-171`. Grain: one row per finding of the last run (`DELETE FROM` the whole table before the append, `sql/1_setup.sql:1169`).
 
 | Column | Type | Meaning | Line |
 |---|---|---|---|
@@ -21,8 +21,8 @@ DDL: `sql/1_setup.sql:161-171`. Grain: one row per finding of the last run (`DEL
 | PATH | VARCHAR | `A > B > C` | 139 |
 | CREATED_AT | TIMESTAMP_LTZ | default CURRENT_TIMESTAMP() | 140 |
 
-- Procedure: `sql/1_setup.sql:1084-1146`; code from stage `STG_ACCESS_CODE` (`:696-701,709`).
-- Flow: settings -> `access.snapshot` -> `build` -> `rule_rows` (`sql/1_setup.sql:1114-1126`); write in a transaction (`:750-760`).
-- Not cleaned by SP_ACCESS_SNAPSHOT (`DATA` excludes it, `sql/1_setup.sql:201`); `SP_ACCESS_FINDINGS` empties it itself on every call, so only the last run's findings stay (`sql/1_setup.sql:1133`; README.md:278).
-- Readers: SELECT granted to APP_ROLE `sql/1_setup.sql:1189`; no reader in `access.py` / `server.py` (grep); not in the DuckDB copy (`cache.py:172-192`).
+- Procedure: `sql/1_setup.sql:1120-1182`; code from stage `STG_ACCESS_CODE` (`:696-701,709`).
+- Flow: settings -> `access.snapshot` -> `build` -> `rule_rows` (`sql/1_setup.sql:1150-1162`); write in a transaction (`:750-760`).
+- Not cleaned by SP_ACCESS_SNAPSHOT (`DATA` excludes it, `sql/1_setup.sql:201`); `SP_ACCESS_FINDINGS` empties it itself on every call, so only the last run's findings stay (`sql/1_setup.sql:1169`; README.md:281).
+- Readers: SELECT granted to APP_ROLE `sql/1_setup.sql:1225`; no reader in `access.py` / `server.py` (grep); not in the DuckDB copy (`access.py:70-90`).
 - Test: `test_sql.py:241-243` runs the DDL and procedure body on DuckDB.
