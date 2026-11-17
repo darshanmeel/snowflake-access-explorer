@@ -364,7 +364,7 @@
 {"from": "procedure:SP_ACCESS_FINDINGS", "to": "business_rule:findings_last_run", "type": "implements", "evidence": "sql/1_setup.sql:851", "status": "verified"}
 {"from": "business_rule:findings_last_run", "to": "table:TBL_ACCESS_FINDING", "type": "writes", "evidence": "sql/1_setup.sql:851", "status": "verified"}
 {"from": "function:server.py:csv_text", "to": "business_rule:csv_formula_safe", "type": "implements", "evidence": "server.py:288", "status": "verified"}
-{"from": "function:web/src/components/table.ts:toCsv", "to": "business_rule:csv_formula_safe", "type": "implements", "evidence": "web/src/components/table.ts:35", "status": "verified"}
+{"from": "function:web/src/components/table.ts:toCsv", "to": "business_rule:csv_formula_safe", "type": "implements", "evidence": "web/src/components/table.ts:40", "status": "verified"}
 {"from": "function:access.py:with_sql", "to": "business_rule:server_writes_sql", "type": "implements", "evidence": "access.py:3295-3308", "status": "verified"}
 {"from": "function:web/src/components/codegen.ts:sqlOf", "to": "business_rule:server_writes_sql", "type": "implements", "evidence": "web/src/components/codegen.ts:70", "status": "verified"}
 {"from": "function:server.py:request_page", "to": "function:access.py:with_sql", "type": "calls", "evidence": "server.py:1560", "status": "verified"}
@@ -464,7 +464,7 @@
 {"from": "test_case:test_access.py:test_activity", "to": "business_rule:activity_query_sql", "type": "illustrates", "evidence": "test_access.py:1729-1730", "status": "verified"}
 {"from": "doc:kg/logic/activity.md", "to": "business_rule:activity_query_sql", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/activity.md:1", "status": "verified"}
 {"from": "function:server.py:who_page", "to": "business_rule:app_owner_rights", "type": "depends_on", "evidence": "server.py:1396", "status": "verified"}
-{"from": "component:web/src/pages/Object.tsx:AppNote", "to": "business_rule:app_owner_rights", "type": "depends_on", "evidence": "web/src/pages/Object.tsx:83-98", "status": "verified"}
+{"from": "component:web/src/pages/Object.tsx:AppNote", "to": "business_rule:app_owner_rights", "type": "depends_on", "evidence": "web/src/pages/Object.tsx:84-99", "status": "verified"}
 {"from": "function:access.py:page_sql", "to": "business_rule:page_sql", "type": "implements", "evidence": "access.py:4496-4589", "status": "verified"}
 {"from": "function:access.py:activity_section_sql", "to": "business_rule:activity_section_sql", "type": "implements", "evidence": "access.py:4483-4493", "status": "verified"}
 {"from": "test_case:test_server.py:test_sql_page", "to": "business_rule:page_sql", "type": "illustrates", "evidence": "test_server.py:658-676", "status": "verified"}
@@ -477,3 +477,7 @@
 {"from": "config:access.py:QUERY_TAG", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:35", "status": "verified"}
 {"from": "config:access.py:APP_ST", "to": "function:access.py:activity_section_sql", "type": "configures", "evidence": "access.py:4493", "status": "verified"}
 {"from": "config:access.py:QUERY_TAG", "to": "function:access.py:activity_section_sql", "type": "configures", "evidence": "access.py:4493", "status": "verified"}
+{"from": "config:CSV", "to": "function:server.py:csv_on", "type": "configures", "evidence": "server.py:2309", "status": "verified"}
+{"from": "function:server.py:serve_csv", "to": "business_rule:csv_off", "type": "implements", "evidence": "server.py:2313-2314", "status": "verified"}
+{"from": "function:web/src/components/table.ts:useCsv", "to": "business_rule:csv_off", "type": "implements", "evidence": "web/src/components/table.ts:4-6", "status": "verified"}
+{"from": "test_case:test_server.py:test_csv_off", "to": "business_rule:csv_off", "type": "illustrates", "evidence": "test_server.py:810-821", "status": "verified"}

@@ -24,11 +24,11 @@
 {"from": "function:server.py:mine_off", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "server.py:133", "status": "verified"}
 {"from": "function:server.py:load_mine", "to": "flow:my_access", "type": "part_of", "evidence": "server.py:154", "status": "verified"}
 {"from": "function:server.py:mine_entry", "to": "flow:my_access", "type": "part_of", "evidence": "server.py:115", "status": "verified"}
-{"from": "function:server.py:allowed_hosts", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2316", "status": "verified"}
-{"from": "function:server.py:make_app", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2333", "status": "verified"}
-{"from": "function:server.py:make_app", "to": "flow:startup", "type": "part_of", "evidence": "server.py:2333", "status": "verified"}
-{"from": "function:server.py:same_site", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2348", "status": "verified"}
-{"from": "function:server.py:mine_load", "to": "flow:my_access", "type": "part_of", "evidence": "server.py:2389", "status": "verified"}
+{"from": "function:server.py:allowed_hosts", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2322", "status": "verified"}
+{"from": "function:server.py:make_app", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2339", "status": "verified"}
+{"from": "function:server.py:make_app", "to": "flow:startup", "type": "part_of", "evidence": "server.py:2339", "status": "verified"}
+{"from": "function:server.py:same_site", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2354", "status": "verified"}
+{"from": "function:server.py:mine_load", "to": "flow:my_access", "type": "part_of", "evidence": "server.py:2395", "status": "verified"}
 {"from": "function:cache.py:config", "to": "flow:startup", "type": "part_of", "evidence": "cache.py:27", "status": "verified"}
 {"from": "function:cache.py:config", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "cache.py:27", "status": "verified"}
 {"from": "function:cache.py:config", "to": "flow:direct_live", "type": "part_of", "evidence": "cache.py:27", "status": "verified"}
@@ -92,12 +92,12 @@
 {"from": "function:web/src/api/client.ts:get", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "web/src/api/client.ts:35", "status": "verified"}
 {"from": "function:web/src/st/main.tsx:startApp", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "web/src/st/main.tsx:33", "status": "verified"}
 {"from": "ui_screen:WhatChanged", "to": "flow:what_changed", "type": "part_of", "evidence": "web/src/pages/Changes.tsx:32", "status": "verified"}
-{"from": "endpoint:POST /api/reload", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "server.py:2381", "status": "verified"}
-{"from": "endpoint:POST /api/reload", "to": "flow:direct_live", "type": "part_of", "evidence": "server.py:2381", "status": "verified"}
-{"from": "endpoint:POST /api/mine/load", "to": "flow:my_access", "type": "part_of", "evidence": "server.py:2389", "status": "verified"}
-{"from": "endpoint:GET /api/changes", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:2408", "status": "verified"}
-{"from": "endpoint:GET /api/home", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "server.py:2408", "status": "verified"}
-{"from": "endpoint:GET /api/home", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2408", "status": "verified"}
+{"from": "endpoint:POST /api/reload", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "server.py:2387", "status": "verified"}
+{"from": "endpoint:POST /api/reload", "to": "flow:direct_live", "type": "part_of", "evidence": "server.py:2387", "status": "verified"}
+{"from": "endpoint:POST /api/mine/load", "to": "flow:my_access", "type": "part_of", "evidence": "server.py:2395", "status": "verified"}
+{"from": "endpoint:GET /api/changes", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:2414", "status": "verified"}
+{"from": "endpoint:GET /api/home", "to": "flow:snapshot_objects", "type": "part_of", "evidence": "server.py:2414", "status": "verified"}
+{"from": "endpoint:GET /api/home", "to": "flow:web_request", "type": "part_of", "evidence": "server.py:2414", "status": "verified"}
 {"from": "function:server.py:serve", "to": "function:server.py:session", "type": "calls", "evidence": "server.py:2296", "status": "verified"}
 {"from": "function:server.py:session", "to": "function:server.py:load_shared", "type": "calls", "evidence": "server.py:190", "status": "verified"}
 {"from": "function:server.py:session", "to": "function:server.py:mine_entry", "type": "calls", "evidence": "server.py:193", "status": "verified"}
@@ -115,9 +115,9 @@
 {"from": "function:server.py:load_mine", "to": "function:access.py:mine", "type": "calls", "evidence": "server.py:168", "status": "verified"}
 {"from": "function:server.py:load_mine", "to": "function:access.py:only", "type": "calls", "evidence": "server.py:174", "status": "verified"}
 {"from": "function:server.py:load_mine", "to": "function:cache.py:get", "type": "calls", "evidence": "server.py:168", "status": "verified"}
-{"from": "function:server.py:mine_load", "to": "function:server.py:load_mine", "type": "calls", "evidence": "server.py:2393", "status": "verified"}
-{"from": "function:server.py:make_app", "to": "function:server.py:allowed_hosts", "type": "calls", "evidence": "server.py:2341", "status": "verified"}
-{"from": "function:server.py:make_app", "to": "function:server.py:same_site", "type": "contains", "evidence": "server.py:2348", "status": "verified"}
+{"from": "function:server.py:mine_load", "to": "function:server.py:load_mine", "type": "calls", "evidence": "server.py:2399", "status": "verified"}
+{"from": "function:server.py:make_app", "to": "function:server.py:allowed_hosts", "type": "calls", "evidence": "server.py:2347", "status": "verified"}
+{"from": "function:server.py:make_app", "to": "function:server.py:same_site", "type": "contains", "evidence": "server.py:2354", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:cache.py:prev", "type": "calls", "evidence": "server.py:1730", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:fake_previous", "type": "calls", "evidence": "server.py:1728", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:diff", "type": "calls", "evidence": "server.py:1739", "status": "verified"}
@@ -139,8 +139,8 @@
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "table:TBL_ACCESS_RUN", "type": "writes", "evidence": "sql/1_setup.sql:615", "status": "verified"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "table:TBL_ACCESS_GRANT", "type": "writes", "evidence": "sql/1_setup.sql:239", "status": "verified"}
 {"from": "file:run.py", "to": "file:server.py", "type": "triggers", "evidence": "run.py:41", "status": "verified"}
-{"from": "endpoint:POST /api/reload", "to": "function:server.py:reload", "type": "exposes", "evidence": "server.py:2387", "status": "verified"}
-{"from": "endpoint:POST /api/mine/load", "to": "function:server.py:mine_load", "type": "exposes", "evidence": "server.py:2390", "status": "verified"}
+{"from": "endpoint:POST /api/reload", "to": "function:server.py:reload", "type": "exposes", "evidence": "server.py:2393", "status": "verified"}
+{"from": "endpoint:POST /api/mine/load", "to": "function:server.py:mine_load", "type": "exposes", "evidence": "server.py:2396", "status": "verified"}
 {"from": "endpoint:GET /api/changes", "to": "function:server.py:changes_page", "type": "exposes", "evidence": "server.py:2272", "status": "verified"}
 {"from": "endpoint:GET /api/home", "to": "function:server.py:home_page", "type": "exposes", "evidence": "server.py:2269", "status": "verified"}
 {"from": "ui_screen:WhatChanged", "to": "endpoint:GET /api/changes", "type": "calls", "evidence": "web/src/pages/Changes.tsx:32", "status": "verified"}
@@ -175,9 +175,9 @@
 {"from": "test_case:test_server.py:test_activity", "to": "flow:activity_tab", "type": "illustrates", "evidence": "test_server.py:634-654", "status": "verified"}
 {"from": "test_case:test_sql.py:test_activity", "to": "flow:activity_read", "type": "illustrates", "evidence": "test_sql.py:298-312", "status": "verified"}
 {"from": "test_case:test_access.py:test_live", "to": "flow:activity_read", "type": "illustrates", "evidence": "test_access.py:498-505", "status": "verified"}
-{"from": "component:web/src/App.tsx:App", "to": "flow:show_sql", "type": "part_of", "evidence": "web/src/App.tsx:329", "status": "verified"}
+{"from": "component:web/src/App.tsx:App", "to": "flow:show_sql", "type": "part_of", "evidence": "web/src/App.tsx:330", "status": "verified"}
 {"from": "component:web/src/pages/common.tsx:SqlPanel", "to": "flow:show_sql", "type": "part_of", "evidence": "web/src/pages/common.tsx:111", "status": "verified"}
-{"from": "endpoint:GET /api/sql", "to": "flow:show_sql", "type": "part_of", "evidence": "server.py:2408", "status": "verified"}
+{"from": "endpoint:GET /api/sql", "to": "flow:show_sql", "type": "part_of", "evidence": "server.py:2414", "status": "verified"}
 {"from": "function:server.py:sql_page", "to": "flow:show_sql", "type": "part_of", "evidence": "server.py:1699", "status": "verified"}
 {"from": "function:access.py:page_sql", "to": "flow:show_sql", "type": "part_of", "evidence": "access.py:4496", "status": "verified"}
 {"from": "function:access.py:query_file", "to": "flow:show_sql", "type": "part_of", "evidence": "access.py:4400", "status": "verified"}

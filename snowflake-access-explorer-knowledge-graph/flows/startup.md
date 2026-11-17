@@ -38,7 +38,7 @@ sequenceDiagram
 7. `server.py` import: `MODE, SOURCE, WHERE = cache.config()`, `DIRECT`, `KEY`, `DEMO_USER`, `TTL`, `DIST` — server.py:21-26.
 8. `cache.config(env)`: `FAKE=1` -> `('fake','fake','')`; source = `SOURCE` or `objects` if `ACCESS_SNAPSHOT` else `direct`; bad value -> ValueError; objects location from `ACCESS_SNAPSHOT` or `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA`, must be `DB.SCHEMA` — cache.py:27-40.
 9. Cache settings: `CACHE_HOURS` (24, 0 = memory only) and memory `TTL` 24 h — cache.py:20-24; `DUCKDB` (0 off, 1 also fake) — cache.py:158.
-10. Web server: `uvicorn.run(make_app(), host=HOST (127.0.0.1), port=WEB_PORT (8000))` — server.py:2444-2446.
+10. Web server: `uvicorn.run(make_app(), host=HOST (127.0.0.1), port=WEB_PORT (8000))` — server.py:2450-2452.
 11. Streamlit: `app.py` -> `st_react.app()` which imports `server` on the first API call — app.py:18, st_react.py:24.
 12. Role naming read at import: `ROLE_PREFIXES` -> `FUNC`, `TECH` (default `F_`, `T_`) — access.py:57.
 13. Nothing is read from Snowflake at startup: shared data loads on the first page (objects) or on a click (direct) — server.py:98-102.

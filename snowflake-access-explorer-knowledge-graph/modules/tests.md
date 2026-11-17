@@ -19,7 +19,7 @@ flowchart LR
 | Command | What | path:line |
 |---|---|---|
 | `python test_access.py` | Every `test_` function, `test_cache` first, `a.build(a.fake())` before each, all failures reported, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (skips test_perf, test_pages, test_live there) | test_access.py:1835-1854 |
-| `python test_server.py` | Every `test_` in file order; FAKE=1 set at import; TestClient on `server.make_app()` | test_server.py:7-14, test_server.py:809-815 |
+| `python test_server.py` | Every `test_` in file order; FAKE=1 set at import; TestClient on `server.make_app()` | test_server.py:7-14, test_server.py:824-830 |
 | `python test_sql.py` | 11 tests in a fixed list | test_sql.py:470-474 |
 | `npm test` (in web/) | `vitest run` | web/package.json:11 |
 | Rule check | `python -c "import access as a; a.build(a.fake()); print(sorted({c[0] for c in a.checks()}, key=int))"` lists 1-29 | CLAUDE.md "Verify before saying done" |
@@ -55,10 +55,11 @@ flowchart LR
 | Loading / My access | test_load_on_click, test_mine, test_mine_shared_server, test_rebuild_outcome | test_server.py:218, 235, 395, 376 |
 | Read-only | test_read_only: every statement via `sf.rows` must match READ_ONLY, plus the SP_ACCESS_SNAPSHOT CALL | test_server.py:328-373 |
 | Security / errors | test_same_site, test_error_text | test_server.py:423, 452 |
+| CSV off | test_csv_off: `CSV=0` -> `meta.csv` false and every `server.CSV` route 403 `csv_off`, through FastAPI and `st_react.answer` | test_server.py:810-821 |
 | Versions | test_spa, test_streamlit_bridge, test_bundles_fresh (src-hash.txt) | test_server.py:262, 267, 463 |
 | Graph schema | `graph_ok` checks GRAPH / NODE / EDGE keys and lane bounds | test_server.py:22-25, 40-47 |
 | Other | test_whatif, test_review_check | test_server.py:285, 479 |
-| Review 2026-11-10 | test_run_address (`run.command` passes HOST as `--server.address`), test_cache_lock (`cache.get` memory hit does not wait; `drop` under the lock), test_csv_formula (CSV cells that would run as Excel formulas get `'`) | test_server.py:764, 764, 794 |
+| Review 2026-11-10 | test_run_address (`run.command` passes HOST as `--server.address`), test_cache_lock (`cache.get` memory hit does not wait; `drop` under the lock), test_csv_formula (CSV cells that would run as Excel formulas get `'`) | test_server.py:764, 772, 802 |
 
 ## test_sql.py
 
@@ -83,6 +84,7 @@ flowchart LR
 | components/codegen.test.ts | code output (10), home and links (56) |
 | components/review1110.test.tsx | table helpers (21), copy-paste code (39), races, pickers and keys (58): collator sort, CSV formula cells, quoting / HCL escaping / multi-line reasons, Home Enter race, picker user vs role of one name, sortable header buttons, `viewPage`, Streamlit frame accepts only its parent's messages |
 | components/helpers.test.ts | categorising (15), graphs (39), folding and opening (91), routes (134), helpers (146) |
+| components/pager.test.tsx | DataTable pages (8): 120 rows -> "Rows 1–50 of 120", Next, a filter goes back to one page without a pager, CSV button gone under `CsvOn` false |
 | components/render.test.tsx | render (27) |
 | components/visuals.test.tsx | change plan pictures (21), bars (39), graph (71), web fixes (97), data panel (165), activity day chart (182, `DayStack`), activity combinations (193, `combine`), activity day chart pin and isolate (210) |
 | pages/changeplan.test.ts | change plan (13) |

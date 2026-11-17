@@ -5,8 +5,8 @@ FastAPI JSON API over access.py, plus `serve()` / `serve_csv()` that st_react.py
 
 ```mermaid
 flowchart LR
-  B[Browser / React] -->|GET /api/name| MW[same_site middleware<br/>server.py:2348-2364]
-  MW --> R[route h<br/>server.py:2403-2410]
+  B[Browser / React] -->|GET /api/name| MW[same_site middleware<br/>server.py:2354-2370]
+  MW --> R[route h<br/>server.py:2409-2416]
   R --> SV[serve<br/>server.py:2288-2300]
   SV --> SE[session<br/>server.py:183-204]
   SE --> LS[load_shared / MINE]
@@ -29,10 +29,10 @@ flowchart LR
 
 | Method | Path | Handler | path:line |
 |---|---|---|---|
-| GET | /api/meta | `meta` | server.py:2377-2379 -> server.py:2153-2187 |
-| POST | /api/reload | `reload` (`what` = page / load / rebuild) | server.py:2381-2387 -> server.py:2208-2234 |
-| POST | /api/mine/load | `load_mine`, sets `ae_sid` cookie (httponly, samesite strict, path /api) | server.py:2389-2397 -> server.py:154-180 |
-| GET | /api/mine | `mine_state` | server.py:2399-2401 -> server.py:123-127 |
+| GET | /api/meta | `meta` | server.py:2383-2385 -> server.py:2153-2187 |
+| POST | /api/reload | `reload` (`what` = page / load / rebuild) | server.py:2387-2393 -> server.py:2208-2234 |
+| POST | /api/mine/load | `load_mine`, sets `ae_sid` cookie (httponly, samesite strict, path /api) | server.py:2395-2403 -> server.py:154-180 |
+| GET | /api/mine | `mine_state` | server.py:2405-2407 -> server.py:123-127 |
 | GET | /api/home | `home_page` | server.py:1073-1094 |
 | GET | /api/access | `access_page` | server.py:1004-1070 |
 | GET | /api/user | `user_page` | server.py:879-950 |
@@ -60,9 +60,10 @@ flowchart LR
 | GET | /api/rules.csv | `rules_csv` | server.py:1908-1921 |
 | GET | /api/review.csv | `review_csv` | server.py:2042-2051 |
 | GET | /api/whatif.csv | `whatif_csv` | server.py:1949-1955 |
-| GET | /{path:path} | `spa`: web/dist file, else index.html; unknown /api/ -> 404 JSON | server.py:2421-2431 |
+| GET | /{path:path} | `spa`: web/dist file, else index.html; unknown /api/ -> 404 JSON | server.py:2427-2437 |
 
-- The 23 GET routes are registered in a loop (server.py:2408-2410); CSV routes from `CSV` (server.py:2276, server.py:2418-2419).
+- The 23 GET routes are registered in a loop (server.py:2414-2416); CSV routes from `CSV` (server.py:2276, server.py:2424-2425).
+- CSV export setting: `csv_on()` reads env `CSV` (unset = on, `0` = off) (server.py:2308-2309); `serve_csv` raises `ApiError(403, "csv_off")` before any session work when it is off (server.py:2312-2317). Both versions go through it: the FastAPI `*.csv` routes (server.py:2418-2422) and `st_react.answer` (st_react.py:41). `meta()` sends `csv` so the React app hides every CSV button (server.py:2157).
 - `WITH_REFS` answers get `refs` (kinds, types, sensitive, disabled) from `mkrefs` (server.py:2274-2275, server.py:2298-2299).
 
 ### Handler -> access.py (from the graph fragment, verified by text match)
@@ -105,16 +106,17 @@ flowchart TD
 
 | Check | What | path:line |
 |---|---|---|
-| `allowed_hosts()` | loopback + HOST + `ALLOWED_HOSTS`; HOST=0.0.0.0 adds machine names and IPs | server.py:2316-2330 |
-| `served(host)` | Host header must be served (`*` = any) | server.py:2343-2346 |
-| `same_site` middleware | bad Host -> 400 `bad_host`; non-GET with foreign Origin, or `/api/` with `Sec-Fetch-Site` not same-origin/none -> 403 `cross_site` | server.py:2348-2364 |
+| `allowed_hosts()` | loopback + HOST + `ALLOWED_HOSTS`; HOST=0.0.0.0 adds machine names and IPs | server.py:2322-2336 |
+| `served(host)` | Host header must be served (`*` = any) | server.py:2349-2352 |
+| `same_site` middleware | bad Host -> 400 `bad_host`; non-GET with foreign Origin, or `/api/` with `Sec-Fetch-Site` not same-origin/none -> 403 `cross_site` | server.py:2354-2370 |
 | `mine_off()` | My access off inside Snowflake, `MY_ACCESS=0`, HOST not loopback or `ALLOWED_HOSTS` naming another host (server.py:145-146), key-pair login; `MY_ACCESS=1` forces on | server.py:133-151 |
 | `csv_text()` | a cell starting with `= + - @` tab or CR (not a plain number) gets a leading `'`, so a CSV opened in Excel never runs an object name as a formula | server.py:286-294 |
-| JSON errors | `ApiError` -> `{detail, message}` with its status; any other exception -> 500 `{detail: "error", message: "Type: text"}` | server.py:2366-2372 |
+| `csv_on()` / `serve_csv` | `CSV=0`: every server CSV download answers 403 `csv_off`, in both versions; the app hides its CSV buttons from `meta.csv`. Whoever can open the app still sees the screen, so app access stays the real control (README.md:213) | server.py:2308-2317 |
+| JSON errors | `ApiError` -> `{detail, message}` with its status; any other exception -> 500 `{detail: "error", message: "Type: text"}` | server.py:2372-2378 |
 
 - Same error shape in Streamlit: `st_react.answer` (st_react.py:45-48); there a `.csv` name is served only when it is a key of `server.CSV`, else 404 (st_react.py:40-41).
-- GZip for answers over 2000 bytes (server.py:2340).
-- `__getattr__("app")` builds the app lazily for `uvicorn server:app` (server.py:2436-2441); `__main__` runs uvicorn on HOST / WEB_PORT (server.py:2444-2446).
+- GZip for answers over 2000 bytes (server.py:2346).
+- `__getattr__("app")` builds the app lazily for `uvicorn server:app` (server.py:2442-2447); `__main__` runs uvicorn on HOST / WEB_PORT (server.py:2450-2452).
 
 ## Activity (rules 24-28, rule 29, Activity tab)
 

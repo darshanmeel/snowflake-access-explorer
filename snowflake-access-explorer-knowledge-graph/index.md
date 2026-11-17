@@ -15,14 +15,14 @@ flowchart LR
   SQL[sql/: setup, snapshot, streamlit deploy] --> SF
 ```
 
-- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:465` snapshot, `access.py:634` live, `access.py:5116` checks, `access.py:4298` activity), cache (`cache.py`), server (`server.py:2333` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
+- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:465` snapshot, `access.py:634` live, `access.py:5116` checks, `access.py:4298` activity), cache (`cache.py`), server (`server.py:2339` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:18` st_react.app).
 - Login: `sf.connect()` (`sf.py:19-43`) uses the app session inside Snowflake, else a key pair or browser SSO from `.env`; PrivateLink keeps the plain `SNOWFLAKE_ACCOUNT` and adds `SNOWFLAKE_HOST` (the `<org>-<account>.privatelink` host, passed as `host=`) plus private DNS (`sf.py:28-29`, `README.md:181-196`; `processes/privatelink-login.md`).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
 ## Entry points
 
 - `run.py`: `command()` (`run.py:19-42`) starts the local web app or Streamlit, both on `HOST` (default 127.0.0.1) (`processes/run-local.md`).
-- `server.py:2333` `make_app()`: FastAPI app, 32 endpoints (`modules/server.md`).
+- `server.py:2339` `make_app()`: FastAPI app, 32 endpoints (`modules/server.md`).
 - `app.py:18`: Streamlit in Snowflake page, runs the same React app (`flows/streamlit-in-snowflake.md`).
 - `sql/1_setup.sql`: tables, `SP_ACCESS_SNAPSHOT`, table functions (`data/model.md`, `modules/sql.md`).
 - `web/src/App.tsx`: React router and page map (`modules/web.md`).
@@ -42,12 +42,13 @@ flowchart LR
 | Which tables, columns, joins, dict keys, DuckDB copy? | `data/` (model.md, one page per `TBL_ACCESS_*`, snapshot-dict, duckdb-copy, model.json) |
 | How to set up, run, deploy, build the web bundles, test? | `processes/` |
 | How do I connect / log in (browser SSO, key pair, PrivateLink or Private Service Connect, SAML URLs, OCSP DNS)? | `processes/privatelink-login.md`, `modules/sf.md` (`connect()`), `processes/setup-local.md` > `.env`, `documents/readme-md.md` > Login |
+| Can people export (CSV), how is it turned off, how do long tables page? | `modules/server.md` (`csv_on` / `serve_csv`, `CSV=0` -> 403 `csv_off`), `modules/web.md` components (`CsvOn` / `useCsv`, DataTable pages 25 / 50 / 100 / 250, `Pager`), `modules/tests.md` (test_csv_off, pager.test.tsx) |
 | What do README / CLAUDE.md / review notes / env templates say? | `documents/` (start at `documents/README.md`) |
 | Machine-readable graph (nodes, edges with path:line) | `graph/nodes.jsonl`, `graph/edges.jsonl`; script facts in `graph/parts/structure.*`, hand-written meaning in `_scripts/parts/` |
 
 ## Code vs docs
 
-- Business hours: README.html calls `WORK_HOURS` local time shifted from UTC by the Activity tab's slider (`README.html:726`), and the tab does shift them (`web/src/pages/Activity.tsx:22-26`); the comments at `access.py:70`, `web/src/api/types.ts:1240` and the `offOf` doc line (`web/src/pages/Activity.tsx:24`) still say UTC hours.
+- Business hours: README.html calls `WORK_HOURS` local time shifted from UTC by the Activity tab's slider (`README.html:726`), and the tab does shift them (`web/src/pages/Activity.tsx:22-26`); the comments at `access.py:70`, `web/src/api/types.ts:1241` and the `offOf` doc line (`web/src/pages/Activity.tsx:24`) still say UTC hours.
 
 ## Known gaps
 

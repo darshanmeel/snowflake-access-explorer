@@ -18,7 +18,7 @@ flowchart LR
 - `python access_queries/test_queries.py` green: query files and `functions.sql` equal to `access.py`, notebook current — CLAUDE.md:115 (modules/access-queries.md > Test).
 - `test_pages` (app.py hands every page to the component) and `test_server.py` (what each page answers) — CLAUDE.md:116-117.
 - Test packages: `requirements-dev.txt` — CLAUDE.md:113, requirements-dev.txt:1-4.
-- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:447.
+- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:448.
 
 ## test_access.py
 - Forces `FAKE=1` — test_access.py:12.
@@ -33,7 +33,7 @@ flowchart LR
 - Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:663.
 
 ## test_server.py
-- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:809-814.
+- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:824-829.
 - Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:328, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:267; `test_same_site` — test_server.py:423; `test_bundles_fresh` — test_server.py:463.
 - Uses FastAPI TestClient via httpx — requirements-dev.txt:4.
 

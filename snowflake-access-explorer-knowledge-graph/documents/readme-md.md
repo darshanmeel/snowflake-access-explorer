@@ -15,12 +15,12 @@ flowchart TD
 - Title + summary; full guide link to README.html — README.md:1-5.
 - What it does (mermaid) — README.md:7; Questions it answers — README.md:26.
 - Quick start — README.md:72-82; Which way to run it (by what the role can do: local or Streamlit in Snowflake) — README.md:83-101; Run each mode — README.md:102-124.
-- Run it (direct vs objects table) — README.md:125-140; Install — README.md:142-151; Start — README.md:153-163; `.env` — README.md:165-180; PrivateLink — README.md:181-196; Settings — README.md:198-216 (`SNOWFLAKE_HOST`, unset, the PrivateLink host — README.md:208; `QUERY_TAG` default access-explorer and `STREAMLIT_APP` default ST_ACCESS_EXPLORER, same values in `.env`, `sis/.env` and settings.local.sql — README.md:211-212); DuckDB SQL copy — README.md:217; role-based visibility — README.md:248-260; Objects in Snowflake — README.md:261-280.
-- Deploy — README.md:281-290; own machine — README.md:291; shared server — README.md:295-314 (PrivateLink bullet README.md:307); SiS — README.md:315-356 (the app is created and opened under its `STREAMLIT_APP` name — README.md:346, README.md:348); Streamlit elsewhere — README.md:357-368; Container Services — README.md:369-377.
-- Data sources — README.md:378-390; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:381-383; Activity tabs on the access and object pages — README.md:32-33; `ACTIVITY` in the DuckDB tables — README.md:221; the app's own queries left out by `QUERY_TAG` / `STREAMLIT_APP` — README.md:387-388.
-- Use the queries without the app — README.md:391-444: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:394-402; How to use them (worksheet or notebook path A / B) — README.md:404; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:442; Check (`test_queries.py`) — README.md:443. See modules/access-queries.md, flows/standalone-queries.md.
-- Also in this repo — README.md:445-450: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:446; sf.py CLI — README.md:447; tests incl. `access_queries/test_queries.py` — README.md:448; IaC — README.md:449.
-- Where to find more — README.md:451-461; License (MIT or Apache-2.0) — README.md:462-465.
+- Run it (direct vs objects table) — README.md:125-140; Install — README.md:142-151; Start — README.md:153-163; `.env` — README.md:165-180; PrivateLink — README.md:181-196; Settings — README.md:198-217 (`SNOWFLAKE_HOST`, unset, the PrivateLink host — README.md:208; `QUERY_TAG` default access-explorer and `STREAMLIT_APP` default ST_ACCESS_EXPLORER, same values in `.env`, `sis/.env` and settings.local.sql — README.md:211-212; `CSV`, unset = on, `0` hides every CSV button and refuses the downloads in both versions — README.md:213); DuckDB SQL copy — README.md:218; role-based visibility — README.md:249-261; Objects in Snowflake — README.md:262-281.
+- Deploy — README.md:282-291; own machine — README.md:292; shared server — README.md:296-315 (PrivateLink bullet README.md:308); SiS — README.md:316-357 (the app is created and opened under its `STREAMLIT_APP` name — README.md:347, README.md:349); Streamlit elsewhere — README.md:358-369; Container Services — README.md:370-378.
+- Data sources — README.md:379-391; the Activity tabs and their 60 days of ACCESS_HISTORY + QUERY_HISTORY + SESSIONS — README.md:382-384; Activity tabs on the access and object pages — README.md:32-33; `ACTIVITY` in the DuckDB tables — README.md:222; the app's own queries left out by `QUERY_TAG` / `STREAMLIT_APP` — README.md:388-389.
+- Use the queries without the app — README.md:392-445: file table (5 query files, `functions.sql`, `access_examples.ipynb`) — README.md:395-403; How to use them (worksheet or notebook path A / B) — README.md:405; Needs (ACCOUNT_USAGE read, warehouse, `CREATE FUNCTION` for path A only) — README.md:443; Check (`test_queries.py`) — README.md:444. See modules/access-queries.md, flows/standalone-queries.md.
+- Also in this repo — README.md:446-451: access_queries (the Snowflake notebook, `functions.sql`, test) — README.md:447; sf.py CLI — README.md:448; tests incl. `access_queries/test_queries.py` — README.md:449; IaC — README.md:450.
+- Where to find more — README.md:452-462; License (MIT or Apache-2.0) — README.md:463-466.
 
 ## Login (`.env`, step 3)
 - `SNOWFLAKE_ACCOUNT` / `USER` / `ROLE` / `WAREHOUSE`; `<org>-<account>` is the start of the Snowflake URL — README.md:170-175.
@@ -30,7 +30,7 @@ flowchart TD
   - Private DNS for the private host and the OCSP host (`privatelink-ocsp-url`); a missing OCSP record hangs or fails the certificate check — README.md:189-191.
   - Key pair as is; browser SSO needs the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`), else use a key pair — README.md:192-194.
   - Check with `python sf.py "select current_user(), ..."`; `run_sql.py` and both apps share the login — README.md:195. Not needed in Streamlit in Snowflake — README.md:196.
-  - Shared server: the same `SNOWFLAKE_HOST` and private DNS there — README.md:307.
+  - Shared server: the same `SNOWFLAKE_HOST` and private DNS there — README.md:308.
   - Code: `sf.connect()` passes `account=` (sf.py:28) and `host=` from `SNOWFLAKE_HOST` (sf.py:29). See processes/privatelink-login.md.
 
 ## Relates to

@@ -74,7 +74,7 @@ sequenceDiagram
     end
 ```
 
-14. Buttons: "Rebuild snapshot" (not in fake mode) — web/src/App.tsx:325 -> `post("reload", {what:"rebuild"})` — web/src/App.tsx:296-299; side "Read Snowflake again" -> `{what:"page"}` — web/src/App.tsx:251, web/src/App.tsx:294. After any action `clearCache()` — web/src/App.tsx:291.
+14. Buttons: "Rebuild snapshot" (not in fake mode) — web/src/App.tsx:326 -> `post("reload", {what:"rebuild"})` — web/src/App.tsx:296-299; side "Read Snowflake again" -> `{what:"page"}` — web/src/App.tsx:251, web/src/App.tsx:294. After any action `clearCache()` — web/src/App.tsx:291.
 15. `reload("rebuild")`: fake -> "Demo: the CALL runs only on Snowflake"; objects -> `CALL {WHERE}.SP_ACCESS_SNAPSHOT('AUTO')` through `with_query`; non-OK status returns `ok=False` and keeps the copy; OK -> `cache.drop(KEY)` — server.py:2208-2227.
 16. `reload("page")`: `cache.drop(KEY)` only (objects: next page reads again) — server.py:2231-2234.
 17. `cache.drop`: out of memory, local file set aside as `.old.pkl` so it becomes `.prev.pkl` on the next read — cache.py:146-154, cache.py:72-81.
