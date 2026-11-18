@@ -881,19 +881,25 @@ that makes ACCESS_HISTORY readable) when the snapshot has no usage.
 
 `changes` are What if changes (`revoke_priv`, ownership never), for the change plan; nothing runs.
 
-### GET /api/changes?view=&subject=
+### GET /api/changes?view=&subject=&f=&offset=&limit=
 
 What changed: `a.diff(prev)` between the loaded snapshot and the previous one (`cache.prev(key)`: the copy kept in
 `.cache/` when a newer run arrived; fake mode: `a.fake_previous()`). `available` false with `reason` inside Snowflake,
 in My access, with `CACHE_HOURS=0` or before a second run. `subject` (user, role or object) keeps the events about it.
 The diff compares reach per granted role (`a.facts`, `a.moved`: only roles whose grants changed and the roles above
 them are walked), never every (user, object) pair; the previous snapshot's rule findings come from
-`.cache/<key>.prev.rules.pkl` (set aside when a newer run's rules were saved), else they are checked again.
+`.cache/<key>.prev.rules.pkl` (set aside when a newer run's rules were saved), else they are checked again. A refresh
+that brings a new run makes the diff right away, while the run it replaced is still built (`server.compared`), and
+keeps it in memory and in `.cache/<key>.diff.pkl` (stamped with both runs, the settings and the code), so the first
+open, also after a restart, does not compare again. `f` (`all`, `gain`, `lose`, `risk`, `sensitive`) keeps one
+filter's events; they come one page at a time (`offset`, `limit`: 50 by default, 0 every one) with `events_total`;
+`counts` are over every event. An event's `people`, `objects` and `subjects` hold its first 20 (plus `subject`), the
+`impact` text counts them all.
 
 ```json
 {"available": true, "subject": null, "before": "2026-10-26 07:00", "now": "2026-11-02 07:00",
  "text": "Since the snapshot of 2026-10-26 07:00: 11 changes, 4 new high findings, 3 people gained sensitive access.",
- "counts": {"all": 11, "gain": 2, "lose": 2, "risk": 6, "sensitive": 7},
+ "counts": {"all": 11, "gain": 2, "lose": 2, "risk": 6, "sensitive": 7}, "f": "all", "events_total": 11, "offset": 0,
  "events": [{"id": "g1", "kind": "gain", "text": "T_SHARED_LOGGING_READ was granted INSERT on SHARED.LOGGING.TBL_LOGGING",
              "impact": "ANALYST_01, ANALYST_02 and 1 other can now change SHARED.LOGGING.TBL_LOGGING", "by": "F_DEPLOY",
              "sensitive": true, "findings": [{"num": "17", "severity": "High", "title": "Read-only role can write", "fixed": false}],

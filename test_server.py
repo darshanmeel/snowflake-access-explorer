@@ -1096,6 +1096,49 @@ def test_kept_rules():
         a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
 
 
+def test_changes_kept():
+    """A refresh compares the new data with the previous snapshot (compared): What changed answers from that, after a
+    restart too (.cache/<key>.diff.pkl), with the page it gives without it; an event sends its first NAMES ids."""
+    import pathlib
+    import tempfile
+    import time
+    cache = server.cache
+    old = cache.DIR, cache.HOURS, server.MODE, cache.prev, a.diff
+    a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+    want = js("/api/changes", ["events_total", "offset", "f"])
+    assert want["events_total"] == want["counts"]["all"] == len(want["events"]) and want["f"] == "all"
+    g = js("/api/changes?f=gain&limit=1&offset=1")  # one filter, one page: the server pages a big change
+    assert g["events_total"] == g["counts"]["gain"] == 2 and g["offset"] == 1 and [e["kind"] for e in g["events"]] == ["gain"]
+    assert g["events"][0]["text"] == [e for e in want["events"] if e["kind"] == "gain"][1]["text"]
+    cache.DIR, cache.HOURS, server.MODE =pathlib.Path(tempfile.mkdtemp()), 24, "snowflake"
+    cache.prev = lambda key: (a.fake_previous(), 0)
+    d = a.fake()
+
+    def boom(*x):
+        raise AssertionError("compared again")
+    try:
+        cache.MEM[server.KEY] = (d, time.time())
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        server.built(d)
+        server.compared(d)
+        assert cache.file(server.KEY).with_suffix(".diff.pkl").is_file()
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()  # a restart
+        a.diff = boom
+        got = js("/api/changes")
+        assert got["events"] == want["events"] and got["text"] == want["text"] and got["counts"] == want["counts"]
+        a.diff = old[4]
+        big = dict(people=[f"U{i:03}" for i in range(50)], objects=[], subjects=[f"U{i:03}" for i in range(50)])
+        a.memo[("diff", cache.run_of(a.fake_previous()))]["events"].append(dict(got["events"][0], text="big", **big))
+        server.ANSWERS.clear()
+        one = {e["text"]: e for e in js("/api/changes?subject=U040")["events"]}["big"]
+        assert one["people"] == one["subjects"] == big["people"][:server.NAMES] + ["U040"]
+        assert len({e["text"]: e for e in js("/api/changes")["events"]}["big"]["people"]) == server.NAMES
+    finally:
+        cache.DIR, cache.HOURS, server.MODE, cache.prev, a.diff = old
+        cache.MEM.pop(server.KEY, None)
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+
+
 def test_parts():
     """Every read is kept as a part: the next load reads only the part that timed out (in a wave: only its timed-out
     statements), a wave's statements keep their own columns, --build reads nothing, a fresh export reads every part

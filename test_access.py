@@ -2032,6 +2032,26 @@ def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), w
     assert a.use_state()[0] is False
 
 
+def test_diff_kept():  # What changed made at refresh time, from the replaced data set still kept built, equals a.diff
+    prev, now = a.fake_previous(), a.fake()
+    a.build(now)
+    want = json.dumps(a.diff(prev), default=str, sort_keys=True)
+    a.build(prev, "prev")
+    a.cached("findings", a.findings)
+    a.build(now, "now")
+    a.cached("findings", a.findings)
+    findings = a.findings
+
+    def boom():
+        raise AssertionError("prev checked again")
+    try:
+        a.findings = boom  # now's are in memo, prev's kept with its built set
+        got = a.diff(prev, None, "prev")
+    finally:
+        a.findings = findings
+    assert json.dumps(got, default=str, sort_keys=True) == want and a.run["RUN_ID"] == "fake" and ("prev", False) in a.built
+
+
 def test_activity():  # Activity tabs and rules 24-28: ACCESS_HISTORY per day, user, role, client and statement
     assert a.act_state() == (True, None)
     x = a.activity("SALES.CORE.TBL_CUSTOMER", "object")
