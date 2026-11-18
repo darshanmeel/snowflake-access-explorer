@@ -76,17 +76,30 @@ export function useApi<T>(path: string | null, p: Record<string, string | undefi
   const [s, setS] = useState<State<T>>({ data: null, error: null, loading: true });
   const [tick, setTick] = useState(epoch);
   useEffect(() => { const f = () => setTick(epoch); subs.add(f); return () => { subs.delete(f); }; }, []);
+  const [again, setAgain] = useState(0);
   const key = path ? `${path}${qs(p)}#${tick}` : "";
+  useEffect(() => setAgain(0), [key]);
   useEffect(() => {
     if (!path) return;
-    let live = true;
+    let live = true, timer = 0;
     setS((x) => ({ ...x, loading: true, error: null }));
     get<T>(path, p).then(
       (data) => live && setS({ data, error: null, loading: false }),
-      (error) => live && setS({ data: null, error: error as ApiFail, loading: false }),
+      (error) => {
+        if (!live) return;
+        if (passing(error) && again < RETRIES) timer = window.setTimeout(() => setAgain((n) => n + 1), RETRY_MS);  // still "Loading…"
+        else setS({ data: null, error: error as ApiFail, loading: false });
+      },
     );
-    return () => { live = false; };
+    return () => { live = false; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, again]);
   return s;
 }
+
+export const RETRY_MS = 2000, RETRIES = 150;  // about 5 minutes
+
+/** A failure that passes by itself: the shared data still being read, a proxy timeout, the server restarting or the
+ * connection dropped (a fetch that got no answer is no ApiFail). The page asks again instead of showing an error. */
+export const passing = (e: unknown) =>
+  !(e instanceof ApiFail) ? !transport : e.detail === "shared_loading" || e.status === 502 || e.status === 504;

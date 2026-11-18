@@ -182,6 +182,10 @@ def stages():
     t0 = time.monotonic()
     d = cache.get(KEY, read_shared, disk=MODE == "snowflake")[0]
     built(d)
+    t = cache.COPYING.get(KEY)
+    if t and t.is_alive():  # written beside the build; the pages open after it, not slowed down by it
+        with a.step("Finishing the DuckDB copy (access.duckdb)"):
+            t.join()
     a.say(f"Ready in {a.took(t0)}")
     return d
 
@@ -337,7 +341,7 @@ def session(view, sid, builtin=False):
         rows = S["rows"] = a.cached("rows", a.rule_rows) if a.roles else []
         ro = (lambda: a.cached("ro", a.readonly_writes)) if a.HIERARCHY_ON else list  # HIERARCHY=0: rule 17 off
         S["breaks"] = a.cached("breaks", lambda: breaks(rows, ro())) if rows else {}
-        if a.roles and any(k in a.memo and k not in had for k in KEPT):  # built() keeps rows; rule 17 and breaks here
+        if a.roles and any(k in a.memo and k not in had for k in KEPT):  # built() works them out; a builtin=1 switch here
             kept_rules(view, key, builtin, save=True)
         yield d
 
