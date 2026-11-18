@@ -231,18 +231,30 @@ function StaleTable({ rows, total, split }: { rows: StalePerson[]; total: number
   );
 }
 
+/** One item per line, the strong ones in red; over 4 the rest fold into "+N more". */
+function Lines({ items, strong }: { items: string[]; strong: string[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, 4);
+  return (
+    <div className="ae-lines">
+      {shown.map((x) => <div key={x} className={strong.includes(x) ? "ae-tone-bad" : "ae-plain"}>{x}</div>)}
+      {items.length > 4 && <button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `+${items.length - 4} more`}</button>}
+    </div>
+  );
+}
+
 export function AdminTable({ admins, refs, total }: { admins: AdminPerson[]; refs: Refs; total?: number }) {
   const o = useOpen(refs);
   return (
     <>
       {total != null && total > admins.length && <p className="ae-muted">First {admins.length} of {total} people.</p>}
-      <DataTable csv="admin_people.csv" rows={admins} rowTone={() => "bad"}
+      <DataTable csv="admin_people.csv" rows={admins} rowTone={(r: AdminPerson) => (r.roles.length || r.strong.length ? "bad" : null)}
         columns={[
           col("u", "User", (r: AdminPerson) => r.user, { wrap: "nowrap", render: (r: AdminPerson) => <NameLink id={r.user} refs={refs} /> }),
           col("t", "Type", (r: AdminPerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
           col("s", "Status", (r: AdminPerson) => r.status, { wrap: "nowrap" }),
-          col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap" }),
-          col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap" }),
+          col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={r.roles} strong={r.roles} /> }),
+          col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={r.account} strong={r.strong} /> }),
           col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
           col("p", "Path", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "nowrap",
             render: (r: AdminPerson) => <PathText path={r.paths[0] ?? []} more={r.paths.slice(1)} kinds={refs.kinds} onOpen={o.open} /> }),

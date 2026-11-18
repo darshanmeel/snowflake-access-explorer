@@ -211,7 +211,7 @@ function SideTabs({ tabs }: { tabs: NavTabs[] }) {
     <div role="tablist" aria-label="Sections of this page">
       {t.tabs.map((x) => (
         <Fragment key={x.key}>
-          <button type="button" role="tab" aria-selected={x.key === t.active} className={x.key === t.active ? "on" : ""} onClick={() => t.pick(x.key)}>
+          <button type="button" role="tab" aria-selected={x.key === t.active} className={x.key !== t.active ? "" : deeper[0] ? "open" : "on"} onClick={() => t.pick(x.key)}>
             <span>{x.label}</span>{x.count != null && <Count n={x.count} cls={x.tone ? ` ae-tone-${x.tone}` : ""} />}
           </button>
           {x.key === t.active && deeper[0] && <div className="side-sub">{<SideTabs tabs={deeper} />}</div>}
@@ -253,7 +253,6 @@ function Side({ meta, page, params, tabs, nav, onShut }: {
   useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
   const rule = page === "rules" ? params.rule : undefined;
   const subject = params.user ?? params.role ?? params.name ?? params.table ?? params.a;
-  const admins = page === "rules" && params.part === "admins", stale = page === "rules" && params.part === "stale";
   const ppl = meta.people;
   return (
     <aside className="side">
@@ -266,19 +265,18 @@ function Side({ meta, page, params, tabs, nav, onShut }: {
             <nav key={g} aria-label={title}>
               {title && <h4>{title}</h4>}
               {ps.map((p) => {
-                const on = p.key === page && !admins && !stale;
+                const on = p.key === page; // only the deepest open entry is filled; the ones above it are bold
                 return (
                   <Fragment key={p.key}>
-                    <button type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => nav(p.key)}>
+                    <button type="button" className={on ? (tabs[0] ? "open" : "on") : ""} aria-current={on ? "page" : undefined} onClick={() => nav(p.key)}>
                       <span>{p.label}</span>
                       {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`} title={p.title ?? p.badge.toLocaleString()}>{p.severity ? `${p.badge} ${p.severity.toLowerCase()} rule${p.badge === 1 ? "" : "s"}` : short(p.badge)}</span>}
                     </button>
                     {on && <SideSub tabs={tabs} subject={subject} />}
-                    {p.key === "rules" && ppl && <>
-                      <button type="button" className={`side-link2${admins ? " on" : ""}`} aria-current={admins ? "page" : undefined} onClick={() => nav("rules", { part: "admins" })}
+                    {p.key === "rules" && ppl && page !== "rules" && <>
+                      <button type="button" className="side-link2" onClick={() => nav("rules", { part: "admins" })}
                         title="Users holding an admin role or an account-level privilege"><span>Admin holders</span><Count n={ppl.admins} cls={ppl.admins ? " ae-tone-bad" : ""} /></button>
-                      {(admins || stale) && <SideSub tabs={tabs} />}
-                      <button type="button" className={`side-link2${stale ? " on" : ""}`} aria-current={stale ? "page" : undefined} onClick={() => nav("rules", { part: "stale" })}
+                      <button type="button" className="side-link2" onClick={() => nav("rules", { part: "stale" })}
                         title="People disabled, dormant or never logged in who still hold roles (rules 8 and 16), each once"><span>Dormant & disabled</span><Count n={ppl.stale} cls={ppl.stale ? " ae-tone-warn" : ""} /></button>
                     </>}
                     {p.key === "rules" && <SideFindings meta={meta} page={page} rule={rule} nav={nav} />}

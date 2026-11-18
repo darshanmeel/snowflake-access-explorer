@@ -766,7 +766,8 @@ export interface AdminPerson {
   user: string;
   service: boolean;
   roles: string[];
-  account: string[];
+  account: string[]; // account privileges not through PUBLIC, the strong ones first
+  strong: string[]; // of them, those that change who can do what (server.ADMIN_LEVEL): red
   paths: Path[];
   status: UserStatus;
   last_login: string | null;

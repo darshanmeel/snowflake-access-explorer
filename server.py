@@ -2837,10 +2837,19 @@ def rules_page(p, view):
         unknown = sorted(o for o in S["sens"] if any(a.row_terms(q) is None for q in a.policies_of(o)["rows"]))
         admins, st = admin_list(), stale_list()
         out.update(rows_unknown=[] if who else unknown, admins_total=len(admins), stale_total=len(st), stale=st[:MAX_ADMINS], stale_split=dict(Counter(x["status"] for x in st)), admins=[
-            dict(user=x["user"], service=x["service"], roles=x["roles"], account=list(dict.fromkeys(pv for pv, _ in x["account"])),
-                 paths=x["paths"] + [q for _, q in x["account"]], status=x["status"],
+            dict(user=x["user"], service=x["service"], roles=x["roles"], account=sorted(acct := {pv for pv, q in x["account"] if q[-1] != "PUBLIC"},
+                                                                                   key=lambda pv: (pv not in ADMIN_LEVEL, pv)),
+                 strong=sorted(acct & ADMIN_LEVEL), paths=x["paths"] + [q for _, q in x["account"] if q[-1] != "PUBLIC"], status=x["status"],
                  last_login=str(x["last_login"])[:16] if x["last_login"] else None) for x in admins[:MAX_ADMINS]])
     return out
+
+
+# account privileges that change who can do what (grants, roles, users, policies, shares): red in Admin holders; other
+# account privileges (VIEW LINEAGE, MONITOR USAGE, ...) are shown, not red. What PUBLIC holds is left out: every user has it.
+ADMIN_LEVEL = {"MANAGE GRANTS", "CREATE ROLE", "CREATE USER", "APPLY MASKING POLICY", "APPLY ROW ACCESS POLICY", "APPLY TAG",
+               "APPLY AGGREGATION POLICY", "APPLY PROJECTION POLICY", "APPLY PASSWORD POLICY", "APPLY SESSION POLICY",
+               "APPLY AUTHENTICATION POLICY", "CREATE DATABASE", "CREATE INTEGRATION", "CREATE SHARE", "IMPORT SHARE",
+               "CREATE ACCOUNT", "CREATE NETWORK POLICY", "ATTACH POLICY", "OVERRIDE SHARE RESTRICTIONS"}
 
 
 def admin_list():
