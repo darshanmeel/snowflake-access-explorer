@@ -208,6 +208,9 @@ def test_sensitive():
             a2.setdefault(r["role"], set()).add(r["object"])
     assert a2 == {T + "SALES_MART_READ": {"SALES.MART.VW_CUSTOMER"},
                   "GRP_ANALYSTS": {"SALES.MART.VW_CUSTOMER", "SALES.CORE.TBL_CUSTOMER", "SHARED.LOGGING.TBL_LOGGING"}}
+    for u in a.users:  # each role's path is the one reads() gives (the shortest, first reader in bfs order)
+        got = {st[1]: a.reads(st) for st in a.starts(u, True)}
+        assert all(r["path"] == got[r["role"]].get(r["object"]) for r in a.sensitive_reach(u)), u
     assert a.masked("ENGINEER_01", "SALES.CORE.TBL_CUSTOMER", "EMAIL") == "clear"
     assert a.masked("ANALYST_01", "SALES.CORE.TBL_CUSTOMER", "EMAIL") == "masked"
     assert a.masked("ANALYST_01", "SALES.CORE.TBL_CUSTOMER", "PHONE") == "clear"  # no policy
@@ -1140,8 +1143,9 @@ def test_fast():
         for lim in (None, 1, 2, 3, 5):
             for only in ([False, True] if user else [False]):
                 slow = a.group(((pv, k, o), p + [o]) for pv, k, o, p in a.access_of(n, user, only, lim))
+                cnt = a.grant_count(n, user, only, lim)  # before grants(): counted from the walk, no rows built
                 fast = {(r["privilege"], r["type"], r["object"]): r for r in a.grants(n, user, only, lim)}
-                assert set(slow) == set(fast), (n, lim)
+                assert set(slow) == set(fast) and cnt == len(fast) == a.grant_count(n, user, only, lim), (n, lim)
                 assert all(fast[k]["paths"] == ps and fast[k]["count"] == len(ps) for k, ps in slow.items()), (n, lim)
                 slow = a.group((p[-1], p) for p in a.walk(n, user, only, lim) if len(p) > 1)
                 fast = {r["role"]: r for r in a.reach(n, user, only, lim)}
@@ -1516,6 +1520,7 @@ def test_group_graph():
     assert gs["WH_SALES_XS"]["level"] == "object" and gs["SALES"]["level"] == "object"
     assert {g["group"] for g in a.group_objects(rows, "database")} == {"SALES", "SHARED", "FINANCE", "WH_SALES_XS",
                                                                       "WH_FINANCE_XS", "ACCOUNT"}
+    assert a.group_objects(rows, "schema", [a.group_key(r, "schema") for r in rows]) == a.group_objects(rows, "schema")
     holders = {h for r in a.grants("ANALYST_01", True) if r["database"] == "SALES" for h in r["holders"]}
     assert set(next(g for g in a.group_objects(a.grants("ANALYST_01", True), "database")
                     if g["group"] == "SALES")["holders"]) == holders  # every holder, not one per row
