@@ -24,29 +24,47 @@ export interface DataTableProps<R> {
   limit?: number; // rows per page at first (the viewer picks 25 / 50 / 100 / 250)
   onRowClick?: (r: R) => void;
   rowTone?: (r: R) => "bad" | "warn" | null;
+  server?: ServerTable; // rows are the page the server filtered, sorted and cut: the table asks it for another
+}
+
+/** A table the server pages: rows = page `at` of `size` rows, out of `total` that match `q`, sorted by `by`. */
+export interface ServerTable {
+  total: number;
+  at: number;
+  size: number;
+  q: string;
+  by: { key: string; dir: 1 | -1 } | null;
+  onChange: (s: { at: number; size?: number; q?: string; by?: { key: string; dir: 1 | -1 } }) => void;
 }
 
 export function DataTable<R>({
   columns, rows, filter = true, csv = "table.csv", sort, maxHeight = 520, empty = "Nothing to show.", limit = 50,
-  onRowClick, rowTone,
+  onRowClick, rowTone, server,
 }: DataTableProps<R>) {
-  const [q, setQ] = useState("");
-  const [by, setBy] = useState<{ key: string; dir: 1 | -1 } | null>(sort ? { key: sort.key, dir: sort.dir ?? 1 } : null);
-  const [size, setSize] = useState(limit);
+  const [ownQ, setOwnQ] = useState("");
+  const [ownBy, setOwnBy] = useState<{ key: string; dir: 1 | -1 } | null>(sort ? { key: sort.key, dir: sort.dir ?? 1 } : null);
+  const [ownSize, setOwnSize] = useState(limit);
   const [page, setPage] = useState(0);
+  const q = server ? server.q : ownQ, by = server ? server.by : ownBy, size = server ? server.size : ownSize;
   const csvOn = useCsv() && csv !== null;
   const keys = columns.map((c) => c.key).join("\u0001");
   const view = useMemo(() => {
+    if (server) return rows;
     const f = filterRows(rows, q, columns.map((c) => (r: R) => cellText(c.get(r))));
     const col = by && columns.find((c) => c.key === by.key);
     return col ? sortRows(f, col.get, by!.dir) : f;
-  }, [rows, q, by, keys]); // keys, not columns: pages pass a new columns array each render, which re-sorted every time
+  }, [rows, q, by, keys, !server]); // keys, not columns: pages pass a new columns array each render, which re-sorted every time
   useEffect(() => setPage(0), [q, by, rows.length]); // a new filter, sort or row set starts on page 1 (rows.length: pages often pass a new array each render)
-  const last = Math.max(0, Math.ceil(view.length / size) - 1), at = Math.min(page, last);
-  const shown = view.slice(at * size, (at + 1) * size);
+  const total = server ? server.total : view.length;
+  const last = Math.max(0, Math.ceil(total / size) - 1), at = server ? server.at : Math.min(page, last);
+  const shown = server ? rows : view.slice(at * size, (at + 1) * size);
   const sizes = [...new Set([25, 50, 100, 250, limit])].sort((x, y) => x - y);
-  const pager = view.length > size || (size !== limit && view.length > sizes[0]); // kept once the viewer picked a size, to pick again
-  const tools = filter && rows.length >= 10; // a filter box and row count only where there is something to filter
+  const pager = total > size || (size !== limit && total > sizes[0]); // kept once the viewer picked a size, to pick again
+  const tools = filter && (!!server || rows.length >= 10); // a filter box and row count only where there is something to filter
+  const setQ = (v: string) => (server ? server.onChange({ at: 0, q: v }) : setOwnQ(v));
+  const setBy = (v: { key: string; dir: 1 | -1 }) => (server ? server.onChange({ at: 0, by: v }) : setOwnBy(v));
+  const onPage = (n: number) => (server ? server.onChange({ at: n }) : setPage(n));
+  const onSize = (n: number) => (server ? server.onChange({ at: 0, size: n }) : (setOwnSize(n), setPage(0)));
 
   const data = columns.filter((c) => c.label); // a column without a label holds buttons: not in the CSV, not sortable
   const exportCsv = () =>
@@ -57,7 +75,7 @@ export function DataTable<R>({
       {(tools || csvOn) && (
         <div className="ae-table-tools">
           {tools && <input className="ae-input" placeholder="Filter rows" value={q} onChange={(e) => setQ(e.target.value)} />}
-          {tools && <span className="ae-muted">{view.length === rows.length ? `${rows.length} rows` : `${view.length} of ${rows.length} rows`}</span>}
+          {tools && <span className="ae-muted">{server ? `${total} rows` : view.length === rows.length ? `${rows.length} rows` : `${view.length} of ${rows.length} rows`}</span>}
           {csvOn && <button className="ae-btn" onClick={exportCsv}>CSV</button>}
         </div>
       )}
@@ -96,7 +114,7 @@ export function DataTable<R>({
           </tbody>
         </table>
       </div>
-      {pager && <Pager at={at} size={size} total={view.length} onPage={setPage} sizes={sizes} onSize={(n) => { setSize(n); setPage(0); }} />}
+      {pager && <Pager at={at} size={size} total={total} onPage={onPage} sizes={sizes} onSize={onSize} />}
     </div>
   );
 }

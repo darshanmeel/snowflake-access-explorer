@@ -1206,7 +1206,17 @@ def test_counted():
             assert a.loses(x, x, r) == sorted(k for k, ps in g.items() if all((x, r) in pairs(p) for p in ps)), (x, r)
     old = {(x, o["object"]): (o["level"], o["privileges"]) for x in a.users for o in a.access_objects(a.grants(x, True), True)
            if o["category"] == "data" and o["level"] and a.is_data(o["type"])}
-    assert a.facts()["access"] == old
+    f = a.facts()  # per granted role, never per (user, object): the pairs come back from fact_level
+    pairs = lambda f: {(x, o): v for x, rs in f["of"].items() for o in sorted(set().union(*(a.side_reach(f, r) for r in rs)))
+                       if (v := a.fact_level(f, rs, o))[0]}
+    assert pairs(f) == old
+    with a.loaded(a.fake_previous()):
+        g = a.facts()
+    now, was, rank = pairs(f), pairs(g), a.LEVELS.index
+    for x, y in ((f, g), (g, f)):  # moved() looks only at the roles that changed: the same as comparing every pair
+        px, py = pairs(x), pairs(y)
+        assert a.moved(x, y) == [k for k, (lv, _) in px.items() if k not in py or rank(lv) > rank(py[k][0])]
+    assert a.moved(f, g) and a.moved(g, f) and now != was
     for r in a.roles[::5]:
         for o in a.objects[::7]:
             rows = a.grants(r)
@@ -1478,7 +1488,7 @@ def test_perf():
         ("held, grantees", lambda: (a.held(T + "DB0_S0_READ"), a.grantees(o), a.admin_holders()), 1),
         ("facts", lambda: got.update(f=a.facts()), 8),
         ("review", lambda: got.update(rv=a.review("DB0")), 4),
-        ("flow, grid", lambda: (a.sens_flow(), a.review_grid(), a.review_grid(obj=o)), 4),
+        ("flow, grid", lambda: (a.sens_flow(), a.review_grid(), a.review_grid("db", "DB0"), a.review_grid(obj=o)), 4),
     ]
     for name, f, budget in steps:
         try:
@@ -1488,7 +1498,7 @@ def test_perf():
     c = got["c"]
     assert c["count"] > a.MAX_PATHS >= len(c["paths"])
     assert not got["no"]["paths"] and got["no"]["closest"] and got["near"]
-    assert len(got["f"]["access"]) > 100000
+    assert len(got["f"]["of"]) == len(a.users) and not a.moved(got["f"], got["f"])
     assert len(got["rv"]) > 100000
 
 

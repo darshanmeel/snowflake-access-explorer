@@ -1,6 +1,6 @@
 // Screen 6, review grid: people x objects (or x the privileges of one object), cell = ladder colour + word, hover =
 // path. Keep / Revoke per row (saved in this browser), revokes to the change plan, Sign off downloads a CSV.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { GridPage } from "../api/types";
 import { Card, EmptyState, FilterChips, LEVEL_WORD, ListToolbar, Toggle, useCsv } from "../components";
@@ -16,17 +16,18 @@ const WORD: Record<string, string> = { ...LEVEL_WORD, read: "Read", change: "Cha
 
 export function ReviewGrid() {
   const c = useApp();
-  const s = useApi<GridPage>("grid", apiParams(c));
-  return <Load s={s}>{(d) => <Grid d={d} />}</Load>;
+  const [q, setQ] = useState(""), [asked, setAsked] = useState("");
+  useEffect(() => { const t = setTimeout(() => setAsked(q.trim()), 300); return () => clearTimeout(t); }, [q]);
+  const s = useApi<GridPage>("grid", { ...apiParams(c), q: asked || null }); // the server filters and caps the people
+  return <Load s={s}>{(d) => <Grid d={d} q={q} setQ={setQ} />}</Load>;
 }
 
-function Grid({ d }: { d: GridPage }) {
+function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => void }) {
   const c = useApp();
   const csvOn = useCsv();
   const o = useOpen(d.refs);
   const [all, setAll] = useState(false);
   const [reviewer, setReviewer] = useState("");
-  const [q, setQ] = useState("");
   const people = c.params.people !== "0", stale = c.params.stale === "1", hide = c.params.hideusage !== "0";
   const key = d.scope === "object" ? `object:${d.object}` : d.scope === "db" ? `db:${d.db}` : d.scope;
   const store = useSaved(decisions);
@@ -70,7 +71,9 @@ function Grid({ d }: { d: GridPage }) {
         <Toggle label="Hide USAGE" on={hide} onPick={(v) => c.set({ hideusage: v ? null : "0" })} />
       </ListToolbar>
       <Card title={isObj ? `Who holds each privilege on ${d.object.split(".").pop()}` : d.scope === "sensitive" ? "Who can reach each sensitive object" : "Who can reach each object"}
-        sub={d.total > d.columns.length ? `First ${d.columns.length} of ${d.total} objects, most people first` : undefined}
+        sub={[d.total > d.columns.length && `First ${d.columns.length} of ${d.total} objects, most people first`,
+          d.matched > d.rows.length && `first ${d.rows.length} of ${d.matched} people, admins and the highest access first: search or filter for the others`]
+          .filter(Boolean).join("; ").replace(/^./, (x) => x.toUpperCase()) || undefined}
         right={<span className="ae-bar-legend">{(["read", "change", "own", "admin"] as const).map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{WORD[l]}</span>)}<span className="ae-muted">Hover a cell for its path</span></span>}>
         {!rows.length || !d.columns.length ? <EmptyState title="Nobody here">Change the scope, or turn off Only dormant / disabled.</EmptyState> : (
           <div className="ae-grid-wrap">

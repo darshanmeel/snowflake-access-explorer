@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { download, useApi } from "../api/client";
 import type { PrivClass, ReviewPage, ReviewRow } from "../api/types";
 import { AccessTag, Banner, Card, DataTable, KpiRow, StatusDot, Tabs, useCsv } from "../components";
@@ -29,13 +29,20 @@ function OldReview() {
   const c = useApp();
   const csvOn = useCsv();
   const [tab, setTab] = useState(c.params.part ?? "sens");
-  const s = useApi<ReviewPage>("review", apiParams(c));
+  const [pg, setPg] = useState({ at: 0, size: 50, by: { key: "o", dir: 1 as 1 | -1 } });
+  const [typed, setTyped] = useState(""), [q, setQ] = useState("");
+  useEffect(() => { const t = setTimeout(() => setQ(typed), 300); return () => clearTimeout(t); }, [typed]);
+  const { db, schema, object, active, hideusage } = c.params;
+  useEffect(() => setPg((x) => ({ ...x, at: 0 })), [db, schema, object, active, hideusage, q]);
+  // the server filters, sorts and pages: a big database has millions of (user, object) rows
+  const s = useApi<ReviewPage>("review", { ...apiParams(c), part: tab, q, sort: pg.by.key, dir: String(pg.by.dir),
+    offset: String(pg.at * pg.size), limit: String(pg.size) });
   return (
     <>
       {csvOn && <div className="ae-row ae-right"><button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button></div>}
       <Load s={s}>{(d) => {
         const f = d.filters, k = d.kpis;
-        const t = tab === "sens" && !d.rows.some((r) => r.sensitive.length) ? "all" : tab;
+        const t = d.part;
         const opt = (xs: string[], all: string): [string, string][] => [["", all], ...xs.map((x): [string, string] => [x, x])];
         return (
           <>
@@ -53,13 +60,14 @@ function OldReview() {
               { label: "Admin rows", value: k.admin_rows, tone: k.admin_rows ? "bad" : null },
               { label: "Sensitive objects", value: k.sensitive, tone: k.sensitive ? "warn" : null },
             ]} />
-            <Tabs active={t} onChange={setTab} tabs={[
-              { key: "sens", label: "Sensitive objects", count: d.rows.filter((r) => r.sensitive.length).length, tone: "warn" },
-              { key: "all", label: "All", count: d.rows.length },
+            <Tabs active={t} onChange={(k) => { setTab(k); setPg((o) => ({ ...o, at: 0 })); }} tabs={[
+              { key: "sens", label: "Sensitive objects", count: d.counts.sens, tone: "warn" },
+              { key: "all", label: "All", count: d.counts.all },
             ]} />
             <Card scroll>
-              <DataTable key={t} csv={`access_review_${f.db === "*" ? "ALL" : f.db}_${t}.csv`} rows={t === "sens" ? d.rows.filter((r) => r.sensitive.length) : d.rows}
-                maxHeight={640} sort={{ key: "o" }}
+              <DataTable key={t} csv={null} rows={d.rows} maxHeight={640}
+                server={{ total: d.total, at: pg.at, size: pg.size, q: typed, by: pg.by,
+                  onChange: (x) => { if (x.q !== undefined) setTyped(x.q); setPg((o) => ({ at: x.at, size: x.size ?? o.size, by: x.by ?? o.by })); } }}
                 rowTone={(r: ReviewRow) => (r.admin ? "bad" : r.status !== "active" ? "warn" : null)}
                 columns={[
                   col("o", "Object", (r: ReviewRow) => `${r.database}.${r.schema}.${r.object}`, { wrap: "nowrap", render: (r: ReviewRow) => (
