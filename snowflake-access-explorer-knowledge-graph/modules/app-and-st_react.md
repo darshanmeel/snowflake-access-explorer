@@ -37,6 +37,6 @@ sequenceDiagram
 
 - `mine/load` makes a new sid and drops the old MINE entry, as the local server does (st_react.py:38-42).
 - Unknown endpoint -> 404 `not_found` (st_react.py:47).
-- Inside Snowflake: deployed by sql/4_streamlit.sql (`MAIN_FILE = 'app.py'`, sql/4_streamlit.sql:65-70); My access hidden there (server.py:228-230).
+- Inside Snowflake: deployed by sql/4_streamlit.sql (`MAIN_FILE = 'app.py'`, sql/4_streamlit.sql:65-70); My access hidden there (server.py:265-267, `mine_off` server.py:260-278).
 - Progress inside Snowflake: Python is busy during a load, so the frame cannot poll `/api/progress`; `shown()` writes the lines itself ([flows/load-progress.md](../flows/load-progress.md)).
-- Tests: `test_pages` hands every page to the component (test_access.py:908), `test_streamlit_bridge` (test_server.py:268), `test_progress` (`shown` from a thread, test_server.py:1085-1133).
+- Tests: `test_pages` hands every page to the component (test_access.py:938), `test_streamlit_bridge` (test_server.py:385), `test_progress` (`shown` from a thread, test_server.py:1355-1403).

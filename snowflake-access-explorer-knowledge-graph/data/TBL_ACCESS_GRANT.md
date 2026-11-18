@@ -22,13 +22,13 @@ DDL: `sql/1_setup.sql:24-33`. Grain: run x grantee x privilege x granted_on x ob
 | OBJECT_NAME | VARCHAR(2000) | `DB.SCHEMA.OBJECT` unquoted; future: `DB.SCHEMA.<TABLE>` | 29 |
 | IS_FUTURE | BOOLEAN | future grant | 30 |
 | GRANT_OPTION | BOOLEAN | with grant option | 31 |
-| GRANTED_BY | VARCHAR(255) | granting role; NULL on future grants (`sql/1_setup.sql:475`) | 32 |
+| GRANTED_BY | VARCHAR(255) | granting role; NULL on future grants (`sql/1_setup.sql:477`) | 32 |
 
-- ACCOUNT_USAGE path: `sql/1_setup.sql:371-379` (`DELETED_ON IS NULL`, `GRANTED_TO IN ('ROLE','DATABASE_ROLE')`; DB role grantee qualified `DB.ROLE` at `:213-214`; OBJECT_NAME built at `:216-218`).
-- SHOW path: roles `sql/1_setup.sql:392-401`, database roles `:237-253`, saved `:254`.
-- Future grants: `sql/1_setup.sql:439-479` (STANDARD databases only `:269`; INFORMATION_SCHEMA skipped `:275`).
-- Role link = USAGE on ROLE / DATABASE_ROLE, admin grantees dropped: `access.py:1461-1465`, `sql/1_setup.sql:976-980`.
-- Other rows -> `privs` / `kinds`: `access.py:1467-1470`. Database roles collected: `access.py:1471-1474`.
-- Built-in grants hidden unless `builtin=1`: `access.py:1432-1434,917-919`.
-- Same shape from `live()`: `access.py:923-954,622-642,666-670`; from `mine()`: `access.py:804-816` (no GRANT_OPTION / GRANTED_BY keys).
-- Per-object fallbacks of tags / policies list tables and views from this table: `sql/1_setup.sql:541-545`.
+- ACCOUNT_USAGE path: `sql/1_setup.sql:374-382` (`DELETED_ON IS NULL`, `GRANTED_TO IN ('ROLE','DATABASE_ROLE')`; DB role grantee qualified `DB.ROLE` at `sql/1_setup.sql:375-376`; OBJECT_NAME built at `sql/1_setup.sql:378-380`; refused in full -> SHOW path, timed out -> the run fails, `sql/1_setup.sql:386-388`).
+- SHOW path: roles `sql/1_setup.sql:394-403`, database roles `sql/1_setup.sql:409-432`, saved `sql/1_setup.sql:433`.
+- Future grants: `sql/1_setup.sql:441-481` (STANDARD databases only `sql/1_setup.sql:448`; INFORMATION_SCHEMA skipped `sql/1_setup.sql:455`).
+- Role link = USAGE on ROLE / DATABASE_ROLE, admin grantees dropped: `access.py:1534-1538`, `sql/1_setup.sql:982-986`.
+- Other rows -> `privs` / `kinds`: `access.py:1540-1543`. Database roles collected: `access.py:1544-1547`.
+- Built-in grants hidden unless `builtin=1`: `access.py:1505-1507,917-919`.
+- Same shape from `live()`: `access.py:983-1020,622-642,666-670`; from `mine()`: `access.py:856-868` (no GRANT_OPTION / GRANTED_BY keys).
+- Per-object fallbacks of tags / policies list tables and views from this table: `sql/1_setup.sql:547-551`.

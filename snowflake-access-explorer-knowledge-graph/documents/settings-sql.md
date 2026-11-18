@@ -20,4 +20,4 @@ flowchart LR
 - Variable substitution on — settings.sql:4.
 
 ## Relates to
-- run_sql.py:17-42, run_sql.py:65-66; access.py:93-94 (env QUERY_TAG / STREAMLIT_APP of the app); every sql/*.sql (`!source settings.local.sql`, e.g. sql/1_setup.sql:6); .gitignore:4; processes/deploy-snowflake.md.
+- run_sql.py:17-42, run_sql.py:65-66; access.py:102-103 (env QUERY_TAG / STREAMLIT_APP of the app); every sql/*.sql (`!source settings.local.sql`, e.g. sql/1_setup.sql:6); .gitignore:4; processes/deploy-snowflake.md.

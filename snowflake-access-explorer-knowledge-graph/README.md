@@ -19,7 +19,7 @@ Markdown pages plus a JSON-lines graph of the access explorer repo; every fact c
 
 Stats and counts per type: `meta.json` (`counts`).
 
-Last update: 2026-11-17, commit 448bdbb (2071 nodes, 6203 edges, 15 flows; counts in `meta.json`). Files whose sha256 in `meta.json` `file_hashes` differs from the repo are stale: update the pages that cite them.
+Last update: 2026-11-18, commit a7fa7a5 (2197 nodes, 6789 edges, 17 flows, 194 file nodes; counts in `meta.json`). Files whose sha256 in `meta.json` `file_hashes` differs from the repo are stale: update the pages that cite them.
 
 ## Notes
 

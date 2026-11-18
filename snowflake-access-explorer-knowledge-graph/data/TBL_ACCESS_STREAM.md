@@ -16,6 +16,6 @@ DDL: `sql/1_setup.sql:90-95`. Grain: run x stream.
 | SOURCE_NAME | VARCHAR(2000) | `DB.SCHEMA.TABLE` it reads | 93 |
 | SOURCE_TYPE | VARCHAR(50) | Table, View, ... | 94 |
 
-- Written: `sql/1_setup.sql:672-683` (no ACCOUNT_USAGE view; only streams the owner role sees; error -> UNAVAILABLE).
-- Read: `access.py:1494` (`streams[STREAM_NAME] = SOURCE_NAME`); rule 22 `access.py:6140-6152` (source in `sensitive()`, stream readers via `on`).
-- Unclear: SHOW STREAMS column names marked "to verify" `sql/1_setup.sql:675`.
+- Written: `sql/1_setup.sql:678-689` (no ACCOUNT_USAGE view; only streams the owner role sees; error -> UNAVAILABLE).
+- Read: `access.py:1567` (`streams[STREAM_NAME] = SOURCE_NAME`); rule 22 `access.py:6603-6615` (source in `sensitive()`, stream readers via `on`).
+- Unclear: SHOW STREAMS column names marked "to verify" `sql/1_setup.sql:681`.

@@ -17,7 +17,7 @@ flowchart LR
 
 | Name | Does | path:line |
 |---|---|---|
-| `connect()` | App session inside Snowflake; else needs SNOWFLAKE_ACCOUNT, optional SNOWFLAKE_HOST (PrivateLink); key pair or SSO, no password; sets `QUERY_TAG = access.QUERY_TAG` (env `QUERY_TAG`, default 'access-explorer', access.py:93) so the Activity read leaves the app's own queries out (sf.py:35) | sf.py:19-43 |
+| `connect()` | App session inside Snowflake; else needs SNOWFLAKE_ACCOUNT, optional SNOWFLAKE_HOST (PrivateLink); key pair or SSO, no password; sets `QUERY_TAG = access.QUERY_TAG` (env `QUERY_TAG`, default 'access-explorer', access.py:102) so the Activity read leaves the app's own queries out (sf.py:35) | sf.py:19-43 |
 | `owned()` | True outside Snowflake: the caller may close the connection | sf.py:46-48 |
 | `rows(conn, sql)` | `(column names, rows)`; every app read goes through here; a timeout -> `TimeoutError("<step>: <timeout_hint>")` | sf.py:51-63 |
 | `limit(sql)` | `{"STATEMENT_TIMEOUT_IN_SECONDS": STATEMENT_TIMEOUT}` as statement parameters, `{}` for a CALL (the procedure limits its own statements; a cut CALL would leave its run RUNNING) or STATEMENT_TIMEOUT=0 | sf.py:66-70 |
@@ -25,9 +25,9 @@ flowchart LR
 | `__main__` | `python sf.py "select ..."` or `-f file.sql` | sf.py:83-88 |
 
 - Env vars: SNOWFLAKE_ACCOUNT / HOST / USER / ROLE / WAREHOUSE / DATABASE / SCHEMA (sf.py:27-36); unset ones are dropped before the connect call (sf.py:43), SNOWFLAKE_PRIVATE_KEY_FILE / _PWD (sf.py:37-40).
-- The query tag is set only on connections this file opens; inside Snowflake the app's active session is returned as it is (sf.py:20-22). Filter: `access.py:1329`, `sql/1_setup.sql:764`.
-- PrivateLink: `account=` stays the plain `SNOWFLAKE_ACCOUNT` (`<org>-<account>`, sf.py:28) and `host=` is `SNOWFLAKE_HOST` (`<org>-<account>.privatelink` + Snowflake domain, sf.py:29), plus private DNS for that host and the OCSP host; without `SNOWFLAKE_HOST` the connector uses the public host; key pair works as is, browser SSO needs the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); inside Snowflake the app session needs none of it — README.md:186-201, README.md:217, README.html:677, processes/privatelink-login.md.
+- The query tag is set only on connections this file opens; inside Snowflake the app's active session is returned as it is (sf.py:20-22). Filter: `access.py:1405-1406`, `sql/1_setup.sql:773-774`.
+- PrivateLink: `account=` stays the plain `SNOWFLAKE_ACCOUNT` (`<org>-<account>`, sf.py:28) and `host=` is `SNOWFLAKE_HOST` (`<org>-<account>.privatelink` + Snowflake domain, sf.py:29), plus private DNS for that host and the OCSP host; without `SNOWFLAKE_HOST` the connector uses the public host; key pair works as is, browser SSO needs the SAML integration on the PrivateLink URLs (`SAML2_SNOWFLAKE_ACS_URL`, `SAML2_SNOWFLAKE_ISSUER_URL`); inside Snowflake the app session needs none of it — README.md:186-201, README.md:217, README.html:683, processes/privatelink-login.md.
 - SSO uses the token cache (`client_store_temporary_credential`) (sf.py:41-42).
-- The limit is a statement parameter, not `ALTER SESSION`, so it is the same on a local login and on the app's session inside Snowflake (sf.py:52-54; "to verify" there). Test: `test_timeout` (test_access.py:533-569).
-- `test_read_only` records statements at this layer (test_server.py:331-434).
-- Used by: server.with_query (server.py:86-90), run_sql.py (run_sql.py:14).
+- The limit is a statement parameter, not `ALTER SESSION`, so it is the same on a local login and on the app's session inside Snowflake (sf.py:52-54; "to verify" there). Test: `test_timeout` (test_access.py:541-577).
+- `test_read_only` records statements at this layer (test_server.py:448-491).
+- Used by: server.with_query (server.py:90-127), run_sql.py (run_sql.py:14).

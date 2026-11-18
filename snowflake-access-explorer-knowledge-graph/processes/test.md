@@ -18,31 +18,33 @@ flowchart LR
 - `python access_queries/test_queries.py` green: query files and `functions.sql` equal to `access.py`, notebook current — CLAUDE.md:115 (modules/access-queries.md > Test).
 - `test_pages` (app.py hands every page to the component) and `test_server.py` (what each page answers) — CLAUDE.md:116-117.
 - Test packages: `requirements-dev.txt` — CLAUDE.md:113, requirements-dev.txt:1-4.
-- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:458.
+- README version incl. `python test_server.py` and `cd web; npm test` and `python access_queries/test_queries.py` — README.md:464.
 
 ## test_access.py
 - Forces `FAKE=1` — test_access.py:14.
-- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:2168-2187.
-- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1390-1408.
-- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:572, CLAUDE.md:22; `test_pages` — test_access.py:908; `test_sis_upload` — test_access.py:941; `test_counted` — test_access.py:1160; `test_readme_rules` (README.html generated parts up to date) — test_access.py:2095-2105.
-- Missing data never fails: `test_missing_names`, `test_empty_reads`, `test_none_fuzz` (test_access.py:783-905); the DuckDB walk equals the Python walk: `test_duck_reach` (test_access.py:1131-1148).
+- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:2246-2265.
+- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1453-1512.
+- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:580, CLAUDE.md:22; `test_pages` — test_access.py:938; `test_sis_upload` — test_access.py:971; `test_counted` — test_access.py:1197; `test_readme_rules` (README.html generated parts up to date) — test_access.py:2173-2183.
+- Missing data never fails: `test_missing_names`, `test_empty_reads`, `test_none_fuzz` (test_access.py:813-935); the DuckDB walk equals the Python walk: `test_duck_reach` (test_access.py:1168-1194).
+- What changed made at refresh time from the replaced set still built equals a fresh diff, its rules not checked again: `test_diff_kept` (test_access.py:2046-2063).
 
 ## test_sql.py
 - Forces `FAKE=1`, imports `duckdb` (so requirements-web.txt / dev needed) — test_sql.py:13-15, requirements-dev.txt:3.
 - Loads a data set into DuckDB as the `TBL_ACCESS_` tables — test_sql.py:33, test_sql.py:82.
-- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_show_fallback` — test_sql.py:682-686.
-- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:943.
+- Main runs `test_demo`, `test_cap_and_admin`, `test_edges`, `test_findings`, `test_streams`, `test_object_use`, `test_activity`, `test_show_fallback`, `test_run_overlap`, `test_usage_extra`, `test_object_use_weeks`, `test_same_queries`, `test_proc_settings`, `test_history_shared` — test_sql.py:682-686.
+- Keeps `TF_*` / `SP_ACCESS_FINDINGS` equal to access.py — CLAUDE.md:81-82; runs the exact setup SQL text on DuckDB — sql/1_setup.sql:949.
 
 ## test_server.py
-- Forces `FAKE=1` — test_server.py:7; runs every `test_` in globals, prints "test_server green" — test_server.py:1136-1141.
-- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:331, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:268; `test_same_site` — test_server.py:483; `test_bundles_fresh` — test_server.py:523.
-- Load stages and refresh: `test_parts` (parts, `--build`, `--export --fresh`), `test_background` (refresh in a thread), `test_kept_rules` (rule results across restarts), `test_pages_empty` (every page on empty / NULL data) — test_server.py:761-989.
+- Forces `FAKE=1` — test_server.py:8; runs every `test_` in globals, prints "test_server green" — test_server.py:1406-1411.
+- Examples: `test_read_only` (only reads + SP_ACCESS_SNAPSHOT CALL) — test_server.py:448, CLAUDE.md:47-48; `test_streamlit_bridge` — test_server.py:385; `test_same_site` — test_server.py:630; `test_bundles_fresh` — test_server.py:670.
+- Load stages and refresh: `test_parts` (parts, `--build`, `--export --fresh`), `test_background` (refresh in a thread), `test_kept_rules` (rule results across restarts), `test_changes_kept` (What changed compared at refresh, `.diff.pkl` after a restart, paged feed), `test_pages_empty` (every page on empty / NULL data) — test_server.py:953-1259; `test_lost_session` (a Direct load that loses its session or has no warehouse stops with the message, nothing kept) — test_server.py:561-579.
+- Big accounts: `test_paged` (privileges and Access entries a page at a time, lazy graph boxes through `graph?group=`), `test_big_lanes` (folded people lanes, grantees / held by / role privileges paged, map node detail), `test_rules_paged` (Risks & fixes findings paged, `/api/finding`) — test_server.py:101-148, test_server.py:181-221, test_server.py:774-803 ([flows/paged-tables.md](../flows/paged-tables.md), [flows/lazy-graph-box.md](../flows/lazy-graph-box.md)).
 - Uses FastAPI TestClient via httpx — requirements-dev.txt:4.
 
 ## Web (vitest)
 - `npm test` = `vitest run` — web/package.json:11; jsdom, `pool: "threads"` (forks pool times out on Windows) — web/vite.config.ts:43-44.
-- Test files: `web/src/components/*.test.ts(x)` (codegen, helpers, render, visuals, loadlog, pager, review1110, nulls), `web/src/pages/*.test.ts` and `web/src/app.test.tsx` (the App shell during a load) — repo file list.
+- Test files: `web/src/components/*.test.ts(x)` (codegen, helpers, render, visuals, loadlog, pager, paged, review1110, nulls), `web/src/pages/*.test.ts(x)` (rules.test.tsx among them) and `web/src/app.test.tsx` (the App shell during a load) — repo file list.
 - `npm run typecheck` = `tsc --noEmit` — web/package.json:10.
 
 ## Unclear
-- No CI config is tracked (no workflow files in the 189 tracked files); tests run by hand.
+- No CI config is tracked (no workflow files among the tracked files); tests run by hand.

@@ -11,12 +11,12 @@ flowchart LR
 ```
 
 ## What the source says
-- Optional, only to give everyone the local web app; not yet tested (README.md:382); any image with Python and `requirements-web.txt`, `HOST=0.0.0.0` — README.md:379-381, CLAUDE.md:42.
-- Login like a shared server: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, key pair `SNOWFLAKE_PRIVATE_KEY_FILE` mounted as a secret; SSO can't work; My access off — README.md:385-386, server.py:238-239.
-- Behind PrivateLink: the same `SNOWFLAKE_HOST` and private DNS as a shared server — README.md:317, processes/privatelink-login.md.
-- Inside detection is by active Snowpark session or `INSIDE=1`, not by a missing `SNOWFLAKE_ACCOUNT` — access.py:36-47 (fix of docs/review-2026-11-09.md:320-327).
-- Host allow-list: with `HOST=0.0.0.0` the server also answers machine names/IPs; add others to `ALLOWED_HOSTS` — README.md:318-319, server.py:2524-2528.
+- Optional, only to give everyone the local web app; not yet tested (README.md:388); any image with Python and `requirements-web.txt`, `HOST=0.0.0.0` — README.md:385-387, CLAUDE.md:42.
+- Login like a shared server: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, key pair `SNOWFLAKE_PRIVATE_KEY_FILE` mounted as a secret; SSO can't work; My access off — README.md:391-392, server.py:275-276.
+- Behind PrivateLink: the same `SNOWFLAKE_HOST` and private DNS as a shared server — README.md:323, processes/privatelink-login.md.
+- Inside detection is by active Snowpark session or `INSIDE=1`, not by a missing `SNOWFLAKE_ACCOUNT` — access.py:45-56 (fix of docs/review-2026-11-09.md:320-327).
+- Host allow-list: with `HOST=0.0.0.0` the server also answers machine names/IPs; add others to `ALLOWED_HOSTS` — README.md:324-325, server.py:3337-3341.
 
 ## Not defined
-- No Dockerfile, service spec, compute pool or SQL for SPCS in the repo (tracked files checked); steps are unclear beyond README.md:379-387.
+- No Dockerfile, service spec, compute pool or SQL for SPCS in the repo (tracked files checked); steps are unclear beyond README.md:385-393.
 - SiS container runtime (not SPCS): `sql/4_streamlit.sql` creates only a warehouse-runtime app (no RUNTIME_NAME / COMPUTE_POOL) — sql/4_streamlit.sql:64-70; review finding on this — docs/review-2026-11-09.md:320-327. web/ST.md now says to use the local version if the component is blocked — web/ST.md:50.
