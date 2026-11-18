@@ -1933,7 +1933,7 @@ def person(u, e, adm):
     """A user's entry with status and login; a user holding an admin role is "admin", shown by the shortest path to
     an admin role (admin roles inherit every role, so that is the path that gives the access)."""
     if adm.get(u):
-        ps = sorted(admin_paths(u, True), key=len)
+        ps = sorted(admin_user_paths().get(u, []), key=len)
         e = e | dict(level="admin", path=ps[0], first=(ps[0][1:-1] or [None])[0], holder=ps[0][-1], ways=len(ps),
                      depth=depth(ps[0], True))
     return e | dict(admin=adm.get(u, []), status=status(u), service=is_service(u), days=login_days(u))
@@ -1953,6 +1953,18 @@ def who_has(obj, kind=None):
     roles = [who_entry(n, rs, k0) | dict(users=len(ups(n)[1])) for (n, u), rs in by.items() if not u]
     rank = lambda e: (-OBJ_LEVELS.index(e["level"]), e["name"])
     return dict(people=sorted(people, key=rank), roles=sorted(roles, key=rank))
+
+
+def admin_user_paths():
+    """{user: its admin_holders() paths}: admin_paths(u, True) of every admin user without a walk each (who_has walked
+    2,400 admin users on a big account), once per data set."""
+    def make():
+        out = {}
+        for x, p in admin_holders():
+            if from_user(p):
+                out.setdefault(x, []).append(p)
+        return out
+    return cached("admin_user_paths", make)
 
 
 def admin_access():
@@ -4619,7 +4631,7 @@ def access_graph(start, name, same=True, admin=True):
     needed); people with the same lines stacked in one box (same); people holding an admin role and those roles
     (admin, from an object or a role); PUBLIC's hidden built-ins as one fold box. Returns dict(start (node id), lanes
     [(label, [ids])], edges [(a, b, cls, privilege, people)], kinds {id: stack | every | fold}, stacks {id: [users]},
-    levels {id: step}, people {id: [users through it]}, leads {id: [objects it leads to]}, risky {(a, b): why},
+    levels {id: step}, people {id: {users through it}}, leads {id: frozenset of the objects it leads to}, risky {(a, b): why},
     risky_nodes {id: why}; why: admin | public | writes). ValueError for an unknown name."""
     adm = admin_users() if admin and start != "user" else {}
     if start == "object":
@@ -4657,10 +4669,12 @@ def access_graph(start, name, same=True, admin=True):
         lane = {r: len(p) - 1 for r, p in best.items()}
         sid, at = uid(name, True), None
     objs = [name] if start == "object" else list(dict.fromkeys(o for _, o, _, _ in oes))
+    rank = {k: i for i, k in enumerate(OBJ_LEVELS)}  # top() per grant was seconds on a user with 450k grants
+    higher = lambda a, b: a if b is None or rank[a] > rank[b] else b
     own = {}
     for r, o, pv, k in oes:
         if k != "ACCOUNT":  # an account privilege is its own red line, not a step on the objects
-            own[r] = top([own.get(r), step_of(pv, k)])
+            own[r] = higher(step_of(pv, k), own.get(r))
     for r in rs & ADMIN:
         own[r] = "admin"
     lv = flow(own, links)
@@ -4679,15 +4693,21 @@ def access_graph(start, name, same=True, admin=True):
     if fold:
         objs.append(BUILTIN_NODE)
         kinds_[BUILTIN_NODE] = "fold"
-    # who comes through each node: users drawn that reach it
+    # who comes through each node: users drawn that reach it (sets: sorting 6k people per role took seconds)
     drawn = {u for u, _ in ues} | set(adm)
-    people = {uid(u, True): [u] for u in drawn}
+    people = {uid(u, True): {u} for u in drawn}
     for r in rs | set(adm_roles):
-        people[r] = sorted((set(ups(r)[1]) & drawn) | set(adm_roles.get(r, []))) if start != "user" else [name]
+        people[r] = (set(ups(r)[1]) & drawn) | set(adm_roles.get(r, [])) if start != "user" else {name}
+    by_obj, union = {}, {}  # holders per object; objects with the same holders share one union
+    for r, x, _, _ in oes:
+        by_obj.setdefault(x, set()).add(r)
     for o in objs:
-        src = {r for r, x, _, _ in oes if x == o} | set(every if o == EVERY else ["PUBLIC"] if o == BUILTIN_NODE else [])
+        src = by_obj.get(o, set()) | set(every if o == EVERY else ["PUBLIC"] if o == BUILTIN_NODE else [])
         src |= set(adm_roles) if o == at else set()
-        people[o] = sorted(set().union(*(people.get(r, []) for r in src)))
+        k = frozenset(src)
+        if k not in union:
+            union[k] = set().union(*(people.get(r, ()) for r in k))
+        people[o] = union[k]
     cls = lambda n: LV_CLS[lv[n]] if lv.get(n) else "inherit"
     # user lines, people with the same lines stacked into one box
     outs = {}
@@ -4701,7 +4721,7 @@ def access_graph(start, name, same=True, admin=True):
     for key, us in by.items():
         if same and len(us) > 1:
             s = "people:" + "|".join(f"{r}/{c}" for r, c in key)
-            stacks[s], kinds_[s], people[s] = us, "stack", us
+            stacks[s], kinds_[s], people[s] = us, "stack", set(us)
             edges += [(s, r, c, None, len(us)) for r, c in key]
             ucol.append(s)
         else:
@@ -4710,7 +4730,7 @@ def access_graph(start, name, same=True, admin=True):
     edges += [(p, c, cls(c), None, len(people.get(p, []))) for p, c in links]
     best_on = {}
     for r, o, pv, k in oes:
-        best_on[(r, o)] = top([best_on.get((r, o)), step_of(pv, k)])
+        best_on[(r, o)] = higher(step_of(pv, k), best_on.get((r, o)))
     edges += [(r, o, LV_CLS[best_on[(r, o)]], pv, len(people.get(r, []))) for r, o, pv, k in oes]
     edges += [(ar, at, "admin", None, len(us)) for ar, us in adm_roles.items()]
     edges += [(ar, EVERY, "admin", None, len(people.get(ar, []))) for ar in every]
@@ -4731,15 +4751,18 @@ def access_graph(start, name, same=True, admin=True):
     kids = {}
     for e in edges:
         kids.setdefault(e[0], set()).add(e[1])
-    oset, leads = set(objs), {}
-    for n in col:
-        seen_, todo = set(), [n]
+    oset, leads, seen_ = set(objs), {}, set()  # objects below each node, from those of its children (role grants
+    for n in col:  # make no loops; a loop's way back adds nothing)
+        todo = [(n, False)]
         while todo:
-            for c in kids.get(todo.pop(), ()):
-                if c not in seen_:
-                    seen_.add(c)
-                    todo.append(c)
-        leads[n] = sorted(seen_ & oset)
+            x, done = todo.pop()
+            if done:
+                ks = kids.get(x, ())
+                leads[x] = frozenset().union({c for c in ks if c in oset}, *(leads.get(c, ()) for c in ks))
+            elif x not in seen_:
+                seen_.add(x)
+                todo += [(x, True)] + [(c, False) for c in kids.get(x, ()) if c not in seen_]
+    leads = {n: leads[n] for n in col}
     radm = lambda r: r in ADMIN or (r in roles and cached(("radm", r), lambda: reaches_admin(r)))
     pub = set(bfs(["PUBLIC"])) if "PUBLIC" in rs else set()
     risky, rnodes = {}, {}

@@ -24,8 +24,9 @@ export interface PrivilegeTabsProps {
   theme?: ThemeName;
   max?: number;
   csvName?: string;
-  /** The User page params: privilege rows come a page at a time from GET privs and each privilege tab's diagram from
-   * GET graph?of=user-tab (rows is then empty); the role and account tabs still draw from roles and account. */
+  /** The User page params (the Role page's with of: "role"): privilege rows come a page at a time from GET privs and
+   * each privilege tab's diagram from GET graph?of=user-tab (role-tab) (rows is then empty); the role and account tabs
+   * still draw from roles and account. */
   server?: Record<string, string | undefined | null>;
 }
 
@@ -37,7 +38,7 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
   const active = tabs.some((t) => t.key === want) ? want : tabs[0]?.key ?? "all";
   const pick = (k: string) => { setOwn(k as TabKey); p.onTab?.(k as TabKey); };
   const local = !p.server || active === "account" || active === "granted" || active === "database_roles";
-  const sg = useApi<G | null>(local ? null : "graph", { ...p.server, of: "user-tab", tab: active });
+  const sg = useApi<G | null>(local ? null : "graph", { ...p.server, of: p.server?.of === "role" ? "role-tab" : "user-tab", tab: active });
   const graph = useMemo(
     () => (local ? p.graphs?.[active] ?? tabGraph({ tab: active, rows, roles, account, refs, max: p.max }) : sg.data),
     [local, sg.data, p.graphs, active, rows, roles, account, refs, p.max],

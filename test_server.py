@@ -18,7 +18,7 @@ server.BACKGROUND = False  # a refresh answers when it is done; test_background 
 USER = {"view", "user", "filters", "banners", "findings", "findings_total", "kpis", "account", "graph", "tabs",
         "roles", "multi", "can_read", "sensitive", "granted", "usage", "capped", "refs"}
 ROLE = {"view", "role", "filters", "kpis", "scope_kpis", "banners", "findings", "readonly_writes", "account", "graph", "held_by",
-        "holds", "tabs", "privileges", "roles", "can_read", "capped", "refs"}
+        "holds", "tabs", "roles", "can_read", "capped", "refs"}
 OBJECT = {"view", "object", "filters", "kpis", "admin_paths", "sensitivity", "matrix", "graph", "sees", "tabs", "grantees",
           "capped", "refs"}
 GRAPH = {"title", "header", "level", "note", "full", "selected", "lanes", "nodes", "edges", "groups", "legend"}
@@ -176,6 +176,49 @@ def test_object():
     assert d["tabs"][-1]["key"] == "all"
     js(f"/api/object?name={t}&priv=SELECT&users=1&active=1", OBJECT)
     get("/api/object?name=NOPE", 404)
+
+
+def test_big_lanes():
+    """Big accounts: the people lane of the Object, Role and Access graph pages folds into one lazy box opened through
+    graph?group=; grantees, held by and role privileges page on the server (CSV complete); the map's objects roll up
+    per database and a box drawn later gets its detail through node=."""
+    t, r = "SALES.CORE.TBL_CUSTOMER", f"{a.FUNC}ENGINEER"
+    server.LAZY, server.MAX_LANE = 0, 1
+    server.ANSWERS.clear()
+    try:
+        for url, of in ((f"/api/object?name={t}", f"of=object&name={t}"), ("/api/role?name=PUBLIC", "of=role&name=PUBLIC"),
+                        (f"/api/map?table={t}&same=0", f"of=map&table={t}&same=0")):
+            g = js(url)["graph"]
+            graph_ok(g)
+            box = g["groups"]["lane:0:people"]
+            assert box["lazy"] and box["noun"] == "people" and box["count"] == len(box["ids"]) > 1, url
+            assert not {n["id"] for n in g["nodes"]} & set(box["ids"])
+            x = js(f"/api/graph?{of}&group=lane:0:people")
+            assert sorted(n["id"] for n in x["nodes"]) == sorted(box["ids"]) and all(n["kind"] == "user" for n in x["nodes"])
+        m = js("/api/map?role=PUBLIC&same=0")
+        n = js(f"/api/map?role=PUBLIC&same=0&node={m['graph']['groups']['lane:0:people']['ids'][0]}")["detail"]
+        assert len(n) == 1 and next(iter(n.values()))["leads_count"]
+    finally:
+        server.LAZY, server.MAX_LANE = 300, 24
+        server.ANSWERS.clear()
+    u = js("/api/map?user=SVC_DEPLOY")["graph"]
+    dbs = [x for x in u["groups"].values() if x["kind"] == "database_group"]
+    assert dbs and sum(x["count"] for x in dbs) > a.MAX_OBJECTS
+    o = js(f"/api/object?name={t}")
+    rows = js(f"/api/grantees?name={t}&limit=2")
+    assert len(rows["rows"]) == 2 and rows["total"] == o["grantees"]["total"] == o["tabs"][-1]["count"]
+    assert js(f"/api/grantees?name={t}&limit=2&offset=2")["rows"][0] not in rows["rows"]
+    gs = js(f"/api/grantees?name={t}&by=groups&limit=500")
+    assert sum(x["count"] for x in gs["rows"]) == gs["users"] == o["grantees"]["users"] and gs["roles"] == o["grantees"]["roles"]
+    assert len(get(f"/api/grantees.csv?name={t}").text.strip().splitlines()) == rows["total"] + 1
+    d = js(f"/api/role?name={r}")
+    h = js(f"/api/held?name={r}&tab=users&limit=1")
+    assert len(h["rows"]) == 1 and h["total"] == d["held_by"]["users"] and h["rows"][0]["kind"] == "user"
+    assert js(f"/api/held?name={r}")["total"] == d["held_by"]["total"] == d["held_by"]["users"] + d["held_by"]["roles"]
+    assert len(get(f"/api/held.csv?name={r}").text.strip().splitlines()) == d["held_by"]["total"] + 1
+    pv = js(f"/api/privs?name={r}&of=role&tab=all&limit=3")
+    assert len(pv["rows"]) == 3 < pv["total"] and pv["total"] == len({x["object"] for x in a.grants(r)})
+    assert len(get(f"/api/privs.csv?name={r}&of=role&tab=all").text.strip().splitlines()) == pv["total"] + 1
 
 
 def test_check():

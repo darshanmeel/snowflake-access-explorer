@@ -461,7 +461,8 @@ export interface RolePage {
     otype: string;
     cut: string;
     lacks: string;
-    cuts: string[];
+    cuts: string[]; // the first MAX_CUTS direct holders (and the cut picked)
+    cuts_total: number;
     gaps: string[];
   };
   kpis: {
@@ -493,7 +494,10 @@ export interface RolePage {
   account: Account;
   graph: Graph | null;
   held_by: {
-    rows: HeldRow[];
+    rows: HeldRow[]; // the first users and roles (the small diagram); the table pages GET /api/held
+    total: number;
+    users: number;
+    roles: number;
     revoke: { grantee: string; lost: number; users: number; iac: string; sql: string } | null;
   };
   holds: {
@@ -506,8 +510,7 @@ export interface RolePage {
     count: number;
     objects: number;
   };
-  tabs: Tab[];
-  privileges: PrivRow[];
+  tabs: Tab[]; // privilege rows: GET /api/privs?of=role, a page at a time
   roles: ReachRow[];
   can_read: DataView[] | null;
   capped: string[];
@@ -594,7 +597,9 @@ export interface ObjectPage {
     owner_note: string;
     longest: number;
   };
-  admin_paths: Path[];
+  admin_paths: Path[]; // the first MAX_ADMIN_PATHS
+  admin_users: number;
+  admin_total: number;
   sensitivity: Sensitivity | null;
   matrix: { privs: string[]; sensitive_cols: string[]; row_policy: boolean; rows: MatrixRow[]; total: number; offset: number }; // rows: one page (m_offset=, limit=)
   graph: Graph | null;
@@ -604,7 +609,7 @@ export interface ObjectPage {
     rows: { role: string; rows: StateWhy<RowsState>; columns: (StateWhy<ColState> & { column: string })[] }[];
   } | null;
   tabs: Tab[];
-  grantees: GranteeRow[];
+  grantees: { total: number; users: number; roles: number }; // the rows: GET /api/grantees, a page at a time
   capped: string[];
   refs: Refs;
 }
@@ -1047,7 +1052,8 @@ export interface WhoPage {
     id: string | null; preset: "admin" | null; type: string; database: string | null; schema: string | null; name: string;
     sensitive: boolean; tags: string[]; columns: number; masking: string[]; row_policies: string[]; owners: string[]; owner_note: string;
   };
-  people: WhoPerson[];
+  people: WhoPerson[]; // the first 200 matching q= (plus as= and sel=); shown counts every match
+  shown: { people: number; roles: number; groups: number };
   /** A Streamlit app: it runs with its owner's rights, so viewers see what the owner role reads. */
   app: { owner: string[]; sensitive: Record<string, string[]>; holders: Record<string, string[]>; exposed: Record<string, string[]> } | null;
   roles: WhoRole[];
