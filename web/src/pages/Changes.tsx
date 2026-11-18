@@ -120,7 +120,7 @@ function Watched() {
   const objs = useApi<{ items: ListItem[] }>("list", { what: "objects", type: "TABLE", view: c.view, limit: "1" }); // the first table: a default
   const oo = useMemo(() => (objs.data?.items ?? []).map((i) => i.id), [objs.data]);
   const [kind, setKind] = useState<WatchKind>("can");
-  const [user, setUser] = useState(c.meta.default_user);
+  const [user, setUser] = useState(c.meta.default_user ?? "");
   const [object, setObject] = useState("");
   const [notify, setNotify] = useState("");
   const obj = object || oo.find((o) => o.split(".").length === 3) || "";

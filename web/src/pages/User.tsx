@@ -5,13 +5,13 @@ import type { ListItem, SensitiveReach, UserPage } from "../api/types";
 type MR = UserPage["multi"]["rows"][number];
 import { Banner, Card, DataTable, KpiRow, PrivilegeTabs, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog, Usage, ScopeChips } from "./common";
+import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, PickFirst, Sel, Tog, Usage, ScopeChips } from "./common";
 
 export function UserPage() {
   const c = useApp();
   const mine = c.view === "mine";
-  const name = c.params.name ?? c.meta.default_user;
-  const s = useApi<UserPage>("user", { ...apiParams(c), name });
+  const name = c.params.name ?? c.meta.default_user ?? "";
+  const s = useApi<UserPage>(name ? "user" : null, { ...apiParams(c), name });
   const o = useOpen(s.data?.refs);
   const [part, setPart] = useState(c.params.part ?? "privs");
   return (
@@ -29,7 +29,7 @@ export function UserPage() {
           options={[["", "Any privilege"], ...s.data.filters.privileges.map((o): [string, string] => [o, o])]} />}
       </Controls>
       <ScopeChips />
-      <Load s={s}>{(d) => {
+      {!name ? <PickFirst what="a user" /> : <Load s={s}>{(d) => {
         const u = d.user;
         return (
           <>
@@ -87,7 +87,7 @@ export function UserPage() {
             {part === "usage" && <Usage u={d.usage} refs={d.refs} />}
           </>
         );
-      }}</Load>
+      }}</Load>}
     </>
   );
 }

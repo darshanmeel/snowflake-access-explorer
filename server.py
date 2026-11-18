@@ -1512,7 +1512,7 @@ def access_csv(p, view):
 
 def home_page(p, view):
     """Home: the default (or own) user's ladder counts, account risks by severity, data protection tiles."""
-    me = (a.users[0] if a.users else None) if view == "mine" else (DEMO_USER if DEMO_USER in a.users else a.users[0] if a.users else None)
+    me = (a.users[0] if a.users else None) if view == "mine" else None  # shared: nobody until one is picked
     mine = None
     if me:
         counts = a.cached(("home", me), lambda: a.ladder_counts(a.access_objects(a.grants(me, True), True)))
@@ -2039,8 +2039,7 @@ def who_page(p, view):
     x = who_all(p, view)
     q = p.get("q", "").lower()
     hit = lambda e: q in e["name"].lower()
-    du = (DEMO_USER if DEMO_USER in a.users else a.users[0] if a.users else None) if view == "shared" \
-        else (a.users[0] if a.users else None)
+    du = None if view == "shared" else (a.users[0] if a.users else None)  # shared: nobody until one is picked
     groups = [g for g in x["groups"] if any(q in n.lower() for n in g["names"])][:MAX_WHO_GROUPS]
     people = [e for e in x["people"] if hit(e)]
     roles = [e for e in x["roles"] if hit(e)]
@@ -3093,7 +3092,7 @@ def meta(p, sid):
                 mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0,
                 sql_copy=sql_copy(view, sid), inside=a.INSIDE, csv=csv_on(), pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
-                default_user=DEMO_USER, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
+                default_user=None, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
                 limits=dict(max_paths=a.MAX_PATHS, max_objects=a.MAX_OBJECTS, max_hops=a.MAX_HOPS,
                             dormant_days=a.DORMANT_DAYS, max_depth_rule=a.MAX_DEPTH_RULE),
@@ -3120,7 +3119,7 @@ def meta(p, sid):
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
                         protection=protection() if view == "shared" else None,
                         builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
-                        default_user=DEMO_USER if DEMO_USER in a.users else (a.users[0] if a.users else DEMO_USER))
+                        default_user=(a.users[0] if a.users else None) if view == "mine" else None)  # shared: the pages ask for a pick
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)
     return clean(base)

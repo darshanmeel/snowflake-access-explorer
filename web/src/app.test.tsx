@@ -55,3 +55,15 @@ describe("App shell during a load", () => {
     expect(metas).toBeGreaterThan(before);  // the pages fetch the new data
   });
 });
+
+describe("No default person on shared data", () => {
+  it("a person page asks for a pick and asks the server nothing until one is made", async () => {
+    window.history.pushState({}, "", "/?page=access");
+    const asked: string[] = [];
+    serve((url) => { asked.push(url); return url.startsWith("/api/meta") ? { ...loaded, default_user: null } : undefined; });
+    render(<App />);
+    expect(await screen.findByText("Pick a person or role")).toBeTruthy();
+    expect(asked.some((u) => u.startsWith("/api/access"))).toBe(false);
+    window.history.pushState({}, "", "/");
+  });
+});

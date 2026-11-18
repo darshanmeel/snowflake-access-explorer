@@ -5,7 +5,7 @@ import { useApi } from "../api/client";
 import type { ListItem, SeeCard, SeePage, SensitiveReach } from "../api/types";
 import { Card, DataTable, EmptyState, FilterChips, IdentityCard, Tabs } from "../components";
 import { useApp, useOpen } from "../ctx";
-import { col, DataViews, Load, NameLink, pathCol, Pick, StateTag, Usage } from "./common";
+import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, StateTag, Usage } from "./common";
 import { seeSentence } from "./screens";
 
 /** What the picker of screens 7 and 9 searches: people and roles (My access: the roles of your slice). */
@@ -15,8 +15,8 @@ export function SeePageView() {
   const c = useApp();
   const mine = c.view === "mine";
   const role = mine ? "" : c.params.role ?? "";
-  const user = c.params.user ?? (role ? "" : c.meta.default_user);
-  const s = useApi<SeePage>("see", { view: c.view, ...(role ? { role } : { user }) });
+  const user = c.params.user ?? (role ? "" : c.meta.default_user ?? "");
+  const s = useApi<SeePage>(role || user ? "see" : null, { view: c.view, ...(role ? { role } : { user }) });
   const id = role || user;
   return (
     <>
@@ -26,7 +26,7 @@ export function SeePageView() {
             onPick={(v, i) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null })} /> sees</div>
         )}
       </div>
-      <Load s={s}>{(d) => <Body d={d} />}</Load>
+      {role || user ? <Load s={s}>{(d) => <Body d={d} />}</Load> : <PickFirst />}
     </>
   );
 }

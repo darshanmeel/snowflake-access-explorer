@@ -7,7 +7,7 @@ import { AccessPill, Card, CodeOutput, EmptyState, FilterChips, ListToolbar, Tab
 import { download } from "../components/table";
 import { useApp, useOpen } from "../ctx";
 import { addTo, changeText, inPlan, plan, planTexts, useSaved } from "./changeplan";
-import { Load, Pick } from "./common";
+import { Load, Pick, PickFirst } from "./common";
 import { bars, trimText, usageCsv, usageRows, type UsageFilter } from "./history";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -23,8 +23,8 @@ export function UsagePageView() {
   const c = useApp();
   const mine = c.view === "mine";
   const role = c.params.role ?? "";
-  const user = c.params.user ?? (role ? "" : c.meta.default_user);
-  const s = useApi<UsagePage>("usage", { view: c.view, days: c.params.days, ...(role ? { role } : { user }) });
+  const user = c.params.user ?? (role ? "" : c.meta.default_user ?? "");
+  const s = useApi<UsagePage>(role || user ? "usage" : null, { view: c.view, days: c.params.days, ...(role ? { role } : { user }) });
   const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null });
   return (
     <>
@@ -33,7 +33,7 @@ export function UsagePageView() {
           <div className="ae-h1 ae-h1-pick">Granted vs used for <Pick label="Person or role" value={role || user} user={!role} what="users,roles" onPick={pick} width={260} /></div>
         )}
       </div>
-      <Load s={s}>{(d) => <Body d={d} />}</Load>
+      {role || user ? <Load s={s}>{(d) => <Body d={d} />}</Load> : <PickFirst />}
     </>
   );
 }

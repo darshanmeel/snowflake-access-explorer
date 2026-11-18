@@ -6,7 +6,7 @@ import { useApi } from "../api/client";
 import type { CompareRow, CompareSide, ComparePage } from "../api/types";
 import { AccessPill, Banner, Card, CodeOutput, DataTable, EmptyState, Overlap, Tabs, type Change } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { col, Load, Pick, Sel } from "./common";
+import { col, Load, Pick, PickFirst, Sel } from "./common";
 import { whatIfOf } from "./screens";
 import { subjects } from "./See";
 import { whatIf } from "./Whatif";
@@ -15,7 +15,8 @@ const PILL: Record<string, string> = { only_a: "Only A", only_b: "Only B", diffe
 
 export function ComparePageView() {
   const c = useApp();
-  const s = useApi<ComparePage>("compare", { ...apiParams(c), show: null, plan: null });
+  const none = c.view !== "mine" && !c.params.a;  // shared: nobody picked yet
+  const s = useApi<ComparePage>(none ? null : "compare", { ...apiParams(c), show: null, plan: null });
   const d = s.data;
   const what = subjects(c.view === "mine");
   return (
@@ -30,7 +31,7 @@ export function ComparePageView() {
           options={[["sensitive", "sensitive data"], ["all", "everything"], ["db", "one database"]]} />
         {d?.scope === "db" && <Sel label="Database" value={d.db} onPick={(v) => c.set({ db: v })} options={d.dbs.map((x): [string, string] => [x, x])} />}
       </div>
-      <Load s={s}>{(x) => <Body d={x} />}</Load>
+      {none ? <PickFirst what="who to compare (A)" /> : <Load s={s}>{(x) => <Body d={x} />}</Load>}
     </>
   );
 }

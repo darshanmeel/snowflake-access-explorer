@@ -8,7 +8,7 @@ import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
-import { Load, Pick } from "./common";
+import { Load, Pick, PickFirst } from "./common";
 import { ladderParts, recent, remember } from "./Home";
 import { groupKey, type GroupBy } from "./screens";
 
@@ -17,15 +17,15 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 const subjectOf = (c: ReturnType<typeof useApp>) => {
   const role = c.params.role ?? "";
-  return { view: c.view, ...(role ? { role } : { user: c.params.user ?? c.meta.default_user }) };
+  return { view: c.view, ...(role ? { role } : { user: c.params.user ?? c.meta.default_user ?? "" }) };
 };
 
 export function AccessPageView() {
   const c = useApp();
   const mine = c.view === "mine";
   const role = c.params.role ?? "";
-  const user = c.params.user ?? (role ? "" : c.meta.default_user);
-  const s = useApi<AccessPage>("access", subjectOf(c));
+  const user = c.params.user ?? (role ? "" : c.meta.default_user ?? "");
+  const s = useApi<AccessPage>(role || user ? "access" : null, subjectOf(c));
   const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null });
   return (
     <>
@@ -39,7 +39,7 @@ export function AccessPageView() {
           )}
         </div>
       </div>
-      <Load s={s}>{(d) => <Body key={`${d.who.kind}:${d.who.id}`} d={d} />}</Load>
+      {role || user ? <Load s={s}>{(d) => <Body key={`${d.who.kind}:${d.who.id}`} d={d} />}</Load> : <PickFirst />}
     </>
   );
 }

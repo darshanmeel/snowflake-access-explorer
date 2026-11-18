@@ -6,7 +6,7 @@ import { useApi } from "../api/client";
 import type { ListItem, RequestPage } from "../api/types";
 import { Card, CodeOutput, EmptyState, expiryOf, FilterChips, LEVEL_WORD, newRoleOf } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Load, Pick } from "./common";
+import { Load, Pick, PickFirst } from "./common";
 import { pickSubject, subjectIn, subjectLink } from "./verdict";
 
 const DAYS: [number, string][] = [[30, "30 days"], [90, "90 days"], [0, "Until revoked"]];
@@ -15,8 +15,9 @@ export function RequestPageView() {
   const c = useApp();
   const mine = c.view === "mine";
   const p = c.params;
-  const s = useApi<RequestPage>("request", apiParams(c));
-  const name = subjectIn(p, "request").name ?? s.data?.user ?? c.meta.default_user;
+  const none = !mine && !subjectIn(p, "request").name;  // shared: nobody picked yet
+  const s = useApi<RequestPage>(none ? null : "request", apiParams(c));
+  const name = subjectIn(p, "request").name ?? s.data?.user ?? c.meta.default_user ?? "";
   const back = s.data ? subjectLink(s.data.subject) : { name };
   return (
     <>
@@ -32,7 +33,7 @@ export function RequestPageView() {
           onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v], "request"), role: null, to: null })} />}
         <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, role: null, to: null })} />
       </div>
-      <Load s={s}>{(d) => <Body key={`${d.user}:${d.object}:${d.need}:${d.asked?.role ?? ""}`} d={d} />}</Load>
+      {none ? <PickFirst /> : <Load s={s}>{(d) => <Body key={`${d.user}:${d.object}:${d.need}:${d.asked?.role ?? ""}`} d={d} />}</Load>}
     </>
   );
 }

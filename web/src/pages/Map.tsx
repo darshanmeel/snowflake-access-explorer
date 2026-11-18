@@ -5,7 +5,7 @@ import { useApi } from "../api/client";
 import type { Graph as G, GraphNode, ListItem, MapNode, MapPage } from "../api/types";
 import { Card, EmptyState, Graph, LEVEL_WORD, Tabs, Toggle } from "../components";
 import { apiParams, useApp } from "../ctx";
-import { GraphCard, Load, Pick } from "./common";
+import { GraphCard, Load, Pick, PickFirst } from "./common";
 import { riskIds, startOf } from "./screens";
 import { WhatIfButton } from "./Whatif";
 
@@ -22,7 +22,8 @@ export function GraphPageView() {
   const name = c.params.table ?? c.params.role ?? c.params.user ?? "";
   const tab = c.params.show === "trace" ? "trace" : "diagram";
   // only the Trace tab draws the access graph; a click or the risky toggle: no new request
-  const s = useApi<MapPage>(tab === "trace" ? "map" : null, { ...apiParams(c), show: null, sel: null, risky: null });
+  const none = !mine && !name;  // shared: nobody picked yet
+  const s = useApi<MapPage>(tab === "trace" && !none ? "map" : null, { ...apiParams(c), show: null, sel: null, risky: null });
   const what = mode === "object" ? "objects" : mode === "role" ? "roles" : "users";
   const objs = useApi<{ items: ListItem[] }>(mode === "object" || mine ? null : "list", { what: "objects", type: "TABLE", view: c.view, limit: "1" });
   const roles = useApi<{ items: ListItem[] }>(mode === "role" ? null : "list", { what: "roles", view: c.view, limit: "1" });
@@ -32,6 +33,7 @@ export function GraphPageView() {
     if (m === mode) return;
     const id = first(m);
     if (id) c.set(startOf(m === "user" ? "user" : m === "object" ? "object" : "functional", id));
+    else if (m === "user") c.set({ table: null, role: null, user: null });  // no default person: pick one
   };
   return (
     <>
@@ -58,8 +60,10 @@ export function GraphPageView() {
         { key: "diagram", label: "Role hierarchy, by depth" },
         { key: "trace", label: "Trace graph" },
       ]} />
-      {tab === "diagram" && <OldDiagram mode={mode} name={shown} />}
-      {tab === "trace" && <Load s={s}>{(d) => <Trace d={d} />}</Load>}
+      {none ? <PickFirst what={mode === "user" ? "a person" : mode === "role" ? "a role" : "a table"} /> : <>
+        {tab === "diagram" && <OldDiagram mode={mode} name={shown} />}
+        {tab === "trace" && <Load s={s}>{(d) => <Trace d={d} />}</Load>}
+      </>}
     </>
   );
 }

@@ -215,7 +215,7 @@ export interface Meta {
   error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click
   // rules: how many rules fail at the worst severity, title "75157 high findings in 6 rules"
   pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; title?: string | null; group: "answers" | "admin" | "detail" }[];
-  default_user: string;
+  default_user: string | null; // My access: the signed-in user; shared: none, the pages ask for a pick
   prefixes: { func: string; tech: string };
   admin_roles: string[];
   build_roles: string[];

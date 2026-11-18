@@ -108,14 +108,14 @@ function AppNote({ app }: { app: NonNullable<WhoPage["app"]> }) {
 /** "Access for [person]": defaults to the signed-in user (the demo user on shared data). */
 function For({ d }: { d: WhoPage }) {
   const c = useApp();
-  const who = c.params.as ?? d.default_user ?? "";
+  const who = c.params.as ?? d.default_user ?? ""; // shared: empty until a person is picked
   const x = d.people.find((p) => p.name === who);
   const clear = x?.columns.filter((k) => k.state !== "masked").map((k) => k.column) ?? [];
   const masked = x?.columns.filter((k) => k.state === "masked").map((k) => k.column) ?? [];
   return (
     <section className="ae-forstrip" aria-label="Access for one person">
       <Pick label="Access for" value={who} width={200} what="users" onPick={(v) => c.set({ as: v })} />
-      {!x ? <span className="ae-muted">{who ? `${who} has no access here.` : ""}</span> : <>
+      {!x ? <span className="ae-muted">{who ? `${who} has no access here.` : "Pick a person to see their access here."}</span> : <>
         <span className={`ae-lvl ae-lvl-${x.level}`}>{TITLE[x.level]}</span>
         <span className="ae-privs">{x.privileges.join(" · ") || `through ${x.admin.join(", ")}`}</span>
         <span className="ae-muted">via</span><PathChips first={x.first} holder={x.holder} ways={x.ways} kinds={d.refs.kinds} />

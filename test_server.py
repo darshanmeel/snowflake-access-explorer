@@ -734,8 +734,10 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     assert r["who"]["held_by"]["users"] >= 1 and r["counts"]["read"] == 6
     get("/api/access?user=NOPE", 404)
     h = js("/api/home", ["me", "risks", "protection", "counts"])
-    assert h["me"]["counts"]["read"] == 6 and h["risks"]["High"] > 0 and h["protection"]["unmasked"] == 3
-    assert js("/api/home?view=mine")["risks"] is None
+    assert h["me"] is None and h["risks"]["High"] > 0 and h["protection"]["unmasked"] == 3  # shared: nobody until picked
+    hm = js("/api/home?view=mine")
+    assert hm["risks"] is None and hm["me"]["counts"]["read"] == 6
+    assert js("/api/meta")["default_user"] is None and js("/api/meta?view=mine")["default_user"] == server.DEMO_USER
     g = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
     assert g["home"] == g["access"] == "answers" and g["rules"] == "admin"
 
@@ -987,9 +989,8 @@ def test_pages_empty():
 
 def test_review_fixes():  # search answers, row policy list, defaults that exist, compare without users
     f = {i["id"]: i for i in js("/api/find?q=ENGINEER_01")["items"]}
-    me = js("/api/home")["me"]
-    n = me["counts"]
-    assert f[me["user"]]["answer"] == f"reads {n['read']} · changes {n['change']} · owns {n['own']}"
+    n = js(f"/api/access?user={server.DEMO_USER}")["counts"]  # shared Home has nobody until one is picked
+    assert f[server.DEMO_USER]["answer"] == f"reads {n['read']} · changes {n['change']} · owns {n['own']}"
     wh = next(i for i in js("/api/find?q=WH_")["items"] if i["type"] == "WAREHOUSE")
     assert wh["answer"].endswith("access") and wh["answer"][0].isdigit()
     rl = js("/api/home")["protection"]["row_list"]
@@ -997,7 +998,7 @@ def test_review_fixes():  # search answers, row policy list, defaults that exist
     old = server.DEMO_USER
     try:
         server.DEMO_USER = "NOBODY_HERE"; server.ANSWERS.clear()  # answers are kept per data set; this changes a setting
-        assert js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["default_user"] == a.users[0]
+        assert js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["default_user"] is None  # shared: nobody until one is picked
     finally:
         server.DEMO_USER = old
         server.ANSWERS.clear()

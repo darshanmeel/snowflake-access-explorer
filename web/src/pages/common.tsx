@@ -2,12 +2,17 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
 import type { Banner as B, DataView, ListItem, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
-import { Banner, Card, Combo, copyText, DataTable, FindingList, Graph, PathText, Waiting, type Column } from "../components";
+import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, Waiting, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 export function col<R>(key: string, label: string, get: Column<R>["get"], more: Partial<Column<R>> = {}): Column<R> {
   return { key, label, get, ...more };
+}
+
+/** Shared data with nobody picked yet: the page waits for a pick instead of answering for someone chosen for it. */
+export function PickFirst({ what = "a person or role" }: { what?: string }) {
+  return <EmptyState title={`Pick ${what}`}>Pick one in the box above to see their access.</EmptyState>;
 }
 
 /** Loading / error frame around a page's answer. */

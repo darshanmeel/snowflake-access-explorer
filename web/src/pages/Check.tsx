@@ -8,15 +8,15 @@ import type { CheckPage, ListItem, Path, Refs } from "../api/types";
 import { Banner, Card, CodeOutput, DataTable, EmptyState, KpiRow, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
-import { col, GraphCard, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag } from "./common";
+import { col, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
 export function CheckPageView() {
   const c = useApp();
   const mine = c.view === "mine";
   const asked = subjectIn(c.params);
-  const name = asked.name ?? c.meta.default_user;
-  const s = useApi<CheckPage>("check", { ...apiParams(c), ...(asked.role ? { role: name } : { name }) });
+  const name = asked.name ?? c.meta.default_user ?? "";
+  const s = useApi<CheckPage>(name ? "check" : null, { ...apiParams(c), ...(asked.role ? { role: name } : { name }) });
   return (
     <>
       <h2 className="ae-h1">Can they?</h2>
@@ -29,7 +29,7 @@ export function CheckPageView() {
         <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, priv: null })} />
         <span className="ae-ask-w">?</span>
       </div>
-      <Load s={s}>{(d) => <Body key={`${d.subject.kind}:${d.user}:${d.object}:${d.priv}`} d={d} />}</Load>
+      {name ? <Load s={s}>{(d) => <Body key={`${d.subject.kind}:${d.user}:${d.object}:${d.priv}`} d={d} />}</Load> : <PickFirst />}
     </>
   );
 }
