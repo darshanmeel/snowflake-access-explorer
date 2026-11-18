@@ -593,6 +593,11 @@ def lost(e):
             or getattr(e, "errno", None) in (606, 390111, 390112, 390114) or "000606" in str(e))
 
 
+def slow(e):
+    """A statement that timed out: the source may be readable, a retry or a bigger warehouse helps."""
+    return isinstance(e, TimeoutError) or timed_out(e)
+
+
 def timed_out(e):
     """to verify: Snowflake cancels a statement past STATEMENT_TIMEOUT_IN_SECONDS with error 000630 "Statement reached
     its statement or warehouse timeout of N second(s) and was canceled."."""
@@ -648,8 +653,8 @@ def progress(fn):
     def beat():
         while not stop.wait(BEAT):
             now, run = time.monotonic(), dict(s["running"])
-            what = ", ".join(f"{k} ({(now - v) / 60:.0f} min)" for k, v in run.items()) or s["last"] or "starting"
-            fn(f"Still working after {(now - t0) / 60:.0f} min: {what}")
+            what = ", ".join(f"{k} (for {span(now - v)})" for k, v in run.items()) or s["last"] or "starting"
+            fn(f"Still working after {span(now - t0)}: {what}")
     t = _sink.set(s)
     threading.Thread(target=beat, daemon=True).start()
     try:
@@ -664,6 +669,11 @@ def say(text):
     if s:
         s["last"] = text
         s["fn"](text)
+
+
+def span(sec):
+    """45 s, 6 min: a step that started a moment ago is not "0 min"."""
+    return f"{sec:.0f} s" if sec < 90 else f"{sec / 60:.0f} min"
 
 
 def took(t0):
@@ -744,6 +754,15 @@ def held_db_roles(grants):
     return [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE_ROLE" and g["PRIVILEGE"] == "USAGE"]
 
 
+def week(cols, fn, args=""):
+    """SELECT cols over an INFORMATION_SCHEMA query history function's whole reach (167 h: 7 days is refused) in 7
+    windows of one statement: each call stops at 10,000 queries, which a busy account fills in hours."""
+    hours = [167, 144, 120, 96, 72, 48, 24, 0]
+    at = lambda h: f"DATEADD(HOUR, -{h}, CURRENT_TIMESTAMP())" if h else "CURRENT_TIMESTAMP()"  # noqa: E731
+    return " UNION ALL ".join(f"SELECT {cols} FROM TABLE({fn}({args}END_TIME_RANGE_START => {at(a)}, "
+                                 f"END_TIME_RANGE_END => {at(b)}, RESULT_LIMIT => 10000))" for a, b in zip(hours, hours[1:]))
+
+
 def info_schema(query, dbs, sql):
     """sql(db) on the first database whose INFORMATION_SCHEMA works; the first error if none does."""
     err = None
@@ -781,13 +800,32 @@ def mine(query, db):
             SELECT 'ROLE' AS KIND, ROLE_NAME AS NAME, COUNT(*) AS QUERIES, MAX(START_TIME) AS LAST_USED FROM Q WHERE ROLE_NAME IS NOT NULL GROUP BY 2
             UNION ALL
             SELECT 'WAREHOUSE', WAREHOUSE_NAME, COUNT(*), MAX(START_TIME) FROM Q WHERE WAREHOUSE_NAME IS NOT NULL GROUP BY 2"""
-    # one wave: the role SHOWs plus the user's own reads (ACCOUNT_USAGE usage: 30 days, needs IMPORTED PRIVILEGES)
-    wave = each(query, [f"SHOW GRANTS TO ROLE {ident(r)}" for r in roles] + [
+    # ACCOUNT_USAGE first (one statement each, last login included), SHOW per role only when it can't be read
+    names = ", ".join("'" + r.replace("'", "''") + "'" for r in roles) or "''"
+    au_g, au_ur, au_u = each(query, [
+        f"""SELECT GRANTEE_NAME AS GRANTEE_ROLE, PRIVILEGE, GRANTED_ON,
+                   CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
+                        ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END AS OBJECT_NAME,
+                   FALSE AS IS_FUTURE
+            FROM {AU}.GRANTS_TO_ROLES WHERE DELETED_ON IS NULL AND GRANTED_TO = 'ROLE' AND GRANTEE_NAME IN ({names})""",
+        f"SELECT ROLE FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL AND GRANTEE_NAME = '{who}'",
+        f"""SELECT J:TYPE::STRING AS TYPE, TRY_TO_BOOLEAN(J:DISABLED::STRING) AS DISABLED, J:DEFAULT_ROLE::STRING AS DEFAULT_ROLE,
+                   COALESCE(J:DEFAULT_SECONDARY_ROLES, J:DEFAULT_SECONDARY_ROLE)::STRING AS DEFAULT_SECONDARY_ROLES,
+                   J:DEFAULT_WAREHOUSE::STRING AS DEFAULT_WAREHOUSE, J:DEFAULT_NAMESPACE::STRING AS DEFAULT_NAMESPACE,
+                   TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING) AS LAST_SUCCESS_LOGIN
+            FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL AND NAME = '{who}')"""],
+        what="ACCOUNT_USAGE: your grants, roles and user")
+    bad = next((r for r in (au_g, au_ur, au_u) if isinstance(r, Exception) and lost(r)), None)
+    if bad:  # no warehouse or no session: stop, not hundreds of SHOWs
+        raise bad
+    show = roles if isinstance(au_g, Exception) else []  # also empty when there are no roles: au_g says which
+    # one wave: the role SHOWs (when needed) plus the user's own reads (ACCOUNT_USAGE usage: 30 days)
+    wave = each(query, [f"SHOW GRANTS TO ROLE {ident(r)}" for r in show] + [
         f"SHOW GRANTS TO USER {ident(me)}", f"DESC USER {ident(me)}",
         f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM {AU}.QUERY_HISTORY
                 WHERE USER_NAME = '{who}' AND START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP()))""" + agg],
-        what=f"SHOW GRANTS TO ROLE ({len(roles)} roles), your user and usage")
-    shown, desc, au_use = wave[len(roles):]
+        what=f"SHOW GRANTS TO ROLE ({len(show)} roles), your user and usage")
+    shown, desc, au_use = wave[len(show):]
 
     def take(r):
         if isinstance(r, Exception):
@@ -798,7 +836,11 @@ def mine(query, db):
         return dict(GRANTEE_ROLE=r, PRIVILEGE=x.get("privilege"), GRANTED_ON=x.get("granted_on"),
                     OBJECT_NAME=(x.get("name") or "").replace('"', ""), IS_FUTURE=False)
 
-    for r, got in zip(roles, wave[:len(roles)]):
+    if isinstance(au_g, Exception):
+        notes["grants_source"] = f"{AU}.GRANTS_TO_ROLES: {line(au_g)}; SHOW GRANTS TO ROLE instead"
+    else:
+        grants = [dict(x) for x in au_g]
+    for r, got in zip(show, wave[:len(show)]):
         if isinstance(got, Exception):
             skipped.append(f"{r} ({line(got)})")
         else:
@@ -819,7 +861,7 @@ def mine(query, db):
     if bad:
         notes["database_roles"] = (f"{len(bad)} database roles not readable, held but their grants unknown: "
                                    + " | ".join(bad[:10]))
-    src["grants"] = "SHOW GRANTS TO ROLE"
+    src["grants"] = "SHOW GRANTS TO ROLE" if isinstance(au_g, Exception) else "ACCOUNT_USAGE"
     # SNOWFLAKE last: without IMPORTED PRIVILEGES the user can't even see it, any usable database works
     dbs = list(dict.fromkeys(([db] if db else []) + [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE"]
                              + ["SNOWFLAKE"]))
@@ -833,8 +875,11 @@ def mine(query, db):
                         IS_FUTURE=False) for x in applicable if x.get("GRANTEE") in bad]
         notes["grants"] = f"{len(skipped)} roles not readable, their links from APPLICABLE_ROLES: " + " | ".join(skipped[:10])
     try:
-        direct = [x["role"] for x in take(shown) if x.get("role")]
-        src["user_roles"] = "SHOW GRANTS TO USER"
+        if not isinstance(au_ur, Exception) and au_ur:
+            direct, src["user_roles"] = [x["ROLE"] for x in au_ur if x.get("ROLE")], "ACCOUNT_USAGE"
+        else:
+            direct = [x["role"] for x in take(shown) if x.get("role")]
+            src["user_roles"] = "SHOW GRANTS TO USER"
     except Exception as e:
         direct = [x.get("ROLE_NAME") for x in applicable if x.get("GRANTEE") == me]
         src["user_roles"] = "APPLICABLE_ROLES"
@@ -842,21 +887,26 @@ def mine(query, db):
             held = {g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "ROLE" and g["PRIVILEGE"] == "USAGE"}
             direct, src["user_roles"] = [r for r in roles if r not in held], "CURRENT_AVAILABLE_ROLES"
         notes["user_roles"] = f"SHOW GRANTS TO USER: {line(e)}"
-    try:
-        p = {x["property"]: x["value"] for x in take(desc)}
-        user = {k: None if p.get(k) in ("null", "", None) else p.get(k)
-                for k in ("TYPE", "DEFAULT_ROLE", "DEFAULT_SECONDARY_ROLES", "DEFAULT_WAREHOUSE", "DEFAULT_NAMESPACE")}
-        user |= dict(DISABLED=str(p.get("DISABLED")).lower() == "true", LAST_SUCCESS_LOGIN=None,
-                     LOGIN_UNKNOWN=True)  # DESC USER has no last login: unknown, not "never"
-    except Exception as e:
-        user, notes["users"] = {}, f"DESC USER: {line(e)}"
+    if not isinstance(au_u, Exception) and au_u:  # ACCOUNT_USAGE has the last login, DESC USER does not
+        user, src["users"] = dict(au_u[0]), "ACCOUNT_USAGE"
+    else:
+        try:
+            p = {x["property"]: x["value"] for x in take(desc)}
+            user = {k: None if p.get(k) in ("null", "", None) else p.get(k)
+                    for k in ("TYPE", "DEFAULT_ROLE", "DEFAULT_SECONDARY_ROLES", "DEFAULT_WAREHOUSE", "DEFAULT_NAMESPACE")}
+            user |= dict(DISABLED=str(p.get("DISABLED")).lower() == "true", LAST_SUCCESS_LOGIN=None,
+                         LOGIN_UNKNOWN=True)  # DESC USER has no last login: unknown, not "never"
+            src["users"] = "DESC USER"
+        except Exception as e:
+            user, notes["users"] = {}, f"DESC USER: {line(e)}"
     try:  # ACCOUNT_USAGE first (30 days, needs IMPORTED PRIVILEGES), else INFORMATION_SCHEMA (7 days, own queries)
         usage = take(au_use)
         src["usage"] = "ACCOUNT_USAGE"
     except Exception as au:
         try:
-            usage = info_schema(query, dbs, lambda d: f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE({d}.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER(
-                    USER_NAME => '{who}', END_TIME_RANGE_START => DATEADD(HOUR, -167, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000)))""" + agg)
+            usage = info_schema(query, dbs, lambda d: "WITH Q AS (" + week(
+                "ROLE_NAME, WAREHOUSE_NAME, START_TIME", f"{d}.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER", f"USER_NAME => '{who}', ")
+                + ")" + agg)
             src["usage"] = "INFORMATION_SCHEMA"
         except Exception as e:
             usage, src["usage"] = [], "UNAVAILABLE"
@@ -936,9 +986,13 @@ def live(query, old=None, old_use=None):
     # two waves instead of one statement after another: every probe at once, then every ACCOUNT_USAGE read that passed
     views = ("GRANTS_TO_ROLES", "GRANTS_TO_USERS", "USERS", "QUERY_HISTORY", "TAG_REFERENCES", "POLICY_REFERENCES") + (
         "ACCESS_HISTORY", "SESSIONS") * ACTIVITY_ON
-    unread = {v: None if not isinstance(r, Exception) else f"{AU}.{v} not readable: {line(r)}"
-              for v, r in zip(views, each(query, [f"SELECT 1 FROM {AU}.{v} LIMIT 1" for v in views],
-                                          what="ACCOUNT_USAGE views"))}
+    probes = each(query, [f"SELECT 1 FROM {AU}.{v} LIMIT 1" for v in views], what="ACCOUNT_USAGE views")
+    bad = next((r for r in probes if isinstance(r, Exception) and lost(r)), None)
+    if bad:  # no warehouse or no session: every probe fails, and SHOW would run thousands of statements for nothing
+        raise bad
+    # a probe that timed out is a busy warehouse, not a view this role can't read: the full read is tried
+    unread = {v: None if not isinstance(r, Exception) or slow(r) else f"{AU}.{v} not readable: {line(r)}"
+              for v, r in zip(views, probes)}
     for v in (v for v in views if unread[v]):  # why a SHOW fallback runs: in the load log, not only in the notes
         say(unread[v])
     if not ACTIVITY_ON:
@@ -967,11 +1021,8 @@ def live(query, old=None, old_use=None):
     if not unread["QUERY_HISTORY"]:
         sqls["USAGE"] = usage_sql(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME
                 FROM {AU}.QUERY_HISTORY WHERE START_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())""", True)
-    else:
-        sqls["USAGE"] = usage_sql(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME
-                FROM TABLE({ident(db or "SNOWFLAKE")}.INFORMATION_SCHEMA.QUERY_HISTORY(
-                END_TIME_RANGE_START => DATEADD(HOUR, -167, CURRENT_TIMESTAMP()),
-                RESULT_LIMIT => 10000))""", False)
+    is_usage = lambda x: usage_sql(week("USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME",
+                                        f"{x}.INFORMATION_SCHEMA.QUERY_HISTORY"), False)  # noqa: E731  # after the wave
     if not unread["TAG_REFERENCES"]:
         sqls["TAG"] = f"""SELECT CASE DOMAIN WHEN 'DATABASE' THEN OBJECT_NAME
                                           WHEN 'SCHEMA' THEN OBJECT_DATABASE || '.' || OBJECT_NAME
@@ -1032,8 +1083,13 @@ def live(query, old=None, old_use=None):
         try:
             d["GRANT"], d["USER_ROLE"] = take("GRANT"), take("USER_ROLE")
             note("grants", "ACCOUNT_USAGE", None)
-        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW, as when the probe fails
-            why = f"{AU}.GRANTS_TO_ROLES / GRANTS_TO_USERS: {line(e)}"
+        except Exception as e:  # refused in full: SHOW, as when the probe fails; timed out: SHOW would be slower still
+            if lost(e):
+                raise
+            if slow(e):
+                note("grants", "UNAVAILABLE", f"{AU}.GRANTS_TO_ROLES / GRANTS_TO_USERS: {line(e)}")
+            else:
+                why = f"{AU}.GRANTS_TO_ROLES / GRANTS_TO_USERS: {line(e)}"
     if why is not None:
         skipped = []
         say("SHOW ROLES…")
@@ -1115,8 +1171,13 @@ def live(query, old=None, old_use=None):
         try:
             d["USER"] = take("USER")
             note("users", "ACCOUNT_USAGE", None)
-        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW USERS
-            why = f"{AU}.USERS: {line(e)}"
+        except Exception as e:  # refused in full: SHOW USERS; timed out: the note says so
+            if lost(e):
+                raise
+            if slow(e):
+                note("users", "UNAVAILABLE", f"{AU}.USERS: {line(e)}")
+            else:
+                why = f"{AU}.USERS: {line(e)}"
     if why is not None:
         try:
             d["USER"] = [dict(USER_NAME=x.get("name"), TYPE=blank(x.get("type")),
@@ -1138,9 +1199,9 @@ def live(query, old=None, old_use=None):
         except Exception as e:
             note("usage", "UNAVAILABLE", line(e))
     else:
-        try:
-            d["USAGE"] = take("USAGE")
-            note("usage", "INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries, "
+        try:  # the current database, else any this role sees: SNOWFLAKE's own is hidden from it here
+            d["USAGE"] = info_schema(query, [x for x in [db] + dbs if x] or ["SNOWFLAKE"], is_usage)
+            note("usage", "INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries a day, "
                                                       "only the queries this role may see")
         except Exception as e:
             note("usage", "UNAVAILABLE", why + f"; INFORMATION_SCHEMA.QUERY_HISTORY: {line(e)}")

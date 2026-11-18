@@ -347,6 +347,8 @@ def fallback(session, view, mode):
     except Exception as e:
         if mode == "ACCOUNT_USAGE":
             raise
+        if timed_out(e):  # a busy warehouse, not a view this role can't read: the full read is tried (as access.live)
+            return None
         return f"{AU}.{view} not readable: {first_line(e)}"
 
 
@@ -382,8 +384,8 @@ def grants(session, run_id, mode):
                 SELECT '{run_id}', GRANTEE_NAME, ROLE, GRANTED_BY FROM {AU}.GRANTS_TO_USERS WHERE DELETED_ON IS NULL""").collect(**TIMED)
             out["grants"] = out["user_roles"] = ("ACCOUNT_USAGE", None)
             return out
-        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW, as access.live does
-            if mode == "ACCOUNT_USAGE":
+        except Exception as e:  # refused in full: SHOW, as access.live does; timed out: the run fails, SHOW is slower still
+            if mode == "ACCOUNT_USAGE" or timed_out(e):
                 raise
             for t in (GRANT, USER_ROLE):
                 session.sql(f"DELETE FROM {t} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
@@ -491,8 +493,8 @@ def users(session, run_id, mode):
                        J:DEFAULT_WAREHOUSE::STRING, J:DEFAULT_NAMESPACE::STRING, TRY_TO_TIMESTAMP_LTZ(J:LAST_SUCCESS_LOGIN::STRING)
                 FROM (SELECT OBJECT_CONSTRUCT(*) AS J FROM {AU}.USERS WHERE DELETED_ON IS NULL)""").collect(**TIMED)
             return "ACCOUNT_USAGE", None
-        except Exception as e:  # readable for LIMIT 1, refused or timed out in full: SHOW USERS, as access.live does
-            if mode == "ACCOUNT_USAGE":
+        except Exception as e:  # refused in full: SHOW USERS, as access.live does; timed out: the run fails
+            if mode == "ACCOUNT_USAGE" or timed_out(e):
                 raise
             session.sql(f"DELETE FROM {USER} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
             why = f"{AU}.USERS: {first_line(e)}"
@@ -531,9 +533,13 @@ def usage(session, run_id, mode):
         return later(session, USAGE, run_id, insert_sql(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, SECONDARY_ROLE_STATS, START_TIME FROM {AU}.QUERY_HISTORY
                        WHERE START_TIME >= DATEADD(DAY, -{DAYS}, CURRENT_TIMESTAMP())""", True), ("ACCOUNT_USAGE", None))
     try:
-        session.sql(insert_sql("""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME FROM TABLE(&DB.INFORMATION_SCHEMA.QUERY_HISTORY(
-                  END_TIME_RANGE_START => DATEADD(HOUR, -167, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000))""", False)).collect(**TIMED)
-        return ready("INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries, owner's view only")
+        hours = [167, 144, 120, 96, 72, 48, 24, 0]  # as access.week: 7 windows, each call stops at 10,000 queries
+        at = lambda h: f"DATEADD(HOUR, -{h}, CURRENT_TIMESTAMP())" if h else "CURRENT_TIMESTAMP()"
+        session.sql(insert_sql(" UNION ALL ".join(
+            "SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME FROM TABLE("
+            f"&DB.INFORMATION_SCHEMA.QUERY_HISTORY(END_TIME_RANGE_START => {at(a)}, END_TIME_RANGE_END => {at(b)}, "
+            "RESULT_LIMIT => 10000))" for a, b in zip(hours, hours[1:])), False)).collect(**TIMED)
+        return ready("INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries a day, owner's view only")
     except Exception as e:
         return ready("UNAVAILABLE", why + f"; INFORMATION_SCHEMA.QUERY_HISTORY: {first_line(e)}")
 

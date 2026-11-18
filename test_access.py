@@ -422,6 +422,11 @@ def fake_snowflake(d, au):
                 return [dict(x) for x in d["ACTIVITY"]]
             if "ACCOUNT_USAGE.GRANTS_TO_ROLES " in s + " ":
                 return au_grants(s, plain)
+            me = re.search(r"(?:GRANTEE_NAME|AND NAME) = '([^']*)'", s)  # mine(): one user's rows
+            if me and "ACCOUNT_USAGE.GRANTS_TO_USERS " in s + " ":
+                return [{"ROLE": x["ROLE_NAME"]} for x in d["USER_ROLE"] if x["USER_NAME"] == me[1]]
+            if me and "ACCOUNT_USAGE.USERS " in s + " ":
+                return [{k: v for k, v in x.items() if k != "USER_NAME"} for x in d["USER"] if x["USER_NAME"] == me[1]]
             for view, rows in (("GRANTS_TO_USERS", d["USER_ROLE"]), ("USERS", d["USER"]),
                                ("QUERY_HISTORY", d["USAGE"]), ("TAG_REFERENCES", d["TAG"]), ("POLICY_REFERENCES", d["POLICY"]),
                                ("ACCESS_HISTORY", d["OBJECT_USE"])):
@@ -624,6 +629,25 @@ def test_live():
             sql = next(c for c in calls if "OBJECT_MODIFIED_BY_DDL" in c)
             assert "'2026-10-18 00:00:00 +00:00'::TIMESTAMP_TZ" in sql and s["ACTIVITY"][:3] == [x for x in old if x["DAY"] < "2026-10-18"][:3]
         assert au or (src["object_use"] == src["activity"] == "UNAVAILABLE" and s["OBJECT_USE"] == s["ACTIVITY"] == [])
+    query, calls = fake_snowflake(d, True)
+
+    def probe_slow(sql):  # a probe that timed out is a busy warehouse: the view is still read, no SHOW per role
+        if "LIMIT 1" in sql and "GRANTS_TO_ROLES" in sql:
+            raise TimeoutError("timeout")
+        return query(sql)
+    t = a.live(probe_slow)
+    assert t["run"]["SOURCES"]["grants"] == "ACCOUNT_USAGE" and not any(c.startswith("SHOW GRANTS TO ROLE") for c in calls)
+
+    def no_warehouse(sql):  # every SELECT fails, SHOW would work: the load stops at once with the reason
+        if sql.startswith("SELECT 1 FROM"):
+            raise RuntimeError("000606 (57P03): No active warehouse selected in the current session.")
+        return query(sql)
+    calls.clear()
+    try:
+        a.live(no_warehouse)
+        raise AssertionError("loaded without a warehouse")
+    except RuntimeError as e:
+        assert "000606" in str(e) and not any(c.startswith("SHOW GRANTS") for c in calls)
     # SP_ACCESS_SNAPSHOT's copy of that SELECT (sql/1_setup.sql grants()) qualifies the same way
     setup = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql", "1_setup.sql"), encoding="utf-8").read()
     sel = re.search(r"SELECT '\{run_id\}', (IFF\(GRANTED_TO = 'DATABASE_ROLE'.*?GRANTED_TO IN \('ROLE', 'DATABASE_ROLE'\))",
@@ -756,8 +780,8 @@ def test_db_roles():
     assert own[1].startswith(f"GRANT OWNERSHIP ON DATABASE ROLE {r} TO") and "database role " + r in own[0]
     d, want = a.fake(), sorted(x for x in got if "<" not in x[1])  # mine() reads no future grants
     mine_roles = [x["role"] for x in reach.values() if x["kind"] != "database"]
-    for bad in (None, r):
-        show, calls = fake_snowflake(d, False)
+    for bad, au in ((None, False), (r, False), (None, True)):  # au: ACCOUNT_USAGE first, no SHOW per role
+        show, calls = fake_snowflake(d, au)
 
         def query(sql):
             if sql.startswith("SELECT CURRENT_USER()"):
@@ -770,6 +794,9 @@ def test_db_roles():
 
         m = a.mine(query, None)
         assert sum(c.startswith('SHOW GRANTS TO DATABASE ROLE "HR".') for c in calls) == (1 if bad else 2)  # each once
+        src = m["run"]["SOURCES"]
+        assert (src["grants"] == src["user_roles"] == src["users"] == "ACCOUNT_USAGE") == au
+        assert any(c.startswith("SHOW GRANTS TO ROLE") for c in calls) != au
         a.build(m)
         assert a.kind_of(r) == "database" and r in {x["role"] for x in a.reach("ENGINEER_01", True)}
         mine_got = sorted({(x["privilege"], x["object"]) for x in a.grants("ENGINEER_01", True)})

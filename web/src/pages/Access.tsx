@@ -72,7 +72,8 @@ function Body({ d }: { d: AccessPage }) {
   const runs = d.objects.filter((x) => x.category === "runnable");
   const powers = d.objects.filter((x) => x.category === "account");
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
-  const status = w.status ? `${w.disabled ? "disabled" : w.status}${w.last_login ? ` · last login ${w.last_login}` : ""}` : "";
+  const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
+    w.last_login && w.status !== "never" ? ` · last login ${w.last_login}` : ""}` : "";
   return (
     <>
       <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
