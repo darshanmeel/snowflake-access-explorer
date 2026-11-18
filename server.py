@@ -24,7 +24,8 @@ import ui
 
 MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|objects (README > Settings)
 DIRECT = SOURCE == "direct"  # no tables: read the grants straight from Snowflake (a.live)
-KEY = cache.name(SOURCE, where=WHERE)  # another snapshot location, user or role: another copy
+# one shared copy and one My access copy per CACHE_DIR: another account or role gets its own CACHE_DIR
+KEY = "shared_data" if MODE == "snowflake" else cache.name(SOURCE, where=WHERE)
 OFFLINE = os.environ.get("BUILD_ONLY") == "1"  # run.py --build: built from the parts kept, never a Snowflake read
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
 TTL = cache.TTL  # the My access session cookie (seconds); the data itself stays until read again
@@ -288,11 +289,9 @@ def load_mine(sid, fresh=False):
     why = mine_off()
     if why:
         raise ApiError(409, "mine_unavailable", why)
-    for k in list(MINE):
-        mine_entry(k)  # drops the expired ones
     at, ck = time.time(), None  # ck: the cache key (local copy, SQL copy)
     if MODE == "snowflake":
-        ck = cache.name("mine", os.environ.get("SNOWFLAKE_USER") or sid, WHERE)
+        ck = "my_data"
         if fresh:
             if OFFLINE:
                 raise ApiError(409, "build_only", BUILD_ONLY_NOTE)
