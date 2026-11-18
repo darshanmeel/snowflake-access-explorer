@@ -324,30 +324,44 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
 
 /** A heat grid: rows down, columns across, each cell a count (darker = more), row and column totals. Columns are
  * named, or days (narrow cells, a date every 5 days, weekends marked). */
-function Heat({ corner, rows, cols, value, color, rowHead, colHead, days }: {
+const MAX_ROWS = 12, MAX_COLS = 8;
+
+function Heat({ corner, rows: allRows, cols: allCols, value: cell, color, rowHead, colHead, days }: {
   corner: string; rows: string[]; cols: string[]; value: (r: string, c: string) => number; color: string;
   rowHead?: (r: string) => ReactNode; colHead?: (c: string) => ReactNode; days?: boolean;
 }) {
+  const [all, setAll] = useState(false);
+  // the busiest MAX_ROWS rows and MAX_COLS columns (callers sort them), the rest summed as Other: a wide account has
+  // hundreds of roles and clients, and a cell nobody can find says nothing
+  const fold = (xs: string[], max: number) => (all || xs.length <= max ? [xs, []] : [xs.slice(0, max), xs.slice(max)]);
+  const [rs, rx] = fold(allRows, MAX_ROWS), [cs, cx] = days ? [allCols, []] : fold(allCols, MAX_COLS);
+  const ro = `Other (${rx.length})`, co = `Other (${cx.length})`;
+  const rows = rx.length ? [...rs, ro] : rs, cols = cx.length ? [...cs, co] : cs;
+  const value = (r: string, c: string): number => r === ro ? rx.reduce((n, x) => n + value(x, c), 0)
+    : c === co ? cx.reduce((n, x) => n + value(r, x), 0) : cell(r, c);
   const top = Math.max(1, ...rows.flatMap((r) => cols.map((c) => value(r, c))));
   const rt = (r: string) => cols.reduce((n, c) => n + value(r, c), 0), ct = (c: string) => rows.reduce((n, r) => n + value(r, c), 0);
+  const total = rows.reduce((n, r) => n + rt(r), 0);
   const weekend = (c: string) => days && [0, 6].includes(new Date(c + "T00:00:00Z").getUTCDay());
   return (
     <div className="ae-scroll">
       <table className={`ae-log-heat${days ? " ae-log-heat-days" : ""}`}>
         <thead><tr><th>{corner}</th>
-          {cols.map((c, i) => <th key={c} title={c} className={weekend(c) ? "wk" : ""}>{days ? (i % 5 === 0 || i === cols.length - 1 ? short(c) : "") : colHead ? colHead(c) : c}</th>)}
+          {cols.map((c, i) => <th key={c} title={c} className={weekend(c) ? "wk" : ""}>{days ? (i % 5 === 0 || i === cols.length - 1 ? short(c) : "") : colHead && c !== co ? colHead(c) : c}</th>)}
           <th className="tot">Total</th></tr></thead>
         <tbody>
-          {rows.map((r) => <tr key={r}><th className="ae-mono">{rowHead ? rowHead(r) : r}</th>
+          {rows.map((r) => <tr key={r} className={r === ro ? "other" : undefined}><th className="ae-mono">{rowHead && r !== ro ? rowHead(r) : r}</th>
             {cols.map((c) => { const v = value(r, c);
               return <td key={c} title={`${r} · ${days ? c : c}: ${fmt(v)}`} className={weekend(c) ? "wk" : ""}
                 style={{ background: v ? `color-mix(in srgb, ${color} ${12 + (78 * v) / top}%, var(--ae-panel))` : undefined, color: v / top > 0.55 ? "#fff" : undefined }}>
                 {days ? "" : v ? fmt(v) : "·"}</td>; })}
-            <td className="tot"><b>{fmt(rt(r))}</b></td></tr>)}
-          <tr className="sum"><th>Total</th>{cols.map((c) => <td key={c}>{days ? "" : <b>{fmt(ct(c))}</b>}</td>)}<td className="tot"><b>{fmt(rows.reduce((n, r) => n + rt(r), 0))}</b></td></tr>
+            <td className="tot"><b>{fmt(rt(r))}</b> <span className="ae-muted">{total ? Math.round((100 * rt(r)) / total) : 0}%</span></td></tr>)}
+          <tr className="sum"><th>Total</th>{cols.map((c) => <td key={c}>{days ? "" : <b>{fmt(ct(c))}</b>}</td>)}<td className="tot"><b>{fmt(total)}</b></td></tr>
         </tbody>
       </table>
-      <p className="ae-muted ae-log-legend">Fewer <i className="ae-log-ramp" style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${color} 12%, var(--ae-panel)), ${color})` }} /> More</p>
+      <p className="ae-muted ae-log-legend">{(rx.length > 0 || cx.length > 0 || all) && (
+        <button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "Fold the quiet ones into Other" : `Show all ${allRows.length} rows${cx.length ? ` and ${allCols.length} columns` : ""}`}</button>)}
+        Fewer <i className="ae-log-ramp" style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${color} 12%, var(--ae-panel)), ${color})` }} /> More</p>
     </div>
   );
 }
@@ -659,7 +673,7 @@ function ByType({ d, rows, work }: { d: ActivityPage; rows: ActivityRow[]; work:
   const series = acts.map((a) => ({ key: ACT_NAME[a], values: rows.filter((r) => r.action === a).reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(days).fill(0) as number[]) }));
   return (
     <>
-      <Sec title="Queries by statement type" sql="type_day" sub={`Per day · ${short(d.first!)} → ${short(d.last!)} · ${fmt(total)} queries · weekends shaded · click a day to pin it`}>
+      <Sec title="Queries by statement type" sql="type_day" sub={`Per day · ${short(d.first!)} → ${short(d.last!)} · ${fmt(total)} queries · weekends marked under the bars · click a day to pin it`}>
         <div className="ae-log-tiles">
           {([["WRITE", "DML · writes"], ["READ", "Reads"], ["DDL", "DDL"]] as const).map(([a, l]) => (
             <Tile key={a} label={<><i style={{ background: ACT[a] }} className="ae-log-dot" />{l}</>}

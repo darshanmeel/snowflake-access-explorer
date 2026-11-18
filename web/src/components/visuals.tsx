@@ -71,7 +71,8 @@ export function CutPath({ path, cuts, kinds, first, onOpen }: {
 const SERIES = ["e_manage", "e_write", "warn_ink", "ok_ink", "e_read"]; // up to 5 keys, then "Other"
 
 /** Queries per day as stacked HTML bars (fixed-size text at any width), one colour per key (most first, the rest as
- * Other), weekends shaded, the average day dashed. Above it a readout: the hovered or pinned day (else the whole window)
+ * Other), weekends marked under the bars, the average day dashed, the busiest day named, a steady (scheduled) pattern
+ * said in words. Above it a readout: the hovered or pinned day (else the whole window)
  * with each key's count; click a key to show only it. Click a day to pin it (again to unpin). lanes: labelled rows under
  * the chart with a mark on the days something happened (a DDL, a person writing, ...). */
 export function DayStack({ first, series, label, pinned = null, onPin, focus = null, onFocus, lanes = [], top: most = SERIES.length, colors }: {
@@ -96,28 +97,37 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
   const sum = (p: { values: number[] }) => (show == null ? p.values.reduce((a, v) => a + v, 0) : p.values[show]);
   const cols = { gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` };
   const pin = (i: number) => onPin?.(pinned === i ? null : i);
-  const bg = (i: number) => (i === pinned ? "var(--ae-accent_soft)" : i === hover ? "var(--ae-sunk)" : weekend(i) ? "var(--ae-bg)" : undefined);
+  const bg = (i: number) => (i === pinned ? "var(--ae-accent_soft)" : i === hover ? "var(--ae-sunk)" : undefined);
+  const peak = tot.indexOf(max);
+  // the same count on most active days: a scheduled job, not people (a steady line says more than 60 equal bars)
+  const on = tot.filter(Boolean), often = new Map<number, number>();
+  on.forEach((v) => often.set(v, (often.get(v) ?? 0) + 1));
+  const [usual, times] = [...often].sort((a, b) => b[1] - a[1])[0] ?? [0, 0];
+  const steady = on.length >= 14 && times >= 0.8 * on.length;
   return (
     <figure className="ae-ds" aria-label={`${label}: queries per day, ${n} days, most ${max} on one day, ${Math.round(avg)} on an average day`}>
       <div className="ae-ds-read">
         <b>{show == null ? `All ${n} days · ${tot.reduce((a, v) => a + v, 0)} queries` : `${day(show).toISOString().slice(0, 10)}${weekend(show) ? " (weekend)" : ""} · ${tot[show]} queries`}</b>
-        <span className="ae-muted">{hover != null ? (hover === pinned ? "pinned" : onPin ? "click to pin" : "") : pinned != null ? "pinned · the table shows this day" : `${short(0)} – ${short(n - 1)} · average ${Math.round(avg)} a day`}</span>
+        <span className="ae-muted">{hover != null ? (hover === pinned ? "pinned" : onPin ? "click to pin" : "") : pinned != null ? "pinned · the table shows this day"
+          : `${short(0)} – ${short(n - 1)} · average ${Math.round(avg)} a day (dashed) · busiest ${short(peak)} with ${max}`}</span>
         {pinned != null && onPin && <button type="button" className="ae-link" onClick={() => onPin(null)}>Clear day</button>}
         {focus && onFocus && <button type="button" className="ae-link" onClick={() => onFocus(null)}>Show all</button>}
       </div>
-      <div className="ae-ds-keys">
+      {show == null && steady && <p className="ae-ds-note">Steady: {usual} quer{usual === 1 ? "y" : "ies"} a day on {times} of {n} days. Looks like a scheduled job rather than people.</p>}
+      {parts.length > 1 && <div className="ae-ds-keys">
         {parts.map((p, k) => {
           const body = <><i style={{ background: color(k) }} /><span className="ae-mono">{p.key}</span><b>{sum(p)}</b></>;
           return onFocus && k < top.length
             ? <button type="button" key={p.key} className={focus && focus !== p.key ? "off" : ""} aria-pressed={focus === p.key} onClick={() => onFocus(focus === p.key ? null : p.key)}>{body}</button>
             : <span key={p.key}>{body}</span>;
         })}
-      </div>
+      </div>}
+      {parts.length === 1 && <p className="ae-muted ae-ds-one">All of it: <span className="ae-mono">{parts[0].key}</span></p>}
       <div className="ae-ds-plot" onMouseLeave={() => setHover(null)}>
         <div className="ae-ds-y"><span>{max}</span><span>{Math.round((max * 2) / 3)}</span><span>{Math.round(max / 3)}</span><span>0</span></div>
         <div className="ae-ds-area">
           <div className="ae-ds-grid" />
-          <div className="ae-ds-avg" style={{ bottom: `${(avg / max) * 100}%` }}><span>avg {Math.round(avg)}/day</span></div>
+          <div className="ae-ds-avg" style={{ bottom: `${(avg / max) * 100}%` }} />
           <div className="ae-ds-cols" style={cols}>
             {tot.map((t, i) => (
               <div key={i} className="ae-ds-col" style={{ background: bg(i) }} onMouseEnter={() => setHover(i)} onClick={() => pin(i)}
@@ -130,6 +140,7 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
           </div>
         </div>
       </div>
+      <div className="ae-ds-wk" style={cols} aria-hidden>{tot.map((_, i) => <i key={i} className={weekend(i) ? "on" : undefined} />)}</div>
       <div className="ae-ds-x" style={cols}>
         <span style={{ gridColumn: "1 / span 12" }}>{short(0)}</span>
         {n > 30 && <span style={{ gridColumn: `${Math.floor(n / 2) - 4} / span 10`, textAlign: "center" }}>{short(Math.floor(n / 2))}</span>}

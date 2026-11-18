@@ -214,6 +214,18 @@ describe("activity combinations", () => {
   });
 });
 
+describe("activity day chart, patterns", () => {
+  it("says a steady count is likely a scheduled job, and drops the key row for one key", () => {
+    const steady = Array.from({ length: 30 }, (_, i) => (i === 29 ? 12 : 2));
+    const { container } = render(<DayStack first="2026-10-01" label="T" series={[{ key: "table", values: steady }]} />);
+    expect(container.querySelector(".ae-ds-note")!.textContent).toContain("Steady: 2 queries a day on 29 of 30 days");
+    expect(container.querySelector(".ae-ds-keys")).toBeNull();
+    expect(container.textContent).toContain("All of it: table");
+    const busy = render(<DayStack first="2026-10-01" label="T" series={[{ key: "A", values: steady.map((v, i) => v + (i % 7)) }, { key: "B", values: steady }]} />);
+    expect(busy.container.querySelector(".ae-ds-note")).toBeNull();
+  });
+});
+
 describe("activity day chart, pin and isolate", () => {
   it("pins a clicked day, isolates a clicked key, shades weekends, reads out the hovered day and draws the lanes", () => {
     const pin = vi.fn(), focus = vi.fn();
@@ -224,10 +236,11 @@ describe("activity day chart, pin and isolate", () => {
     expect(pin).toHaveBeenCalledWith(2);
     fireEvent.click(screen.getByRole("button", { name: /^B/ }));
     expect(focus).toHaveBeenCalledWith("B");
-    expect([...cols].map((c) => c.style.background)).toEqual(["", "var(--ae-bg)", "var(--ae-bg)"]); // Sat 7, Sun 8 Nov
+    expect([...container.querySelectorAll(".ae-ds-wk i")].map((x) => x.className)).toEqual(["", "on", "on"]); // Sat 7, Sun 8 Nov: marked under the bars
     fireEvent.mouseEnter(cols[0]);
     expect(container.querySelector(".ae-ds-read")!.textContent).toContain("2026-11-06 · 2 queries");
-    expect(container.textContent).toContain("avg 3/day");
+    fireEvent.mouseLeave(container.querySelector(".ae-ds-plot")!);
+    expect(container.querySelector(".ae-ds-read")!.textContent).toMatch(/average 3 a day \(dashed\) · busiest \d+ Nov with \d+/);
     expect(container.querySelectorAll(".ae-ds-lane i").length).toBe(1);
   });
 });

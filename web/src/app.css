@@ -473,7 +473,10 @@ div.ae-tile { cursor: default; }
 .ae-ds-grid { position: absolute; inset: 0; border-bottom: 1px solid var(--ae-line_strong);
   background: linear-gradient(var(--ae-line) 1px, transparent 1px) 0 0 / 100% 33.33%; }
 .ae-ds-avg { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--ae-muted); z-index: 2; pointer-events: none; }
-.ae-ds-avg span { position: absolute; right: 0; top: -16px; font-size: 11px; color: var(--ae-muted); background: var(--ae-panel); padding: 0 4px; border-radius: 3px; }
+.ae-ds-wk { display: grid; gap: 2px; height: 4px; margin: -4px 0 0 38px; }
+.ae-ds-wk .on { background: var(--ae-line_strong); border-radius: 0 0 2px 2px; }  /* weekends: a mark under the bars, not a gap in them */
+.ae-ds-note { margin: 0; padding: 6px 10px; border-left: 3px solid var(--ae-accent); background: var(--ae-sunk); border-radius: 0 4px 4px 0; }
+.ae-ds-one { margin: 0; }
 .ae-ds-cols { position: absolute; inset: 0; display: grid; gap: 2px; }
 .ae-ds-col { height: 100%; display: flex; flex-direction: column-reverse; cursor: pointer; border-radius: 2px; }
 .ae-ds-col > div { flex-shrink: 0; }
@@ -673,6 +676,8 @@ div.ae-tile { cursor: default; }
 .ae-log-heat thead th:not(:first-child) { text-align: center; }
 .ae-log-heat th.tot, .ae-log-heat td.tot { background: none; text-align: right; min-width: 64px; border-left: 1px solid var(--ae-line); padding-left: 14px; }
 .ae-log-heat tr.sum td, .ae-log-heat tr.sum th { background: none; border-top: 1px solid var(--ae-line); padding-top: 10px; }
+.ae-log-heat tbody th:first-child, .ae-log-heat thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--ae-panel); }
+.ae-log-heat tr.other th, .ae-log-heat tr.other td:not(.tot) { color: var(--ae-muted); font-style: italic; }
 .ae-log-heat-days td { min-width: 0; width: 20px; height: 22px; padding: 0; border-radius: 3px; }
 .ae-log-heat-days thead th { font-size: 10px; font-weight: 500; padding: 4px 0; text-align: left !important; overflow: visible; max-width: 20px; }
 .ae-log-heat-days td.wk:not([style]) { background: var(--ae-line); }
