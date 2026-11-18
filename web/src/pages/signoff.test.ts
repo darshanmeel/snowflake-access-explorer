@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { redirect } from "../App";
 import type { CatalogRow, GridRow } from "../api/types";
-import { catalogOf, catalogSentence, follow, gridRows, protectionText, revokesOf, signoffCsv } from "./signoff";
+import { catalogOf, catalogSentence, gridRows, protectionText, revokesOf, signoffCsv } from "./signoff";
 
 const row = (user: string, more: Partial<GridRow> = {}): GridRow => ({
   user, type: "PERSON", status: "active", days: 1, last_login: "2026-11-01", admin: [], roles: ["F_A"], suggest: null,
@@ -47,29 +47,6 @@ describe("catalog", () => {
 });
 
 describe("sensitive data flow", () => {
-  const d = {
-    groups: [{ id: "active", label: "Active people", users: ["A"] }, { id: "risky", label: "Dormant or disabled", users: ["D1", "D2"] }],
-    roles: [{ id: "GRP_E", label: "GRP_E", users: ["A", "D1"] }, { id: "GRP_N", label: "GRP_N", users: ["D2"] }],
-    objects: [{ id: "DB.S.REV", label: "REV", users: ["A", "D1"] }, { id: "DB.S.CUST", label: "CUST", users: ["D2"] }],
-    links: [
-      { source: "active", target: "GRP_E", users: ["A"] }, { source: "risky", target: "GRP_E", users: ["D1"] }, { source: "risky", target: "GRP_N", users: ["D2"] },
-      { source: "GRP_E", target: "DB.S.REV", users: ["A", "D1"] }, { source: "GRP_N", target: "DB.S.CUST", users: ["D2"] },
-    ],
-  };
-  it("follows the dormant or disabled", () => {
-    const f = follow(d, "risky");
-    expect(f.headline).toBe("2 dormant or disabled people still reach 2 sensitive objects, through GRP_E and GRP_N.");
-    expect(f.width.get("GRP_E>DB.S.REV")).toBe(1);
-    expect(f.width.has("active>GRP_E")).toBe(false);
-    expect(f.lit?.has("active")).toBe(false);
-    expect(f.tone.get("GRP_E>DB.S.REV")).toBe("risky");
-  });
-  it("follows an object back and shows everyone", () => {
-    const f = follow(d, "DB.S.REV");
-    expect([...f.lit!].sort()).toEqual(["DB.S.REV", "GRP_E", "active", "risky"]);
-    expect(f.headline).toBe("REV: reached by 2 people through GRP_E.");
-    expect(follow(d, null).headline).toBe("3 people reach 2 sensitive objects through 2 roles.");
-  });
   it("sends the new links to their screens", () => {
     expect(redirect("catalog", {})).toEqual({ page: "sensitive", params: { show: "catalog" } });
     expect(redirect("dataflow", { sel: "risky" })).toEqual({ page: "flow", params: { sel: "risky" } });

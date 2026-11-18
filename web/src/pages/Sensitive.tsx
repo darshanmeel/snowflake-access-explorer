@@ -5,20 +5,19 @@ import { Banner, Card, DataTable, KpiRow, MaskDots, MiniBar, Tabs, type BarPart 
 import { apiParams, useApp } from "../ctx";
 import { Catalog } from "./Catalog";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
+import { PagedTable } from "./paged";
 
 type O = SensitivePage["objects"][number];
 type R = SensitivePage["readers"][number];
 
-/** The people who can read an object, split so each counts once: admin, else service user, else dormant / disabled /
- * never logged in, else active. */
-export function readerParts(o: Pick<O, "people" | "admin" | "service">, status: Map<string, string>): BarPart[] {
-  const admin = new Set(o.admin), service = new Set(o.service);
-  const rest = o.people.filter((u) => !admin.has(u) && !service.has(u));
-  const idle = rest.filter((u) => (status.get(u) ?? "active") !== "active").length;
-  return [{ key: "active", label: "Active", value: rest.length - idle, cls: "active" }, { key: "dormant", label: "Dormant or disabled", value: idle, cls: "dormant" },
-    { key: "service", label: "Service users", value: o.people.filter((u) => service.has(u) && !admin.has(u)).length, cls: "service" },
-    { key: "admin", label: "Through an admin role", value: o.people.filter((u) => admin.has(u)).length, cls: "admin" }];
+/** The people who can read an object, each once (the server counts them): active, dormant / disabled / never logged
+ * in, service users, only through an admin role. */
+export function readerParts(n: O["readers"]): BarPart[] {
+  return [{ key: "active", label: "Active", value: n.active, cls: "active" }, { key: "dormant", label: "Dormant or disabled", value: n.dormant, cls: "dormant" },
+    { key: "service", label: "Service users", value: n.service, cls: "service" }, { key: "admin", label: "Through an admin role", value: n.admin, cls: "admin" }];
 }
+
+const readersOf = (o: O) => o.readers.active + o.readers.dormant + o.readers.service + o.readers.admin;
 
 /** A tag chip: the value ("CONFIDENTIAL"), the tag name and where it comes from on hover; never cut mid-word. */
 const tagChip = (t: { label: string; origins: string[] }) => (
@@ -44,15 +43,15 @@ export function SensitivePageView() {
       <Load s={s}>{(d) => {
         if (d.state !== "ok") return <Banner tone="info" title="Nothing to show" lines={[WHY[d.state] ?? d.state]} />;
         const k = d.kpis;
-        const status = new Map(d.readers.map((r) => [r.user, r.status]));
         const cols = new Map(d.catalog.map((r) => [r.object, r.columns]));
-        const most = Math.max(1, ...d.objects.map((o) => o.people.length));
+        const most = Math.max(1, ...d.objects.map(readersOf));
+        const first = { o_offset: null, r_offset: null }; // a new filter starts on page 1
         return (
           <>
             <Controls>
-              <Sel label="Tag" value={d.filters.tag} onPick={(v) => c.set({ tag: v })} options={[["", "All tags"], ...d.filters.tags.map((t): [string, string] => [t, t])]} />
-              <Sel label="Database" value={d.filters.db} onPick={(v) => c.set({ db: v })} options={[["", "All databases"], ...d.filters.dbs.map((t): [string, string] => [t, t])]} />
-              <Tog label="People only" on={d.filters.people} onPick={(v) => c.set({ people: v ? "1" : null })} />
+              <Sel label="Tag" value={d.filters.tag} onPick={(v) => c.set({ tag: v, ...first })} options={[["", "All tags"], ...d.filters.tags.map((t): [string, string] => [t, t])]} />
+              <Sel label="Database" value={d.filters.db} onPick={(v) => c.set({ db: v, ...first })} options={[["", "All databases"], ...d.filters.dbs.map((t): [string, string] => [t, t])]} />
+              <Tog label="People only" on={d.filters.people} onPick={(v) => c.set({ people: v ? "1" : null, ...first })} />
             </Controls>
             <KpiRow items={[
               { label: "Sensitive objects", value: k.objects, caption: `${k.columns} columns, ${k.whole} whole-object` },
@@ -63,14 +62,15 @@ export function SensitivePageView() {
             ]} />
             {k.stale.length > 0 && <Banner tone="warn" title="Disabled or dormant users still hold access" lines={[k.stale.join(", ")]} />}
             <Tabs active={part} onChange={(k) => { setPart(k); c.set({ show: k === "catalog" ? "catalog" : null }); }} tabs={[
-              { key: "objects", label: "Sensitive objects", count: d.objects.length },
-              { key: "readers", label: "Who can read them", count: d.readers.length },
+              { key: "objects", label: "Sensitive objects", count: d.objects_total },
+              { key: "readers", label: "Who can read them", count: d.readers_total },
               { key: "compare", label: "Compare two roles" },
               { key: "catalog", label: "Catalog", count: d.catalog.length },
             ]} />
             {part === "catalog" && <Catalog rows={d.catalog} />}
             {part === "objects" && <Card title="Sensitive objects" scroll>
-              <DataTable csv="sensitive_objects.csv" rows={d.objects}
+              <PagedTable path="sensitive" at="o_offset" total={d.objects_total} offset={d.objects_offset} pick={(x: SensitivePage) => x.objects}
+                csv="sensitive_objects.csv" rows={d.objects}
                 columns={[
                   col("o", "Object", (r: O) => r.object, { render: (r: O) => <span className="ae-objcell"><NameLink id={r.object} refs={d.refs} /><span className="ae-muted ae-osub">{r.type.toLowerCase()}</span></span>, wrap: "wrap" }),
                   col("g", "Tags", (r: O) => r.tags.map((t) => t.label).join(", "), { render: (r: O) => <span className="ae-objtags0">{r.tags.map(tagChip)}</span>, wrap: "wrap" }),
@@ -80,19 +80,20 @@ export function SensitivePageView() {
                         <span className={r.masked[0] < r.masked[1] ? "ae-bad" : "ae-muted"}>{r.masked[0]} of {r.masked[1]}</span>
                         <span className="ae-muted ae-maskcols">{r.cols.join(", ")}</span></span>) : <span className="ae-muted">whole object</span> }),
                   col("rp", "Row policy", (r: O) => r.row_policies.join(", "), { wrap: "wrap" }),
-                  col("p", "Who can read", (r: O) => r.people.length, { num: true, help: "People who can read it: active, dormant or disabled, service users, through an admin role",
-                    render: (r: O) => <MiniBar of={most} parts={readerParts(r, status)} /> }),
+                  col("p", "Who can read", readersOf, { num: true, help: "People who can read it: active, dormant or disabled, service users, through an admin role",
+                    render: (r: O) => <MiniBar of={most} parts={readerParts(r.readers)} /> }),
                   col("ro", "Roles", (r: O) => r.roles.join(", "), { wrap: "truncate" }),
                 ]} />
-              <div className="ae-bar-legend ae-mt">{readerParts({ people: [], admin: [], service: [] }, status).map((p) => <span key={p.key}><span className={`ae-dot2 ae-bar-${p.cls}`} />{p.label}</span>)}
+              <div className="ae-bar-legend ae-mt">{readerParts({ active: 0, dormant: 0, service: 0, admin: 0 }).map((p) => <span key={p.key}><span className={`ae-dot2 ae-bar-${p.cls}`} />{p.label}</span>)}
                 <span><span className="ae-dotm ae-dotm-ok" /> masked column</span><span><span className="ae-dotm ae-dotm-bad" /> not masked</span></div>
             </Card>}
             {part === "readers" && <Card title="Who can read them" sub="One row per user; the shortest path to a sensitive object" scroll>
-              <DataTable csv="sensitive_readers.csv" rows={d.readers} rowTone={(r: R) => (r.via_admin ? "bad" : r.status !== "active" ? "warn" : null)}
+              <PagedTable path="sensitive" at="r_offset" total={d.readers_total} offset={d.readers_offset} pick={(x: SensitivePage) => x.readers}
+                csv="sensitive_readers.csv" rows={d.readers} rowTone={(r: R) => (r.via_admin ? "bad" : r.status !== "active" ? "warn" : null)}
                 columns={[
                   col("u", "User", (r: R) => r.user, { render: (r: R) => <NameLink id={r.user} refs={d.refs} /> }),
                   col("t", "Type", (r: R) => r.type), col("s", "Status", (r: R) => r.status), col("l", "Last login", (r: R) => r.last_login_text),
-                  col("ob", "Objects", (r: R) => r.objects.length, { num: true }),
+                  col("ob", "Objects", (r: R) => r.objects, { num: true }),
                   col("ro", "Via roles", (r: R) => r.roles.join(", "), { wrap: "truncate" }),
                   pathCol<R>(d.refs),
                 ]} />

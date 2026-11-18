@@ -1,10 +1,9 @@
 // Pure helpers of Review & sign-off (6), the Sensitive objects catalog (8) and Sensitive data flow (16).
-import type { CatalogRow, FlowPage, GridPage, GridRow, WhatIfChange } from "../api/types";
+import type { CatalogRow, GridPage, GridRow, WhatIfChange } from "../api/types";
 import { toCsv } from "../components/table";
 
 export type Decision = "keep" | "revoke";
 const n = (k: number, w: string, many = `${w}s`) => `${k} ${k === 1 ? w : many}`;
-const list = (xs: string[], max = 3) => (xs.length <= max ? xs.join(", ").replace(/, ([^,]*)$/, " and $1") : `${xs.slice(0, max).join(", ")} and ${xs.length - max} more`);
 
 /** The list toolbar's search: q (any case) in one of the texts; an empty q keeps everything. */
 export const hits = (q: string | undefined, ...xs: string[]) => {
@@ -55,41 +54,4 @@ export function protectionText(r: CatalogRow): string {
   return `${r.masked[0]} of ${n(r.masked[1], "column")} masked`;
 }
 
-export interface Followed {
-  lit: Set<string> | null; // nodes shown at full strength (null: all)
-  width: Map<string, number>; // link key -> people flowing over it in the selection
-  tone: Map<string, string>; // link key -> group of most of its people
-  headline: string;
-}
-
 export const linkKey = (s: string, t: string) => `${s}>${t}`;
-
-/** Follow one box: every person through it, then each person's own role and object links. sel null: everyone. */
-export function follow(d: Pick<FlowPage, "groups" | "roles" | "objects" | "links">, sel: string | null): Followed {
-  const groupOf = new Map(d.groups.flatMap((g) => g.users.map((u) => [u, g.id] as const)));
-  const roleIds = new Set(d.roles.map((r) => r.id));
-  const objIds = new Set(d.objects.map((o) => o.id));
-  const trips: [string, string, string, string][] = []; // user, group, role, object
-  for (const l of d.links) if (roleIds.has(l.source) && objIds.has(l.target)) for (const u of l.users) trips.push([u, groupOf.get(u) ?? "active", l.source, l.target]);
-  const on = sel ? trips.filter((t) => t.slice(1).includes(sel)) : trips;
-  const width = new Map<string, number>(), who = new Map<string, Map<string, string>>();
-  const add = (k: string, u: string, g: string) => { const m = who.get(k) ?? new Map(); m.set(u, g); who.set(k, m); };
-  for (const [u, g, r, o] of on) { add(linkKey(g, r), u, g); add(linkKey(r, o), u, g); }
-  const tone = new Map<string, string>();
-  for (const [k, m] of who) {
-    width.set(k, m.size);
-    const c = new Map<string, number>();
-    for (const g of m.values()) c.set(g, (c.get(g) ?? 0) + 1);
-    tone.set(k, [...c.entries()].sort((a, b) => b[1] - a[1] || (a[0] === "risky" ? -1 : 1))[0][0]);
-  }
-  const users = [...new Set(on.map((t) => t[0]))], objs = [...new Set(on.map((t) => t[3]))].map((o) => o.split(".").pop() ?? o);
-  const roles = [...new Set(on.map((t) => t[2]))];
-  const lit = sel ? new Set([sel, ...on.flatMap((t) => t.slice(1))]) : null;
-  const g = d.groups.find((x) => x.id === sel), r = d.roles.find((x) => x.id === sel), o = d.objects.find((x) => x.id === sel);
-  const headline = !sel ? `${n(users.length, "person", "people")} reach ${n(d.objects.length, "sensitive object")} through ${n(d.roles.length, "role")}.`
-    : g?.id === "risky" ? `${n(users.length, "dormant or disabled person", "dormant or disabled people")} still reach ${n(objs.length, "sensitive object")}, through ${list(roles)}.`
-      : g ? `${g.label}: ${n(users.length, "person", "people")} reach ${n(objs.length, "sensitive object")}, through ${list(roles)}.`
-        : r ? `${r.label}: ${n(users.length, "person", "people")} reach ${n(objs.length, "sensitive object")} through it.`
-          : o ? `${o.label}: reached by ${n(users.length, "person", "people")} through ${list(roles)}.` : "";
-  return { lit, width, tone, headline };
-}

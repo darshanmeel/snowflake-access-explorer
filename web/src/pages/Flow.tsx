@@ -1,11 +1,12 @@
 // Screen 16, where sensitive data flows: people -> the role they were granted -> sensitive object. Box height and
-// line width = people. A click follows one box (sel= in the URL); the default is the dormant or disabled people.
+// line width = people. A click follows one box (sel= in the URL; the server answers its links and people in follow);
+// the default is the dormant or disabled people.
 import { useApi } from "../api/client";
 import type { FlowNode, FlowPage } from "../api/types";
 import { Banner, Card } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { Head, Load } from "./common";
-import { follow, linkKey } from "./signoff";
+import { linkKey } from "./signoff";
 
 const W = 200, COLX = [0, 380, 760], TOP = 28, GAP = 12, MIN = 44;
 const TONE: Record<string, string> = { active: "var(--ae-accent)", risky: "var(--ae-warn_ink)", admin: "var(--ae-lvl_admin_bg)", service: "var(--ae-line_strong)" };
@@ -26,8 +27,8 @@ export function FlowPageView() {
 }
 
 function sub(n: FlowNode, col: number): string {
-  if (col === 0) return n.users.length <= 3 ? n.users.join(", ") : plural(n.users.length, "person", "people");
-  if (col === 1) return n.kind === "admin" ? "inherit everything" : plural(n.users.length, "person", "people");
+  if (col === 0) return plural(n.count, "person", "people");
+  if (col === 1) return n.kind === "admin" ? "inherit everything" : plural(n.count, "person", "people");
   if (n.unmasked?.length) return `${n.unmasked.join(", ")} unmasked`;
   if (n.masked?.length) return `${n.masked.join(", ")} masked`;
   return n.row_policies?.length ? `${n.ns} · rows by ${n.row_policies.map((p) => p.split(".").pop()).join(", ")}` : `${n.ns} · whole object`;
@@ -35,15 +36,12 @@ function sub(n: FlowNode, col: number): string {
 
 function Body({ d }: { d: FlowPage }) {
   const c = useApp();
-  const all = [...d.groups, ...d.roles, ...d.objects];
-  const raw = c.params.sel === "none" ? null : c.params.sel ?? d.select;
-  const sel = raw && all.some((n) => n.id === raw) ? raw : null;
-  const f = follow(d, sel);
+  const f = d.follow!, sel = f.sel, lit = f.lit && new Set(f.lit);
   const cols = [d.groups, d.roles, d.objects];
-  const most = Math.max(...cols.map((xs) => xs.reduce((s, n) => s + n.users.length, 0)));
+  const most = Math.max(...cols.map((xs) => xs.reduce((s, n) => s + n.count, 0)));
   const unit = Math.max(2, Math.min(9, 520 / Math.max(most, 1)));
   const pos = new Map<string, { x: number; y: number; h: number; col: number; n: FlowNode }>();
-  const ys = cols.map((xs, i) => xs.reduce((y, n) => { const h = Math.max(MIN, n.users.length * unit); pos.set(n.id, { x: COLX[i], y, h, col: i, n }); return y + h + GAP; }, TOP));
+  const ys = cols.map((xs, i) => xs.reduce((y, n) => { const h = Math.max(MIN, n.count * unit); pos.set(n.id, { x: COLX[i], y, h, col: i, n }); return y + h + GAP; }, TOP));
   const gh = Math.max(...ys) + 8, gw = COLX[2] + W;
   const picked = sel ? pos.get(sel) : undefined;
   const open = (n: FlowNode, col: number) => (col === 2 ? c.nav("object", { name: n.id, show: "who" }) : c.nav("access", { role: n.id }));
@@ -60,19 +58,19 @@ function Body({ d }: { d: FlowPage }) {
             {d.links.map((l) => {
               const a = pos.get(l.source), b = pos.get(l.target);
               if (!a || !b) return null;
-              const k = linkKey(l.source, l.target), n = sel ? f.width.get(k) ?? 0 : l.users.length;
+              const k = linkKey(l.source, l.target), n = sel ? f.width[k] ?? 0 : l.count;
               const x1 = a.x + W, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2, mx = (x1 + x2) / 2;
-              const tone = TONE[a.col === 0 ? l.source : f.tone.get(k) ?? "active"] ?? TONE.active;
+              const tone = TONE[a.col === 0 ? l.source : f.tone[k] ?? "active"] ?? TONE.active;
               return <path key={k} d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`} fill="none" stroke={tone}
-                strokeWidth={Math.max(2, Math.min(n || l.users.length, 40) * Math.min(3, unit * 0.6))} opacity={n ? 0.5 : 0.07}><title>{`${l.source} → ${l.target}: ${plural(n || l.users.length, "person", "people")}`}</title></path>;
+                strokeWidth={Math.max(2, Math.min(n || l.count, 40) * Math.min(3, unit * 0.6))} opacity={n ? 0.5 : 0.07}><title>{`${l.source} → ${l.target}: ${plural(n || l.count, "person", "people")}`}</title></path>;
             })}
           </svg>
           {[...pos.values()].map(({ x, y, h, col, n }) => {
             const kind = col === 0 ? `ae-fn-${n.id}` : col === 1 ? (n.kind === "admin" ? "ae-fn-admin" : "ae-fn-role") : "ae-fn-obj";
-            const dim = f.lit && !f.lit.has(n.id);
+            const dim = lit && !lit.has(n.id);
             return (
               <button key={n.id} type="button" aria-pressed={sel === n.id} className={`ae-fnode ${kind}${sel === n.id ? " on" : ""}${dim ? " dim" : ""}`}
-                style={{ left: x, top: y, width: W, height: h }} title={`${n.id}\n${n.users.join(", ")}`} onClick={() => c.set({ sel: sel === n.id ? "none" : n.id })}>
+                style={{ left: x, top: y, width: W, height: h }} title={`${n.id}\n${plural(n.count, "person", "people")}`} onClick={() => c.set({ sel: sel === n.id ? "none" : n.id })}>
                 <span className="ae-fnode-l">{n.label}</span>
                 <span className={`ae-fnode-s${col === 2 && n.unmasked?.length ? " bad" : ""}`}>{sub(n, col)}</span>
               </button>
@@ -87,8 +85,8 @@ function Body({ d }: { d: FlowPage }) {
       </div>
       {picked && (
         <div className="ae-flow-detail">
-          <div><b className="ae-mono">{picked.n.label}</b> <span className="ae-muted">{plural(picked.n.users.length, "person", "people")}</span></div>
-          <div className="ae-objtags0">{picked.n.users.map((u) => <button type="button" key={u} className="ae-pchip" onClick={() => c.nav("access", { user: u })}>{u}</button>)}</div>
+          <div><b className="ae-mono">{picked.n.label}</b> <span className="ae-muted">{plural(f.count, "person", "people")}{f.users.length < f.count ? ` (first ${f.users.length} shown)` : ""}</span></div>
+          <div className="ae-objtags0">{f.users.map((u) => <button type="button" key={u} className="ae-pchip" onClick={() => c.nav("access", { user: u })}>{u}</button>)}</div>
           <div className="ae-row0">
             {(picked.col === 2 || (picked.col === 1 && picked.n.kind !== "admin" && picked.n.kind !== "fold")) &&
               <button type="button" className="ae-btn" onClick={() => open(picked.n, picked.col)}>{picked.col === 2 ? "Who has access" : "Open the role"}</button>}

@@ -119,6 +119,9 @@ def test_object():
     t = next(x for x in a.objects if x in a.sensitive())
     d = js(f"/api/object?name={t}", OBJECT)
     assert d["sensitivity"] and d["matrix"]["rows"] and d["sees"] is not None
+    m = d["matrix"]
+    assert m["total"] == len(m["rows"]) and js(f"/api/object?name={t}&limit=1&m_offset=1")["matrix"]["rows"] == m["rows"][1:2]
+    assert all(bool(r["admin_paths"]) == bool(r["admin"]) for r in m["rows"])
     graph_ok(d["graph"])
     assert d["tabs"][-1]["key"] == "all"
     js(f"/api/object?name={t}&priv=SELECT&users=1&active=1", OBJECT)
@@ -199,6 +202,11 @@ def test_request():  # screen 15: suggested role, approver, read / change, alrea
 def test_sensitive_rules_review():
     d = js("/api/sensitive", ["state", "kpis", "objects", "readers", "compare", "filters", "refs"])
     assert d["state"] == "ok" and d["objects"] and d["readers"]
+    assert d["objects_total"] == len(d["objects"]) == d["kpis"]["objects"] and d["readers_total"] == len(d["readers"])
+    p = js("/api/sensitive?limit=2&r_offset=2&o_offset=1")  # one page each; limit=0 every row (the CSV)
+    assert len(p["readers"]) == 2 and p["readers"] == d["readers"][2:4] and p["objects"] == d["objects"][1:3]
+    assert p["readers_offset"] == 2 and js("/api/sensitive?limit=0&r_offset=999")["readers"] == d["readers"]
+    assert all(set(o["readers"]) == {"active", "dormant", "service", "admin"} for o in d["objects"])
     js(f"/api/sensitive?people=1&db={d['filters']['dbs'][0]}")
     r = js("/api/rules", ["counts", "per_rule", "findings", "total", "admins", "rows_unknown", "refs"])
     assert r["total"] and r["admins"] and r["counts"]["High"]
@@ -690,6 +698,8 @@ def test_review_grid_catalog_flow():  # screens 6, 8, 16
     assert len(js("/api/sensitive?db=FINANCE")["catalog"]) == 2
     f = js("/api/flow", ["state", "groups", "roles", "objects", "links", "select", "refs"])
     assert f["state"] == "ok" and f["select"] == "risky" and f["roles"][0]["kind"] == "admin"
+    assert f["follow"]["sel"] == "risky" and f["follow"]["users"] and "users" not in f["links"][0]
+    assert js("/api/flow?sel=none")["follow"]["lit"] is None and js("/api/flow?sel=admin")["follow"]["users"] == ["ADMIN_01", "OPS_01"]
     assert server.flow_page({}, "mine")["state"] == "mine"
     m = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
     assert m["flow"] == m["review"] == m["sensitive"] == "admin"
