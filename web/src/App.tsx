@@ -182,7 +182,7 @@ function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page, para
               {ps.map((p) => (
                 <button type="button" key={p.key} className={p.key === page ? "on" : ""} aria-current={p.key === page ? "page" : undefined} onClick={() => nav(p.key)}>
                   <span>{p.label}</span>
-                  {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`}>{p.severity ? `${p.badge} ${p.severity.toLowerCase()}` : p.badge}</span>}
+                  {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`} title={p.title ?? undefined}>{p.severity ? `${p.badge} ${p.severity.toLowerCase()} rule${p.badge === 1 ? "" : "s"}` : p.badge}</span>}
                 </button>
               ))}
             </nav>

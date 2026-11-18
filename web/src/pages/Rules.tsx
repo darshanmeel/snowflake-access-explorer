@@ -1,68 +1,72 @@
-import { useState } from "react";
-import { download, useApi } from "../api/client";
-import type { AdminPerson, Refs, RulesPage } from "../api/types";
-import { Banner, Card, DataTable, FindingList, PathText, Tabs, useCsv } from "../components";
+import { useEffect, useState } from "react";
+import { download, qs, useApi } from "../api/client";
+import type { AdminPerson, FindingRow, Refs, FindingGroup, RulesPage } from "../api/types";
+import { Banner, Card, DataTable, PathText, SEVERITIES, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
+import { rulesOff, rulesQuery, useSaved } from "./changeplan";
 import { col, Head, Load, NameLink } from "./common";
-import { RisksTab, RuleList, skipNote } from "./Risks";
+import { FindingFix, GroupItems, RisksTab, RuleList, skipNote } from "./Risks";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
+type Filters = { q: string; area: string; people: boolean };
+const NONE: Filters = { q: "", area: "", people: false };
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 export function RulesPageView() {
   const c = useApp();
   const csvOn = useCsv();
-  const s = useApi<RulesPage>("rules", apiParams(c));
+  const off = useSaved(rulesOff);
+  const [all, setAll] = useState(false); // Risks & change plan: also the findings of rules turned off
+  const [f, setF] = useState(NONE); // Rule checks filters as typed; the search goes to the server after a pause
+  const [q0, setQ0] = useState("");
+  useEffect(() => { const t = setTimeout(() => setQ0(f.q), 300); return () => clearTimeout(t); }, [f.q]);
   const [tab, setTab] = useState(c.params.part ?? "findings"); // part=: an old sub-tab, linkable
-  const o = useOpen(s.data?.refs);
-  type Rule = (typeof c.meta.rules)[number];
   const show = c.params.show === "fixes" || c.params.show === "list" ? c.params.show : "checks"; // the old page first
+  const q = rulesQuery(apiParams(c), show, all ? [] : off, show === "checks" ? { ...f, q: q0 } : NONE);
+  const s = useApi<RulesPage>("rules", q);
+  type Rule = (typeof c.meta.rules)[number];
   return (
     <>
       <Head title="Risks & fixes" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
         right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", apiParams(c), "findings.csv")}>Download CSV</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
+        const chips = scope.length > 0 && (
+          <div className="ae-graph-open">
+            Showing
+            {d.filters.rule && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ rule: null })}>rule {d.filters.rule} ×</button>}
+            {d.filters.grantee && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ grantee: null })}>{d.filters.grantee} ×</button>}
+          </div>
+        );
+        const unknown = d.rows_unknown;
         return (
           <>
-            {d.rows_unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read" lines={[`Rows are unknown for ${d.rows_unknown.slice(0, 6).join(", ")}${d.rows_unknown.length > 6 ? " and more" : ""}.`]} />}
+            {unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read" lines={[`Rows are unknown for ${unknown.slice(0, 6).join(", ")}${unknown.length > 6 ? " and more" : ""}.`]} />}
             <Tabs active={show} onChange={(k) => c.set({ show: k === "checks" ? null : k })} tabs={[
-              { key: "checks", label: "Rule checks", count: d.total },
+              { key: "checks", label: "Rule checks", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
               { key: "fixes", label: "Risks & change plan" },
               { key: "list", label: "Rules", count: c.meta.rules.length },
             ]} />
-            {scope.length > 0 && show !== "checks" && (
-              <div className="ae-graph-open">
-                Showing
-                {d.filters.rule && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ rule: null })}>rule {d.filters.rule} ×</button>}
-                {d.filters.grantee && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ grantee: null })}>{d.filters.grantee} ×</button>}
-              </div>
-            )}
-            {show === "fixes" && <RisksTab key={scope.join()} d={d} />}
+            {show !== "checks" && chips}
+            {show === "fixes" && <RisksTab key={scope.join()} d={d} q={q} all={all} setAll={setAll} />}
             {show === "list" && <RuleList d={d} />}
             {show === "checks" && <>
             <Tabs active={tab} onChange={setTab} tabs={[
               { key: "findings", label: "Findings", count: d.total },
-              { key: "admins", label: "Admin holders", count: d.admins.length, tone: d.admins.length ? "bad" : null },
+              { key: "admins", label: "Admin holders", count: d.admins_total, tone: d.admins_total ? "bad" : null },
               { key: "rules", label: "Rules", count: c.meta.rules.length },
             ]} />
             {tab === "findings" && (
               <Card>
-                {scope.length > 0 && (
-                  <div className="ae-graph-open">
-                    Showing
-                    {d.filters.rule && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ rule: null })}>rule {d.filters.rule} ×</button>}
-                    {d.filters.grantee && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ grantee: null })}>{d.filters.grantee} ×</button>}
-                  </div>
-                )}
-                <FindingList key={scope.join()} list={d.findings} kinds={d.refs.kinds} onOpen={o.open} csvName="findings"
-                  whatIf={(p) => { const ch = changeOfPath(p, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; }} />
+                {chips}
+                <FindingGroups key={scope.join()} d={d} q={q} f={f} setF={setF} />
                 <p className="ae-muted">{d.counts.Passing} of {c.meta.rules.length} rules pass.{skipNote(d.skipped)}</p>
               </Card>
             )}
             {tab === "admins" && (
               <Card title="People with admin roles or account privileges" scroll
                 right={<button className="ae-btn" onClick={() => c.nav("object", { preset: "admin" })}>Open as Who has access</button>}>
-                <AdminTable admins={d.admins} refs={d.refs} />
+                <AdminTable admins={d.admins} refs={d.refs} total={d.admins_total} />
               </Card>
             )}
             {tab === "rules" && (
@@ -85,20 +89,99 @@ export function RulesPageView() {
   );
 }
 
+/** Rule checks > Findings: severity tabs and filters answered by the server, one group per rule (most people
+ * affected first); an opened group loads its findings a page at a time, an opened finding its fix. */
+function FindingGroups({ d, q, f, setF }: {
+  d: RulesPage; q: Record<string, string | undefined>; f: Filters; setF: (f: Filters) => void;
+}) {
+  const c = useApp();
+  const sev = d.filters.sev;
+  const all = SEVERITIES.reduce((n, s) => n + (d.sev_counts[s] ?? 0), 0);
+  const why = [f.area && `area = ${f.area}`, f.people && "people only", f.q.trim() && `search "${f.q.trim()}"`].filter(Boolean).join(", ");
+  if (!all && !why) return null;
+  return (
+    <div className="ae-findings">
+      <div className="ae-tabs" role="tablist">
+        {[...SEVERITIES, "All" as const].map((s) => {
+          const n = s === "All" ? all : d.sev_counts[s] ?? 0;
+          const on = s === "All" ? !sev : sev === s;
+          return (
+            <button key={s} role="tab" aria-selected={on} disabled={!n}
+              className={`ae-tab ae-sevtab ae-sev-${s}${on ? " on" : ""}`} onClick={() => c.set({ sev: s === "All" ? "all" : s })}>
+              {s}<span className="ae-tab-count">{n}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="ae-controls ae-fd-filter">
+        {d.areas.length > 1 && (
+          <select className="ae-input" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} aria-label="Area">
+            <option value="">Every area</option>{d.areas.map((a) => <option key={a}>{a}</option>)}
+          </select>
+        )}
+        <input className="ae-input" placeholder="Search findings" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} aria-label="Search findings" />
+        <label className="ae-check"><input type="checkbox" checked={f.people} onChange={(e) => setF({ ...f, people: e.target.checked })} /> People affected only</label>
+      </div>
+      {why && <p className="ae-muted ae-fd-hidden">{plural(d.total, "finding")} match {why}.</p>}
+      {d.groups.map((g, i) => <Group key={`${sev}:${g.key}`} g={g} q={q} open={d.groups.length === 1 || (i === 0 && g.findings <= 5)} />)}
+      {!d.groups.length && <p className="ae-muted">Nothing here.</p>}
+    </div>
+  );
+}
+
+function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | undefined>; open: boolean }) {
+  const c = useApp();
+  const [on, setOn] = useState(open);
+  return (
+    <div className={`ae-fg ae-sev-${g.severity}`}>
+      <button className="ae-fg-head" onClick={() => setOn(!on)} aria-expanded={on}>
+        <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
+        <span className="ae-fg-num">{g.key}</span>
+        <span className="ae-fg-title">{g.title}</span>
+        <span className="ae-muted">{plural(g.findings, "finding")}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people} people`}` : ""}</span>
+      </button>
+      {on && (
+        <GroupItems key={qs(q)} q={q} group={g.key}>{(list, refs, open) => (
+          <ul className="ae-fd-list">{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
+        )}</GroupItems>
+      )}
+    </div>
+  );
+}
+
+function Line({ f, refs, onOpen, view }: { f: FindingRow; refs: Refs; onOpen: (id: string) => void; view: string }) {
+  const [fix, setFix] = useState(false);
+  const k = refs.kinds[f.grantee] ?? f.kind;
+  return (
+    <li className="ae-fd">
+      <div className="ae-fd-line">
+        <button className={`ae-chip ae-chip-${k}`} onClick={() => onOpen(f.grantee)} title={f.grantee}>{f.grantee.replace(/ \(user\)$/, "")}</button>
+        {f.what && <span className="ae-fd-what" title={f.what}>{f.what}</span>}
+        {f.impact && <span className={`ae-tag ae-tag-${f.impact.tone}`}>{f.impact.text}</span>}
+        {(f.fix || f.paths_total > 0) && <button className="ae-btn ae-btn-s ae-fd-fix" aria-expanded={fix} onClick={() => setFix(!fix)}>{fix ? "Hide fix" : "Fix"}</button>}
+      </div>
+      {fix && <FindingFix id={f.id} view={view} whatIf={(p, kinds) => { const ch = changeOfPath(p, kinds); return ch && <WhatIfButton ch={[ch]} />; }} />}
+    </li>
+  );
+}
+
 /** Users with an admin role or an account privilege, with their shortest path (Rule checks, Admin holders preset). */
-export function AdminTable({ admins, refs }: { admins: AdminPerson[]; refs: Refs }) {
+export function AdminTable({ admins, refs, total }: { admins: AdminPerson[]; refs: Refs; total?: number }) {
   const o = useOpen(refs);
   return (
-    <DataTable csv="admin_people.csv" rows={admins} rowTone={() => "bad"}
-      columns={[
-        col("u", "User", (r: AdminPerson) => r.user, { wrap: "nowrap", render: (r: AdminPerson) => <NameLink id={r.user} refs={refs} /> }),
-        col("t", "Type", (r: AdminPerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
-        col("s", "Status", (r: AdminPerson) => r.status, { wrap: "nowrap" }),
-        col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap" }),
-        col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap" }),
-        col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
-        col("p", "Path", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "nowrap",
-          render: (r: AdminPerson) => <PathText path={r.paths[0] ?? []} more={r.paths.slice(1)} kinds={refs.kinds} onOpen={o.open} /> }),
-      ]} />
+    <>
+      {total != null && total > admins.length && <p className="ae-muted">First {admins.length} of {total} people.</p>}
+      <DataTable csv="admin_people.csv" rows={admins} rowTone={() => "bad"}
+        columns={[
+          col("u", "User", (r: AdminPerson) => r.user, { wrap: "nowrap", render: (r: AdminPerson) => <NameLink id={r.user} refs={refs} /> }),
+          col("t", "Type", (r: AdminPerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
+          col("s", "Status", (r: AdminPerson) => r.status, { wrap: "nowrap" }),
+          col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap" }),
+          col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap" }),
+          col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
+          col("p", "Path", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "nowrap",
+            render: (r: AdminPerson) => <PathText path={r.paths[0] ?? []} more={r.paths.slice(1)} kinds={refs.kinds} onOpen={o.open} /> }),
+        ]} />
+    </>
   );
 }

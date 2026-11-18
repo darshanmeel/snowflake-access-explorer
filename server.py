@@ -2046,29 +2046,125 @@ def pair_rows(x, xu, y, yu, objs):
 
 # ---------- rules ----------
 
+FINDINGS_PAGE = 100  # findings per answer (limit= up to 500); counts and groups cover every finding
+MAX_GROUPS = 200  # rule / person / object groups and heat grid rows per answer
+MAX_ADMINS = 200
+
+
+def rule_index():
+    """Per finding what the Rules page filters, groups and searches on, once per data set (S["rows"] order)."""
+    def make():
+        out = []
+        for x in S["rows"]:
+            user = x["kind"] == "user"
+            g = a.uid(x["grantee"], user)
+            out.append(dict(num=x["num"], sev=x["severity"], area=RULE_INFO.get(x["num"], ("", "Other"))[1], grantee=x["grantee"],
+                            gid=g, kind=norm(x["kind"]), people=[x["grantee"]] if user else x["losers"][:50],
+                            objects=a.finding_objects(x), text=" ".join((x["title"], g, x["detail"], x["num"])).lower()))
+        return out
+    return a.cached("rule_index", make)
+
+
+def finding_row(i):
+    """One finding in a list: finding() without its fix texts and with the first path and people only; the whole
+    finding comes from /api/finding?id=."""
+    x = S["rows"][i]
+    user = x["kind"] == "user"
+    people = [x["grantee"]] if user else x["losers"]
+    return dict(id=i, num=x["num"], title=x["title"], severity=x["severity"], area=RULE_INFO.get(x["num"], ("", "Other"))[1],
+                grantee=a.uid(x["grantee"], user), kind=norm(x["kind"]), what=x["detail"], impact=impact(x),
+                people=people[:5], people_total=len(people), paths=x["paths"][:1], paths_total=len(x["paths"]),
+                fix=bool(x["iac"] or x["sql"]), same_fix=x["same_fix"], changes=a.fix_changes(x["edges"]),
+                objects=a.finding_objects(x)[:5])
+
+
+def num_param(p, k, default, top):
+    v = p.get(k, "")
+    return min(int(v), top) if v.isdigit() else default
+
+
+def rule_groups(ix, idx, by):
+    """Findings idx grouped by rule (most people first), person or object (most findings first; none under "") or,
+    for the heat grid, grantee (worst first): {key: [finding index]} in that order, plus one summary per group."""
+    m = {}
+    for i in idx:
+        x = ix[i]
+        for k in ([x["num"]] if by == "rule" else [x["gid"]] if by == "grid" else x["people" if by == "person" else "objects"] or [""]):
+            m.setdefault(k, []).append(i)
+    people = lambda its: len({u for i in its for u in ix[i]["people"]})
+    sums = [dict(key=k, findings=len(its), severity=min((ix[i]["sev"] for i in its), key=lambda s: SEV_RANK.get(s, 9)),
+                 people=people(its) if by == "rule" else None) for k, its in m.items()]
+    order = {"rule": lambda g: (-g["people"], -g["findings"], int(g["key"])),
+             "grid": lambda g: (SEV_RANK.get(g["severity"], 9), -g["findings"], g["key"])}.get(
+        by, lambda g: (not g["key"], -g["findings"], g["key"]))
+    sums.sort(key=order)
+    for g in sums[:MAX_GROUPS]:  # what only the groups sent show
+        its = m[g["key"]]
+        g.update(rules=len({ix[i]["num"] for i in its}), title=a.RULES[g["key"]][0] if by == "rule" else None,
+                 kind=ix[its[0]]["kind"] if by == "grid" else None, people=people(its) if by == "object" else g["people"])
+    return {g["key"]: m[g["key"]] for g in sums}, sums
+
+
 def rules_page(p, view):
-    rows = S["rows"]
-    gs = {x["grantee"] for x in rows}
-    who = p.get("grantee", "") if p.get("grantee", "") in gs else ""
-    mine = [x for x in rows if not who or x["grantee"] == who]
-    count = {n: sum(x["num"] == n for x in mine) for n in a.RULES}
+    """Risks & fixes: counts over every finding, the groups of the filtered ones and one page of findings (of the
+    group= when given). Filters: grantee, rule, sev (default the worst one with findings, all = every), q, area,
+    people=1, off (rules turned off in the browser), by (rule | person | object | grid), offset, limit."""
+    ix = rule_index()
+    who = p.get("grantee", "")
+    mine = [i for i, x in enumerate(ix) if x["grantee"] == who] if who else range(len(ix))
+    if who and not mine:
+        who, mine = "", range(len(ix))
+    count = dict.fromkeys(a.RULES, 0)
+    for i in mine:
+        count[ix[i]["num"]] += 1
     skipped = a.skipped_rules()  # HIERARCHY=0 / ACTIVITY=0: did not run, so they do not pass either
-    sev = p.get("sev", "") if p.get("sev", "") in SEVS + ["Passing"] else ""
     sel = p.get("rule", "") if p.get("rule", "") in a.RULES else ""
     lvl = lambda n: a.SEVERITY.get(n, "Low")
-    shown = [x for x in mine if not sel or x["num"] == sel]
-
-    unknown = sorted(o for o in S["sens"] if any(a.row_terms(q) is None for q in a.policies_of(o)["rows"]))
-    return dict(
-        view=view, scope="mine" if view == "mine" else "account", filters=dict(grantee=who, sev=sev, rule=sel),
+    off = set(p.get("off", "").split(",")) & set(a.RULES)
+    q, area, ppl = p.get("q", "").strip().lower(), p.get("area", ""), p.get("people") == "1"
+    pool = [i for i in mine if (not sel or ix[i]["num"] == sel) and ix[i]["num"] not in off and (not area or ix[i]["area"] == area)
+            and (not ppl or ix[i]["people"]) and (not q or q in ix[i]["text"])]
+    sev_counts = dict.fromkeys(SEV_RANK, 0)
+    for i in pool:
+        sev_counts[ix[i]["sev"]] += 1
+    sev = p.get("sev", "")
+    sev = sev if sev in SEV_RANK else "" if sev == "all" else next((s for s in SEV_RANK if sev_counts[s]), "")
+    shown = [i for i in pool if not sev or ix[i]["sev"] == sev]
+    by = p.get("by") if p.get("by") in ("person", "object", "grid") else "rule"
+    groups, sums = rule_groups(ix, shown, by)
+    group = p.get("group")
+    items = groups.get(group, []) if group is not None else [i for g in groups.values() for i in g] if by == "rule" else shown
+    off_at, lim = num_param(p, "offset", 0, len(items)), max(1, num_param(p, "limit", FINDINGS_PAGE, 500))
+    grid = None
+    if by == "grid":
+        cols = sorted({ix[i]["num"] for i in shown}, key=lambda n: (SEV_RANK.get(lvl(n), 9), int(n)))
+        grid = dict(rules=cols, rows=[dict(grantee=g["key"], kind=g["kind"], severity=g["severity"], total=g["findings"],
+                                           counts={n: c for n in cols if (c := sum(ix[i]["num"] == n for i in groups[g["key"]]))})
+                                      for g in sums[:MAX_GROUPS]])
+    out = dict(
+        view=view, scope="mine" if view == "mine" else "account",
+        filters=dict(grantee=who, sev=sev, rule=sel, q=q, area=area, people=ppl, off=sorted(off, key=int), by=by, group=group),
         counts={**{s: sum(count[n] for n in a.RULES if lvl(n) == s) for s in SEVS},
                 "Passing": sum(not count[n] and n not in skipped for n in a.RULES)},
-        per_rule=count, skipped=skipped,
-        findings=[finding(x) for x in shown],
-        total=len(shown), rows_unknown=[] if who else unknown,
-        admins=[dict(user=x["user"], service=x["service"], roles=x["roles"], account=list(dict.fromkeys(pv for pv, _ in x["account"])),
-                     paths=x["paths"] + [q for _, q in x["account"]], status=x["status"],
-                     last_login=str(x["last_login"])[:16] if x["last_login"] else None) for x in a.admin_people()])
+        per_rule=count, skipped=skipped, sev_counts=sev_counts, hidden_off=sum(ix[i]["num"] in off for i in mine),
+        areas=sorted({ix[i]["area"] for i in mine}), total=len(shown),
+        groups=sums[:MAX_GROUPS], groups_total=len(sums), grid=grid,
+        findings=[finding_row(i) for i in items[off_at:off_at + lim]], findings_total=len(items), offset=off_at, limit=lim)
+    if group is None:  # a group's next page needs neither
+        unknown = sorted(o for o in S["sens"] if any(a.row_terms(q) is None for q in a.policies_of(o)["rows"]))
+        admins = a.admin_people()
+        out.update(rows_unknown=[] if who else unknown, admins_total=len(admins), admins=[
+            dict(user=x["user"], service=x["service"], roles=x["roles"], account=list(dict.fromkeys(pv for pv, _ in x["account"])),
+                 paths=x["paths"] + [q for _, q in x["account"]], status=x["status"],
+                 last_login=str(x["last_login"])[:16] if x["last_login"] else None) for x in admins[:MAX_ADMINS]])
+    return out
+
+
+def finding_page(p, view):
+    """One finding in full (id= from a Rules page list): every field of finding(), fix texts included."""
+    i = p.get("id", "")
+    need(i.isdigit() and int(i) < len(S["rows"]), f"Finding {i} is not in this data.")
+    return dict(view=view, finding=finding(S["rows"][int(i)]) | dict(id=int(i)))
 
 
 def rules_csv(p, view):
@@ -2338,11 +2434,13 @@ def meta(p, sid):
             run = a.run
             when, old = snap_time(run) if view == "shared" else ("live", False)
             worst = next((v for v in ("Critical", "High", "Medium", "Low") if any(x["severity"] == v for x in S["rows"])), None)
-            badge = {"rules": sum(x["severity"] == worst for x in S["rows"]), "sensitive": len(S["sens"])}
+            hit = [x["num"] for x in S["rows"] if x["severity"] == worst]
+            badge = {"rules": len(set(hit)), "sensitive": len(S["sens"])}  # rules failing at the worst severity
             base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
                                               when=when, old=old),
                         sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view) + loop_notes(),
-                        pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k])
+                        pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k],
+                                    title=f"{plural(len(hit), worst.lower() + ' finding')} in {plural(len(set(hit)), 'rule')}" if k == "rules" and hit else None)
                                for k, lab in PAGES.items() if not (view == "mine" and k in SHARED_ONLY)],
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
                         protection=protection() if view == "shared" else None,
@@ -2500,9 +2598,9 @@ ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": r
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
           "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page,
-          "activity": activity_page, "sql": sql_page}
+          "activity": activity_page, "sql": sql_page, "finding": finding_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
-             "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity"}
+             "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "finding"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
 
 
@@ -2647,7 +2745,7 @@ def make_app():
         return h
 
     for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
-              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "sql"):
+              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "sql", "finding"):
         app.get(f"/api/{n}")(route(n))
 
     def csv_route(name):

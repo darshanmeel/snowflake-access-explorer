@@ -210,7 +210,8 @@ export interface Meta {
   /** DuckDB copy of the data shown (cache.sql_info): file + schema, or why there is none */
   sql_copy?: { on: boolean; path: string; schema: string | null; note: string | null; written_at: string | null };
   error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click
-  pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; group: "answers" | "admin" | "detail" }[]; // rules: count of the worst severity
+  // rules: how many rules fail at the worst severity, title "75157 high findings in 6 rules"
+  pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; title?: string | null; group: "answers" | "admin" | "detail" }[];
   default_user: string;
   prefixes: { func: string; tech: string };
   admin_roles: string[];
@@ -745,19 +746,52 @@ export interface AdminPerson {
   last_login: string | null;
 }
 
+/** A finding in a Rules page list: Finding without the fix texts, with the first path and people only. The whole
+ * finding comes from /api/finding?id=. */
+export interface FindingRow extends Omit<Finding, "iac" | "sql"> {
+  id: number;
+  people_total: number;
+  paths_total: number;
+  fix: boolean; // the whole finding has IaC / SQL fix text
+}
+
+/** One group of the filtered findings: a rule, a person, an object ("" = none) or, for the heat grid, a grantee. */
+export interface FindingGroup {
+  key: string;
+  title: string | null; // the rule's title (by rule)
+  severity: Severity; // the worst in the group
+  findings: number;
+  rules: number;
+  people: number | null; // by rule and object
+  kind: NodeKind | null; // the grantee's (grid)
+}
+
 export interface RulesPage {
   view: View;
   scope: "account" | "mine";
-  filters: { grantee: string; sev: Severity | "Passing" | ""; rule: string };
-  counts: Record<Severity | "Passing", number>;
+  filters: { grantee: string; sev: Severity | ""; rule: string; q: string; area: string; people: boolean; off: string[];
+    by: "rule" | "person" | "object" | "grid"; group: string | null };
+  counts: Record<Severity | "Passing", number>; // every finding (of grantee=)
   per_rule: Record<string, number>;
   skipped: Record<string, string>; // rules that did not run: HIERARCHY=0 / ACTIVITY=0 -> "skipped (...)"
-  findings: Finding[];
-  total: number;
-  rows_unknown: string[];
-  admins: AdminPerson[];
+  sev_counts: Record<Severity, number>; // after every filter but sev
+  hidden_off: number; // findings of the off= rules
+  areas: string[];
+  total: number; // after every filter
+  groups: FindingGroup[]; // the first 200
+  groups_total: number;
+  grid: { rules: string[]; rows: { grantee: string; kind: NodeKind; severity: Severity; total: number; counts: Record<string, number> }[] } | null;
+  findings: FindingRow[]; // one page (offset, limit) of the group= or of every filtered finding
+  findings_total: number;
+  offset: number;
+  limit: number;
+  rows_unknown: string[]; // this and admins: not in a group= answer
+  admins: AdminPerson[]; // the first 200
+  admins_total: number;
   refs: Refs;
 }
+
+export interface FindingPage { view: View; finding: Finding & { id: number }; refs: Refs }
 
 export interface ReviewRow {
   database: string;

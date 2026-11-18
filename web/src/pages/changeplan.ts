@@ -45,26 +45,25 @@ export const inPlan = (list: WhatIfChange[], chs: WhatIfChange[]) => chs.length 
 export const toggleFix = (list: WhatIfChange[], chs: WhatIfChange[]) =>
   inPlan(list, chs) ? list.filter((x) => !has(chs, x)) : addTo(list, chs);
 
-export const findingKey = (f: Finding) => `${f.num}|${f.grantee}|${f.what}`;
+type Keyed = Pick<Finding, "num" | "grantee" | "what">;
+
+export const findingKey = (f: Keyed) => `${f.num}|${f.grantee}|${f.what}`;
 
 /** Findings left after rules Off and muted ones; with how many each hid. */
-export function visible(list: Finding[], off: string[], mute: Record<string, string>) {
+export function visible<T extends Keyed>(list: T[], off: string[], mute: Record<string, string>) {
   const o = new Set(off);
   const shown = list.filter((f) => !o.has(f.num) && !(findingKey(f) in mute));
   return { shown, off: list.filter((f) => o.has(f.num)).length, muted: list.filter((f) => !o.has(f.num) && findingKey(f) in mute).length };
 }
 
-export interface FGroup { key: string; items: Finding[]; people: number }
-
-/** Findings per person affected or per object, most findings first; findings without one under "". */
-export function groupFindings(list: Finding[], by: "person" | "object"): FGroup[] {
-  const m = new Map<string, Finding[]>();
-  for (const f of list) {
-    const ks = by === "person" ? f.people : f.objects;
-    for (const k of ks.length ? ks : [""]) m.set(k, [...(m.get(k) ?? []), f]);
-  }
-  return [...m.entries()].map(([key, items]) => ({ key, items, people: new Set(items.flatMap((f) => f.people)).size }))
-    .sort((a, b) => Number(!a.key) - Number(!b.key) || b.items.length - a.items.length || a.key.localeCompare(b.key));
+/** /api/rules parameters of the Risks & fixes page: the URL's, grouped by rule except on Risks & change plan, which
+ * also sends the rules turned off (unless they are shown) and opens the heat grid on every severity. The local
+ * filters replace the URL's area (Rules list: where to scroll). */
+export function rulesQuery(p: Record<string, string | undefined>, show: string, off: string[], f: { q: string; area: string; people: boolean }) {
+  const fixes = show === "fixes";
+  const by = fixes ? p.by ?? "rule" : "rule";
+  return { ...p, by, sev: p.sev ?? (by === "grid" ? "all" : undefined), off: fixes ? off.join(",") : undefined,
+    q: f.q.trim() || undefined, area: f.area || undefined, people: f.people ? "1" : undefined };
 }
 
 /** A revoke in CodeOutput's Change shape; drop role and Empty PUBLIC have none. */

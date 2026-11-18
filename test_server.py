@@ -200,12 +200,14 @@ def test_sensitive_rules_review():
     d = js("/api/sensitive", ["state", "kpis", "objects", "readers", "compare", "filters", "refs"])
     assert d["state"] == "ok" and d["objects"] and d["readers"]
     js(f"/api/sensitive?people=1&db={d['filters']['dbs'][0]}")
-    r = js("/api/rules", ["counts", "per_rule", "findings", "total", "admins", "rows_unknown", "refs"])
-    assert r["total"] and r["admins"] and r["counts"]["High"]
-    assert len(r["per_rule"]) == len(a.RULES) and {f["num"] for f in r["findings"]} == {k for k, v in r["per_rule"].items() if v}
+    r = js("/api/rules", ["counts", "per_rule", "findings", "total", "admins", "admins_total", "rows_unknown", "refs"])
+    assert r["total"] and r["admins"] and r["counts"]["High"] and r["admins_total"] == len(r["admins"])
+    assert len(r["per_rule"]) == len(a.RULES) and r["filters"]["sev"] == "High"  # the worst severity by default
+    every = js("/api/rules?sev=all")
+    assert {f["num"] for f in every["findings"]} == {g["key"] for g in every["groups"]} == {k for k, v in r["per_rule"].items() if v}
     js("/api/rules?sev=High&rule=4")
     f = r["findings"][0]
-    assert f["grantee"] and {"num", "severity", "what", "impact", "paths", "iac", "sql"} <= set(f)
+    assert f["grantee"] and {"id", "num", "severity", "what", "impact", "paths", "people_total", "fix"} <= set(f) and "iac" not in f
     csv = get("/api/rules.csv")
     assert csv.headers["content-type"].startswith("text/csv") and "Rule checks" in csv.text
     rv = js("/api/review?db=*", ["filters", "kpis", "rows", "refs"])
@@ -655,9 +657,41 @@ def test_graph_see_compare():  # screens 4, 7, 9
     assert g["graph"] == g["see"] == g["compare"] == "answers"
 
 
+def test_rules_paged():
+    """Risks & fixes on a big account: counts and groups cover every finding, findings come a page at a time (of one
+    group when asked), the fix texts with /api/finding, and the side nav counts rules, not findings."""
+    every = js("/api/rules?sev=all", ["sev_counts", "groups", "groups_total", "findings_total", "offset", "limit", "areas"])
+    n = every["total"]
+    assert n == every["findings_total"] == sum(every["per_rule"].values()) == sum(every["sev_counts"].values()) > 4
+    p1, p2 = js("/api/rules?sev=all&limit=3"), js("/api/rules?sev=all&limit=3&offset=3")
+    assert len(p1["findings"]) == len(p2["findings"]) == 3 and p1["findings_total"] == n
+    assert not {f["id"] for f in p1["findings"]} & {f["id"] for f in p2["findings"]}
+    assert js("/api/rules?sev=all&limit=x&offset=-1")["limit"] == server.FINDINGS_PAGE  # a bad number: the default
+    g = every["groups"][0]
+    one = js(f"/api/rules?sev=all&group={g['key']}")
+    assert one["findings_total"] == g["findings"] and {f["num"] for f in one["findings"]} == {g["key"]} and "admins" not in one
+    off = js(f"/api/rules?sev=all&off={g['key']}")
+    assert off["total"] == n - g["findings"] and off["hidden_off"] == g["findings"] and off["per_rule"] == every["per_rule"]
+    hit = every["findings"][0]
+    q = js("/api/rules?sev=all&q=" + hit["grantee"].replace(" (user)", "").lower()[:6])
+    assert 0 < q["total"] <= n and hit["id"] in {f["id"] for f in q["findings"]}
+    for by in ("person", "object", "grid"):
+        d = js(f"/api/rules?sev=all&by={by}")
+        assert d["filters"]["by"] == by and d["groups"] and sum(x["findings"] for x in d["groups"]) >= (n if by == "grid" else 1)
+    grid = js("/api/rules?sev=all&by=grid")["grid"]
+    assert sum(r["total"] for r in grid["rows"]) == n and all(set(r["counts"]) <= set(grid["rules"]) for r in grid["rows"])
+    full = js(f"/api/finding?id={hit['id']}", ["finding", "refs"])["finding"]
+    assert full["id"] == hit["id"] and {"iac", "sql", "changes"} <= set(full) and full["num"] == hit["num"]
+    get("/api/finding?id=99999", 404)
+    get("/api/finding?id=x", 404)
+    nav = {p["key"]: p for p in js("/api/meta")["pages"]}["rules"]
+    high = {f["num"] for f in js("/api/rules?sev=High&limit=500")["findings"]}
+    assert nav["badge"] == len(high) and nav["severity"] == "High" and nav["title"].endswith(f"in {len(high)} rules")
+
+
 def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if changes; the plan runs as /api/whatif
     from urllib.parse import quote
-    r = js("/api/rules")
+    r = js("/api/rules?sev=all")
     assert all({"changes", "objects"} <= f.keys() for f in r["findings"])
     fx = [f for f in r["findings"] if f["changes"]]
     assert fx and any(not f["changes"] for f in r["findings"])

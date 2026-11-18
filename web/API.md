@@ -210,7 +210,8 @@ kept in `.cache/`, else 0 (the My access card says where your access is kept).
   "sources": {"all": "fake data"},
   "notes": [{"key": "usage", "title": "query history: last 7 days only", "meaning": "...", "raw": "..."}],
   "mine": {"loaded": false, "user": null, "loaded_at": null, "expires_at": null},
-  "pages": [{"key": "user", "label": "User", "badge": null}, {"key": "rules", "label": "Rule checks", "badge": 41},
+  "pages": [{"key": "user", "label": "User", "badge": null}, {"key": "rules", "label": "Rule checks", "badge": 6, "severity": "High",
+             "title": "41 high findings in 6 rules"},
             {"key": "sensitive", "label": "Sensitive data", "badge": 6}, {"key": "review", "label": "Access review", "badge": null}],
   "default_user": "ENGINEER_01",
   "prefixes": {"func": "F_", "tech": "T_"}, "admin_roles": ["ACCOUNTADMIN", "..."], "build_roles": ["F_DEPLOY"],
@@ -230,8 +231,8 @@ kept in `.cache/`, else 0 (the My access card says where your access is kept).
 `builtin`: `a.builtin_info()`, the built-in grants left out (null with `builtin=1` or when there are none).
 
 `notes` titles and meanings: `app.note_info(key, source, view)`; `old`: snapshot older than 24 h (`app.snap_time`).
-`governance` is shared only (null in mine). `pages` leaves out `review` in mine; badges: rules = findings count,
-sensitive = sensitive objects.
+`governance` is shared only (null in mine). `pages` leaves out `review` in mine; badges: rules = how many rules have
+findings at the worst severity (`severity`; `title` adds the findings count), sensitive = sensitive objects.
 
 ### POST /api/reload
 
@@ -637,33 +638,61 @@ Screen 16, where sensitive data flows (shared only; `state` "mine" / "none" othe
 }
 ```
 
-### GET /api/rules?view=&grantee=&sev=&rule=
+### GET /api/rules?view=&grantee=&rule=&sev=&q=&area=&people=&off=&by=&group=&offset=&limit=
 
 Rule checks; works in mine (the rules run on the slice that was loaded). Producers:
 `a.cached("rows", a.rule_rows)`, `a.RULES`, `a.SEVERITY`, `a.skipped_rules()`, `a.admin_people()`, `a.row_terms` + `a.policies_of` (rows
-unknown note); rule texts per number are in `meta.rules`.
+unknown note); rule texts per number are in `meta.rules`. An account can have 100k findings: the answer counts and
+groups all of them and sends one page of findings (`limit`, default 100, at most 500, from `offset`); a finding's fix
+texts come from `/api/finding`. Filters and groups use `app.rule_index()`, built once per data set.
+
+- Filters: `grantee`, `rule`, `q` (text in the title, grantee, detail or rule number), `area`, `people=1` (findings
+  that reach a person), `off` (comma-separated rules turned off in the browser: left out, counted in `hidden_off`),
+  `sev` (`High` | `Medium` | `Low`; none = the worst one with findings after the other filters, `all` = every one).
+- `by`: `rule` (default, most people affected first), `person`, `object` (most findings first, `""` = none) or `grid`
+  (one group per grantee, worst first). `groups` holds the first 200, `groups_total` counts all.
+- `group=<key>`: the page holds only that group's findings (a rule number, person, object or grantee) and the answer
+  leaves out `rows_unknown`, `admins` and `admins_total`. Without it the page holds every filtered finding, in rule
+  group order for `by=rule`.
 
 ```jsonc
 {
   "scope": "account" | "mine",
-  "filters": {"grantee": "", "sev": "", "rule": ""},
-  "counts": {"High": 12, "Medium": 20, "Low": 9, "Passing": 2},
+  "filters": {"grantee": "", "sev": "High", "rule": "", "q": "", "area": "", "people": false, "off": [], "by": "rule", "group": null},
+  "counts": {"High": 12, "Medium": 20, "Low": 9, "Passing": 2},   // every finding (of grantee=), no other filter
   "per_rule": {"1": 2, "2": 1},
   "skipped": {"14": "skipped (HIERARCHY=0)", "24": "skipped (HIERARCHY=0)", "25": "skipped (ACTIVITY=0)"},  // did not run
-  "findings": [{"num": "10", "title": "...", "severity": "Medium", "why": "...",
-                "grantees": [{"id": "FIN_01", "kind": "user"}],   // same fix merged into one row
-                "detail": "...", "more": 13, "paths": [["..."]], "edge_cls": "write",
-                "iac": "...", "sql": "...", "affects": 14, "impact": "14 users lose access", "same_fix": ""}],
-  // each finding also has "changes" (its fix as What if changes, [] when nothing to revoke) and "objects"
-  "total": 41,
+  "sev_counts": {"Critical": 0, "High": 12, "Medium": 20, "Low": 9},  // after every filter but sev
+  "hidden_off": 0, "areas": ["Role model", "Sensitive data"],
+  "total": 12,                                     // after every filter
+  "groups": [{"key": "10", "title": "...", "severity": "High", "findings": 4, "rules": 1, "people": 14, "kind": null}],
+  // people: by rule and object (null by person); title: by rule; kind: the grantee's, grid only
+  "groups_total": 7,
+  "grid": null,  // by=grid: {"rules": ["5", "9"], "rows": [{"grantee": "PUBLIC", "kind": "group", "severity": "High",
+                 //   "total": 3, "counts": {"9": 3}}]} (the first 200 rows)
+  "findings": [{"id": 17, "num": "10", "title": "...", "severity": "High", "area": "Sensitive data", "grantee": "FIN_01 (user)",
+                "kind": "user", "what": "...", "impact": {"text": "14 users lose access: ...", "tone": "warn"},
+                "people": ["FIN_01"], "people_total": 1, "paths": [["..."]], "paths_total": 3, "fix": true, "same_fix": "",
+                "changes": [{"op": "revoke_role_from_user", "role": "F_FIN", "user": "FIN_01"}], "objects": ["..."]}],
+  // a list row: no iac / sql (fix = it has them), the first path, the first 5 people and objects; changes stay for
+  // the change plan button
+  "findings_total": 12, "offset": 0, "limit": 100,
   "rows_unknown": ["HR.PEOPLE.TBL_EMPLOYEE"],
   "admins": [{"user": "ADMIN_01", "service": false, "roles": ["ACCOUNTADMIN"], "account": ["MANAGE GRANTS"],
-              "paths": [["ADMIN_01", "ACCOUNTADMIN"]], "status": "active", "last_login": "..."}],
+              "paths": [["ADMIN_01", "ACCOUNTADMIN"]], "status": "active", "last_login": "..."}],  // the first 200
+  "admins_total": 1,
   "refs": {}
 }
 ```
 
-`GET /api/rules.csv` (same params): the findings CSV of app.rules_page (header lines Rule checks, Run, Generated).
+`GET /api/rules.csv` (grantee, rule, sev): every finding they match, not one page (header lines Rule checks, Run,
+Generated).
+
+### GET /api/finding?view=&id=
+
+One finding in full, `id` from a `/api/rules` list (its place in the data set's findings; 404 when it is not there):
+`{"view": "shared", "finding": {"id": 17, ...}, "refs": {}}`, the Finding of the user and role pages with `iac`, `sql`,
+up to 5 paths and 50 people.
 
 ### GET /api/review?db=*|DB&schema=&object=&active=0&hideusage=1
 
