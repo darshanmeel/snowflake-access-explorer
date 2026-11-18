@@ -167,6 +167,20 @@ function useWide() {
   return wide;
 }
 
+/** Printed (Save as PDF) only: what the page is about, the data it shows, and the findings per severity in colour. */
+function PrintHead({ meta, page, params }: { meta: Meta; page: Page; params: Params }) {
+  const who = ["user", "role", "name", "a", "obj"].map((k) => params[k]).filter(Boolean).join(" · ");
+  const n = meta.rule_counts ?? {};
+  const per = SEVERITIES.map((s) => [s, meta.rules.filter((r) => r.severity === s).reduce((t, r) => t + (n[r.num] ?? 0), 0)] as const).filter(([, v]) => v);
+  return (
+    <header className="ae-print-head">
+      <div className="ae-ph-title">{LABEL[page]}{who ? `: ${who}` : ""}</div>
+      <div className="ae-ph-scope">Access explorer · {meta.view === "mine" ? "My access" : "shared snapshot"}{meta.run ? ` · data ${meta.run.when}` : ""} · printed {new Date().toISOString().slice(0, 16).replace("T", " ")}</div>
+      {per.length > 0 && <div className="ae-ph-sev">Findings: {per.map(([s, v]) => <span key={s} className={`ae-sevpill ae-sev-${s}`}>{v.toLocaleString()} {s.toLowerCase()}</span>)}</div>}
+    </header>
+  );
+}
+
 /** Findings in the side menu: each severity with findings, opening to its rules (most findings first); a rule opens
  * on Risks & fixes with the rule on top and its findings per role or user. */
 function SideFindings({ meta, page, rule, nav }: { meta: Meta; page: Page; rule?: string; nav: (p: Page, params?: Params) => void }) {
@@ -427,8 +441,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
         {meta ? <Side meta={meta} page={loc.page} rule={loc.params.rule} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
         </div>
         <main className="main">
-          {meta && <p className="ae-print-head">Access explorer · {LABEL[loc.page]}{["user", "role", "name", "a", "obj"].map((k) => loc.params[k]).filter(Boolean).map((v) => ` · ${v}`).join("")}
-            {" · "}{view === "mine" ? "My access" : "Shared snapshot"}{meta.run ? ` · data ${meta.run.when}` : ""} · printed {new Date().toISOString().slice(0, 16).replace("T", " ")}</p>}
+          {meta && <PrintHead meta={meta} page={loc.page} params={loc.params} />}
           {sql !== null && hasData && <SqlPanel page={loc.page} hint={sql} params={{ ...(PERSON.has(loc.page) && !["user", "role", "name", "a"].some((k) => loc.params[k]) ? { user: meta?.default_user ?? undefined } : {}), ...loc.params, view }} onClose={() => setSql(null)} />}
           {notice && (
             <Banner tone={notice.tone} title={notice.title} lines={[notice.text]}>

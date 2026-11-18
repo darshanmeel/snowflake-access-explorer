@@ -9,8 +9,12 @@ body { background: #F6F7F9; }
   .app { display: block; min-height: 0; }
   .main { max-width: none; padding: 0; }
   .ae-tab:not(.on) { display: none; }
-  .ae-print-head { display: block; margin: 0 0 10px; font-size: 11px; color: var(--ae-muted); }
-  .ae-card, tr, .ae-ds { break-inside: avoid; }
+  html, body, .ae-root { background: #fff !important; }
+  .ae-print-head { display: block; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 2px solid var(--ae-ink); }
+  .ae-ph-title { font-size: 20px; font-weight: 700; color: var(--ae-ink); }
+  .ae-ph-scope { font-size: 11px; color: var(--ae-muted); margin: 2px 0 8px; }
+  .ae-ph-sev { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+  .ae-card, tr, .ae-ds, .ae-fg, .ae-kpi { break-inside: avoid; box-shadow: none !important; }
   .ae-scroll { overflow: visible !important; }
 }
 .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100vh; }
