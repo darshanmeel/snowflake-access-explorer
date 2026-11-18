@@ -162,9 +162,12 @@ computed once per build key.
       "nodes": [ /* GraphNode of each member, lane = the group's lane */ ],
       "edges": [ /* holder -> member edges that replace the edges into the group */ ],
       "truncated": 0,                    // members left out (over 1000): use the drill action
-      "drill": {"kind": "drill", "schema": "SALES.PIPELINE"}   // or {"kind": "otype", "otype": "TABLE"}
+      "drill": {"kind": "drill", "schema": "SALES.PIPELINE"},  // or {"kind": "otype", "otype": "TABLE"}
+      "lazy": false,                     // true: nodes and edges left out (see Lazy boxes)
+      "ids": null                        // a lazy lane:<i> box: its role names
     }
   },
+  "src": null,                           // lazy boxes: the GET /api/graph params that draw this graph again
   "legend": {"kinds": ["user", "functional", "technical", "database_role", "object", "schema_group"],
              "edges": ["inherit", "inherit_db", "read", "manage"], "marks": ["sensitive"], "rules": true}
 }
@@ -193,6 +196,12 @@ computed once per build key.
   own grants), as do 6+ group roles; a lane still over 24 boxes folds the rest into one `lane_group`. Folded lines carry
   counts. Opening a box with over 24 members draws buckets instead (`buckets`): objects by schema, then type; roles by
   kind and database; then name ranges.
+- **Lazy boxes** (User, Role and their tab graphs, `server.LAZY`): over 300 members in all combined boxes, every box
+  goes out with its counts only (`lazy: true`, `nodes` / `edges` empty) and the graph carries `src`; a role lane over
+  24 roles (`server.MAX_LANE`) also goes out as one lazy `lane_group` box `lane:<i>` whose `ids` name its roles (lines
+  of other boxes end at it, `graphs.ts expand`), lines into it counting them. Opening a lazy box asks
+  `GET /api/graph?<src>&group=<box id>`, which answers that `GraphGroup` in full (`lazy: false`, at most 1000 members).
+  A big user's graph went from 19 MB (27k member nodes) to under 0.1 MB.
 
 ## Endpoints
 
@@ -274,13 +283,21 @@ read / change / own ladder), `risks` (rule findings per severity), `per_rule` (f
 `unmasked_names`, row-policy tables `row_tables` / `row_list`, dormant users who reach sensitive data with
 `dormant_names`).
 
-### GET /api/access?view=&user=|role=
+### GET /api/access?view=&user=|role=&filter=&q=&usage=0&cell=&min=&sort=risk|name&group=none|schema|type&offset=0&limit=250
 
 A person or a role (My access with `view=mine`): `who` (name, kind, type, status, last login, default role, holders),
-`counts` (read, change, own, runnable, account powers, admin, sensitive, schemas, usage), `objects` (one row per object
-at its highest level: privileges, level, path and number of paths, holder role, sensitive columns, findings), `heat`
-(per schema: read / change / own / sensitive), `why` (the role tree that gives it), `roles`, `deepest`, `findings` with
-`findings_total`, and `refs`. An unknown role answers `404`.
+`counts` (read, change, own, runnable, account powers, admin, sensitive, schemas, usage), `objects` (one page of the
+data list, one row per object at its highest level: privileges, level, path and number of paths, holder role,
+sensitive columns, findings), `total` (rows that match the list filters), `data` (rows before them), `offset`,
+`limit`, `groups` (`group=`: rows per group over every page), `runs` / `powers` (things they can run, powers over the
+account: the first 250 of `runs_total` / `powers_total`), `heat` (per schema: read / change / own / sensitive), `why`
+(the role tree that gives it), `roles`, `deepest`, `findings` with `findings_total`, and `refs`. An unknown role
+answers `404`.
+
+List filters (as the list's controls): `filter=read|change|own|multi`, `q` (in the name), `usage=1` (with database /
+schema USAGE), `cell=<DB.SCHEMA>&min=read|change|own|sensitive` (a heat cell), `sort=name` (else riskiest first),
+`group=schema|type` (rows of a group kept together). The whole list (entries, findings, counts, heat) is worked out
+once per data set and subject; each page picks from it. `GET /api/access.csv` with the same params: every matching row.
 
 ### GET /api/find?q=&limit=20&view=
 
@@ -323,7 +340,7 @@ Producers: `a.grants(u, True, default_only, limit)` (rows), `a.reach(...)` (role
            "last_login": "2026-10-30 08:12", "last_login_text": "2026-10-30 08:12 · 3 days ago", "login_mark": "",
            "login_days": 3},
   "filters": {"roles": "all", "depth": null, "dataonly": true, "schema": "", "otype": "", "on": "", "priv": "",
-              "objects": ["SALES.CORE.TBL_CUSTOMER"], "privileges": ["SELECT", "USAGE"]},
+              "privileges": ["SELECT", "USAGE"]},   // the object picker (on=) searches GET /api/list?what=objects
   "banners": [{"tone": "info", "title": "3 grants hidden in this mode", "lines": ["..."]}],
   "findings": [{"num": "19", "severity": "Medium", "title": "EXECUTE TASK held by a person or consumer role",
                 "grantee": "ENGINEER_01", "kind": "user", "details": ["EXECUTE TASK via ..."]}],
@@ -343,18 +360,11 @@ Producers: `a.grants(u, True, default_only, limit)` (rows), `a.reach(...)` (role
            {"key": "read", "label": "Read", "count": 8}, {"key": "write", "label": "Write", "count": 3},
            {"key": "own", "label": "Own", "count": 2}, {"key": "manage", "label": "Manage", "count": 1},
            {"key": "all", "label": "All", "count": 29}],
-  "privileges": [{
-    "privilege": "SELECT", "cls": "read", "tab": "read", "type": "TABLE",
-    "object": "SALES.CORE.TBL_CUSTOMER", "database": "SALES", "schema": "CORE", "name": "TBL_CUSTOMER",
-    "future_label": null, "granted": "F_ANALYST", "holder": "T_SALES_CORE_READ", "depth": 2,
-    "path": ["ENGINEER_01", "F_ANALYST", "T_SALES_CORE_READ", "SALES.CORE.TBL_CUSTOMER"],
-    "count": 2, "paths_note": "", "sensitive": true,
-    "hidden": false                      // true: database/schema USAGE that Data only hides outside the Usage tab
-  }],
+  // privilege rows: GET /api/privs, a page at a time
   "roles": [{"role": "F_ANALYST", "kind": "functional", "tab": "granted", "depth": 1, "direct": true,
              "path": ["ENGINEER_01", "F_ANALYST"], "count": 1, "admin": false}],
   "multi": {"rows": [{"privilege": "SELECT", "cls": "read", "object": "...", "depth": 2, "path": ["..."]}],
-            "total": 7, "shown": 7},     // every path of rows with count > 1, first 300
+            "total": 7, "shown": 7},     // paths of rows with count > 1: the first 300 listed, total counts them all
   "can_read": [ /* DataView, shared only */ ],
   "sensitive": {"known": true, "roles": ["F_ANALYST"], "rows": [ /* SensitiveReach */ ]},
   "granted": [{"role": "F_ANALYST", "kind": "functional", "default": false, "used": {"queries": 41, "last_used": "..."},
@@ -371,7 +381,23 @@ Producers: `a.grants(u, True, default_only, limit)` (rows), `a.reach(...)` (role
 -> `database_roles` when the role is a database role, else `granted`. Granted roles and Database roles tabs list
 `roles` rows (from `a.reach`) by their `tab`. The Account tab lists `account` (admin roles first, then account
 privileges, `via PUBLIC` grouped) plus `privileges` rows with `tab: "account"`. A tab with count 0 is left out
-(All stays). Each tab's diagram: `GET /api/graph?of=user-tab`.
+(All stays). Each tab's diagram: `GET /api/graph?of=user-tab`. The `usage` card's `takes` (objects removing an
+unused role takes away) is `a.loses_objects`, counted once per data set, user and role.
+
+### GET /api/privs?<the user page's params>&tab=&q=&sort=&dir=1|-1&offset=0&limit=250
+
+User page, one Privileges tab's table, paged on the server (a big user has 200k privilege rows): one row per object
+of the tab (as `components/tabs.ts byObject`: the strongest access, every grant, the shortest path and up to 4 more).
+`q`: every word in some column; `sort`: a column key (`object`, `type`, `access`, `grants`, `holder`, `depth`,
+`count`, `path`; default `depth`). `limit` at most 1000. `GET /api/privs.csv` with the same params: every row.
+
+```jsonc
+{"rows": [{"object": "SALES.CORE.TBL_CUSTOMER", "label": "SALES.CORE.TBL_CUSTOMER", "type": "TABLE", "access": "read",
+           "grants": ["SELECT"], "holder": "T_SALES_CORE_READ", "depth": 2,
+           "path": ["ENGINEER_01", "F_ANALYST", "T_SALES_CORE_READ", "SALES.CORE.TBL_CUSTOMER"], "more": [],
+           "count": 2, "sensitive": true}],
+ "total": 21, "offset": 0, "limit": 250}
+```
 
 ### GET /api/role?view=&name=&depth=&users=0&sensitive=0&schema=&otype=&cut=&lacks=&full=
 
@@ -921,11 +947,12 @@ role from QUERY_HISTORY and who can use it. `usage` adds the objects used per we
 sensitive tags; `rules`, `whatif`, `review` and `home` grants to PUBLIC, admin roles held by users and dormant or
 disabled users with roles.
 
-### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0
+### GET /api/graph?view=&of=user|role|object|check|user-tab|role-tab&...&full=0&group=
 
 Graph alone (the page answers already hold their main graph; this one serves tab diagrams and `full=1` / filter
 changes without the rest of the page). Params: those of the page named by `of`, plus `tab` for `*-tab`.
-Answer: `Graph`. Producers: as the pages; tab graphs `a.down_graph(start, rows_of_tab, walked)` with
+Answer: `Graph`; with `group=<box id>` (a lazy box opened, see Lazy boxes) that box alone as a `GraphGroup` with its
+members, `404` when the graph has no such box. Producers: as the pages; tab graphs `a.down_graph(start, rows_of_tab, walked)` with
 `walked = [x["path"] for x in reach rows of the tab]` for the Granted roles / Database roles tabs.
 
 ## Doubts

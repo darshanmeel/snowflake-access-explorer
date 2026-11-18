@@ -120,6 +120,8 @@ export interface GraphGroup {
   edges: GraphEdge[];
   truncated: number;
   drill: NodeAction | null;
+  lazy?: boolean; // nodes and edges left out: GET graph with the graph's src plus group=<box id> answers this box in full
+  ids?: string[] | null; // a lazy folded role lane ("lane:<i>"): its role names, so other boxes' lines can end at it
 }
 
 export interface Graph {
@@ -133,6 +135,7 @@ export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
   groups: Record<string, GraphGroup>;
+  src?: Record<string, string> | null; // graph endpoint params of this graph when its boxes are lazy
   legend: { kinds: NodeKind[]; edges: EdgeCls[]; marks: Mark[]; rules: boolean; back?: boolean }; // back: a dotted "also deeper" line is drawn
 }
 
@@ -395,7 +398,6 @@ export interface UserPage {
     otype: string;
     on: string;
     priv: string;
-    objects: string[];
     privileges: string[];
   };
   banners: Banner[];
@@ -417,8 +419,7 @@ export interface UserPage {
   account: Account;
   graph: Graph | null;
   tabs: Tab[];
-  privileges: PrivRow[];
-  roles: ReachRow[];
+  roles: ReachRow[]; // the privilege rows themselves come a page at a time from GET privs (PrivsPage)
   multi: { rows: { privilege: string; cls: PrivClass; object: string; depth: number; path: Path }[]; total: number; shown: number };
   can_read: DataView[] | null;
   sensitive: { known: boolean; roles: string[]; rows: SensitiveReach[] } | null;
@@ -427,6 +428,9 @@ export interface UserPage {
   capped: string[];
   refs: Refs;
 }
+
+/** One page of a table paged on the server (GET privs: rows are ObjRow of components/tabs.ts). */
+export interface Paged<R> { rows: R[]; total: number; offset: number; limit: number }
 
 export type HoldCell = "direct" | "inherited" | "owner" | "lacks";
 
@@ -900,7 +904,6 @@ export interface AccessObject {
   holder: string;
   ways: number;
   depth: number;
-  holders: string[];
   sensitive: boolean;
   columns: { column: string; state: ColState; reason: string }[];
   findings: RowFinding[];
@@ -927,7 +930,16 @@ export interface AccessPage {
   view: View;
   who: Who;
   counts: LadderCounts & { sensitive: number; schemas: number };
-  objects: AccessObject[];
+  objects: AccessObject[]; // one page (offset, limit) of the list filters asked for; total: all that match
+  total: number;
+  data: number; // entries in the list before the filters (data, plus names with usage=1)
+  offset: number;
+  limit: number;
+  groups: Record<string, number>; // group=schema|type: entries per group, over every page
+  runs: AccessObject[]; // things they can run, the first PAGE of runs_total
+  runs_total: number;
+  powers: AccessObject[]; // powers over the account, the first PAGE of powers_total
+  powers_total: number;
   heat: { schema: string; read: number; change: number; own: number; sensitive: number }[];
   why: { role: string; kind: NodeKind; note: string; kids: string[] }[];
   findings: Finding[];

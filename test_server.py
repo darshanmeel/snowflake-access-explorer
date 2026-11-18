@@ -15,7 +15,7 @@ c = TestClient(server.make_app(), base_url="http://localhost")
 a = server.a
 server.BACKGROUND = False  # a refresh answers when it is done; test_background runs it in its thread
 
-USER = {"view", "user", "filters", "banners", "findings", "findings_total", "kpis", "account", "graph", "tabs", "privileges",
+USER = {"view", "user", "filters", "banners", "findings", "findings_total", "kpis", "account", "graph", "tabs",
         "roles", "multi", "can_read", "sensitive", "granted", "usage", "capped", "refs"}
 ROLE = {"view", "role", "filters", "kpis", "scope_kpis", "banners", "findings", "readonly_writes", "account", "graph", "held_by",
         "holds", "tabs", "privileges", "roles", "can_read", "capped", "refs"}
@@ -46,7 +46,8 @@ def graph_ok(g):
     assert all(EDGE <= set(e) and e["source"] in ids and e["target"] in ids for e in g["edges"])
     assert all(n["lane"] < len(g["lanes"]) for n in g["nodes"])
     for gid, x in g["groups"].items():
-        assert gid in ids and x["nodes"] and x["count"] >= len(x["nodes"]) - x["truncated"], gid
+        assert gid in ids and (x["nodes"] or x["lazy"]) and x["count"] >= len(x["nodes"]) - x["truncated"], gid
+        assert not x["lazy"] or (g["src"] and not x["nodes"] and not x["edges"]), gid
 
 
 def test_frame():
@@ -73,7 +74,6 @@ def test_user():
     assert d["user"]["name"] == server.DEMO_USER and d["refs"]["kinds"]
     keys = [t["key"] for t in d["tabs"]]
     assert keys[-1] == "all" and {"granted", "database_roles", "usage", "warehouses", "read", "write"} <= set(keys), keys
-    assert {r["tab"] for r in d["privileges"]} <= set(keys)
     assert {"admin", "privileges", "public"} == set(d["account"])
     graph_ok(d["graph"])
     kinds = {n["kind"] for n in d["graph"]["nodes"]}
@@ -96,6 +96,56 @@ def test_user():
     graph_ok(big)
     assert big["groups"] and all(x["kind"] == "database_group" for x in big["groups"].values())
     get("/api/user?name=NOPE", 404)
+
+
+def test_paged():
+    """Big users: privilege rows and Access entries a page at a time (CSV still complete), combined boxes sent empty
+    and opened through graph?group=, the same members as sent whole."""
+    whole = js("/api/graph?of=user&name=SVC_DEPLOY")
+    server.LAZY = 0  # the fake data's boxes are small: every box lazy
+    server.ANSWERS.clear()
+    try:
+        lazy = js("/api/graph?of=user&name=SVC_DEPLOY")
+        tab = js("/api/graph?of=user-tab&name=SVC_DEPLOY&tab=all")
+        role = js(f"/api/role?name={a.FUNC}DEPLOY")["graph"]
+        server.MAX_LANE = 2  # crowded role lanes fold into one lazy box each, its role names sent
+        server.ANSWERS.clear()
+        lanes = js("/api/graph?of=user&name=SVC_DEPLOY")
+        box = next(x for k, x in lanes["groups"].items() if k.startswith("lane:"))
+        roles = js(f"/api/graph?of=user&name=SVC_DEPLOY&group=lane:{box['label'].split(':')[1]}")
+        assert box["ids"] and [n["id"] for n in roles["nodes"]] == box["ids"] and box["count"] == len(box["ids"])
+        drawn = {n["id"] for n in lanes["nodes"]}
+        assert not drawn & set(box["ids"]) and all(e["source"] in drawn and e["target"] in drawn for e in lanes["edges"])
+    finally:
+        server.LAZY, server.MAX_LANE = 300, 24
+        server.ANSWERS.clear()
+    for g in (lazy, tab, role):
+        graph_ok(g)
+        assert g["groups"] and all(x["lazy"] for x in g["groups"].values()) and g["src"]["name"]
+        gid = next(iter(g["groups"]))
+        x = js("/api/graph?" + "&".join(f"{k}={v}" for k, v in (g["src"] | {"group": gid}).items()))
+        assert x["nodes"] and not x["lazy"] and x["count"] == g["groups"][gid]["count"], gid
+    assert {k: [n["id"] for n in v["nodes"]] for k, v in whole["groups"].items()} == {
+        k: [n["id"] for n in js(f"/api/graph?of=user&name=SVC_DEPLOY&group={k}")["nodes"]] for k in lazy["groups"]}
+    get("/api/graph?of=user&name=SVC_DEPLOY&group=NOPE", 404)
+    p = js("/api/privs?name=SVC_DEPLOY&tab=all&limit=5", ["rows", "total", "offset", "limit"])
+    assert len(p["rows"]) == 5 < p["total"] and {"object", "access", "grants", "holder", "depth", "path", "more", "count"} <= set(p["rows"][0])
+    nxt = js("/api/privs?name=SVC_DEPLOY&tab=all&limit=5&offset=5")["rows"]
+    assert not {r["object"] for r in p["rows"]} & {r["object"] for r in nxt}
+    srt = js("/api/privs?name=SVC_DEPLOY&tab=all&limit=500&sort=object&dir=-1")["rows"]
+    assert [r["label"] for r in srt] == sorted((r["label"] for r in srt), reverse=True) and len(srt) == p["total"]
+    q = js("/api/privs?name=SVC_DEPLOY&tab=all&q=finance")
+    assert q["rows"] and q["total"] < p["total"] and all("finance" in str(r).lower() for r in q["rows"])
+    csv_ = get("/api/privs.csv?name=SVC_DEPLOY&tab=all").text.strip().splitlines()
+    assert csv_[0].startswith("Object,Type,Access") and len(csv_) == p["total"] + 1
+    d = js("/api/access?user=SVC_DEPLOY&limit=3", ["objects", "total", "data", "offset", "limit", "runs", "powers"])
+    assert len(d["objects"]) == 3 < d["total"] == d["data"]
+    own = js("/api/access?user=SVC_DEPLOY&filter=own")
+    assert own["total"] and all(o["level"] in ("own", "admin") for o in own["objects"])
+    grp = js("/api/access?user=SVC_DEPLOY&group=schema")
+    assert sum(grp["groups"].values()) == grp["total"]
+    cv = get("/api/access.csv?user=SVC_DEPLOY&filter=own").text.strip().splitlines()
+    assert len(cv) == own["total"] + 1 and "Findings" in cv[0]
 
 
 def test_role():
@@ -605,13 +655,13 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     d = js("/api/access?user=ENGINEER_01", ["who", "counts", "objects", "heat", "why", "refs"])
     n = d["counts"]
     assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (6, 5, 2, 3, 5, 8), n
-    powers = {(x["privileges"][0], x["object"]) for x in d["objects"] if x["category"] == "account"}
+    powers = {(x["privileges"][0], x["object"]) for x in d["powers"]}
     assert powers == {("EXECUTE TASK", "ACCOUNT"), ("VIEW LINEAGE", "ACCOUNT"), ("CREATE TABLE", "SALES.CORE")}, powers
     log = next(x for x in d["objects"] if x["object"] == "SHARED.LOGGING.TBL_LOGGING")
     assert log["findings"][0] == dict(num="17", severity="High", label="read role can write") and log["level"] == "change"
-    wh = next(x for x in d["objects"] if x["object"] == "WH_SALES_XS")
+    wh = next(x for x in d["runs"] if x["object"] == "WH_SALES_XS")
     assert "2" in {f["num"] for f in wh["findings"]}
-    data = [x["object"] for x in d["objects"] if x["category"] == "data"]
+    data = [x["object"] for x in d["objects"]]
     assert len(data) == len(set(data))  # each object once
     assert d["why"][0]["note"] == "default" and d["who"]["secondary_all"]
     r = js(f"/api/access?role={a.FUNC}ENGINEER")

@@ -9,7 +9,8 @@ import {
   type Edge, type EdgeProps, type Node, type NodeProps, type ReactFlowInstance, type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { Graph as G, GraphEdge, GraphNode } from "../api/types";
+import { get } from "../api/client";
+import type { Graph as G, GraphEdge, GraphGroup, GraphNode } from "../api/types";
 import { EDGE, KIND_LABEL, TOKENS, edgeColor, kindStyle, type ThemeName, type Tokens } from "./theme";
 import { GROUP_KINDS, buckets, edgeTip, expand, foldRoles, related } from "./graphs";
 import { layout, nodeSize, roundPath, type Layout, type Pt, badgeLines } from "./layout";
@@ -57,8 +58,12 @@ export function startView(lay: { width: number; height: number; lanes: unknown[]
 export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8, focus = null, hi, flow = false }: GraphProps) {
   const t = TOKENS[theme];
   const [open, setOpen] = useState<Map<string, string>>(new Map()); // opened box -> its label (for the chips)
-  useEffect(() => setOpen(new Map()), [graph]);
-  const folded = useMemo(() => foldRoles(graph), [graph]);
+  const [got, setGot] = useState<Record<string, GraphGroup>>({}); // lazy boxes fetched: graph.src + group=<box>
+  const [fetching, setFetching] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => { setOpen(new Map()); setGot({}); setFailed(null); }, [graph]);
+  const full = useMemo(() => (Object.keys(got).length ? { ...graph, groups: { ...graph.groups, ...got } } : graph), [graph, got]);
+  const folded = useMemo(() => foldRoles(full), [full]);
   const shown = useMemo(() => expand(folded, new Set(open.keys())), [folded, open]);
   const [laid, setLaid] = useState<{ g: G; lay: Layout } | null>(null);
   useEffect(() => {
@@ -67,7 +72,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     return () => { live = false; };
   }, [shown]);
   const lay = laid?.lay ?? null;
-  const busy = !laid || laid.g !== shown; // a layout is running: the old drawing stays, under a note
+  const busy = !laid || laid.g !== shown || !!fetching; // a layout or a box's members on the way: the old drawing stays
 
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0); // 0 until measured: the first view is worked out for the real width
@@ -105,9 +110,20 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
 
   const click = (n: GraphNode) => {
     if (n.action?.kind === "expand" || (shown.groups[n.id] && isBox(n))) {
-      setOpen((m) => new Map(m).set(n.id, n.sub ? `${n.label} · ${n.sub}` : n.label));
+      const label = n.sub ? `${n.label} · ${n.sub}` : n.label;
       setHover(null);
       setTip(null);
+      if (shown.groups[n.id]?.lazy && graph.src) {
+        if (fetching) return;
+        setFetching(label);
+        setFailed(null);
+        get<GraphGroup>("graph", { ...graph.src, group: n.id }).then(
+          (g) => { setGot((m) => ({ ...m, [n.id]: g })); setOpen((m) => new Map(m).set(n.id, label)); },
+          (e: Error) => setFailed(`${label}: ${e.message}`),
+        ).finally(() => setFetching(null));
+        return;
+      }
+      setOpen((m) => new Map(m).set(n.id, label));
       return;
     }
     onNodeClick?.(n);
@@ -177,7 +193,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
           </ReactFlow>
         )}
         {pans && <div className="ae-graph-hint" style={{ color: t.muted }}>Drag to see the rest</div>}
-        {busy && <div className="ae-graph-busy" role="status"><span className="ae-spin" aria-hidden />Laying out {shown.nodes.length} boxes…</div>}
+        {busy && <div className="ae-graph-busy" role="status"><span className="ae-spin" aria-hidden />{fetching ? `Opening ${fetching}…` : `Laying out ${shown.nodes.length} boxes…`}</div>}
         {tip && (
           <div className="ae-graph-tip" style={{ left: tip.x, top: tip.y, background: t.ink, color: t.panel }}>
             {tip.text.split("\n").map((l, i) => <div key={i} className={i ? "" : "ae-graph-tip-head"}>{l}</div>)}
@@ -194,6 +210,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
           ))}
         </div>
       )}
+      {failed && <div className="ae-graph-note" role="alert">Could not open {failed}</div>}
       {graph.note && <div className="ae-graph-note">{graph.note}</div>}
       {legend && <Legend legend={mergeLegend(shown)} theme={theme} severities={SEVERITY_ORDER.filter((v: string) => shown.nodes.some((n) => n.rules.some((r) => r.severity === v)))} />}
     </div>
