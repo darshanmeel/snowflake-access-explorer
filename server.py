@@ -3383,7 +3383,12 @@ def make_app():
         if cross:
             return JSONResponse(dict(detail="cross_site", message="Requests from another site are refused."),
                                 status_code=403)
-        return await call_next(request)
+        try:
+            return await call_next(request)
+        except RuntimeError:  # the page was reloaded or closed while a long answer was made: nobody to answer
+            if await request.is_disconnected():  # (Starlette says "No response returned"); the work is kept
+                return Response(status_code=204)
+            raise
 
     @app.exception_handler(ApiError)
     def api_error(request, x):
