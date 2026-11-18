@@ -228,7 +228,7 @@ export function IdentityCard({ name, tag, line, roles }: {
       {roles && roles.length > 0 && (
         <div className="ae-idroles">
           <span className="ae-muted">Roles in use</span>
-          {roles.map((r) => <span key={r.id} className={`ae-pchip ae-pchip-${r.kind ?? "plain"}`}>{r.id}{r.note ? ` · ${r.note}` : ""}</span>)}
+          {roles.map((r) => <span key={r.id} className={`ae-pchip ae-pchip-${r.kind ?? "plain"}`} title={r.id}>{r.id}{r.note ? ` · ${r.note}` : ""}</span>)}
         </div>
       )}
     </div>
