@@ -2625,13 +2625,15 @@ def account_privs(name, user=False, default_only=False, limit=None):
 
 def admin_holders():
     """Users and roles holding an admin role: rows (grantee, path grantee->...->admin role), at most MAX_PATHS paths
-    per grantee and admin role (admin_ways counts them all)."""
-    out = []
-    for r in sorted(ADMIN):
-        w = up_walk([r])
-        ps = [(x, u, p) for x, u in w["rows"] if (x, u) != (r, False) for p in w["paths"]((x, u))]
-        out += [(x, p[::-1]) for x, u, p in sorted(ps, key=lambda q: up_order(q[2], q[0], q[1]))]
-    return out
+    per grantee and admin role (admin_ways counts them all), once per data set."""
+    def make():
+        out = []
+        for r in sorted(ADMIN):
+            w = up_walk([r])
+            ps = [(x, u, p) for x, u in w["rows"] if (x, u) != (r, False) for p in w["paths"]((x, u))]
+            out += [(x, p[::-1]) for x, u, p in sorted(ps, key=lambda q: up_order(q[2], q[0], q[1]))]
+        return out
+    return cached("admin_holders", make)
 
 
 def up_order(p, x, user):
@@ -2728,9 +2730,13 @@ def ref_time():
 
 
 def login_days(u):
-    """Days since the last login, None when the user never logged in."""
-    last = when((profile.get(u) or {}).get("LAST_SUCCESS_LOGIN"))
-    return None if last is None else (ref_time() - last).days
+    """Days since the last login, None when the user never logged in; once per user and data set (every status and
+    dormancy check asks it, and parsing two timestamps each time slowed pages that count thousands of readers)."""
+    f = memo.setdefault("login_days", {})
+    if u not in f:
+        last = when((profile.get(u) or {}).get("LAST_SUCCESS_LOGIN"))
+        f[u] = None if last is None else (ref_time() - last).days
+    return f[u]
 
 
 def is_service(u):
@@ -2799,11 +2805,22 @@ def tag_hit(rules, tag, value):
     return vals is None or (vals is not False and str(value).upper() in vals)
 
 
+def tag_index():
+    """TAG rows by OBJECT_NAME, each with its place in tags, once per data set: tags_of looks up three names
+    instead of scanning every tag for every object."""
+    def make():
+        out = {}
+        for i, t in enumerate(tags):
+            out.setdefault(t["OBJECT_NAME"], []).append((i, t))
+        return out
+    return cached("tag_at", make)
+
+
 def tags_of(obj):
-    """Every tag on obj, inherited ones included: [(column|None, tag, value, origin)]."""
+    """Every tag on obj, inherited ones included: [(column|None, tag, value, origin)], in TAG order."""
     db, sc, _ = split_name(obj)
-    out = []
-    for t in tags:
+    at, out = tag_index(), []
+    for _, t in sorted((x for n in dict.fromkeys((obj, f"{db}.{sc}", db)) for x in at.get(n, [])), key=lambda x: x[0]):
         o, dm = t["OBJECT_NAME"], t["DOMAIN"]
         if o == obj:
             origin = "inherited" if t.get("APPLY_METHOD") == "INHERITED" else \
@@ -3140,18 +3157,61 @@ def read_roles(obj):
     return set().union(*(ups(r)[0] for r, pv, k in on.get(obj, []) if pv in READ_PRIVS))
 
 
+def sens_roles():
+    """{role: the sensitive objects it reads (READ_PRIVS, any path)}, once per data set: what reads() would give
+    for every role, from the sensitive side."""
+    def make():
+        out = {}
+        for o in sensitive():
+            for r in read_roles(o):
+                out.setdefault(r, set()).add(o)
+        return out
+    return cached("sens_roles", make)
+
+
+def sens_readers(objs):
+    """Users who read one of objs (sensitive objects) through a role they were granted (PUBLIC too): {user: (the
+    objects of objs they read, the granted roles that reach them)}, who_users() of every object from the role side."""
+    sr, objs, out = sens_roles(), set(objs), {}
+    for g in dict.fromkeys([*users_of, "PUBLIC"]):
+        got = sr.get(g, set()) & objs
+        for u in users_on(g) if got else ():
+            o, r = out.setdefault(u, (set(), set()))
+            o |= got
+            r.add(g)
+    return out
+
+
+def sens_path(user, objs):
+    """The shortest path user->...->holder->object to one of objs (READ_PRIVS), the first of objs on a tie."""
+    best, out = best_paths(user, True), None
+    for o in objs:
+        for h, pv, _ in on.get(o, []):
+            if pv in READ_PRIVS and h in best and (out is None or len(best[h]) + 1 < len(out)):
+                out = best[h] + [o]
+    return out
+
+
+def read_path(role, obj):
+    """reads([role])[obj] without reading everything else: the shortest path role->...->holder->obj."""
+    hs = {h for h, pv, _ in on.get(obj, []) if pv in READ_PRIVS}
+    return next((p + [obj] for x, p in below(role).items() if x in hs), None)
+
+
 def sensitive_rank():
     """Sensitive objects, most people first. Row: object, database, schema, name, kind, tags, cols, masked (k, n),
-    row_policies, users, people, disabled, service, admin, roles (roles with read)."""
-    out, adm = [], admin_users()
-    for o, t in sensitive().items():
-        us, cols, ps = readers(o), sensitive_cols(o), policies_of(o)
-        db, sc, nm = split_name(o)
-        out.append(dict(object=o, database=db, schema=sc, name=nm, kind=kinds.get(o), tags=t, cols=cols,
-                        masked=(sum(c in ps["columns"] for c in cols), len(cols)),
-                        row_policies=[p["name"] for p in ps["rows"]], users=sorted(us), **split_users(us, adm),
-                        roles=sorted(read_roles(o))))
-    return sorted(out, key=lambda r: (-len(r["people"]) - len(r["disabled"]) - len(r["service"]), r["object"]))
+    row_policies, users, people, disabled, service, admin, roles (roles with read). Once per data set."""
+    def make():
+        out, adm = [], admin_users()
+        for o, t in sensitive().items():
+            us, cols, ps = readers(o), sensitive_cols(o), policies_of(o)
+            db, sc, nm = split_name(o)
+            out.append(dict(object=o, database=db, schema=sc, name=nm, kind=kinds.get(o), tags=t, cols=cols,
+                            masked=(sum(c in ps["columns"] for c in cols), len(cols)),
+                            row_policies=[p["name"] for p in ps["rows"]], users=sorted(us), **split_users(us, adm),
+                            roles=sorted(read_roles(o))))
+        return sorted(out, key=lambda r: (-len(r["people"]) - len(r["disabled"]) - len(r["service"]), r["object"]))
+    return cached("sensitive_rank", make)
 
 
 PII_TAGS = re.compile(os.environ.get("PII_TAGS", "IDENTIFIER|PII|PERSONAL"), re.I)  # catalog filter "PII / identifiers"
@@ -3167,17 +3227,19 @@ def protection(cols, k):
 def catalog():
     """Screen 8: sensitive_rank() rows with protection (status, columns [dict(column, masked, policies)], unmasked),
     labels (tag=value), groups (pii / confidential from the tag values) and readers (users who can read it, any
-    path). Most exposed first: status, then unmasked columns, then readers."""
-    out = []
-    for r in sensitive_rank():
-        ps = policies_of(r["object"])["columns"]
-        cols = [dict(column=c, masked=c in ps, policies=[p["name"] for p in ps.get(c, [])]) for c in r["cols"]]
-        labs = list(dict.fromkeys(tag_label(t, v) for _, t, v, _ in r["tags"]))
-        out.append(r | dict(status=protection(r["cols"], r["masked"][0]), columns=cols,
-                            unmasked=sum(not c["masked"] for c in cols), labels=labs, readers=len(r["users"]),
-                            groups=[g for g, rx in (("pii", PII_TAGS), ("confidential", CONF_TAGS))
-                                    if any(rx.search(x) for x in labs)]))
-    return sorted(out, key=lambda r: (PROTECTION.index(r["status"]), -r["unmasked"], -r["readers"], r["object"]))
+    path). Most exposed first: status, then unmasked columns, then readers. Once per data set."""
+    def make():
+        out = []
+        for r in sensitive_rank():
+            ps = policies_of(r["object"])["columns"]
+            cols = [dict(column=c, masked=c in ps, policies=[p["name"] for p in ps.get(c, [])]) for c in r["cols"]]
+            labs = list(dict.fromkeys(tag_label(t, v) for _, t, v, _ in r["tags"]))
+            out.append(r | dict(status=protection(r["cols"], r["masked"][0]), columns=cols,
+                                unmasked=sum(not c["masked"] for c in cols), labels=labs, readers=len(r["users"]),
+                                groups=[g for g, rx in (("pii", PII_TAGS), ("confidential", CONF_TAGS))
+                                        if any(rx.search(x) for x in labs)]))
+        return sorted(out, key=lambda r: (PROTECTION.index(r["status"]), -r["unmasked"], -r["readers"], r["object"]))
+    return cached("catalog", make)
 
 
 ADMIN_BOX = "Admin roles"  # flow: a user holding an admin role reaches every object through it
@@ -3189,48 +3251,97 @@ def flow_group(u, adm):
     return "admin" if u in adm else "risky" if stale(u) else "service" if is_service(u) else "active"
 
 
+def flow_sets(max_roles=None):
+    """sens_flow() with the users of every box and link: dict(groups [(id, label, users)], roles [(id, kind, users)],
+    objects [(node, users)], links {(source, target): users}, group_of {user: group}), once per data set. A user reads
+    an object through each role they were granted (PUBLIC too) that reaches a holder of a read grant on it
+    (sens_roles), so one user set per granted role serves every object it reaches: no walk per object."""
+    def make():
+        s, adm, sr = sensitive(), admin_users(), sens_roles()
+        per = {g: set(users_on(g)) - set(adm) for g in dict.fromkeys([*users_of, "PUBLIC"]) if sr.get(g)}
+        per = {g: us for g, us in per.items() if us} | ({ADMIN_BOX: set(adm)} if adm and s else {})
+        keep = sorted(per, key=lambda r: (r != ADMIN_BOX, -len(per[r]), r))
+        other = set(keep[max_roles or MAX_OBJECTS:])
+        box = lambda r: f"Other roles ({len(other)})" if r in other else r
+        links, roles, objs, grp = {}, {}, {}, {}
+        for r in keep:
+            for o in s if r == ADMIN_BOX else sr[r]:
+                links.setdefault((box(r), o), set()).update(per[r])
+                objs.setdefault(o, set()).update(per[r])
+            roles.setdefault(box(r), set()).update(per[r])
+        for u in set().union(*per.values()) if per else ():
+            grp.setdefault(flow_group(u, adm), set()).add(u)
+        for g, us in grp.items():
+            for b, bu in roles.items():
+                if us & bu:
+                    links[(g, b)] = us & bu
+        cat = {r["object"]: r for r in catalog()}
+        nodes = [(dict(id=o, label=split_name(o)[2] or o, ns=".".join(split_name(o)[:2]), status=cat[o]["status"],
+                       unmasked=[c["column"] for c in cat[o]["columns"] if not c["masked"]],
+                       masked=[c["column"] for c in cat[o]["columns"] if c["masked"]],
+                       row_policies=cat[o]["row_policies"]), us) for o, us in objs.items()]
+        return dict(groups=[(g, w, grp[g]) for g, w in FLOW_WORD.items() if g in grp],
+                    roles=[(r, "admin" if r == ADMIN_BOX else "fold" if r not in per else role_kind(r), us)
+                           for r, us in roles.items()],
+                    objects=sorted(nodes, key=lambda x: (-len(x[1]), x[0]["id"])), links=links,
+                    group_of={u: g for g, us in grp.items() for u in us})
+    return cached(("flow", max_roles), make)
+
+
 def sens_flow(max_roles=None):
     """Screen 16, where sensitive data flows: people (by flow_group) -> the role they were granted (first role on the
     path) -> sensitive object they read (READ_PRIVS). Admin users go through one ADMIN_BOX to every sensitive object.
     Over max_roles roles, those with the fewest users fold into "Other roles (N)". Returns dict(groups, roles,
-    objects, links): nodes dict(id, label, users), roles also kind, objects also ns, status, unmasked, masked,
-    row_policies; links dict(source, target, users): the users that flow over the link."""
-    s, adm = sensitive(), admin_users()
-    via = {}  # (granted role, object) -> users
-    for o in s:
-        for (x, pv), e in who_users(o).items():
-            if pv in READ_PRIVS and x not in adm:
-                for g in e["firsts"]:
-                    via.setdefault((g, o), set()).add(x)
-        if adm:
-            via.setdefault((ADMIN_BOX, o), set()).update(adm)
-    per = {}
-    for (r, o), us in via.items():
-        per.setdefault(r, set()).update(us)
-    keep = sorted(per, key=lambda r: (r != ADMIN_BOX, -len(per[r]), r))
-    other = set(keep[max_roles or MAX_OBJECTS:])
-    box = lambda r: f"Other roles ({len(other)})" if r in other else r
-    links, roles = {}, {}
-    for (r, o), us in via.items():
-        links.setdefault((box(r), o), set()).update(us)
-    for r in keep:
-        roles.setdefault(box(r), set()).update(per[r])
-        for u in per[r]:
-            links.setdefault((flow_group(u, adm), box(r)), set()).add(u)
-    every = set().union(*per.values()) if per else set()
-    cat = {r["object"]: r for r in catalog()}
-    objs = [dict(id=o, label=split_name(o)[2] or o, ns=".".join(split_name(o)[:2]), status=cat[o]["status"],
-                 unmasked=[c["column"] for c in cat[o]["columns"] if not c["masked"]],
-                 masked=[c["column"] for c in cat[o]["columns"] if c["masked"]], row_policies=cat[o]["row_policies"],
-                 users=sorted(set().union(*(us for (r, o2), us in via.items() if o2 == o))))
-            for o in s]
-    return dict(groups=[dict(id=g, label=w, users=sorted(u for u in every if flow_group(u, adm) == g))
-                        for g, w in FLOW_WORD.items() if any(flow_group(u, adm) == g for u in every)],
-                roles=[dict(id=r, label=r, users=sorted(us),
-                            kind="admin" if r == ADMIN_BOX else "fold" if r not in per else role_kind(r))
-                       for r, us in roles.items()],
-                objects=sorted((o for o in objs if o["users"]), key=lambda o: (-len(o["users"]), o["id"])),
-                links=[dict(source=x, target=y, users=sorted(us)) for (x, y), us in sorted(links.items())])
+    objects, links): nodes dict(id, label, count (users)), roles also kind, objects also ns, status, unmasked, masked,
+    row_policies; links dict(source, target, count): the users that flow over the link. Who they are: flow_follow."""
+    f = flow_sets(max_roles)
+    return dict(groups=[dict(id=g, label=w, count=len(us)) for g, w, us in f["groups"]],
+                roles=[dict(id=r, label=r, count=len(us), kind=k) for r, k, us in f["roles"]],
+                objects=[n | dict(count=len(us)) for n, us in f["objects"]],
+                links=[dict(source=x, target=y, count=len(us)) for (x, y), us in sorted(f["links"].items())])
+
+
+def flow_follow(sel, max_roles=None):
+    """Screen 16, following one box sel (None or not a box: everyone): every user through it, then each user's own
+    role and object links. dict(sel, lit [boxes at full strength] | None, width {"source>target": users on the link},
+    tone {"source>target": the group of most of them}, headline, users (sel's box, sorted, first MAX_PATHS), count)."""
+    f = flow_sets(max_roles)
+    gof, rids = f["group_of"], {r for r, _, _ in f["roles"]}
+    names = {g: w for g, w, _ in f["groups"]} | {n["id"]: n["label"] for n, _ in f["objects"]} | {r: r for r in rids}
+    sel = sel if sel in names else None
+    mine = next((us for g, _, us in f["groups"] if g == sel), None)  # sel is a group of people
+    on = {}  # role box -> {object: the selection's users on that link}
+    for (b, o), us in f["links"].items():
+        if b in rids and (mine is not None or sel in (None, b, o)):
+            got = us & mine if mine is not None else us
+            if got:
+                on.setdefault(b, {})[o] = got
+    width, tone, every, objs = {}, {}, set(), set()
+    for b, per in on.items():
+        into = {}
+        for o, us in per.items():
+            n = Counter(gof[u] for u in us)
+            width[f"{b}>{o}"], tone[f"{b}>{o}"] = len(us), max(FLOW_WORD, key=lambda g: (n[g], g == "risky"))
+            for u in us:
+                into.setdefault(gof[u], set()).add(u)
+            every |= us
+            objs.add(o)
+        for g, us in into.items():
+            width[f"{g}>{b}"], tone[f"{g}>{b}"] = len(us), g
+    rs = sorted(on)
+    pl = lambda k, w, many=None: f"{k} {w if k == 1 else many or w + 's'}"
+    lst = lambda xs: (f"{', '.join(xs[:3])} and {len(xs) - 3} more" if len(xs) > 3
+                      else " and ".join([", ".join(xs[:-1]), xs[-1]]) if len(xs) > 1 else "".join(xs))
+    who, reach = pl(len(every), "person", "people"), pl(len(objs), "sensitive object")
+    head = (f"{who} reach {pl(len(f['objects']), 'sensitive object')} through {pl(len(f['roles']), 'role')}." if sel is None
+            else f"{pl(len(every), 'dormant or disabled person', 'dormant or disabled people')} still reach {reach}, "
+                 f"through {lst(rs)}." if sel == "risky"
+            else f"{names[sel]}: {who} reach {reach}, through {lst(rs)}." if mine is not None
+            else f"{sel}: {who} reach {reach} through it." if sel in rids
+            else f"{names[sel]}: reached by {who} through {lst(rs)}.")
+    box = mine if mine is not None else every
+    return dict(sel=sel, lit=None if sel is None else sorted({sel, *rs, *objs, *(gof[u] for u in every)}), width=width,
+                tone=tone, headline=head, users=sorted(box)[:MAX_PATHS], count=len(box))
 
 
 GRID_MAX = int(os.environ.get("GRID_MAX", "60"))  # review grid: object columns drawn, most-reached first
@@ -3399,8 +3510,13 @@ def role_stats(role, limit=None):
 def grantees(obj, kind=None, limit=None):
     """Object page, all grantees: one row per (grantee, privilege). Row: grantee, kind, privilege, cls,
     depth (see depth(): grant holder = 1, ANALYST_01 on TBL_CUSTOMER = 3), path (shortest, grantee->...->holder->object),
-    paths (at most MAX_PATHS), count (every path, counted)."""
-    k0, out = kind or kinds.get(obj), []
+    paths (at most MAX_PATHS), count (every path, counted). The last object's rows are kept: the object page asks
+    three times (stats, matrix, grantees)."""
+    last = memo.get("grantees")
+    if last and last[0] == (obj, kind, limit):
+        capped.update(last[2])  # the walks cut at MAX_HOPS, as the first call met them
+        return last[1]
+    k0, out, was = kind or kinds.get(obj), [], set(capped)
     rows = [(r, pv) for r, pv, k in on.get(obj, []) if kind in (None, k)]
     for pv in dict.fromkeys(pv for _, pv in rows):
         w = up_walk([r for r, q in rows if q == pv], None if limit is None else limit - 1, limit)
@@ -3408,7 +3524,9 @@ def grantees(obj, kind=None, limit=None):
             ps = [p[::-1] + [obj] for p in w["paths"]((x, u))]
             out.append(dict(grantee=x, kind="user" if u else role_kind(x), privilege=pv, cls=priv_class(pv, k0),
                             depth=depth(ps[0][:-1], u), path=ps[0], paths=ps, count=n))
-    return sorted(out, key=lambda r: (len(r["path"]), r["grantee"], r["kind"] == "user", r["privilege"]))
+    out = sorted(out, key=lambda r: (len(r["path"]), r["grantee"], r["kind"] == "user", r["privilege"]))
+    memo["grantees"] = ((obj, kind, limit), out, capped - was)
+    return out
 
 
 STANDARD = {"TABLE": {"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES"}, "VIEW": {"SELECT", "REFERENCES"},
@@ -3430,12 +3548,14 @@ def valid_privs(kind):
 
 
 def admin_users():
-    """Users holding an admin role: {user: [admin roles]}."""
-    out = {}
-    for x, p in admin_holders():
-        if from_user(p) and p[-1] not in out.get(x, []):
-            out.setdefault(x, []).append(p[-1])
-    return out
+    """Users holding an admin role: {user: [admin roles]}, once per data set."""
+    def make():
+        out = {}
+        for x, p in admin_holders():
+            if from_user(p) and p[-1] not in out.get(x, []):
+                out.setdefault(x, []).append(p[-1])
+        return out
+    return cached("admin_users", make)
 
 
 def admin_people():
@@ -3464,7 +3584,8 @@ def matrix(obj, kind=None, limit=None, priv=None):
     holders]}.
     priv: only users who have it (or OWNERSHIP, which implies it). Users with a path first, then admin users."""
     k0 = kind or kinds.get(obj)
-    cols = [c for c in valid_privs(k0) if c == "OWNERSHIP" or any(pv == c for _, pv, k, _ in privs if k == k0)]
+    found = cached(("privs_on", k0), lambda: {pv for _, pv, k, _ in privs if k == k0})
+    cols = [c for c in valid_privs(k0) if c == "OWNERSHIP" or c in found]
     got = {}
     for r in grantees(obj, kind, limit):
         if r["kind"] == "user" and from_user(r["path"]):
@@ -6088,15 +6209,15 @@ def rules_sensitive(only=None):
             o0, best = next(iter(v)), best_paths(u, True)
             out.append(find("10", u, "; ".join(f"{', '.join(pv)} on {o}" for o, pv in v.items()),
                             min((best[r] for _, _, r in got[o0]), key=len) + [o0], edges, user=True))
+    sr = sens_roles() if HIERARCHY_ON else {}
     for r in roles:  # 11: the fix cuts every held role (and own grant) that leads to sensitive data
         if HIERARCHY_ON and role_kind(r) == "group" and inside(only, r, "11"):
-            got = reads([r])
-            objs = sorted(set(got) & set(s))
+            objs = sorted(sr.get(r, ()))
             if objs:
-                edges = [role_edge(r, c) for c in sorted(holds.get(r, [])) if set(reads([c])) & set(s)]
+                edges = [role_edge(r, c) for c in sorted(holds.get(r, [])) if c in sr]
                 edges += [priv_edge(r, pv, k, o) for pv, k, o in granted.get(r, []) if o in s and pv in READ_PRIVS]
                 out.append(find("11", r, f"reads {len(objs)} sensitive: {', '.join(objs)}; {len(users_through(r))} "
-                                         "users", got[objs[0]], edges))
+                                         "users", read_path(r, objs[0]), edges))
     for r, pv, k, o in privs:  # 15: read access to future tables / views; owning them (the IaC owner or build
         # pattern) and future functions, stages or schemas open no data before classification
         if (k.startswith("FUTURE") and is_data(k.replace("FUTURE ", "")) and pv in READ_PRIVS - {"OWNERSHIP"}

@@ -414,7 +414,7 @@ Role page. Producers: `a.role_stats(r, limit)`, `a.holds_of(r)`, `a.held(r, limi
 Admin role: `admin: true`, no effective privileges or roles listed, a `bad` banner. An admin role nobody holds:
 `404 not_found` with `message` pointing to People with admin roles.
 
-### GET /api/object?view=&name=&type=&priv=&active=0&users=0
+### GET /api/object?view=&name=&type=&priv=&active=0&users=0&m_offset=0&limit=50
 
 Object page. Producers: `a.object_stats(o, t, priv)`, `a.admin_holders()` + `a.from_user`, `a.matrix(o, t, priv=)`,
 `a.grantees(o, t)`, `a.object_graph(o, t, shown, users)`, `a.tags_of(o)`, `a.policies_of(o)`, `a.tag_rules()`,
@@ -443,7 +443,8 @@ Object page. Producers: `a.object_stats(o, t, priv)`, `a.admin_holders()` + `a.f
                        "cells": {"SELECT": {"has": true, "owner": false, "depth": 3, "count": 1, "title": "SELECT via ..."}},
                        "seen": {"EMAIL": {"state": "masked", "reason": "..."}}, "rows_state": {"state": "all", "reason": "..."},
                        "via": [{"classes": ["read"], "roles": ["GRP_ANALYSTS"], "holders": ["T_SALES_CORE_READ"]}],
-                       "depth": 3, "paths": 1, "path": ["..."], "admin_paths": []}]},
+                       "depth": 3, "paths": 1, "path": ["..."], "admin_paths": []}],   // admin_paths: admin rows only
+             "total": 9, "offset": 0},   // rows: one page (m_offset=, limit=; limit=0 every row, the CSV)
   "graph": { /* Graph: lanes Users, Depth n ... Depth 1 · Grant holders, Object */ },
   "sees": {"cols": ["EMAIL"], "row_policy": true,
            "rows": [{"role": "F_HR", "rows": {"state": "all", "reason": "..."}, "columns": [{"column": "EMAIL", "state": "clear", "reason": "..."}]}]},
@@ -591,11 +592,17 @@ else a role. Default B: the person sharing most roles with A, not an admin.
   old: { rows: [{ object, a, b }], diff[] } | null, refs }
 ```
 
-### GET /api/sensitive?view=&tag=&db=&people=0&a=&b=
+### GET /api/sensitive?view=&tag=&db=&people=0&a=&b=&o_offset=0&r_offset=0&limit=50
 
-Sensitive data. Producers: `a.governance_kpis()`, `a.cached("sens", a.sensitive)`, `a.sensitive_rank()`,
-`a.who_can(o)` + `a.from_user`, `a.split_users`, `a.admin_users()`, `a.admin_paths(u, True)`, `a.reads([role])`,
+Sensitive data. Producers: `a.governance_kpis()`, `a.cached("sens", a.sensitive)`, `a.sensitive_rank()` (once per
+data set), `a.sens_readers(objects)` + `a.sens_path(u, objects)` (readers from the role side: `a.sens_roles()`, no
+walk per object), `a.split_users`, `a.admin_users()`, `a.admin_paths(u, True)`, `a.sens_roles()` (default roles to
+compare: the functional roles reading the most sensitive objects), `a.reads([role])` (the two compared),
 `a.data_view(role, o, False)` (mask text), `a.tag_label`, `a.run["SOURCES"]["tags"]`.
+
+`objects` and `readers` are one page each (`o_offset=` / `r_offset=`, `limit=` rows, 50 by default; an offset past
+the end starts at 0) with `objects_total` / `readers_total` and the offsets used; `limit=0` sends every row (the CSV
+button asks it). The KPIs, tabs and catalog count every row.
 
 ```jsonc
 {
@@ -606,10 +613,13 @@ Sensitive data. Producers: `a.governance_kpis()`, `a.cached("sens", a.sensitive)
            "unmasked": 3, "stale": ["OLD_USER_01"]},
   "objects": [{"object": "...", "database": "SALES", "schema": "CORE", "name": "TBL_CUSTOMER", "type": "TABLE",
                "tags": [{"label": "SENSITIVITY=PII", "origins": ["on column EMAIL"]}], "cols": ["EMAIL"],
-               "masked": [1, 2], "row_policies": ["..."], "people": ["..."], "disabled": [], "service": [], "admin": [],
+               "masked": [1, 2], "row_policies": ["..."],
+               "readers": {"active": 8, "dormant": 2, "service": 1, "admin": 2},   // each reader once; admin: only via an admin role
                "roles": ["..."]}],
-  "readers": [{"user": "ANALYST_01", "type": "PERSON", "status": "active", "last_login_text": "...", "objects": ["..."],
-               "roles": ["GRP_ANALYSTS"], "path": ["..."], "via_admin": false, "admin_paths": []}],
+  "objects_total": 6, "objects_offset": 0,
+  "readers": [{"user": "ANALYST_01", "type": "PERSON", "status": "active", "last_login_text": "...", "objects": 3,
+               "roles": ["GRP_ANALYSTS"], "path": ["..."], "via_admin": false, "admin_paths": []}],  // most objects first, then admins
+  "readers_total": 14, "readers_offset": 0,
   "compare": {"a": "F_ANALYST", "b": "F_HR", "roles": ["..."],
               "rows": [{"object": "...", "a": "EMAIL masked · all rows", "b": null}], "diff": ["..."]},
   "refs": {}
@@ -621,18 +631,25 @@ Sensitive data. Producers: `a.governance_kpis()`, `a.cached("sens", a.sensitive)
 "status": "not"|"partly"|"protected"|"whole", "masked": [1, 3], "columns": [{"column", "masked", "policies"}],
 "unmasked": 2, "row_policies": [], "readers": 6, "admin": 2}]`.
 
-### GET /api/flow?view=
+### GET /api/flow?view=&sel=
 
-Screen 16, where sensitive data flows (shared only; `state` "mine" / "none" otherwise). Producer: `a.sens_flow()`.
+Screen 16, where sensitive data flows (shared only; `state` "mine" / "none" otherwise). Producers: `a.sens_flow()`
+(boxes and links with people counts, once per data set) and `a.flow_follow(sel)` (the box followed: `sel=` a box id,
+`none` for everyone, default `select`; an unknown id follows everyone).
 
 ```jsonc
 {
   "state": "ok", "select": "risky",                       // default selection: the dormant or disabled
-  "groups": [{"id": "risky", "label": "Dormant or disabled", "users": ["FIN_14"]}],   // active | risky | admin | service
-  "roles": [{"id": "GRP_EMEA_ALL", "label": "GRP_EMEA_ALL", "users": ["..."], "kind": "group"}],  // "Admin roles" kind admin, "Other roles (N)" kind fold
+  "groups": [{"id": "risky", "label": "Dormant or disabled", "count": 4}],   // active | risky | admin | service
+  "roles": [{"id": "GRP_EMEA_ALL", "label": "GRP_EMEA_ALL", "count": 3, "kind": "group"}],  // "Admin roles" kind admin, "Other roles (N)" kind fold
   "objects": [{"id": "SALES.CORE.TBL_CUSTOMER", "label": "TBL_CUSTOMER", "ns": "SALES.CORE", "status": "partly",
-               "unmasked": ["BIRTH_DATE", "PHONE"], "masked": ["EMAIL"], "row_policies": [], "users": ["..."]}],
-  "links": [{"source": "risky", "target": "GRP_EMEA_ALL", "users": ["FIN_14"]}],     // group -> role, role -> object
+               "unmasked": ["BIRTH_DATE", "PHONE"], "masked": ["EMAIL"], "row_policies": [], "count": 9}],
+  "links": [{"source": "risky", "target": "GRP_EMEA_ALL", "count": 1}],     // group -> role, role -> object
+  "follow": {"sel": "risky", "lit": ["GRP_EMEA_ALL", "risky", "..."],      // null with no selection: every box lit
+             "width": {"GRP_EMEA_ALL>SALES.CORE.TBL_CUSTOMER": 1},         // people of the selection per link
+             "tone": {"GRP_EMEA_ALL>SALES.CORE.TBL_CUSTOMER": "risky"},     // the group most of them are in
+             "headline": "4 dormant or disabled people still reach 3 sensitive objects, through ...",
+             "users": ["FIN_12", "..."], "count": 4},                       // the box's people, first 200 (MAX_PATHS)
   "refs": {}
 }
 ```

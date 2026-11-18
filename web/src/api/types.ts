@@ -591,7 +591,7 @@ export interface ObjectPage {
   };
   admin_paths: Path[];
   sensitivity: Sensitivity | null;
-  matrix: { privs: string[]; sensitive_cols: string[]; row_policy: boolean; rows: MatrixRow[] };
+  matrix: { privs: string[]; sensitive_cols: string[]; row_policy: boolean; rows: MatrixRow[]; total: number; offset: number }; // rows: one page (m_offset=, limit=)
   graph: Graph | null;
   sees: {
     cols: string[];
@@ -713,23 +713,24 @@ export interface SensitivePage {
     cols: string[];
     masked: [number, number];
     row_policies: string[];
-    people: string[];
-    disabled: string[];
-    service: string[];
-    admin: string[];
+    readers: { active: number; dormant: number; service: number; admin: number }; // each reader once
     roles: string[];
-  }[];
+  }[]; // one page: objects_offset, limit= rows (limit=0: all)
+  objects_total: number;
+  objects_offset: number;
   readers: {
     user: string;
     type: string;
     status: UserStatus;
     last_login_text: string;
-    objects: string[];
+    objects: number; // sensitive objects read
     roles: string[];
     path: Path | null;
     via_admin: boolean;
     admin_paths: Path[];
-  }[];
+  }[]; // one page, as objects
+  readers_total: number;
+  readers_offset: number;
   compare: { a: string; b: string; roles: string[]; rows: { object: string; a: string | null; b: string | null }[]; diff: string[] };
   catalog: CatalogRow[]; // screen 8, most exposed first
   refs: Refs;
@@ -1137,8 +1138,10 @@ export interface GridPage {
 }
 
 /** Screen 16 (/api/flow). */
-export interface FlowNode { id: string; label: string; users: string[]; kind?: string; ns?: string; status?: string; unmasked?: string[]; masked?: string[]; row_policies?: string[] }
-export interface FlowLink { source: string; target: string; users: string[] }
+export interface FlowNode { id: string; label: string; count: number; kind?: string; ns?: string; status?: string; unmasked?: string[]; masked?: string[]; row_policies?: string[] }
+export interface FlowLink { source: string; target: string; count: number }
+/** The box followed (sel=): link keys "source>target" -> people and their main group; users: the box's first 200. */
+export interface FlowFollow { sel: string | null; lit: string[] | null; width: Record<string, number>; tone: Record<string, string>; headline: string; users: string[]; count: number }
 export interface FlowPage {
   view: View;
   state: "ok" | "mine" | "none";
@@ -1147,6 +1150,7 @@ export interface FlowPage {
   objects: FlowNode[];
   links: FlowLink[];
   select: string | null;
+  follow: FlowFollow | null;
   refs: Refs;
 }
 

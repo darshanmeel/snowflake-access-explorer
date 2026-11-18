@@ -10,6 +10,7 @@ import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick
 import { ActivityTab, UseLine } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { remember } from "./Home";
+import { PagedTable } from "./paged";
 import { AdminTable } from "./Rules";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 import { byLevel, NOTE, ORDER, sameLabel, stepsOf, TITLE } from "./who";
@@ -312,7 +313,7 @@ export function ObjectDetail() {
             <GraphCard g={d.graph} refs={d.refs} />
             <Tabs active={part} onChange={setPart} tabs={[
               { key: "who", label: "Who has access", count: d.grantees.length },
-              { key: "users", label: "Users × privileges", count: d.matrix.rows.length },
+              { key: "users", label: "Users × privileges", count: d.matrix.total },
               ...(d.sees ? [{ key: "sees", label: "What each role sees", count: d.sees.rows.length }] : []),
               ...(d.sensitivity ? [{ key: "sens", label: "Sensitivity", count: d.sensitivity.columns.length, tone: o.sensitive ? "warn" as const : null }] : []),
             ]} />
@@ -335,7 +336,8 @@ export function ObjectDetail() {
             )}
             {part === "users" && <Card title="Users" sub="Every user, with what they can do here" scroll
               right={c.view === "shared" && <button type="button" className="ae-btn" onClick={() => c.nav("review", { show: "grid", object: o.id, columns: "privileges" })}>Review people × privileges</button>}>
-              <DataTable csv={`${o.name}_users.csv`} rows={d.matrix.rows} rowTone={(r: MatrixRow) => (r.admin.length ? "bad" : null)}
+              <PagedTable path="object" at="m_offset" total={d.matrix.total} offset={d.matrix.offset} pick={(x: ObjectPage) => x.matrix.rows}
+                csv={`${o.name}_users.csv`} rows={d.matrix.rows} rowTone={(r: MatrixRow) => (r.admin.length ? "bad" : null)}
                 columns={[
                   col("u", "User", (r: MatrixRow) => r.user, { render: (r: MatrixRow) => <NameLink id={r.user} refs={d.refs} /> }),
                   col("t", "Type", (r: MatrixRow) => r.type), col("s", "Status", (r: MatrixRow) => r.status),

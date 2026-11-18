@@ -1959,12 +1959,22 @@ def test_review_catalog_flow():  # screens 6, 8, 16: review grid, sensitive cata
     assert o["columns"][0]["id"] == "OWNERSHIP" and {x["id"] for x in o["columns"]} >= {"SELECT", "INSERT"}
     assert all(list(x["cells"]) for x in o["rows"])
     f = a.sens_flow()
-    grp = {x["id"]: x["users"] for x in f["groups"]}
+    grp = {x["id"]: a.flow_follow(x["id"])["users"] for x in f["groups"]}
     assert set(grp["risky"]) == {"ANALYST_02", "FIN_12", "FIN_13", "FIN_14"} and grp["admin"] == ["ADMIN_01", "OPS_01"]
     assert grp["service"] == ["SVC_DEPLOY"] and f["roles"][0]["id"] == a.ADMIN_BOX
+    assert all(x["count"] == len(grp[x["id"]]) for x in f["groups"])
     ids = {x["id"] for x in f["groups"] + f["roles"] + f["objects"]}
-    assert all(l["source"] in ids and l["target"] in ids and l["users"] for l in f["links"])
+    assert all(l["source"] in ids and l["target"] in ids and l["count"] for l in f["links"])
     risky = {l["target"] for l in f["links"] if l["source"] == "risky"}
+    fr, ev = a.flow_follow("risky"), a.flow_follow(None)
+    assert fr["headline"].startswith("4 dormant or disabled people still reach ") and fr["count"] == 4
+    assert "active" not in fr["lit"] and "risky" in fr["lit"] and ev["lit"] is None
+    assert all(fr["tone"][f"risky>{r}"] == "risky" for r in risky) and not any(k.startswith("active>") for k in fr["width"])
+    assert ev["headline"] == f"{ev['count']} people reach {len(f['objects'])} sensitive objects through {len(f['roles'])} roles."
+    cust = a.flow_follow("SALES.CORE.TBL_CUSTOMER")
+    assert cust["headline"].startswith("TBL_CUSTOMER: reached by ") and cust["count"] == next(
+        x["count"] for x in f["objects"] if x["id"] == "SALES.CORE.TBL_CUSTOMER")
+    assert all(w == next(l["count"] for l in f["links"] if f"{l['source']}>{l['target']}" == k) for k, w in ev["width"].items())
     assert risky == {"GRP_EMEA_ALL", "GRP_ANALYSTS", a.TECH + "SALES_MART_READ"}  # ANALYST_02 holds it straight (rule 1)
     cu = next(x for x in f["objects"] if x["id"] == "SALES.CORE.TBL_CUSTOMER")
     assert cu["unmasked"] == ["BIRTH_DATE", "PHONE"] and cu["masked"] == ["EMAIL"]

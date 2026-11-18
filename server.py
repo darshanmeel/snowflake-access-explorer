@@ -64,6 +64,7 @@ BACKGROUND = not a.INSIDE  # refresh in a thread; inside Snowflake on the script
 MAX_LINES = 200
 ANSWERS = {}  # (data, endpoint, params) -> answer: a page seen before skips LOCK, so users don't queue behind each other
 MAX_ANSWERS = 200
+PAGE = 50  # rows per page of a table the server pages (sensitive objects and readers, an object's users)
 
 
 class ApiError(Exception):
@@ -1239,8 +1240,8 @@ def home_page(p, view):
     me = (a.users[0] if a.users else None) if view == "mine" else (DEMO_USER if DEMO_USER in a.users else a.users[0] if a.users else None)
     mine = None
     if me:
-        objs = a.access_objects(a.grants(me, True), True)
-        mine = dict(user=me, counts=a.ladder_counts(objs))
+        counts = a.cached(("home", me), lambda: a.ladder_counts(a.access_objects(a.grants(me, True), True)))
+        mine = dict(user=me, counts=counts)
     sev = {v: sum(x["severity"] == v for x in S["rows"]) for v in ("Critical", "High", "Medium", "Low")}
     g = a.governance_kpis()
     unmasked = sorted({x["grantee"].split(".")[-1] + "." + x["detail"].split(" ")[1].rstrip(":") for x in S["rows"] if x["num"] == "6"})[:8]
@@ -1462,14 +1463,14 @@ def object_page(p, view):
     data = a.is_data(t)
     scols = a.sensitive_cols(o) if data else []
     rpol = a.policies_of(o)["rows"] if data else []
-    rows = []
-    for x in m:
+    rows, mw = [], window(p, "m_offset", len(m))
+    for x in m[mw[0]]:
         u = x["user"]
         isreal = any(v["has"] or v["owner"] for v in x["privs"].values())
         ds = [v["depth"] for v in x["privs"].values() if v["has"]]
         n = max((v["count"] for v in x["privs"].values()), default=0)
         best = min((v["path"] for v in x["privs"].values() if v["has"]), key=len, default=None)
-        aps = a.admin_paths(u, True)
+        aps = a.admin_paths(u, True) if x["admin"] else []
         if not isreal:
             n, best = len(aps), None
         reads = isreal and any(x["privs"].get(c, {}).get("has") or x["privs"].get(c, {}).get("owner")
@@ -1520,7 +1521,8 @@ def object_page(p, view):
                   read=n_cls["read"], write=n_cls["write"], own=n_cls["own"], roles=s["roles"], direct=s["direct"],
                   owners=s["owners"], deployers=s["deployers"], owner_note=s["owner_note"], longest=s["longest"]),
         admin_paths=adm, sensitivity=sensitivity(o) if shared else None,
-        matrix=dict(privs=list(m[0]["privs"]) if m else [], sensitive_cols=scols, row_policy=bool(rpol), rows=rows),
+        matrix=dict(privs=list(m[0]["privs"]) if m else [], sensitive_cols=scols, row_policy=bool(rpol), rows=rows,
+                    total=len(m), offset=mw[1]),
         graph=graph, sees=sees,
         tabs=[dict(key=k, label=lab, count=tabs[k]) for k, lab in TABS if k in tabs] + [dict(key="all", label="All", count=len(grantees))],
         grantees=grantees, capped=sorted(a.capped))
@@ -1954,12 +1956,24 @@ def compare_page(p, view):
 
 # ---------- sensitive data ----------
 
+def window(p, key, n):
+    """The rows of a long table the page sends: slice(offset, offset + limit) of n rows from the params key= (offset)
+    and limit= (PAGE by default, 0: every row, as a CSV export asks), and the offset used."""
+    lim = int(p["limit"]) if p.get("limit", "").isdigit() else PAGE
+    off = int(p[key]) if p.get(key, "").isdigit() else 0
+    off = 0 if off >= n else off
+    return slice(off, off + lim if lim else None), off
+
+
 def sensitive_page(p, view):
+    """Screen 7. objects and readers are long on a big account: one page each (o_offset= / r_offset=, limit=), with
+    objects_total / readers_total; limit=0 sends every row (the CSV)."""
     mine = view == "mine"
     gov = a.governance_kpis()["text"] if not mine else None
     empty = dict(view=view, governance=gov, filters=dict(tag="", db="", people=False, tags=[], dbs=[]),
                  kpis=dict(objects=0, columns=0, whole=0, people=0, admin=0, disabled=0, service=0, unmasked=0, stale=[]),
-                 objects=[], readers=[], catalog=[], compare=dict(a="", b="", roles=[], rows=[], diff=[]))
+                 objects=[], objects_total=0, objects_offset=0, readers=[], readers_total=0, readers_offset=0,
+                 catalog=[], compare=dict(a="", b="", roles=[], rows=[], diff=[]))
     if not S["sens"]:
         state = ("mine" if mine else "unavailable" if a.run["SOURCES"].get("tags") == "UNAVAILABLE"
                  else "no_tags" if not a.tags else "none_sensitive")
@@ -1970,16 +1984,10 @@ def sensitive_page(p, view):
     tg, db, people = p.get("tag", ""), p.get("db", ""), flag(p, "people")
     tg, db = tg if tg in labels else "", db if db in dbs else ""
     rank = [r for r in rank if (not db or r["database"] == db) and (not tg or tg in {a.tag_label(t, v) for _, t, v, _ in r["tags"]})]
-    who = {}
-    for r in rank:
-        for (x, pv), e in a.who_users(r["object"]).items():  # counted, not every path listed
-            if pv in a.READ_PRIVS:
-                w, q = who.setdefault(x, dict(objs=set(), roles=set(), path=None)), e["path"]
-                w["objs"].add(r["object"])
-                w["roles"] |= e["firsts"]
-                if w["path"] is None or len(q) < len(w["path"]) - 1:
-                    w["path"] = q + [r["object"]]
-    stale = sorted(u for u in who if not a.is_service(u) and a.status(u) != "active")
+    order = [r["object"] for r in rank]
+    who = a.sens_readers(order)
+    idle = {u for u in a.users if a.status(u) != "active"}  # once per user, not once per object they read
+    stale = sorted(u for u in who if not a.is_service(u) and u in idle)
     if people:
         who = {u: w for u, w in who.items() if not a.is_disabled(u) and not a.is_service(u)}
 
@@ -1989,20 +1997,28 @@ def sensitive_page(p, view):
     ppl, adm = every("people"), every("admin") - set(who)
     admins = a.admin_users()
     ad = sorted(u for u in admins if u not in who and not (people and (a.is_disabled(u) or a.is_service(u))))
-    us = sorted(who, key=lambda u: (-len(who[u]["objs"]), u))
+    us = sorted(who, key=lambda u: (-len(who[u][0]), u)) + ad
 
-    def reader(u, w, via_admin):
-        pr = a.profile.get(u) or {}
+    def reader(u):
+        pr, w = a.profile.get(u) or {}, who.get(u)
         return dict(user=u, type=str(pr.get("TYPE") or "PERSON"), status=a.status(u), last_login_text=login(u)[0],
-                    objects=sorted(w["objs"]) if w else [r["object"] for r in rank],
-                    roles=sorted(w["roles"]) if w else admins[u], path=w["path"] if w else None, via_admin=via_admin,
-                    admin_paths=a.admin_paths(u, True) if via_admin else [])
+                    objects=len(w[0]) if w else len(rank), roles=sorted(w[1]) if w else admins[u],
+                    path=a.sens_path(u, [o for o in order if o in w[0]]) if w else None, via_admin=not w,
+                    admin_paths=[] if w else a.admin_paths(u, True))
 
+    def parts(r):  # the bar of "Who can read": each reader once
+        n = sum(u in idle for u in r["people"])
+        return dict(active=len(r["people"]) - n, dormant=n + len(r["disabled"]), service=len(r["service"]),
+                    admin=len(r["admin"]))
+
+    sr = a.sens_roles()
     funcs = [r for r in a.roles if a.kind_of(r) == "functional"] or a.roles
-    top = sorted(funcs, key=lambda r: (-sum(o in S["sens"] for o in a.reads([r])), r))
+    top = sorted(funcs, key=lambda r: (-len(sr.get(r, ())), r))  # the most sensitive objects read first
     x = p.get("a") if p.get("a") in a.roles else top[0]
     y = p.get("b") if p.get("b") in a.roles else top[1] if len(top) > 1 else top[0]
     cols = sum(len(r["cols"]) for r in rank)
+    ow, oo = window(p, "o_offset", len(rank))
+    rw, ro = window(p, "r_offset", len(us))
     return dict(
         view=view, state="ok", governance=gov, filters=dict(tag=tg, db=db, people=people, tags=labels, dbs=dbs),
         kpis=dict(objects=len(rank), columns=cols, whole=sum(not r["cols"] for r in rank), people=len(ppl), admin=len(adm),
@@ -2012,16 +2028,17 @@ def sensitive_page(p, view):
                       tags=[dict(label=k, origins=list(dict.fromkeys(v))) for k, v in
                             {lab: [o + (f" {c}" if c else "") for c2, t2, v2, o in r["tags"] if a.tag_label(t2, v2) == lab
                                     for c in [c2]] for lab in dict.fromkeys(a.tag_label(t, v) for _, t, v, _ in r["tags"])}.items()],
-                      cols=r["cols"], masked=list(r["masked"]), row_policies=r["row_policies"], people=r["people"],
-                      disabled=r["disabled"], service=r["service"], admin=r["admin"], roles=r["roles"]) for r in rank],
-        readers=[reader(u, who[u], False) for u in us] + [reader(u, None, True) for u in ad],
+                      cols=r["cols"], masked=list(r["masked"]), row_policies=r["row_policies"], readers=parts(r),
+                      roles=r["roles"]) for r in rank[ow]],
+        objects_total=len(rank), objects_offset=oo,
+        readers=[reader(u) for u in us[rw]], readers_total=len(us), readers_offset=ro,
         catalog=[dict(object=r["object"], name=r["name"], ns=f'{r["database"]}.{r["schema"]}', type=r["kind"],
                       labels=r["labels"], groups=r["groups"], status=r["status"], masked=list(r["masked"]),
                       columns=r["columns"], unmasked=r["unmasked"], row_policies=r["row_policies"], readers=r["readers"],
                       admin=len(r["admin"]))
                  for r in a.catalog() if (not db or r["database"] == db)
                  and (not tg or tg in r["labels"])],
-        compare=dict(a=x, b=y, roles=a.roles, **pair_rows(x, False, y, False, [r["object"] for r in rank])))
+        compare=dict(a=x, b=y, roles=a.roles, **pair_rows(x, False, y, False, order)))
 
 
 def reads_of(n, user):
@@ -2196,13 +2213,15 @@ def grid_page(p, view):
 
 
 def flow_page(p, view):
-    """Screen 16: where sensitive data flows (access.sens_flow), with the default selection: the dormant or disabled."""
+    """Screen 16: where sensitive data flows (access.sens_flow, counts only), with the default selection: the dormant
+    or disabled. sel= follows one box (none: everyone): follow holds its links, headline and people."""
     if view == "mine" or not S["sens"]:
         return dict(view=view, state="mine" if view == "mine" else "none", groups=[], roles=[], objects=[], links=[],
-                    select=None)
+                    select=None, follow=None)
     f = a.sens_flow()
-    return dict(view=view, state="ok", **f,
-                select="risky" if any(g["id"] == "risky" for g in f["groups"]) else None)
+    select = "risky" if any(g["id"] == "risky" for g in f["groups"]) else None
+    sel = None if p.get("sel") == "none" else p.get("sel") or select
+    return dict(view=view, state="ok", **f, select=select, follow=a.flow_follow(sel))
 
 
 def review_csv(p, view):
