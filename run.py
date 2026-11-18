@@ -7,6 +7,7 @@
     python run.py --direct | --objects   SOURCE: read grants directly, or the TBL_ACCESS_ snapshot tables
     python run.py --export         stage 1 only: Snowflake -> .cache/reads/ parts (the missing ones; --fresh: all), exit
     python run.py --build          stage 2 only: build from the parts kept, never read Snowflake, then serve
+    python run.py --cache-dir D:\c  the local copies there (CACHE_DIR): used if present, else written there
 
 Default: both stages, one after the other, when the shared data is loaded. A part is read again only on a manual
 Rebuild snapshot / Read Snowflake again, or --export --fresh.
@@ -33,12 +34,15 @@ def command(argv=None, env=os.environ):
     stage.add_argument("--export", action="store_true")
     stage.add_argument("--build", action="store_true")
     p.add_argument("--fresh", action="store_true")
+    p.add_argument("--cache-dir")
     args = p.parse_args(argv)
     env = dict(env)
     if args.fake:
         env["FAKE"] = "1"
     if args.source:
         env["SOURCE"] = args.source
+    if args.cache_dir:  # from where run.py was started; the app runs in its own folder
+        env["CACHE_DIR"] = os.path.abspath(args.cache_dir)
     if args.fresh and not args.export:
         p.error("--fresh goes with --export")
     if args.export:

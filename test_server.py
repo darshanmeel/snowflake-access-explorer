@@ -1258,6 +1258,7 @@ def test_parts():
     assert run.command(["--export", "--fresh"], {})[0][1:] == ["server.py", "--export", "--fresh"]
     assert run.command(["--build"], {})[1]["BUILD_ONLY"] == "1"
     assert "BUILD_ONLY" not in run.command([], {})[1]
+    assert os.path.isabs(run.command(["--cache-dir", "c"], {})[1]["CACHE_DIR"]) and "CACHE_DIR" not in run.command([], {})[1]
 
 
 def test_cache_lock():
