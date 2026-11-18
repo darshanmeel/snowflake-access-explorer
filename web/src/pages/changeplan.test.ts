@@ -68,5 +68,6 @@ describe("change plan", () => {
     expect(redirect("risks", { sev: "High" })).toEqual({ page: "rules", params: { sev: "High", show: "fixes" } });
     expect(redirect("plan", {})).toEqual({ page: "whatif", params: { show: "plan" } });
     expect(redirect("rules", {})).toEqual({ page: "rules", params: {} });
+    expect(redirect("rules", { st: "stale" })).toEqual({ page: "rules", params: { part: "stale" } }); // the side menu's old Dormant & disabled link
   });
 });

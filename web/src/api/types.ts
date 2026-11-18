@@ -214,7 +214,7 @@ export interface Meta {
   sql_copy?: { on: boolean; path: string; schema: string | null; note: string | null; written_at: string | null };
   error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click
   // rules: how many rules fail at the worst severity, title "75157 high findings in 6 rules"
-  pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; title?: string | null; group: "answers" | "admin" | "detail" }[];
+  pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; title?: string | null; group: "home" | "access" | "ask" | "risk" | "govern" }[];
   default_user: string | null; // My access: the signed-in user; shared: none, the pages ask for a pick
   rule_counts: Record<string, number>; // findings per rule number: the side menu's Findings
   people?: { admins: number; stale: number } | null; // side menu: admin holders; disabled or dormant people holding roles (shared only)
@@ -760,6 +760,8 @@ export interface SensitivePage {
   refs: Refs;
 }
 
+export interface StalePerson { user: string; status: UserStatus; service: boolean; roles: number; findings: number; sensitive: boolean; last_login: string | null }
+
 export interface AdminPerson {
   user: string;
   service: boolean;
@@ -814,6 +816,9 @@ export interface RulesPage {
   rows_unknown: string[]; // this and admins: not in a group= answer
   admins: AdminPerson[]; // the first 200
   admins_total: number;
+  stale: StalePerson[]; // the first 200: disabled, dormant or never logged in, still holding roles (rules 8 and 16)
+  stale_total: number;
+  stale_split: Record<string, number>; // all of them per status
   refs: Refs;
 }
 
@@ -1020,6 +1025,18 @@ export interface HomePage {
   skipped: Record<string, string> | null; // rules that did not run (shared only), as RulesPage.skipped
   protection: { unmasked: number; unmasked_names: { object: string; column: string }[]; unmasked_columns: number; dormant: number; dormant_names: string[]; tagged: number;
     masked: number; row_tables: number } | null; // the row-policy tables are listed on Sensitive data (show=rows)
+  cards: HomeCards | null; // shared only
+}
+
+/** Home's area cards (server.home_cards): first NAMES names, counts per part. */
+export interface HomeCards {
+  admins: { total: number; service: number; by_role: { role: string; people: number }[]; account_only: number; names: string[] };
+  stale: { total: number; by_status: Record<string, number>; names: string[] };
+  people: { by_status: Record<string, number>; service: number };
+  roles: Record<string, number>; // per role kind
+  objects: { by_type: { type: string; n: number }[] };
+  activity: { ok: boolean; reason: string | null; users: number; daily: { day: string; queries: number }[] };
+  changes: { counts: { all: number; gain: number; lose: number; risk: number; sensitive: number }; high: number; before: string } | null;
 }
 
 // ---------- who has access (screen 2) ----------

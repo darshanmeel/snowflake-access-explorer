@@ -741,10 +741,20 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     h = js("/api/home", ["me", "risks", "protection", "counts"])
     assert h["me"] is None and h["risks"]["High"] > 0 and h["protection"]["unmasked"] == 3  # shared: nobody until picked
     hm = js("/api/home?view=mine")
-    assert hm["risks"] is None and hm["me"]["counts"]["read"] == 6
+    assert hm["risks"] is None and hm["me"]["counts"]["read"] == 6 and hm["cards"] is None
+    k = h["cards"]  # one card per area, counts that add up to what the other pages show
+    side = js("/api/meta")["people"]
+    assert k["admins"]["total"] == side["admins"] > 0 and k["stale"]["total"] == side["stale"] > 0
+    assert sum(k["people"]["by_status"].values()) == h["counts"]["users"] and sum(k["roles"].values()) == h["counts"]["roles"]
+    assert sum(t["n"] for t in k["objects"]["by_type"]) == h["counts"]["objects"] and k["activity"]["ok"] and k["activity"]["daily"]
+    r = js("/api/rules", ["stale", "stale_total", "stale_split"])
+    assert k["stale"]["names"] == [x["user"] for x in r["stale"]][:server.NAMES] and r["stale_total"] == sum(r["stale_split"].values()) == side["stale"]
+    assert [x["sensitive"] for x in r["stale"]] == sorted((x["sensitive"] for x in r["stale"]), reverse=True)  # rule 7 first
+    assert r["admins_total"] == side["admins"]  # no one whose only account privileges come through PUBLIC
     assert js("/api/meta")["default_user"] is None and js("/api/meta?view=mine")["default_user"] == server.DEMO_USER
     g = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
-    assert g["home"] == g["access"] == "answers" and g["rules"] == "admin"
+    assert g["home"] == "home" and g["access"] == g["object"] == "access" and g["check"] == "ask" and g["rules"] == "risk"
+    assert g["review"] == g["changes"] == "govern"
 
 
 def test_graph_see_compare():  # screens 4, 7, 9
@@ -776,7 +786,7 @@ def test_graph_see_compare():  # screens 4, 7, 9
     assert js("/api/compare?a=ENGINEER_01&b=ANALYST_01&scope=db&db=HR")["rows"][0]["diff"] == "only_a"
     get("/api/compare?a=NOPE", 404)
     g = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
-    assert g["graph"] == g["see"] == g["compare"] == "answers"
+    assert g["graph"] == g["compare"] == "ask" and g["see"] == "access"
 
 
 def test_rules_paged():
@@ -821,7 +831,7 @@ def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if
     assert w["counts"]["fixed"] >= 1 and w["sql"] and "REVOKE" in w["sql"]
     m = js("/api/meta")
     assert len(m["rules"]) == 29 and all(x["meaning"] and x["fix"] and x["area"] for x in m["rules"])
-    assert {p["key"]: p["group"] for p in m["pages"]}["whatif"] == "admin"
+    assert {p["key"]: p["group"] for p in m["pages"]}["whatif"] == "ask"
 
 
 def test_review_grid_catalog_flow():  # screens 6, 8, 16
@@ -861,7 +871,7 @@ def test_review_grid_catalog_flow():  # screens 6, 8, 16
     assert js("/api/flow?sel=none")["follow"]["lit"] is None and js("/api/flow?sel=admin")["follow"]["users"] == ["ADMIN_01", "OPS_01"]
     assert server.flow_page({}, "mine")["state"] == "mine"
     m = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
-    assert m["flow"] == m["review"] == m["sensitive"] == "admin"
+    assert m["flow"] == m["sensitive"] == "risk" and m["review"] == "govern"
     assert "flow" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
 
 
@@ -908,7 +918,7 @@ def test_usage_changes():  # screens 13, 14
     finally:
         server.MODE, server.cache.prev = mode, prev
     m = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
-    assert m["usage"] == m["changes"] == "admin" and "changes" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
+    assert m["usage"] == "risk" and m["changes"] == "govern" and "changes" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
 
 
 def test_activity():  # the Activity tab of an object, a person and a role; why there is none
@@ -966,8 +976,8 @@ API = {"graph": "map", "whatif": 'whatif?changes=[{"op":"empty_public"}]'}  # pa
 
 
 def test_every_page():  # every page key: a label, a nav group, an endpoint that answers shared and (if not shared-only) mine
-    assert set(server.PAGES) == set(server.GROUP) and set(server.GROUP.values()) == {"answers", "admin", "detail"}
-    assert server.SHARED_ONLY <= set(server.PAGES) and all(server.GROUP[k] == "admin" for k in server.SHARED_ONLY)
+    assert set(server.PAGES) == set(server.GROUP) and set(server.GROUP.values()) == {"home", "access", "ask", "risk", "govern"}
+    assert server.SHARED_ONLY <= set(server.PAGES) and all(server.GROUP[k] in ("risk", "govern") for k in server.SHARED_ONLY)
     assert c.post("/api/mine/load").status_code == 200
     mine = {p["key"] for p in js("/api/meta?view=mine")["pages"]}
     assert mine == set(server.PAGES) - server.SHARED_ONLY

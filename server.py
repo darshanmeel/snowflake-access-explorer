@@ -37,10 +37,10 @@ PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access
          "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
          "flow": "Sensitive data flow", "usage": "Granted vs used", "changes": "What changed",
          "user": "User paths", "role": "Role paths"}
-GROUP = {"home": "answers", "access": "answers", "object": "answers", "check": "answers", "graph": "answers", "see": "answers",
-         "compare": "answers", "request": "answers", "rules": "admin", "whatif": "admin", "review": "admin",
-         "sensitive": "admin", "flow": "admin", "usage": "admin", "changes": "admin",
-         "user": "detail", "role": "detail"}  # side nav groups
+GROUP = {"home": "home", "access": "access", "object": "access", "see": "access", "user": "access", "role": "access",
+         "check": "ask", "compare": "ask", "request": "ask", "graph": "ask", "whatif": "ask",
+         "rules": "risk", "sensitive": "risk", "flow": "risk", "usage": "risk",
+         "review": "govern", "changes": "govern"}  # side nav groups
 SHARED_ONLY = {"review", "flow", "changes"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
@@ -1558,11 +1558,11 @@ def home_page(p, view):
         counts = a.cached(("home", me), lambda: a.ladder_counts(a.access_objects(a.grants(me, True), True)))
         mine = dict(user=me, counts=counts)
     if view != "shared":
-        return dict(view=view, me=mine, risks=None, counts=home_summary()["counts"], per_rule=None, skipped=None, protection=None)
+        return dict(view=view, me=mine, risks=None, counts=home_summary()["counts"], per_rule=None, skipped=None, protection=None, cards=None)
     h = home_summary()
     return dict(view=view, me=mine, risks=h["risks"], counts=h["counts"], per_rule=h["per_rule"],
                 skipped=a.skipped_rules(),  # HIERARCHY=0 / ACTIVITY=0: not in the counts
-                protection=h["protection"])
+                protection=h["protection"], cards=home_cards())
 
 
 def home_summary():
@@ -1585,6 +1585,39 @@ def home_summary():
                                     unmasked_columns=len(um), dormant=len(dm), dormant_names=dm[:NAMES],
                                     tagged=g["tagged_objects"], masked=g["masked_columns"], row_tables=g["row_tables"]))
     return a.cached("home_summary", make)
+
+
+TOP_TYPES = 6  # object types Home names; the rest are one Other
+DAYS = 60  # days of activity Home draws
+
+
+def home_cards():
+    """Home's area cards once per data set: admin holders by admin role, stale people by status, users by status and
+    type, roles by kind, objects by type, daily queries and What changed counts when that diff is already made (Home
+    never compares)."""
+    def make():
+        adm, stale = admin_list(), [x["user"] for x in stale_list()]
+        by_role = Counter(r for x in adm for r in x["roles"])
+        types = Counter(a.kinds.get(o) or "OTHER" for o in a.objects).most_common()
+        ok, reason = a.act_state()
+        days = {}
+        for x in a.acts:
+            d = str(a.day(x["DAY"]))
+            days[d] = days.get(d, 0) + int(x["QUERIES"] or 0)
+        return dict(
+            admins=dict(total=len(adm), service=sum(x["service"] for x in adm),
+                        by_role=[dict(role=r, people=n) for r, n in by_role.most_common()],
+                        account_only=sum(not x["roles"] for x in adm), names=[x["user"] for x in adm][:NAMES]),
+            stale=dict(total=len(stale), by_status=dict(Counter(a.status(u) for u in stale)), names=stale[:NAMES]),
+            people=dict(by_status=dict(Counter(a.status(u) for u in a.users)), service=sum(map(a.is_service, a.users))),
+            roles=dict(Counter(a.role_kind(r) for r in a.roles)),
+            objects=dict(by_type=[dict(type=t, n=n) for t, n in types[:TOP_TYPES]]
+                         + ([dict(type="Other", n=sum(n for _, n in types[TOP_TYPES:]))] if types[TOP_TYPES:] else [])),
+            activity=dict(ok=ok, reason=reason, users=len({x["USER_NAME"] for x in a.acts}),
+                          daily=[dict(day=d, queries=days[d]) for d in sorted(days)[-DAYS:]]))
+    out = a.cached("home_cards", make)
+    d = next((v for k, v in a.memo.items() if isinstance(k, tuple) and k[0] == "diff"), None)
+    return out | dict(changes=dict(counts=a.event_counts(d["events"]), high=d["high"], before=d["runs"]["before"]) if d else None)
 
 
 def mask_text(name, o, user=False):
@@ -2802,12 +2835,31 @@ def rules_page(p, view):
         findings=[finding_row(i) for i in items[off_at:off_at + lim]], findings_total=len(items), offset=off_at, limit=lim)
     if group is None:  # a group's next page needs neither
         unknown = sorted(o for o in S["sens"] if any(a.row_terms(q) is None for q in a.policies_of(o)["rows"]))
-        admins = a.admin_people()
-        out.update(rows_unknown=[] if who else unknown, admins_total=len(admins), admins=[
+        admins, st = admin_list(), stale_list()
+        out.update(rows_unknown=[] if who else unknown, admins_total=len(admins), stale_total=len(st), stale=st[:MAX_ADMINS], stale_split=dict(Counter(x["status"] for x in st)), admins=[
             dict(user=x["user"], service=x["service"], roles=x["roles"], account=list(dict.fromkeys(pv for pv, _ in x["account"])),
                  paths=x["paths"] + [q for _, q in x["account"]], status=x["status"],
                  last_login=str(x["last_login"])[:16] if x["last_login"] else None) for x in admins[:MAX_ADMINS]])
     return out
+
+
+def admin_list():
+    """a.admin_people() without those whose only account privileges come through PUBLIC: every user has what PUBLIC
+    holds, so it would list everyone (rule 9 shows it once)."""
+    return a.cached("admin_list", lambda: [x for x in a.admin_people()
+                                           if x["roles"] or any(q[-1] != "PUBLIC" for _, q in x["account"])])
+
+
+def stale_list():
+    """People disabled, dormant or never logged in who still hold roles (rules 8 and 16), each once: those reading
+    sensitive data (rule 7) first, then by findings."""
+    def make():
+        n, r7 = Counter(x["grantee"] for x in S["rows"]), {x["grantee"] for x in S["rows"] if x["num"] == "7"}
+        out = [dict(user=u, status=a.status(u), service=a.is_service(u), roles=len(a.roles_of[u]), findings=n[u],
+                    sensitive=u in r7, last_login=str(v)[:16] if (v := (a.profile.get(u) or {}).get("LAST_SUCCESS_LOGIN")) else None)
+               for u in a.users if a.stale(u) and a.roles_of.get(u)]
+        return sorted(out, key=lambda x: (not x["sensitive"], -x["findings"], x["user"]))
+    return a.cached("stale_list", make)
 
 
 def finding_page(p, view):
@@ -3168,12 +3220,8 @@ def theme_tokens():
 
 
 def side_people():
-    """Side menu counts: admin holders (an admin role, or an account privilege through a role other than PUBLIC: what
-    PUBLIC holds every user has, so it would count everyone; rule 9 shows it once) and people who are disabled or
-    dormant yet hold roles (rules 8 and 16), each person once."""
-    return a.cached("side_people", lambda: dict(
-        admins=sum(1 for x in a.admin_people() if x["roles"] or any(q[-1] != "PUBLIC" for _, q in x["account"])),
-        stale=sum(1 for u in a.users if a.stale(u) and a.roles_of.get(u))))
+    """Side menu counts: admin holders (admin_list) and people disabled or dormant who hold roles (stale_list)."""
+    return dict(admins=len(admin_list()), stale=len(stale_list()))
 
 
 def meta(p, sid):

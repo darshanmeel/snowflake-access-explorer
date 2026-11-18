@@ -13,7 +13,7 @@ import { ComparePageView } from "./pages/Compare";
 import { ErrorBox, SqlPanel } from "./pages/common";
 import { FlowPageView } from "./pages/Flow";
 import { GraphPageView } from "./pages/Map";
-import { HomePageView, openFound } from "./pages/Home";
+import { GROUPS, HomePageView, openFound } from "./pages/Home";
 import { ObjectPageView } from "./pages/Object";
 import { RequestPageView } from "./pages/Request";
 import { ReviewPageView } from "./pages/Review";
@@ -36,7 +36,6 @@ const LABEL: Record<Page, string> = {
   sensitive: "Sensitive data", flow: "Sensitive data flow", rules: "Risks & fixes", review: "Review & sign-off", whatif: "What if",
   usage: "Granted vs used", changes: "What changed",
 };
-const GROUPS: [string, string][] = [["answers", "Answers"], ["admin", "Admin"], ["detail", "Detail"]];
 
 /** Old links to the new screens (docs/redesign-notes.md). No page: Home; an unknown page: Home. */
 export function redirect(page: string | null, params: Params): { page: Page; params: Params } {
@@ -45,6 +44,7 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     return { page: "object", params: { ...rest, preset: "admin" } };
   }
   if (page === "who") return { page: "object", params };
+  if (page === "rules" && params.st === "stale") { const { st: _s, ...rest } = params; return { page: "rules", params: { ...rest, part: "stale" } }; }
   if (page === "me") return redirect("access", params); // the brief's /me: My access, see mine()
   if (page === "object" && params.by === "path") { // Who has access by path: the access graph from this table (screen 4)
     const { by: _b, name, ...rest } = params;
@@ -253,7 +253,7 @@ function Side({ meta, page, params, tabs, nav, onShut }: {
   useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
   const rule = page === "rules" ? params.rule : undefined;
   const subject = params.user ?? params.role ?? params.name ?? params.table ?? params.a;
-  const admins = page === "object" && params.preset === "admin", stale = page === "rules" && params.st === "stale";
+  const admins = page === "rules" && params.part === "admins", stale = page === "rules" && params.part === "stale";
   const ppl = meta.people;
   return (
     <aside className="side">
@@ -261,10 +261,10 @@ function Side({ meta, page, params, tabs, nav, onShut }: {
       <details className="side-menu" ref={menu} open={wide}>
         <summary>Menu · {LABEL[page]}</summary>
         {GROUPS.map(([g, title]) => {
-          const ps = meta.pages.filter((p) => (p.group ?? "detail") === g);
+          const ps = meta.pages.filter((p) => (p.group ?? "access") === g);
           return ps.length ? (
             <nav key={g} aria-label={title}>
-              <h4>{title}</h4>
+              {title && <h4>{title}</h4>}
               {ps.map((p) => {
                 const on = p.key === page && !admins && !stale;
                 return (
@@ -275,10 +275,10 @@ function Side({ meta, page, params, tabs, nav, onShut }: {
                     </button>
                     {on && <SideSub tabs={tabs} subject={subject} />}
                     {p.key === "rules" && ppl && <>
-                      <button type="button" className={`side-link2${admins ? " on" : ""}`} aria-current={admins ? "page" : undefined} onClick={() => nav("object", { preset: "admin" })}
+                      <button type="button" className={`side-link2${admins ? " on" : ""}`} aria-current={admins ? "page" : undefined} onClick={() => nav("rules", { part: "admins" })}
                         title="Users holding an admin role or an account-level privilege"><span>Admin holders</span><Count n={ppl.admins} cls={ppl.admins ? " ae-tone-bad" : ""} /></button>
                       {(admins || stale) && <SideSub tabs={tabs} />}
-                      <button type="button" className={`side-link2${stale ? " on" : ""}`} aria-current={stale ? "page" : undefined} onClick={() => nav("rules", { st: "stale" })}
+                      <button type="button" className={`side-link2${stale ? " on" : ""}`} aria-current={stale ? "page" : undefined} onClick={() => nav("rules", { part: "stale" })}
                         title="People disabled, dormant or never logged in who still hold roles (rules 8 and 16), each once"><span>Dormant & disabled</span><Count n={ppl.stale} cls={ppl.stale ? " ae-tone-warn" : ""} /></button>
                     </>}
                     {p.key === "rules" && <SideFindings meta={meta} page={page} rule={rule} nav={nav} />}

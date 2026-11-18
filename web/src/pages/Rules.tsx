@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { download, qs, useApi } from "../api/client";
-import type { AdminPerson, FindingRow, Refs, FindingGroup, RulesPage } from "../api/types";
-import { Banner, Card, DataTable, NameList, PathText, SEVERITIES, Tabs, useCsv } from "../components";
+import type { AdminPerson, FindingRow, Refs, FindingGroup, RulesPage, StalePerson } from "../api/types";
+import { Banner, Card, DataTable, NameList, PathText, SEVERITIES, StackBar, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { rulesOff, rulesQuery, useSaved } from "./changeplan";
 import { col, Head, Load, NameLink } from "./common";
@@ -20,7 +20,8 @@ export function RulesPageView() {
   const [f, setF] = useState(NONE); // Rule checks filters as typed; the search goes to the server after a pause
   const [q0, setQ0] = useState("");
   useEffect(() => { const t = setTimeout(() => setQ0(f.q), 300); return () => clearTimeout(t); }, [f.q]);
-  const [tab, setTab] = useState(c.params.part ?? "findings"); // part=: an old sub-tab, linkable
+  const tab = c.params.part ?? "findings"; // part=: the Rule checks tab, linkable (the side menu opens admins and stale)
+  const setTab = (k: string) => c.set({ part: k === "findings" ? null : k, show: null });
   const show = c.params.show === "fixes" || c.params.show === "list" ? c.params.show : "checks"; // the old page first
   const q = rulesQuery(apiParams(c), show, all ? [] : off, show === "checks" ? { ...f, q: q0 } : NONE);
   const s = useApi<RulesPage>("rules", q);
@@ -55,6 +56,7 @@ export function RulesPageView() {
             <Tabs nav={2} active={tab} onChange={setTab} tabs={[
               { key: "findings", label: "Findings", count: d.total },
               { key: "admins", label: "Admin holders", count: d.admins_total, tone: d.admins_total ? "bad" : null },
+              { key: "stale", label: "Dormant & disabled", count: d.stale_total, tone: d.stale_total ? "warn" : null },
               { key: "rules", label: "Rules", count: c.meta.rules.length },
             ]} />
             {tab === "findings" && (
@@ -66,14 +68,20 @@ export function RulesPageView() {
             )}
             {tab === "admins" && (
               <Card title="People with admin roles or account privileges" scroll
-                right={<button className="ae-btn" onClick={() => c.nav("object", { preset: "admin" })}>Open as Who has access</button>}>
+                right={<button className="ae-btn" onClick={() => c.nav("object", { preset: "admin" })}>Who holds each admin role</button>}>
                 <AdminTable admins={d.admins} refs={d.refs} total={d.admins_total} />
+              </Card>
+            )}
+            {tab === "stale" && (
+              <Card title="Disabled, dormant or never logged in, still holding roles" scroll
+                sub={`Rules 8 and 16, each person once. People who can read sensitive data (rule 7) come first. Dormant: no login for ${c.meta.limits.dormant_days} days.`}>
+                <StaleTable rows={d.stale} total={d.stale_total} split={d.stale_split} />
               </Card>
             )}
             {tab === "rules" && (
               <Card title="What each rule checks">
                 <DataTable csv="rules.csv" rows={c.meta.rules} maxHeight={640}
-                  onRowClick={(r: Rule) => { c.set({ rule: r.num }); setTab("findings"); }}
+                  onRowClick={(r: Rule) => c.set({ rule: r.num, part: null, show: null })}
                   columns={[col("n", "Rule", (r: Rule) => Number(r.num), { num: true, width: 50 }),
                     col("s", "Severity", (r: Rule) => r.severity, { wrap: "nowrap", render: (r: Rule) => <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span> }),
                     col("t", "Check", (r: Rule) => r.title, { wrap: "wrap",
@@ -199,6 +207,30 @@ function Line({ f, refs, onOpen, view }: { f: FindingRow; refs: Refs; onOpen: (i
 }
 
 /** Users with an admin role or an account privilege, with their shortest path (Rule checks, Admin holders preset). */
+/** Rule checks "Dormant & disabled": status split, then one row per person with what to look at first. */
+function StaleTable({ rows, total, split }: { rows: StalePerson[]; total: number; split: Record<string, number> }) {
+  const c = useApp();
+  const n = (st: string) => split[st] ?? 0;
+  if (!total) return <p className="ae-muted">No disabled, dormant or never-logged-in person holds a role.</p>;
+  return (
+    <>
+      <StackBar parts={[{ key: "disabled", label: "Disabled", value: n("disabled"), cls: "high" }, { key: "dormant", label: "Dormant", value: n("dormant"), cls: "medium" },
+        { key: "never", label: "Never logged in", value: n("never"), cls: "low" }]} />
+      {total > rows.length && <p className="ae-muted">First {rows.length} of {total.toLocaleString()} people. Every one: Findings, rules 8 and 16.</p>}
+      <DataTable csv="stale_people.csv" rows={rows} rowTone={(r: StalePerson) => (r.sensitive ? "bad" : null)} onRowClick={(r: StalePerson) => c.nav("access", { user: r.user })}
+        columns={[
+          col("u", "User", (r: StalePerson) => r.user, { wrap: "nowrap", render: (r: StalePerson) => <span className="ae-mono">{r.user}</span> }),
+          col("s", "Status", (r: StalePerson) => r.status, { wrap: "nowrap" }),
+          col("t", "Type", (r: StalePerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
+          col("r", "Roles held", (r: StalePerson) => r.roles, { num: true }),
+          col("f", "Findings", (r: StalePerson) => r.findings, { num: true }),
+          col("x", "Reads sensitive", (r: StalePerson) => (r.sensitive ? "yes" : ""), { wrap: "nowrap" }),
+          col("l", "Last login", (r: StalePerson) => r.last_login ?? "never", { wrap: "nowrap" }),
+        ]} />
+    </>
+  );
+}
+
 export function AdminTable({ admins, refs, total }: { admins: AdminPerson[]; refs: Refs; total?: number }) {
   const o = useOpen(refs);
   return (
