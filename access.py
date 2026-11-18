@@ -4751,8 +4751,18 @@ def access_graph(start, name, same=True, admin=True):
     kids = {}
     for e in edges:
         kids.setdefault(e[0], set()).add(e[1])
-    oset, leads, seen_ = set(objs), {}, set()  # objects below each node, from those of its children (role grants
-    for n in col:  # make no loops; a loop's way back adds nothing)
+    oset, leads, seen_ = set(objs), {}, set()  # objects below each node, from those of its children
+    looped = set().union(*loops()) & col.keys()
+    for n in col:
+        if looped:  # inside a loop a node ends before the member pointing back: each node walks on its own
+            got, todo = set(), [n]
+            while todo:
+                for c in kids.get(todo.pop(), ()):
+                    if c not in got:
+                        got.add(c)
+                        todo.append(c)
+            leads[n] = frozenset(got & oset)
+            continue
         todo = [(n, False)]
         while todo:
             x, done = todo.pop()

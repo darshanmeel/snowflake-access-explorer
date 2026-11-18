@@ -5,7 +5,6 @@ FastAPI is imported only in make_app(), so st_react.py can `import server` and c
 import csv
 import hashlib
 import heapq
-import heapq
 import io
 import itertools
 import json

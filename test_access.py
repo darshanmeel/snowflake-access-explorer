@@ -1061,6 +1061,10 @@ def test_review_logic():
     a.build(tiny([("B", "A"), ("C", "A"), ("C", "B"), ("B", "C")], [("A", "U")], [("B", "SELECT", "TABLE", "D.S.T")]))
     assert a.loops() == [["B", "C"]]
     assert a.grants("U", True)[0]["count"] == 1 and len(a.can("U", "SELECT", "D.S.T")["paths"]) == 2
+    a.build(tiny([("B", "A"), ("C", "A"), ("C", "B"), ("B", "C")], [("A", "U")],
+                 [("B", "SELECT", "TABLE", "D.S.T"), ("C", "SELECT", "TABLE", "D.S.T2")]))
+    both = {"D.S.T", "D.S.T2"}  # the Access graph's "leads to" goes round the loop
+    assert a.access_graph("user", "U")["leads"]["B"] == both and a.access_graph("role", "A")["leads"]["C"] == both
     a.build(a.fake())
     assert a.loops() == []
 
