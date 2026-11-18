@@ -586,10 +586,11 @@ def line(e):
 
 
 def lost(e):
-    """Whether e means the session is gone (a dropped connection, an expired login), not a table this role can't read:
-    that stops the load with its real message. to verify: errno 390111 / 390112 / 390114 for an ended session."""
+    """Whether e means the session is gone (a dropped connection, an expired login) or has no warehouse (606: every
+    SELECT fails, SHOW still works), not a table this role can't read: that stops the load with its real message
+    instead of minutes of SHOW fallbacks. to verify: errno 390111 / 390112 / 390114 for an ended session."""
     return (isinstance(e, ConnectionError) or type(e).__name__ in ("OperationalError", "InterfaceError")
-            or getattr(e, "errno", None) in (390111, 390112, 390114))
+            or getattr(e, "errno", None) in (606, 390111, 390112, 390114) or "000606" in str(e))
 
 
 def timed_out(e):
@@ -1641,7 +1642,7 @@ def role_kind(name):
         return "functional"
     if name.startswith(TECH):
         return "technical"
-    if name in kinds and name not in roles:
+    if name in kinds and name not in cached("rset", lambda: set(roles)):  # a set: called per drawn box and row
         return "object"
     return "group"
 
@@ -2981,11 +2982,25 @@ def data_view(name, obj, user=None):
                 summary=("can read: " + ", ".join(bits)) if read else "cannot read it (no SELECT or OWNERSHIP)")
 
 
+def governed():
+    """Tables and views with a tag (their own, or their schema's or database's) or a policy of their own: the only
+    ones data_views() checks (a tag-based policy needs a tag), not every object."""
+    own = {t["OBJECT_NAME"] for t in tags} | {p["OBJECT_NAME"] for p in policies if p["OBJECT_NAME"]}
+    up = {t["OBJECT_NAME"] for t in tags if t["DOMAIN"] in ("SCHEMA", "DATABASE")}
+    out = []
+    for o in objects:
+        if is_data(kinds[o]):
+            db, sc, _ = split_name(o)
+            if o in own or f"{db}.{sc}" in up or db in up:
+                out.append(o)
+    return out
+
+
 def data_views(name, user=None):
     """data_view() of every table/view name can read that has a tag or a policy (the per-role / per-user summary)."""
     out = []
-    for o in objects:
-        if is_data(kinds[o]) and (tags_of(o) or policies_of(o)["columns"] or policies_of(o)["rows"]):
+    for o in cached("governed", governed):
+        if tags_of(o) or policies_of(o)["columns"] or policies_of(o)["rows"]:
             v = data_view(name, o, user)
             if v["can_read"]:
                 out.append(v)
@@ -3503,6 +3518,14 @@ def finding_index():
     return cached("findex", make)
 
 
+def by_first(fe):
+    """finding_index()'s edges by their first node: {node: [((a, b, pv), ids)]}."""
+    out = {}
+    for k, ids in fe.items():
+        out.setdefault(k[0], []).append((k, ids))
+    return out
+
+
 def rules_of(ids):
     """[(num, severity, title)] of findings by index, one per rule, in rule order."""
     fs = finding_index()[2]
@@ -3721,7 +3744,8 @@ def graph_info(lanes, edges, okey=None):
         if ids:
             info[n] = dict(rules=rules_of(ids))
     drawn = {e[:3] if len(e) > 2 else (e[0], e[1], "inherit"): e for e in edges}
-    for (a, b, pv), ids in fe.items():
+    by = cached("findex_by", lambda: by_first(fe))  # only the finding edges that leave a drawn box, not all of them
+    for (a, b, pv), ids in (x for n in drawn_nodes for x in by.get(n, ())):
         k = (a, okey.get(b, b), priv_class(pv, kinds.get(b, ""))) if pv else (a, b, "inherit")
         if k in drawn:
             x = info.setdefault(k, {})

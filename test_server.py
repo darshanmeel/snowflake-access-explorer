@@ -443,7 +443,10 @@ def test_newer_run():
 
 
 def test_lost_session():
-    """Direct mode: a session lost halfway is no empty data set; the load stops with the message, nothing is kept."""
+    """Direct mode: a session lost halfway is no empty data set; the load stops with the message, nothing is kept.
+    No warehouse (606) stops it too, with what to set, instead of minutes of SHOW fallbacks."""
+    x = RuntimeError("000606 (57P03): No active warehouse selected in the current session.")
+    assert a.lost(x) and "SNOWFLAKE_WAREHOUSE" in server.load_error(x)
     n = [0]
 
     def answer(sql):

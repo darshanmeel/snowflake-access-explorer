@@ -207,9 +207,15 @@ def load_shared(ask=False):
     except ApiError:
         raise
     except Exception as x:
-        raise ApiError(503, "shared_unreadable", a.line(x))
+        raise ApiError(503, "shared_unreadable", load_error(x))
     finally:
         LOAD.release()
+
+
+def load_error(x):
+    """A load's error for the page: Snowflake's message, plus what to change when the session has no warehouse."""
+    return a.line(x) + (" Set SNOWFLAKE_WAREHOUSE in .env to a warehouse this role may use (USAGE), then load again."
+                        if "000606" in str(x) else "")
 
 
 def fetched():
@@ -277,7 +283,7 @@ def load_mine(sid, fresh=False):
             d, at = cache.get(ck, lambda: tracked(ck, "mine", lambda: with_query(
                 lambda q: a.mine(q, WHERE.split(".")[0] or None), ck)))
         except Exception as x:  # a cancelled SSO, no warehouse, the network: the real message, as for the shared data
-            raise ApiError(503, "mine_unreadable", a.line(x))
+            raise ApiError(503, "mine_unreadable", load_error(x))
         at = cache.parts_read_at(ck) or at  # built from parts: when they were read
     else:
         d0 = load_shared()
