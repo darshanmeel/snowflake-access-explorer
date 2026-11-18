@@ -1,7 +1,7 @@
 """Where the data comes from and how long it is kept. No Streamlit or FastAPI import.
 
 config(): FAKE / SOURCE / ACCESS_SNAPSHOT settings -> (mode, source, where).
-get(): the data once a day is enough: memory for 24 h, and locally a file in .cache/ for CACHE_HOURS (0 = memory only).
+get(): the data in memory and locally a file in .cache/ (CACHE_DIR), kept until a refresh or rebuild reads again (CACHE_HOURS=0: memory only).
 When a new read replaces a local file of another run, that file is kept as <name>.prev.pkl (What changed compares them).
 Streamlit in Snowflake (access.INSIDE) has no local disk: memory only there.
 sql_copy(): each read from Snowflake also goes to .cache/access.duckdb, the TBL_ACCESS_ tables to query with SQL
@@ -24,9 +24,10 @@ import time
 
 import access  # loads .env; access.INSIDE: no local disk
 
-DIR = pathlib.Path(__file__).with_name(".cache")
+# CACHE_DIR: another folder (absolute, or relative to the repo), e.g. a copied .cache: its files are used, missing ones written there
+DIR = pathlib.Path(__file__).parent / os.environ.get("CACHE_DIR", ".cache")
 HOURS = float(os.environ.get("CACHE_HOURS", "24"))
-TTL = 24 * 3600  # memory
+TTL = 24 * 3600  # the My access session cookie
 MEM = {}
 OLD = {}  # key -> what drop() took out of memory: last() still finds it where there is no local file (inside Snowflake)
 LOCK = threading.Lock()  # guards LOCKS
@@ -123,16 +124,16 @@ def last(key):
 def get(key, fn, disk=True):
     """(data, fetched_at): from memory, else the local file, else fn() (stored in both)."""
     m = MEM.get(key)  # before the lock: a page whose data is in memory never waits for another key's read
-    if m and time.time() - m[1] < TTL:
+    if m:
         return m
     with lock(key):
         m = MEM.get(key)  # another thread may have read it while this one waited
-        if m and time.time() - m[1] < TTL:
+        if m:
             return m
         f = file(key)
         disk = disk and local()
         m = None
-        if disk and f.is_file() and time.time() - f.stat().st_mtime < HOURS * 3600:
+        if disk and f.is_file():
             d = load(f)
             m = (d, f.stat().st_mtime) if d is not None else None
         if not m:
@@ -152,7 +153,7 @@ def store(key, d, disk=True):
         COPYING[key] = threading.Thread(target=run, args=(sql_copy, key, d, m[1]), daemon=True)
         COPYING[key].start()
     if disk:
-        DIR.mkdir(exist_ok=True)
+        DIR.mkdir(parents=True, exist_ok=True)
         keep_prev(f, d)
         tmp = f.with_suffix(".tmp")
         tmp.write_bytes(pickle.dumps(d))
@@ -179,11 +180,10 @@ def swap(key, new, d):
 def ready(key, disk=True):
     """Whether get(key) answers from memory or the local file, without reading the source."""
     m = MEM.get(key)
-    if m and time.time() - m[1] < TTL:
+    if m:
         return True
     f = file(key)
-    return (disk and local() and f.is_file()
-            and time.time() - f.stat().st_mtime < HOURS * 3600)
+    return disk and local() and f.is_file()
 
 
 def drop(key):
@@ -262,7 +262,7 @@ def sql_copy(key, d, at):
                         NOTES=json.dumps(run.get("NOTES") or {}, default=str))]
     s = schema(key)
     try:
-        DIR.mkdir(exist_ok=True)
+        DIR.mkdir(parents=True, exist_ok=True)
         with SQL_LOCK, access.step(f"DuckDB copy ({sql_file().name})"):  # one access.duckdb for every key: a second writer would find the file locked
             con = duckdb.connect(str(sql_file()))
             try:

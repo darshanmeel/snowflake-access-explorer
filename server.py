@@ -27,7 +27,7 @@ DIRECT = SOURCE == "direct"  # no tables: read the grants straight from Snowflak
 KEY = cache.name(SOURCE, where=WHERE)  # another snapshot location, user or role: another copy
 OFFLINE = os.environ.get("BUILD_ONLY") == "1"  # run.py --build: built from the parts kept, never a Snowflake read
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
-TTL = cache.TTL  # shared data and My access stay in memory this long (seconds)
+TTL = cache.TTL  # the My access session cookie (seconds); the data itself stays until read again
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
 
 PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
@@ -248,18 +248,14 @@ def fetched():
 
 
 def mine_entry(sid):
-    m = MINE.get(sid) if sid else None
-    if m and time.time() - m["at"] >= TTL:
-        MINE.pop(sid, None)
-        m = None
-    return m
+    return MINE.get(sid) if sid else None  # kept until Reload my access: the data stays until read again
 
 
 def mine_state(sid):
     m = mine_entry(sid)
     when = lambda t: datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M")
     return dict(loaded=bool(m), user=m["user"] if m else None, loaded_at=when(m["at"]) if m else None,
-                expires_at=when(m["at"] + TTL) if m else None)
+                expires_at=None)
 
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
@@ -362,7 +358,7 @@ def kept_rules(view, key, builtin, save=False):
     f = cache.file(KEY).with_suffix(".rules.pkl")
     stamp = (key, builtin, a.rules_stamp(), SERVER_STAMP)
     if save:
-        f.parent.mkdir(exist_ok=True)
+        f.parent.mkdir(parents=True, exist_ok=True)
         was = cache.load(f) if f.is_file() else None
         if isinstance(was, dict) and was.get("stamp", (None,))[0] != key:  # another data set's: What changed's earlier side
             f.replace(cache.file(KEY).with_suffix(".prev.rules.pkl"))

@@ -147,8 +147,8 @@ describe("web fixes", () => {
   });
 
   it("the My access card says where the copy is kept", () => {
-    expect(mineText(24)).toContain("CACHE_HOURS=24");
-    expect(mineText(0)).toContain("nothing on disk");
+    expect(mineText(24)).toContain("and in .cache/ on this machine until you reload it");
+    expect(mineText(0)).toContain("memory only until");
   });
 
   it("a column without a label is left out of the CSV and is not sortable", () => {

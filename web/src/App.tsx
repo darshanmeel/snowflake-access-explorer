@@ -96,10 +96,10 @@ export function redirect(page: string | null, params: Params): { page: Page; par
 
 interface Loc { page: Page; params: Params; mine: boolean }
 
-/** What the My access card says about where your access is kept (cache.py: 24 h in memory, CACHE_HOURS on disk). */
+/** What the My access card says about where your access is kept (cache.py: memory and .cache/ until read again). */
 export const mineText = (hours: number | undefined) =>
-  `This reads what you can reach with your own role, once, and keeps it for 24 hours in the server's memory${
-    hours ? ` and in .cache/ on this machine (CACHE_HOURS=${hours})` : " only (CACHE_HOURS=0: nothing on disk)"}. Nothing is written to Snowflake.`;
+  `This reads what you can reach with your own role, once, and keeps it in the server's memory${
+    hours ? " and in .cache/ on this machine" : " only"} until you reload it. Nothing is written to Snowflake.`;
 
 /** My access: ?data=mine, or the brief's ?page=me. */
 /** Pages that show the default user when the URL names nobody: their SQL is for that user. */
@@ -225,7 +225,7 @@ export function DataInfo({ meta }: { meta: Meta }) {
       <summary><span className="side-data-dot" />Data from {meta.run.when}</summary>
       <ul>
         <li><b>Source</b><span>{from}{meta.fetched_at ? `, read ${meta.fetched_at}` : ""}.</span></li>
-        <li><b>Kept</b><span>24 h in memory{meta.cache_hours && meta.mode !== "fake" ? ` and ${meta.cache_hours} h in .cache/ on this machine` : ""}. ↻ reads again.</span></li>
+        <li><b>Kept</b><span>In memory{meta.cache_hours && meta.mode !== "fake" ? " and in .cache/ on this machine" : ""}, until ↻ reads again.</span></li>
         <li>
           <b>SQL copy (DuckDB)</b>
           {sq?.on && sq.schema ? (
@@ -411,7 +411,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           )}
           {needShared && (
             <Card title="Shared data">
-              <p>Reads every role, user and grant of the account with {meta?.inside ? "the app owner's role" : "your role"}, once, and keeps it for 24 hours.
+              <p>Reads every role, user and grant of the account with {meta?.inside ? "the app owner's role" : "your role"}, once, and keeps it until you read it again.
                 Without ACCOUNT_USAGE it sends a SHOW per role, so a big account can take a few minutes.</p>
               <div className="ae-row">
                 <button className="ae-btn ae-btn-primary" onClick={loadShared} disabled={!!busy}>Load shared data</button>
