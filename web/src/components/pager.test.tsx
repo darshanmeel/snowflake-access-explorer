@@ -24,7 +24,7 @@ describe("DataTable pages", () => {
   it("server pages: shows the page as sent, asks the server for the next page, sort and filter", () => {
     const asked: object[] = [];
     const server = { total: 5000, at: 2, size: 50, q: "", by: { key: "n", dir: 1 as const }, onChange: (s: object) => asked.push(s) };
-    render(<DataTable columns={cols} rows={rows.slice(0, 50)} csv={null} server={server} />);
+    render(<DataTable columns={cols} rows={rows.slice(0, 50)} csv={null} paged={server} />);
     expect(screen.getByText("Rows 101–150 of 5000")).toBeTruthy();
     expect(screen.getByText("ROLE_000")).toBeTruthy(); // not cut again in the browser
     fireEvent.click(screen.getByText("Next"));

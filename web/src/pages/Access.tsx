@@ -1,9 +1,8 @@
 // Screen 1: My access / a person or role. Answer first, one row per object at its highest level, "How?" on demand.
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { useApi } from "../api/client";
+import { Fragment, useEffect, useState } from "react";
+import { download as saveCsv, useApi } from "../api/client";
 import type { AccessObject, AccessPage, ListItem } from "../api/types";
-import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, StackBar, Toggle, toCsv } from "../components";
-import { download } from "../components/table";
+import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Pager, StackBar, Toggle } from "../components";
 import { AppCtx, useApp, useOpen } from "../ctx";
 import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
@@ -11,26 +10,22 @@ import { RolePageView } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick } from "./common";
 import { ladderParts, recent, remember } from "./Home";
-import { byName, groupKey, type GroupBy } from "./screens";
+import { groupKey, type GroupBy } from "./screens";
 
-const RANK = { names: 0, read: 1, change: 2, own: 3, admin: 4 } as const;
-const at = (o: AccessObject, min: keyof typeof RANK) => o.level != null && RANK[o.level] >= RANK[min];
 const nameOf = (o: AccessObject) => o.label ?? o.object;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
-function save(name: string, rows: AccessObject[]) {
-  const head = ["Object", "Type", "Access", "Privileges", "Sensitive columns", "Granted through", "Ways", "Findings"];
-  download(`${name}_access.csv`, toCsv(head, rows.map((r) => [r.object, r.type, r.level ?? "", r.privileges.join(" "),
-    r.columns.map((c) => `${c.column} ${c.state}`).join("; "), [r.first, r.holder].filter(Boolean).join(" > "), String(r.ways),
-    r.findings.map((f) => `${f.severity} #${f.num}`).join("; ")])));
-}
+const subjectOf = (c: ReturnType<typeof useApp>) => {
+  const role = c.params.role ?? "";
+  return { view: c.view, ...(role ? { role } : { user: c.params.user ?? c.meta.default_user }) };
+};
 
 export function AccessPageView() {
   const c = useApp();
   const mine = c.view === "mine";
   const role = c.params.role ?? "";
   const user = c.params.user ?? (role ? "" : c.meta.default_user);
-  const s = useApi<AccessPage>("access", { view: c.view, ...(role ? { role } : { user }) });
+  const s = useApi<AccessPage>("access", subjectOf(c));
   const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null });
   return (
     <>
@@ -59,18 +54,24 @@ function Body({ d }: { d: AccessPage }) {
   const [sort, setSort] = useState("risk");
   const [open, setOpen] = useState<string | null>(null);
   const [cell, setCell] = useState<{ schema: string; min: string } | null>(null);
+  const [sq, setSq] = useState(""); // q as sent, a moment after the last key
+  const [page, setPage] = useState(0);
+  useEffect(() => { const t = setTimeout(() => setSq(q), 250); return () => clearTimeout(t); }, [q]);
+  useEffect(() => setPage(0), [lvl, sq, usage, group, sort, cell]);
   const w = d.who, n = d.counts, user = w.kind === "user";
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
   const show = c.params.show === "summary" || c.params.show === "history" || c.params.show === "activity" ? c.params.show : "detail"; // the diagram first
-  const data = d.objects.filter((x) => x.category === "data" || (usage && x.category === "names"));
-  const kept = data.filter((x) =>
-    (lvl === "all" || (lvl === "read" ? x.level === "read" : lvl === "change" ? at(x, "change") && x.level !== "own" : lvl === "own" ? at(x, "own") : lvl === "multi" ? x.ways > 1 : true))
-    && (!q || x.object.toLowerCase().includes(q.toLowerCase()))
-    && (!cell || (`${x.database}.${x.schema}` === cell.schema || x.object === cell.schema) && (cell.min === "sensitive" ? x.sensitive : at(x, cell.min as keyof typeof RANK))));
-  const shown = sort === "name" ? byName(kept) : kept;
+  // the list is filtered, sorted and paged on the server: a big user has 100k+ objects
+  const ask = { ...subjectOf(c), filter: lvl === "all" ? null : lvl, q: sq || null, usage: usage ? "1" : null, group: group === "none" ? null : group,
+    sort: sort === "risk" ? null : sort, cell: cell?.schema, min: cell?.min, offset: page ? String(page * d.limit) : null };
+  const first = Object.entries(ask).every(([k, v]) => v == null || k === "view" || k === "user" || k === "role");
+  const l = useApi<AccessPage>(first ? null : "access", ask);
+  const list = first ? d : l.data ?? d;
+  const lo = useOpen(list.refs);
+  const shown = list.objects;
   const groups = group !== "none" ? [...new Set(shown.map((x) => groupKey(x, group)))] : [""];
-  const runs = d.objects.filter((x) => x.category === "runnable");
-  const powers = d.objects.filter((x) => x.category === "account");
+  const runs = d.runs;
+  const powers = d.powers;
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
   const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
     w.last_login && w.status !== "never" ? ` · last login ${w.last_login}` : ""}` : "";
@@ -103,7 +104,7 @@ function Body({ d }: { d: AccessPage }) {
       </div>
       <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: user ? "Diagram & privileges" : "Diagram, held by & holds" },
-        { key: "summary", label: "One row per object", count: data.length },
+        { key: "summary", label: "One row per object", count: d.data },
         { key: "activity", label: "Activity" },
         { key: "history", label: "History" },
       ]} />
@@ -141,9 +142,9 @@ function Body({ d }: { d: AccessPage }) {
         </Card>
       </div>
       <Card title="Data they can access" sub="One row per object, at the most it allows. Riskiest first.">
-        <ListToolbar search={q} onSearch={setQ} onCsv={() => save(w.name, shown)}>
+        <ListToolbar search={q} onSearch={setQ} onCsv={() => saveCsv("access.csv", { ...ask, offset: null }, `${w.name}_access.csv`)}>
           <FilterChips label="Filter by access" value={lvl} onPick={setLvl} items={[
-            { key: "all", label: "All", count: data.length }, { key: "read", label: "Read only" }, { key: "change", label: "Can change" },
+            { key: "all", label: "All", count: list.data }, { key: "read", label: "Read only" }, { key: "change", label: "Can change" },
             { key: "own", label: "Owns" }, { key: "multi", label: "More than one way" }]} />
           <Toggle label={`Show ${n.usage} database/schema USAGE grants`} on={usage} onPick={setUsage} />
           <FilterChips label="Group by" value={group} onPick={(k) => setGroup(k as GroupBy)} items={[{ key: "none", label: "No groups" }, { key: "schema", label: "Schema" }, { key: "type", label: "Type" }]} />
@@ -151,11 +152,11 @@ function Body({ d }: { d: AccessPage }) {
           {cell && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setCell(null)}>{cell.schema} · {cell.min} ×</button>}
         </ListToolbar>
         {!shown.length ? <EmptyState title="Nothing matches">Change the filter, or clear the search.</EmptyState> : (
-          <div className="ae-olist" role="table">
+          <div className={`ae-olist${l.loading ? " ae-fade" : ""}`} role="table">
             <div className="ae-orow ae-orow-h" role="row"><span>Object</span><span>Access</span><span>Sensitive columns</span><span>Granted through</span><span /></div>
             {groups.map((g) => (
               <Fragment key={g}>
-                {g && <div className="ae-ogroup" role="row"><span className="ae-mono">{g}</span> <span className="ae-muted">{shown.filter((x) => groupKey(x, group) === g).length}</span></div>}
+                {g && <div className="ae-ogroup" role="row"><span className="ae-mono">{g}</span> <span className="ae-muted">{list.groups[g] ?? 0}</span></div>}
                 {shown.filter((x) => !g || groupKey(x, group) === g).map((x) => {
                   const id = x.object + x.category;
                   const isOpen = open === id;
@@ -163,13 +164,13 @@ function Body({ d }: { d: AccessPage }) {
                     <Fragment key={id}>
                       <div className="ae-orow" role="row">
                         <span className="ae-ocell">
-                          <button type="button" className="ae-link ae-mono ae-oname" onClick={() => o.open(x.object)}>{x.label ?? x.object.split(".").pop()}</button>
+                          <button type="button" className="ae-link ae-mono ae-oname" onClick={() => lo.open(x.object)}>{x.label ?? x.object.split(".").pop()}</button>
                           <span className="ae-muted ae-osub">{x.type.toLowerCase()}{x.schema ? ` · ${x.database}.${x.schema}` : ""}</span>
                           {x.findings.length > 0 && <span className="ae-ochips">{x.findings.map((f) => <FindingChip key={f.num} {...f} onOpen={() => ruleLink(f.num)} />)}</span>}
                         </span>
                         <AccessPill level={x.level} privileges={x.privileges} />
                         <SensitiveCell sensitive={x.sensitive} columns={x.columns} />
-                        <PathChips first={x.first} holder={x.holder} ways={x.ways} kinds={d.refs.kinds} onOpen={o.open} />
+                        <PathChips first={x.first} holder={x.holder} ways={x.ways} kinds={list.refs.kinds} onOpen={lo.open} />
                         <button type="button" className="ae-btn" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : id)}>{isOpen ? "Close" : "How?"}</button>
                       </div>
                       {isOpen && <How x={x} who={w.name} user={user} />}
@@ -180,13 +181,16 @@ function Body({ d }: { d: AccessPage }) {
             ))}
           </div>
         )}
+        {list.total > list.limit && <Pager at={page} size={list.limit} total={list.total} onPage={setPage} />}
       </Card>
       <div className="ae-two" id="runs">
         <Card title="Things they can run" sub="Warehouses, tasks, functions and procedures: not on the ladder.">
           {runs.length ? <Items xs={runs} open={o.open} rule={ruleLink} /> : <EmptyState title="Nothing to run" />}
+          {d.runs_total > runs.length && <p className="ae-muted">First {runs.length} of {d.runs_total}.</p>}
         </Card>
         <Card title="Powers over the account" sub="Account privileges, and CREATE or MODIFY on a database or schema.">
           {powers.length ? <Items xs={powers} open={o.open} rule={ruleLink} power /> : <EmptyState title="No account powers" />}
+          {d.powers_total > powers.length && <p className="ae-muted">First {powers.length} of {d.powers_total}.</p>}
         </Card>
       </div>
       </>}

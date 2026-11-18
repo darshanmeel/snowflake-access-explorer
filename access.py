@@ -2271,13 +2271,27 @@ def shortest(sts, kids, hops):
     return best
 
 
-def listed(sts, kids, hops, targets, cap=None):
-    """Paths from the start paths to any role in targets, in down() order, at most cap (MAX_PATHS)."""
-    cap, top = cap or MAX_PATHS, top_hop(hops)
+LAST_UPS = [None]  # (kids, its links reversed): reach() and grants() call listed() once per role on one walk
+
+
+def ups_of(kids):
+    """{role: [parent roles]} of a walk's links, kept for the last walk (holding kids keeps the identity check safe;
+    one tuple read and written whole, as rule checks walk in threads)."""
+    last = LAST_UPS[0]
+    if last is not None and last[0] is kids:
+        return last[1]
     ups = {}
     for v, rs in kids.items():
         for r in rs:
             ups.setdefault(r, []).append(v)
+    LAST_UPS[0] = (kids, ups)
+    return ups
+
+
+def listed(sts, kids, hops, targets, cap=None):
+    """Paths from the start paths to any role in targets, in down() order, at most cap (MAX_PATHS)."""
+    cap, top = cap or MAX_PATHS, top_hop(hops)
+    ups = ups_of(kids)
     keep, todo = set(targets), list(targets)  # roles that lead to a target
     while todo:
         for v in ups.get(todo.pop(), []):
@@ -2308,6 +2322,30 @@ def fast(name, user=False, default_only=False, limit=None):
     sts = [s for s in starts(name, user, default_only) if hops is None or len(s) - 1 <= hops]
     kids = dag(sts)
     return sts, kids, counts(sts, kids, hops), hops
+
+
+def path_roles(name, user=False):
+    """of(holders) -> every name on a path from name to one of the holders (name included), from the walk's links
+    without listing paths (what grants() rows' paths hold, uncut by MAX_PATHS); one set per holder set, kept per walk."""
+    def make():
+        sts, kids, _, _ = fast(name, user)
+        ups = ups_of(kids)
+        head = {n for s in sts for n in s[:-1]}
+        sets = {}
+
+        def of(holders):
+            k = frozenset(holders)
+            if k not in sets:
+                keep, todo = set(k), list(k)
+                while todo:
+                    for v in ups.get(todo.pop(), []):
+                        if v not in keep:
+                            keep.add(v)
+                            todo.append(v)
+                sets[k] = frozenset(keep | head)
+            return sets[k]
+        return of
+    return cached(("path_roles", name, user), make)
 
 
 def capped_paths(ps, count, best):
@@ -3508,6 +3546,17 @@ def held(role, limit=None):
 def loses(user, grantee, role):
     """[(privilege, object)] user no longer reaches once role is revoked from grantee (every path uses that grant)."""
     return sorted(grant_keys(best_paths(user, True)) - grant_keys(reach_without(user, True, {(grantee, role)})))
+
+
+def loses_objects(user, role):
+    """Objects of loses(user, user, role) counted, once per data set: only the grants of the roles the user no longer
+    reaches are checked, against the holders of each object (40 granted roles over 200k grants took 9 s)."""
+    def count():
+        kept = reach_without(user, True, {(user, role)})
+        gone = set(best_paths(user, True)) - kept
+        return len({o for pv, o in grant_keys(gone)
+                    if not any(r in kept and p == pv for r, p, _ in on.get(o, []))})
+    return cached(("loses_objects", user, role), count)
 
 
 def role_stats(role, limit=None):

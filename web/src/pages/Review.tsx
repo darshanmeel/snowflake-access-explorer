@@ -66,7 +66,7 @@ function OldReview() {
             ]} />
             <Card scroll>
               <DataTable key={t} csv={null} rows={d.rows} maxHeight={640}
-                server={{ total: d.total, at: pg.at, size: pg.size, q: typed, by: pg.by,
+                paged={{ total: d.total, at: pg.at, size: pg.size, q: typed, by: pg.by,
                   onChange: (x) => { if (x.q !== undefined) setTyped(x.q); setPg((o) => ({ at: x.at, size: x.size ?? o.size, by: x.by ?? o.by })); } }}
                 rowTone={(r: ReviewRow) => (r.admin ? "bad" : r.status !== "active" ? "warn" : null)}
                 columns={[

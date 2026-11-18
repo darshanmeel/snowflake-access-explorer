@@ -249,7 +249,11 @@ export function expand(g: Graph, open: Set<string>, max = MAX_BOXES): Graph {
   const opening = new Set([...open].filter((id) => g.groups[id] && here.has(id)));
   if (!opening.size) return g;
   const owner = new Map<string, string>();
-  for (const [id, grp] of Object.entries(g.groups)) if (!opening.has(id)) for (const n of grp.nodes) owner.set(n.id, id);
+  for (const [id, grp] of Object.entries(g.groups)) {
+    if (opening.has(id)) continue;
+    for (const n of grp.nodes) owner.set(n.id, id);
+    for (const m of grp.ids ?? []) owner.set(m, id); // a lazy folded lane: its roles are known by name only
+  }
   const nodes = g.nodes.filter((n) => !opening.has(n.id));
   const edges = g.edges.filter((e) => !opening.has(e.source) && !opening.has(e.target));
   for (const id of opening) {

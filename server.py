@@ -53,6 +53,12 @@ ROWS_WORD = {"all": "all rows", "filtered": "filtered rows", "none": "no rows", 
 MAX_MEMBERS = 1000  # members of a combined box sent for expansion (the graph groups them by schema, then type); the
 # rest through the drill action
 MAX_BOX = a.MAX_OBJECTS  # a tab diagram draws one box each up to this many objects / roles per lane
+LAZY = 300  # over this many members in all combined boxes, a graph sends their counts only: a box's members come from
+# graph?group=<box> when it is opened (a big user's graph was 27k member nodes, 19 MB)
+PAGE = 250  # rows per page of a table paged on the server (privs, access)
+MAX_MULTI = 300  # User page, "Reached more than one way": paths listed (the total counts them all)
+MAX_LANE = 24  # role boxes one lane of a big (lazy) graph draws; more fold into one box, as web/src/components/graphs.ts does
+GSRC = ("view", "builtin", "roles", "depth", "dataonly", "schema", "otype", "on", "priv", "full", "sensitive", "users")
 
 LOCK = threading.RLock()  # access.py keeps its lookups in module globals: build + answer under one lock
 LOAD = threading.Lock()  # one Snowflake read at a time
@@ -675,12 +681,46 @@ def lane_depth(label):
     return int(m.group(1)) if m else None
 
 
+def fold_lanes(lanes, edges, gx, kinds, info, keep):
+    """A big graph's crowded role lanes (over MAX_LANE roles) as one box each, "lane:<i>", as the graph component
+    folds them (graphs.ts foldRoles), so its roles and their lines go out only when the box is opened; lines to the
+    roles point at the box, counting them. keep: names never folded (the start, the selected box)."""
+    gx, kinds, to, out = dict(gx), dict(kinds), {}, []
+    for i, (lab, ns) in enumerate(lanes):
+        rs = [n for n in ns if i and n not in kinds and n not in keep and nk(n) not in ("user", "object")]
+        if len(rs) <= MAX_LANE:
+            out.append((lab, ns))
+            continue
+        gid, mem = f"lane:{i}", set(rs)
+        gx[gid] = dict(members=rs, edges=[e for e in edges if e[0] in mem or e[1] in mem], noun="roles", count=len(rs),
+                       findings=sum(len(info.get(n, {}).get("rules", [])) for n in rs), drill=None, ids=rs)
+        kinds[gid] = "lane_group"
+        to.update(dict.fromkeys(rs, gid))
+        out.append((lab, [n for n in ns if n not in mem] + [gid]))
+    if not to:
+        return lanes, edges, gx, kinds
+    new, per = [], {}
+    for e in edges:
+        x, y = to.get(e[0], e[0]), to.get(e[1], e[1])
+        if (x, y) == (e[0], e[1]):
+            new.append(e)
+        elif x != y:
+            per.setdefault((x, y, *e[2:4]), set()).add(e[0] if e[0] in to else e[1])
+    return out, new + [k if len(k) == 2 else (*k, None, len(m))[:4] + (len(m),) for k, m in per.items()], gx, kinds
+
+
 def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected=None, header="", level="object",
-                note=None, full=False, bad=(), start=None, check=False, types=None, gx=None):
+                note=None, full=False, bad=(), start=None, check=False, types=None, gx=None, src=None, only=None):
     """Graph JSON from access.py's (lanes, edges, notes): nodes with kinds, marks, rule hits and click actions, merged
-    edges, and the expansion payload of every combined box (gx: {box: dict(members, edges, drill, ...)})."""
+    edges, and the expansion payload of every combined box (gx: {box: dict(members, edges, drill, ...)}). src: the
+    graph endpoint's params that draw this graph again; with it, over LAZY members the boxes go out empty (lazy), and
+    only=<box> answers that box alone, members included."""
     notes, kinds, types, gx = notes or {}, kinds or {}, types or {}, gx or {}
     info = hits(lanes, edges, info)
+    big = bool(src) and sum(len(x["members"]) for x in gx.values()) > LAZY
+    lazy = big and only is None
+    if big:
+        lanes, edges, gx, kinds = fold_lanes(lanes, edges, gx, kinds, info, {selected, start})
     lane_of = {n: i for i, (_, ns) in enumerate(lanes) for n in ns}
 
     def action(n, gk):
@@ -709,6 +749,8 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
             elif gk in ("schema", "database"):
                 db, _, sc = n.split(" · ")[0].partition(".")  # a tab box id is "DB · 19 objects": the count is the sub
             label = n.strip("⋯ ").join(["⋯ ", " ⋯"]) if gk == "fold" else n.split(" · ")[0] if gk == "database" else n
+            if gk == "lane_group":
+                label, sub = sub, lanes[i][0]
         elif kind == "object":
             nl = node_label(n)
             if nl:
@@ -726,8 +768,7 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
             f"Rule {x['num']} ({x['severity']}): {x['title']}" for x in rules[:5]]
         marks = [m for m, on in (("disabled", kind == "user" and a.is_disabled(name)), ("sensitive", n in S["sens"]),
                                  ("bad", n in bad)) if on]
-        classes = None if gk or kind in ("user", "object") else [  # what the role's own grants allow (folded box counts)
-            c for c in a.CLS_ORDER if c in {a.priv_class(pv, k) for pv, k, _ in a.granted.get(name, [])}]
+        classes = None if gk or kind in ("user", "object") else role_classes(name)
         return dict(id=n, name=name, label=label, sub=sub, kind=kind, raw_kind=None if gk else raw_of(n), type=typ,
                     db=db, schema=sc, lane=i, depth=lane_depth(lanes[i][0]) if i < len(lanes) else None, badge=badge,
                     tip="\n".join(lines), marks=marks, rules=rules, action=action(n, gk), group=n if gx.get(n) else None,
@@ -752,15 +793,15 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
             g["privs"] = ui.psort(g["privs"])
         return list(out.values())
 
-    nodes = [node(n, i, kinds) for i, (_, ns) in enumerate(lanes) for n in ns]
-    eds = edge_list(edges, lane_of, info)
     groups = {}
     for gid, x in gx.items():
+        if only is not None and gid != only:
+            continue
         mem = x["members"]
         gl = lane_of.get(gid, len(lanes) - 1)
-        shown = mem[:MAX_MEMBERS]
+        shown = [] if lazy else mem[:MAX_MEMBERS]
         keep = set(shown)
-        es = [e for e in x["edges"] if e[1] in keep or e[0] in keep]
+        es = x["edges"] if lazy else [e for e in x["edges"] if e[1] in keep or e[0] in keep]
         lo = dict(lane_of) | {n: gl for n in shown}
         sens = sum(n in S["sens"] for n in mem)
         gi = info.get(gid, {})
@@ -769,17 +810,32 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
             kind=GKIND[kinds[gid]], label=gid, noun=x.get("noun") or gi.get("noun") or "objects",
             count=x.get("count") or gi.get("count") or len(mem), sensitive=x.get("sensitive", gi.get("sensitive", sens)),
             findings=x.get("findings", gi.get("findings", 0)), classes=classes,
-            nodes=[node(n, gl, {}) for n in shown], edges=edge_list(es, lo, hits([("", shown)], es)),
-            truncated=max(0, len(mem) - MAX_MEMBERS), drill=x.get("drill"))
+            nodes=[node(n, gl, {}) for n in shown], edges=[] if lazy else edge_list(es, lo, hits([("", shown)], es)),
+            truncated=0 if lazy else max(0, len(mem) - MAX_MEMBERS), drill=x.get("drill"), lazy=lazy,
+            ids=x["ids"] if lazy and "ids" in x else None)  # a folded lane's role names: lines of other boxes end in it
+    if only is not None:
+        need(only in groups, f"{only} is not a combined box of this graph")
+        return groups[only]
+    nodes = [node(n, i, kinds) for i, (_, ns) in enumerate(lanes) for n in ns]
+    eds = edge_list(edges, lane_of, info)
     allnodes = nodes + [n for g in groups.values() for n in g["nodes"]]
     return dict(
         title=title, header=header, level=level, note=note, full=full, selected=selected,
         lanes=[dict(index=i, label=lab, depth=lane_depth(lab)) for i, (lab, _) in enumerate(lanes)],
-        nodes=nodes, edges=eds, groups=groups,
+        nodes=nodes, edges=eds, groups=groups, src=src if lazy else None,
         legend=dict(kinds=list(dict.fromkeys(n["kind"] for n in nodes)),
                     edges=list(dict.fromkeys(e["cls"] for e in eds)),
                     marks=sorted({m for n in nodes for m in n["marks"]}),
-                    rules=any(n["rules"] for n in allnodes) or any(e["rules"] for e in eds)))
+                    rules=any(n["rules"] for n in allnodes) or any(e["rules"] for e in eds)
+                    or any(g["lazy"] and g["findings"] for g in groups.values())))
+
+
+def role_classes(r):
+    """What a role's own grants allow (a graph box's classes: folded box counts), once per data set and role."""
+    seen = a.cached("role_classes", dict)
+    if r not in seen:
+        seen[r] = [c for c in a.CLS_ORDER if c in {a.priv_class(pv, k) for pv, k, _ in a.granted.get(r, [])}]
+    return seen[r]
 
 
 def member_groups(rows, level, schema):
@@ -797,6 +853,7 @@ def member_groups(rows, level, schema):
     for g in out.values():
         g["members"] = sorted(dict.fromkeys(g["members"]))
         g["edges"] = list(dict.fromkeys(g["edges"]))
+        g["classes"] = [c for c in a.CLS_ORDER if c in {e[2] for e in g["edges"]}]
     return out
 
 
@@ -825,7 +882,13 @@ def fold_groups(orig, g):
 
 
 def input_graph(start, user, rows, schema=None, otype=None, default_only=False, limit=None, full=False):
-    """graph_input() of a user or role (a summary when big, unless full) with its expansion payloads, or None."""
+    """graph_input() of a user or role (a summary when big, unless full) with its expansion payloads, or None; once per
+    data set (rows are grants() of the same walk; a box opened later asks again)."""
+    return a.cached(("input_graph", start, user, schema, otype, default_only, limit, full),
+                    lambda: drawn_input(start, user, rows, schema, otype, default_only, limit, full))
+
+
+def drawn_input(start, user, rows, schema, otype, default_only, limit, full):
     g = a.graph_input(start, schema, default_only=default_only, limit=limit, user=user, otype=otype)
     if not g:
         return None
@@ -878,17 +941,19 @@ def combine_tab(lanes, edges, notes, kinds):
         else:  # one line per (holder, box, class, privilege), counting its objects
             per.setdefault((x, y, e[2], e[3]), set()).add(e[1])
     new = list(dict.fromkeys(new)) + [(x, y, c, pv, len(o) if y in gx else 1) for (x, y, c, pv), o in per.items()]
-    for gid, g in gx.items():  # what an expansion draws: the original links, outside ends mapped to their box
-        mem = set(g["members"])
-        g["edges"] = [(e[0] if e[0] in mem else to.get(e[0], e[0]), e[1] if e[1] in mem else to.get(e[1], e[1]), *e[2:])
-                      for e in edges if e[0] in mem or e[1] in mem]
+    for g in gx.values():
+        g["edges"] = []
+    for e in edges:  # what an expansion draws: the original links, outside ends mapped to their box
+        for gid in {to.get(e[0]), to.get(e[1])} - {None}:
+            gx[gid]["edges"].append((e[0] if to.get(e[0]) == gid else to.get(e[0], e[0]),
+                                     e[1] if to.get(e[1]) == gid else to.get(e[1], e[1]), *e[2:]))
     notes = {n: v for n, v in notes.items() if n not in to}
     return lanes, new, notes, kinds, gx
 
 
-def tab_graph(start, user, rows, walked=(), what="privileges", full_title="Graph"):
+def tab_graph(start, user, rows, walked=(), what="privileges", full_title="Graph", src=None, only=None):
     """A Privileges tab's own diagram: start, the roles on the way, the objects of just these rows (walked: role paths).
-    Over MAX_OBJECTS rows only the shortest path of each row is drawn."""
+    Over MAX_OBJECTS rows only the shortest path of each row is drawn. src, only: as build_graph."""
     big = len(rows) > a.MAX_OBJECTS
     g = a.down_graph(start, [r | dict(paths=r["paths"][:1]) for r in rows] if big else rows, walked, user)
     if not g:
@@ -899,7 +964,7 @@ def tab_graph(start, user, rows, walked=(), what="privileges", full_title="Graph
     n = len(rows) or len(walked)
     return build_graph(full_title, lanes, edges, notes, kinds=kinds, header=f"{n} {what}" + (" · shortest path each" if big else ""),
                        level="database" if any(k == "database" for k in kinds.values()) else "object",
-                       start=start, check=user, gx=gx)
+                       start=start, check=user, gx=gx, src=src, only=only)
 
 
 # ---------- privilege rows, tabs, account ----------
@@ -1008,7 +1073,7 @@ def usage(u):
     for r in sorted(a.roles_of.get(u, [])):
         x = by.get(r)
         status = "unused" if not x else "secondary" if x["secondary"] else "used"
-        takes = len({o for _, o in a.loses(u, u, r)}) if status == "unused" else None
+        takes = a.loses_objects(u, r) if status == "unused" else None
         roles.append(dict(role=r, kind=norm(a.role_kind(r)), default=r == dr, status=status,
                           queries=x["queries"] if x else 0, last_used=x["last_used"] if x else None, takes=takes))
     roles.sort(key=lambda r: (r["status"] != "unused", -r["queries"], r["role"]))
@@ -1039,13 +1104,21 @@ def user_ctx(p, view):
     u = a.users[0] if mine else p.get("name") or (DEMO_USER if DEMO_USER in a.users else a.users[0])
     need(u in a.users, f"{u} is not in this snapshot")
     limit, default_only, data_only = depth_of(p), p.get("roles") == "default", flag(p, "dataonly", True)
+    key = ("user_ctx", u, limit, default_only, data_only, p.get("schema", ""), p.get("otype", ""), p.get("on", ""),
+           p.get("priv", ""))
+    return a.cached(key, lambda: dict(user_rows(p, u, limit, default_only, data_only), key=key, mine=mine))
+
+
+def user_rows(p, u, limit, default_only, data_only):
+    """user_ctx without the cache (a big user's 200k rows filter and sort in seconds; the page, its tables and its
+    tab diagrams all ask)."""
     every = a.grants(u, True, default_only, limit)
     scope, otype = scope_of(p, every), p.get("otype") or None
     ok = lambda r: a.in_scope(r, scope) and otype in (None, r["type"])
     rows = [r for r in every if ok(r) and not (data_only and r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA"))]
     rows.sort(key=lambda r: (type_rank(r["type"]), r["object"], r["privilege"]))
     on, pv = p.get("on", ""), p.get("priv", "")
-    objs, privs = sorted({r["object"] for r in rows}), sorted({r["privilege"] for r in rows})
+    privs = sorted({r["privilege"] for r in rows})
     rows = [r for r in rows if (not on or r["object"] == on) and (not pv or r["privilege"] == pv)]
     hidden = [r for r in every if data_only and r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA") and ok(r)
               and (not on or r["object"] == on) and (not pv or r["privilege"] == pv)]
@@ -1053,8 +1126,28 @@ def user_ctx(p, view):
     if scope:
         path = {n for r in rows for x in r["paths"] for n in x[1:-1]}
         reach = [x for x in reach if x["role"] in path]
-    return dict(u=u, mine=mine, limit=limit, default_only=default_only, data_only=data_only, every=every, scope=scope,
-                otype=otype, rows=rows, hidden=hidden, reach=reach, on=on, pv=pv, objs=objs, privs=privs)
+    return dict(u=u, limit=limit, default_only=default_only, data_only=data_only, every=every, scope=scope,
+                otype=otype, rows=rows, hidden=hidden, reach=reach, on=on, pv=pv, privs=privs)
+
+
+def user_graph(p, c, only=None):
+    """The User page diagram: one object or privilege = just those rows, else graph_input (grouped on big accounts,
+    its boxes opened through graph?of=user&group=)."""
+    u, rows = c["u"], c["rows"]
+    if c["on"] or c["pv"]:
+        g = a.down_graph(u, rows, user=True)
+        return g and build_graph("Role hierarchy, by depth", g[0], g[1], g[2], header=f"{len(rows)} privileges shown",
+                                 start=u, check=True)
+    ig = input_graph(u, True, c["every"], c["scope"] or None, c["otype"], c["default_only"], c["limit"], flag(p, "full"))
+    return ig and build_graph("Role hierarchy, by depth", ig["g"]["lanes"], ig["g"]["edges"], ig["g"]["notes"],
+                              ig["g"]["info"], ig["g"]["kinds"], header=ig["g"]["header"], level=ig["level"],
+                              note=ig["note"], full=ig["full"], start=u, check=True, types=ig["g"].get("types"),
+                              gx=ig["gx"], src=gsrc(p, of="user", name=u), only=only)
+
+
+def gsrc(p, **extra):
+    """The graph endpoint's params that draw a page's graph again (build_graph src)."""
+    return {k: p[k] for k in GSRC if p.get(k)} | extra
 
 
 def user_page(p, view):
@@ -1086,18 +1179,9 @@ def user_page(p, view):
     twice = sum(r["count"] > 1 for r in rows)
     sens = sorted({r["object"] for r in rows if r["object"] in S["sens"] and r["privilege"] in a.READ_PRIVS})
     acc = account(admin, acct)
-    # graph: one object or privilege = just those rows, else graph_input (grouped on big accounts)
-    if c["on"] or c["pv"]:
-        g = a.down_graph(u, rows, user=True)
-        graph = g and build_graph("Role hierarchy, by depth", g[0], g[1], g[2], header=f"{len(rows)} privileges shown",
-                                  start=u, check=True)
-    else:
-        ig = input_graph(u, True, c["every"], scope or None, c["otype"], c["default_only"], c["limit"], flag(p, "full"))
-        graph = ig and build_graph("Role hierarchy, by depth", ig["g"]["lanes"], ig["g"]["edges"], ig["g"]["notes"],
-                                   ig["g"]["info"], ig["g"]["kinds"], header=ig["g"]["header"], level=ig["level"],
-                                   note=ig["note"], full=ig["full"], start=u, check=True, types=ig["g"].get("types"),
-                                   gx=ig["gx"])
-    multi = [(r, x) for r in rows if r["count"] > 1 for x in r["paths"]]
+    graph = user_graph(p, c)
+    many = [r for r in rows if r["count"] > 1]
+    multi = list(itertools.islice(((r, x) for r in many for x in r["paths"]), MAX_MULTI))
     use, dr = a.used_roles(u), pr.get("DEFAULT_ROLE")
     src = a.run["SOURCES"].get("usage")
     shared = c["mine"] is False
@@ -1110,18 +1194,17 @@ def user_page(p, view):
                   last_login=str(pr.get("LAST_SUCCESS_LOGIN"))[:16] if pr.get("LAST_SUCCESS_LOGIN") else None,
                   last_login_text=text, login_mark=mark, login_days=a.login_days(u)),
         filters=dict(roles="default" if c["default_only"] else "all", depth=c["limit"], dataonly=c["data_only"],
-                     schema=scope, otype=c["otype"] or "", on=c["on"], priv=c["pv"], objects=c["objs"], privileges=c["privs"]),
+                     schema=scope, otype=c["otype"] or "", on=c["on"], priv=c["pv"], privileges=c["privs"]),
         banners=banners, findings=findings, findings_total=total,
         kpis=dict(privileges=len(rows), objects=len(objs), paths=sum(r["count"] for r in rows), multi=twice,
                   roles=len(reach), roles_direct=sum(x["direct"] for x in reach),
                   deepest=max((r["depth"] for r in rows), default=0), sensitive=len(sens) if (S["sens"] or shared) else None,
                   sensitive_known=bool(S["sens"]) or shared, admin_roles=len({x[-1] for x in admin}),
                   account_privs=len(acct)),
-        account=acc, graph=graph, tabs=tab_list(rows, c["hidden"], reach, acc),
-        privileges=[priv_row(r, True) for r in rows] + [priv_row(r, True, True) for r in c["hidden"]],
+        account=acc, graph=graph, tabs=a.cached(("tabs", c["key"]), lambda: tab_list(rows, c["hidden"], reach, acc)),
         roles=[reach_row(x) for x in reach],
         multi=dict(rows=[dict(privilege=r["privilege"], cls=r["cls"], object=r["object"], depth=a.depth(x[:-1], True),
-                              path=x) for r, x in multi[:300]], total=len(multi), shown=min(300, len(multi))),
+                              path=x) for r, x in multi], total=sum(len(r["paths"]) for r in many), shown=len(multi)),
         can_read=[v for v in a.data_views(u, True) if not (scope or c["on"] or c["pv"]) or v["object"] in objs] if shared else None,
         sensitive=sens_reach(u, objs if scope else None),
         granted=[dict(role=r, kind=norm(a.role_kind(r)), default=r == dr, used=use.get(r) and dict(
@@ -1129,6 +1212,70 @@ def user_page(p, view):
             used_text="not readable" if src == "UNAVAILABLE" else f"{use[r]['queries']} queries · {str(use[r]['last_used'])[:10]}"
             if r in use else "not used") for r in sorted(a.roles_of.get(u, []))],
         usage=usage(u), capped=sorted(a.capped))
+
+
+ACCESS = {"use": "Use", "read": "Read", "manage": "Manage", "write": "Write", "own": "Own", "admin": "Admin"}
+PRIV_SORT = {"object": lambda r: r["label"], "type": lambda r: r["type"], "access": lambda r: ACCESS.get(r["access"], r["access"]),
+             "grants": lambda r: ", ".join(r["grants"]), "holder": lambda r: r["holder"], "depth": lambda r: r["depth"],
+             "count": lambda r: r["count"], "path": lambda r: " > ".join(r["path"])}
+
+
+def by_object(rows):
+    """One row per object, as web/src/components/tabs.ts byObject: the strongest access (own > write > manage > read >
+    use; admin above all), every grant, the shortest path and up to 4 other distinct paths, the most paths of a grant."""
+    rank = {k: i for i, k in enumerate(ACCESS)}
+    out = {}
+    for r in sorted(rows, key=lambda r: r["depth"]):
+        o = out.get(r["object"])
+        if o is None:
+            o = out[r["object"]] = dict(object=r["object"], label=a.future_label(r["object"], r["type"]) or r["object"],
+                                        type=r["type"], access=r["cls"], grants=[], holder=r["holder"], depth=r["depth"],
+                                        path=r["path"], more=[], count=0, sensitive=r["object"] in S["sens"])
+        elif len(o["more"]) < 4 and r["path"] != o["path"] and r["path"] not in o["more"]:
+            o["more"].append(r["path"])
+        if rank.get(r["cls"], 0) > rank.get(o["access"], 0):
+            o["access"] = r["cls"]
+        if r["privilege"] not in o["grants"]:
+            o["grants"].append(r["privilege"])
+        o["count"] = max(o["count"], r["count"])
+    return list(out.values())
+
+
+def privs_rows(p, view):
+    """The rows of one Privileges tab (tab=) of the User page, filtered (q=: every word in some column) and sorted
+    (sort= a column key, dir=1|-1), from the user page's own filters."""
+    c = user_ctx(p, view)
+    t = p.get("tab", "all")
+    rows = a.cached(("privs", c["key"], t), lambda: by_object(tab_rows(c["rows"], c["hidden"], [], t)[0]))
+    words = p.get("q", "").lower().split()
+    if words:
+        text = lambda r: " ".join([r["label"], r["type"], ACCESS.get(r["access"], r["access"]), ", ".join(r["grants"]),
+                                   r["holder"], str(r["depth"]), str(r["count"]), " > ".join(r["path"])]).lower()
+        rows = [r for r in rows if all(w in text(r) for w in words)]
+    by = PRIV_SORT.get(p.get("sort", "depth"), PRIV_SORT["depth"])
+    return sorted(rows, key=by, reverse=p.get("dir") == "-1")
+
+
+def paged(p, rows):
+    """(offset, limit, rows[offset:offset + limit]) from offset= and limit= (PAGE rows, at most 1000)."""
+    num = lambda k, d: int(p[k]) if p.get(k, "").isdigit() else d
+    off, lim = num("offset", 0), min(num("limit", PAGE), 1000)
+    return off, lim, rows[off:off + lim]
+
+
+def privs_page(p, view):
+    """User page, one Privileges tab table, paged on the server: one row per object (web/API.md GET /api/privs)."""
+    rows = privs_rows(p, view)
+    off, lim, page = paged(p, rows)
+    return dict(rows=page, total=len(rows), offset=off, limit=lim)
+
+
+def privs_csv(p, view):
+    rows = privs_rows(p, view)
+    cols = ["Object", "Type", "Access", "Grants", "Grant holder", "Depth", "Paths", "Shortest path"]
+    out = [[r["label"], r["type"], ACCESS.get(r["access"], r["access"]), ", ".join(r["grants"]), r["holder"], r["depth"],
+            r["count"], " > ".join(r["path"])] for r in rows]
+    return f"{user_ctx(p, view)['u']}_privileges_{p.get('tab', 'all')}.csv", csv_text(cols, out)
 
 
 def sens_reach(u, objs=None):
@@ -1163,39 +1310,51 @@ def row_findings(subject, user, objs, rows):
     for x in S["rows"]:
         if x["kind"] != "user" or (user and x["grantee"] == subject):
             xs.setdefault(x["grantee"], []).append(x)
-    lists = {}  # rows of one holder and object share their path list: each list once
+    of, hs = a.path_roles(subject, user), {}
     for r in rows:
-        lists.setdefault(r["object"], {})[id(r["paths"])] = r["paths"]
-    by = {o: {n for ps in ls.values() for q in ps for n in q[:-1]} for o, ls in lists.items()}
-    out = []
+        hs.setdefault(r["object"], set()).update(r["holders"])
+    chip = lambda x: dict(num=x["num"], severity=x["severity"], label=SHORT.get(x["num"], x["title"]))
+    links, grants, out = {}, {}, []  # per set of path roles: chips of its role links, its grants {object: [(x, priv)]}
     for o in objs:
-        on = by.get(o["object"], set())
-        hit = {}
-        for x in (x for g in on & xs.keys() for x in xs[g]):
-            if x["num"] in hit:
-                continue
-            if any(e["grantee"] in on and ((e["to"] == o["object"] and e["priv"] in (None, *o["privileges"]))
-                                           or (e["to"] in on and not e["priv"] and o["category"] in ("data", "runnable")))
-                   for e in x["edges"]):
-                hit[x["num"]] = dict(num=x["num"], severity=x["severity"], label=SHORT.get(x["num"], x["title"]))
+        on = of(hs.get(o["object"], ()))
+        if on not in links:
+            xs_on = [x for g in on & xs.keys() for x in xs[g]]
+            links[on] = {x["num"]: chip(x) for x in xs_on
+                         if any(e["grantee"] in on and e["to"] in on and not e["priv"] for e in x["edges"])}
+            grants[on] = {}
+            for x in xs_on:
+                for e in x["edges"]:
+                    if e["grantee"] in on:
+                        grants[on].setdefault(e["to"], []).append((x, e["priv"]))
+        hit = dict(links[on]) if o["category"] in ("data", "runnable") else {}
+        for x, pv in grants[on].get(o["object"], ()):
+            if x["num"] not in hit and pv in (None, *o["privileges"]):
+                hit[x["num"]] = chip(x)
         out.append(sorted(hit.values(), key=lambda f: (SEV_RANK.get(f["severity"], 9), int(f["num"]))))
     return out
 
 
-def access_page(p, view):
-    """A person (user=) or a role (role=), or My access: one row per object at its highest level, things they can run,
-    powers over the account, where the access is (per schema) and why they have it (roles)."""
+def access_subject(p, view):
+    """(name, is a user) of the Access page: role=, else user= (My access: the logged-in user)."""
     mine = view == "mine"
     role = p.get("role", "") if not mine else ""
     if role:
         need(role in a.roles, f"{role} is not in this snapshot")
-        name, user = role, False
-    else:
-        need(a.users, "No users in this data.")
-        name = a.users[0] if mine else p.get("user") or (DEMO_USER if DEMO_USER in a.users else a.users[0])
-        need(name in a.users, f"{name} is not in this snapshot")
-        user = True
-    rows = [] if not user and role in a.ADMIN else a.grants(name, user)
+        return role, False
+    need(a.users, "No users in this data.")
+    name = a.users[0] if mine else p.get("user") or (DEMO_USER if DEMO_USER in a.users else a.users[0])
+    need(name in a.users, f"{name} is not in this snapshot")
+    return name, True
+
+
+def access_all(name, user, mine):
+    """Every Access page entry, riskiest first, with its findings, sensitive columns and first paths, plus the ladder
+    counts and the heat per schema; once per data set (a big user has 100k+ objects: the page sends one page of them)."""
+    return a.cached(("access_all", name, user, mine), lambda: access_entries(name, user, mine))
+
+
+def access_entries(name, user, mine):
+    rows = [] if not user and name in a.ADMIN else a.grants(name, user)
     objs = a.access_objects(rows, user)
     views = {v["object"]: v for v in a.data_views(name, user)} if not mine or S["sens"] else {}
     chips = row_findings(name, user, objs, rows)
@@ -1226,6 +1385,60 @@ def access_page(p, view):
         h["change"] += i >= 2
         h["own"] += i >= 3
         h["sensitive"] += o["sensitive"]
+    return dict(objs=objs, counts=counts, heat=sorted(heat.values(), key=lambda h: h["schema"]),
+                deepest=max((o["depth"] for o in objs), default=0))
+
+
+def at_least(o, step):
+    return o["level"] is not None and a.LEVELS.index(o["level"]) >= a.LEVELS.index(step)
+
+
+def group_of(o, by):
+    """The Access list group of an entry (web/src/pages/screens.ts groupKey)."""
+    return (f'{o["database"]}.{o["schema"]}' if o["schema"] else o["object"]) if by == "schema" else o["type"] if by == "type" else ""
+
+
+def access_list(p, objs):
+    """The Access list entries the page asks for: data (usage=1: with database / schema USAGE), filter=read|change|own|
+    multi, q= in the name, cell=<schema>&min=read|change|own|sensitive (a heat cell), sort=risk|name, group=schema|type
+    (kept together, in that order)."""
+    lvl, q, cell, low = p.get("filter", "all"), p.get("q", "").lower(), p.get("cell", ""), p.get("min", "")
+    usage = flag(p, "usage")
+    keep = lambda x: (lvl == "all" or (x["level"] == "read" if lvl == "read" else at_least(x, "change") and x["level"] != "own"
+                                       if lvl == "change" else at_least(x, "own") if lvl == "own" else x["ways"] > 1
+                                       if lvl == "multi" else True)) \
+        and (not q or q in x["object"].lower()) \
+        and (not cell or (group_of(x, "schema") == cell and (x["sensitive"] if low == "sensitive" else
+                                                              low in a.LEVELS and at_least(x, low))))
+    xs = [x for x in objs if (x["category"] == "data" or (usage and x["category"] == "names")) and keep(x)]
+    if p.get("sort") == "name":
+        xs.sort(key=lambda x: x["object"])
+    by = p.get("group", "none")
+    if by in ("schema", "type"):
+        order = {}
+        for x in xs:
+            order.setdefault(group_of(x, by), len(order))
+        xs.sort(key=lambda x: order[group_of(x, by)])
+    return xs
+
+
+def access_page(p, view):
+    """A person (user=) or a role (role=), or My access: one page of objects at their highest level (access_list
+    filters, offset=, limit=), things they can run, powers over the account, where the access is (per schema) and why
+    they have it (roles)."""
+    name, user = access_subject(p, view)
+    x = access_all(name, user, view == "mine")
+    objs = x["objs"]
+    xs = access_list(p, objs)
+    off, lim, page = paged(p, xs)
+    by = p.get("group", "none")
+    groups = {}
+    for o in xs if by in ("schema", "type") else ():
+        k = group_of(o, by)
+        groups[k] = groups.get(k, 0) + 1
+    runs = [o for o in objs if o["category"] == "runnable"]
+    powers = [o for o in objs if o["category"] == "account"]
+    usage = flag(p, "usage")
     pr = (a.profile.get(name) or {}) if user else {}
     if user:
         dr, sec = pr.get("DEFAULT_ROLE"), "ALL" in str(pr.get("DEFAULT_SECONDARY_ROLES") or "").upper()
@@ -1246,9 +1459,25 @@ def access_page(p, view):
                    disabled=False, last_login=None, login_mark="", default_role=None, secondary_all=False,
                    held_by=dict(users=len(us), roles=len(rs) - 1))
     findings, total = findings_of(name, user)
-    return dict(view=view, who=who, counts=counts, objects=objs, heat=sorted(heat.values(), key=lambda h: h["schema"]),
-                why=why, findings=findings, findings_total=total,
-                deepest=max((o["depth"] for o in objs), default=0), roles=len(a.reach(name, user)))
+    out = lambda o: {k: v for k, v in o.items() if k != "holders"}
+    return dict(view=view, who=who, counts=x["counts"], objects=[out(o) for o in page], total=len(xs),
+                data=sum(o["category"] == "data" or (usage and o["category"] == "names") for o in objs),
+                offset=off, limit=lim, groups=groups, runs=[out(o) for o in runs[:PAGE]], runs_total=len(runs),
+                powers=[out(o) for o in powers[:PAGE]], powers_total=len(powers), heat=x["heat"],
+                why=why, findings=findings, findings_total=total, deepest=x["deepest"],
+                roles=len(a.cached(("reach", name, user), lambda: a.reach(name, user))))
+
+
+def access_csv(p, view):
+    """Every entry of the Access list with the page's filters (access_list), as the list shows them."""
+    name, user = access_subject(p, view)
+    objs = access_all(name, user, view == "mine")["objs"]
+    cols = ["Object", "Type", "Access", "Privileges", "Sensitive columns", "Granted through", "Ways", "Findings"]
+    rows = [[o["object"], o["type"], o["level"] or "", " ".join(o["privileges"]),
+             "; ".join(f'{c["column"]} {c["state"]}' for c in o["columns"]),
+             " > ".join(x for x in (o["first"], o["holder"]) if x), o["ways"],
+             "; ".join(f'{f["severity"]} #{f["num"]}' for f in o["findings"])] for o in access_list(p, objs)]
+    return f"{name}_access.csv", csv_text(cols, rows)
 
 
 def home_page(p, view):
@@ -1312,6 +1541,37 @@ def role_ctx(p, view):
                 held=held, only_users=flag(p, "users"))
 
 
+def role_up(c):
+    """(held by rows drawn, read-only roles that write) of the Role page."""
+    full = a.held(c["r"], c["limit"])
+    return [x for x in full if x["kind"] == "user"] if c["only_users"] else full, a.readonly_writes(c["r"])
+
+
+def role_graph(p, c, up, ro, only=None):
+    """The Role page diagram: who holds r (up), r, then everything r reaches (boxes opened via graph?of=role&group=)."""
+    r, every, admin_role = c["r"], c["every"], c["admin_role"]
+    lanes, edges, notes, sel = a.role_graph(r, up, ro)
+    above = {n for _, ns in lanes[:sel] for n in ns}
+    lanes = [(lab.replace("Depth ", "Held by · D"), ns) for lab, ns in lanes[:sel]] + [lanes[sel]]
+    edges = [x for x in edges if len(x) == 2 and x[0] in above]
+    ig = None if admin_role else input_graph(r, False, every, c["scope"] or None, p.get("otype") or None, full=flag(p, "full"))
+    info, kinds, gx, types, header, level, note = a.graph_info(lanes, edges), {}, {}, {}, "", "object", None
+    if ig:
+        g = ig["g"]
+        held = info
+        info = {k: dict(v) for k, v in g["info"].items()}  # ig is kept for the next request: merged into a copy
+        for k, v in held.items():
+            x = info.setdefault(k, {})
+            x["rules"] = sorted(set(x.get("rules", [])) | set(v.get("rules", [])), key=lambda t: int(t[0]))
+        lanes += [(lab.replace("Depth ", "Holds · D"), ns) for lab, ns in g["lanes"][1:]]
+        edges += g["edges"]
+        notes = notes | g["notes"]
+        kinds, gx, types, header, level, note = g["kinds"], ig["gx"], g.get("types"), g["header"], ig["level"], ig["note"]
+    return build_graph("Held by (up) and holds (down)", lanes, edges, notes, info, kinds, selected=r, header=header,
+                       level=level, note=note, full=bool(ig and ig["full"]), bad={x["holder"] for x in ro}, types=types,
+                       gx=gx, src=gsrc(p, of="role", name=r), only=only)
+
+
 def role_page(p, view):
     c = role_ctx(p, view)
     r, limit, scope, every, admin_role = c["r"], c["limit"], c["scope"], c["every"], c["admin_role"]
@@ -1331,24 +1591,7 @@ def role_page(p, view):
             "Its effective privileges are those of every custom role, so they are not listed here."],
             [link("People with admin roles", "rules")]))
     sc = [x for x in every if a.in_scope(x, scope)]
-    # graph: who holds r (up), r, then everything r reaches
-    lanes, edges, notes, sel = a.role_graph(r, up, ro)
-    above = {n for _, ns in lanes[:sel] for n in ns}
-    lanes = [(lab.replace("Depth ", "Held by · D"), ns) for lab, ns in lanes[:sel]] + [lanes[sel]]
-    edges = [x for x in edges if len(x) == 2 and x[0] in above]
-    ig = None if admin_role else input_graph(r, False, every, scope or None, p.get("otype") or None, full=flag(p, "full"))
-    info, kinds, gx, types, header, level, note = a.graph_info(lanes, edges), {}, {}, {}, "", "object", None
-    if ig:
-        g = ig["g"]
-        for k, v in info.items():
-            x = g["info"].setdefault(k, {})
-            x["rules"] = sorted(set(x.get("rules", [])) | set(v.get("rules", [])), key=lambda t: int(t[0]))
-        lanes += [(lab.replace("Depth ", "Holds · D"), ns) for lab, ns in g["lanes"][1:]]
-        edges += g["edges"]
-        notes = notes | g["notes"]
-        info, kinds, gx, types, header, level, note = g["info"], g["kinds"], ig["gx"], g.get("types"), g["header"], ig["level"], ig["note"]
-    graph = build_graph("Held by (up) and holds (down)", lanes, edges, notes, info, kinds, selected=r, header=header,
-                        level=level, note=note, full=bool(ig and ig["full"]), bad={x["holder"] for x in ro}, types=types, gx=gx)
+    graph = role_graph(p, c, up, ro)
     # held by, with "if revoked from"
     direct = sorted(set(a.held_by.get(r, [])) | {a.uid(u, True) for u in a.users_of.get(r, [])})
     cut = p.get("cut", "")
@@ -2409,18 +2652,28 @@ def list_items(p, what):
 
 
 def graph_page(p, view):
-    of = p.get("of", "")
-    if of in ("user", "role", "object", "check"):
+    """A page's graph alone (of=); group=<box> answers just that combined box with its members (a lazy box opened)."""
+    of, only = p.get("of", ""), p.get("group") or None
+    if of == "user":
+        return user_graph(p, user_ctx(p, view), only)
+    if of == "role":
+        c = role_ctx(p, view)
+        return role_graph(p, c, *role_up(c), only)
+    if of in ("object", "check"):
         pg = ROUTES[of](p, view)
         return pg["graph"]
     if of == "user-tab":
         c = user_ctx(p, view)
-        rows, walked = tab_rows(c["rows"], c["hidden"], c["reach"], p.get("tab", "all"))
-        return tab_graph(c["u"], True, rows, walked, "roles held" if walked else "privileges")
+        t = p.get("tab", "all")
+        rows, walked = tab_rows(c["rows"], c["hidden"], c["reach"], t)
+        return tab_graph(c["u"], True, rows, walked, "roles held" if walked else "privileges",
+                         src=gsrc(p, of=of, name=c["u"], tab=t), only=only)
     if of == "role-tab":
         c = role_ctx(p, view)
-        rows, walked = tab_rows(c["eff"], [], c["held"], p.get("tab", "all"))
-        return tab_graph(c["r"], False, rows, walked, "roles held" if walked else "privileges")
+        t = p.get("tab", "all")
+        rows, walked = tab_rows(c["eff"], [], c["held"], t)
+        return tab_graph(c["r"], False, rows, walked, "roles held" if walked else "privileges",
+                         src=gsrc(p, of=of, name=c["r"], tab=t), only=only)
     raise ApiError(400, "bad_param", "of must be user, role, object, check, user-tab or role-tab")
 
 
@@ -2615,14 +2868,14 @@ def mkrefs(out):
                 disabled=sorted(n for n, k in kinds.items() if k == "user" and a.is_disabled(a.node_name(n))))
 
 
-ROUTES = {"home": home_page, "access": access_page, "user": user_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
+ROUTES = {"home": home_page, "access": access_page, "user": user_page, "privs": privs_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
           "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page,
           "activity": activity_page, "sql": sql_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
              "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity"}
-CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv}
+CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv, "privs": privs_csv, "access": access_csv}
 
 
 def data_key(view, sid):
@@ -2765,7 +3018,7 @@ def make_app():
             return JSONResponse(serve(name, dict(request.query_params), sid_of(request)))
         return h
 
-    for n in ("home", "access", "user", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
+    for n in ("home", "access", "user", "privs", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
               "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "sql"):
         app.get(f"/api/{n}")(route(n))
 

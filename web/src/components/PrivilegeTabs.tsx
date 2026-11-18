@@ -1,8 +1,9 @@
 // Privileges split in tabs, each with its own small diagram and table.
 import { useMemo, useState } from "react";
+import { useApi } from "../api/client";
 import type { Account, Graph as G, GraphNode, PrivClass, PrivRow, ReachRow, Refs, Tab, TabKey } from "../api/types";
 import { Graph } from "./Graph";
-import { DataTable, type Column } from "./DataTable";
+import { DataTable, type Column, type DataTableProps } from "./DataTable";
 import { Banner, Chips, Tabs } from "./parts";
 import { PathText } from "./PathText";
 import { tabGraph } from "./tabgraph";
@@ -23,6 +24,9 @@ export interface PrivilegeTabsProps {
   theme?: ThemeName;
   max?: number;
   csvName?: string;
+  /** The User page params: privilege rows come a page at a time from GET privs and each privilege tab's diagram from
+   * GET graph?of=user-tab (rows is then empty); the role and account tabs still draw from roles and account. */
+  server?: Record<string, string | undefined | null>;
 }
 
 export function PrivilegeTabs(p: PrivilegeTabsProps) {
@@ -32,9 +36,11 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
   const want = p.active ?? own;
   const active = tabs.some((t) => t.key === want) ? want : tabs[0]?.key ?? "all";
   const pick = (k: string) => { setOwn(k as TabKey); p.onTab?.(k as TabKey); };
+  const local = !p.server || active === "account" || active === "granted" || active === "database_roles";
+  const sg = useApi<G | null>(local ? null : "graph", { ...p.server, of: "user-tab", tab: active });
   const graph = useMemo(
-    () => p.graphs?.[active] ?? tabGraph({ tab: active, rows, roles, account, refs, max: p.max }),
-    [p.graphs, active, rows, roles, account, refs, p.max],
+    () => (local ? p.graphs?.[active] ?? tabGraph({ tab: active, rows, roles, account, refs, max: p.max }) : sg.data),
+    [local, sg.data, p.graphs, active, rows, roles, account, refs, p.max],
   );
   const kinds = refs?.kinds ?? {};
 
@@ -43,13 +49,16 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
       <Tabs tabs={tabs.map((t) => ({ ...t, tone: t.key === "account" ? "bad" as const : null }))} active={active} onChange={pick} />
       <div className="ae-privtab-body">
         {active === "account" && <AccountList account={account} rows={tabRows(rows, "account")} kinds={kinds} onOpen={p.onOpen} />}
-        {graph.nodes.length > 1
+        {graph && graph.nodes.length > 1
           ? <Graph graph={graph} theme={theme} onNodeClick={p.onNodeClick} maxHeight={420} />
+          : !local && sg.error ? <p className="ae-muted" role="alert">{sg.error.message}</p>
+          : !local && sg.loading ? <p className="ae-muted">Loading the diagram…</p>
           : <p className="ae-muted">Nothing in {TAB_LABEL[active]}.</p>}
         {active === "granted" || active === "database_roles"
           ? <RoleTable rows={tabRoles(roles, active)} kinds={kinds} onOpen={p.onOpen} csv={`${p.csvName ?? "privileges"}_${active}.csv`} />
           : active !== "account" && (
-            <PrivTable rows={tabRows(rows, active)} kinds={kinds} onOpen={p.onOpen} csv={`${p.csvName ?? "privileges"}_${active}.csv`} />
+            <PrivTable rows={tabRows(rows, active)} kinds={kinds} onOpen={p.onOpen} csv={`${p.csvName ?? "privileges"}_${active}.csv`}
+              server={p.server && { path: "privs", params: { ...p.server, tab: active } }} />
           )}
       </div>
     </div>
@@ -87,8 +96,10 @@ const ACCESS: Partial<Record<PrivClass, string>> = { read: "Read", write: "Write
 export const AccessTag = ({ cls, grants }: { cls: PrivClass; grants: string[] }) =>
   <span className={`ae-pclass ae-pclass-${cls}`} title={grants.join(", ")}>{ACCESS[cls] ?? cls}</span>;
 
-function PrivTable({ rows, kinds, onOpen, csv }: { rows: PrivRow[]; kinds: Record<string, string>; onOpen?: (id: string) => void; csv: string }) {
-  const objs = useMemo(() => byObject(rows), [rows]);
+function PrivTable({ rows, kinds, onOpen, csv, server }: {
+  rows: PrivRow[]; kinds: Record<string, string>; onOpen?: (id: string) => void; csv: string; server?: DataTableProps<ObjRow>["server"];
+}) {
+  const objs = useMemo(() => (server ? [] : byObject(rows)), [rows, server]);
   const cols: Column<ObjRow>[] = [
     { key: "object", label: "Object", get: (r) => r.label, wrap: "truncate",
       render: (r) => <button className="ae-link" onClick={() => onOpen?.(r.object)} title={r.object}>
@@ -103,7 +114,7 @@ function PrivTable({ rows, kinds, onOpen, csv }: { rows: PrivRow[]; kinds: Recor
     { key: "path", label: "Shortest path", get: (r) => r.path.join(" > "), wrap: "nowrap",
       render: (r) => <PathText path={r.path} more={r.more} cls={r.access} grants={r.grants} kinds={kinds} onOpen={onOpen} /> },
   ];
-  return <DataTable columns={cols} rows={objs} csv={csv} sort={{ key: "depth" }} rowTone={(r) => (r.access === "admin" ? "bad" : null)} />;
+  return <DataTable columns={cols} rows={objs} csv={csv} sort={{ key: "depth" }} rowTone={(r) => (r.access === "admin" ? "bad" : null)} server={server} />;
 }
 
 function RoleTable({ rows, kinds, onOpen, csv }: { rows: ReachRow[]; kinds: Record<string, string>; onOpen?: (id: string) => void; csv: string }) {
