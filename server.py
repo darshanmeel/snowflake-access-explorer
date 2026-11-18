@@ -840,20 +840,19 @@ def role_classes(r):
 
 def member_groups(rows, level, schema):
     """Members and holder edges of every combined box of graph_input (same keys as there)."""
-    out = {}
+    by = {}
     for r in rows:
         k = (f"{schema} · {r['type']}" if level == "type" else a.group_key(r, level)
              if (r["schema"] if level == "schema" else level == "database" and r["database"]) else None)
-        if k is None:
-            continue
-        g = out.setdefault(k, dict(members=[], edges=[], drill=dict(kind="otype", otype=r["type"]) if level == "type"
-                                   else dict(kind="drill", schema=k)))
-        g["members"].append(r["object"])
-        g["edges"] += [(h, r["object"], r["cls"], r["privilege"]) for h in r["holders"]]
-    for g in out.values():
-        g["members"] = sorted(dict.fromkeys(g["members"]))
-        g["edges"] = list(dict.fromkeys(g["edges"]))
-        g["classes"] = [c for c in a.CLS_ORDER if c in {e[2] for e in g["edges"]}]
+        if k is not None:
+            by.setdefault(k, []).append(r)
+    out = {}
+    for k, rs in by.items():
+        es = list(dict.fromkeys((h, r["object"], r["cls"], r["privilege"]) for r in rs for h in r["holders"]))
+        cls = {e[2] for e in es}
+        out[k] = dict(members=sorted({r["object"] for r in rs}), edges=es,
+                      drill=dict(kind="otype", otype=rs[0]["type"]) if level == "type" else dict(kind="drill", schema=k),
+                      classes=[c for c in a.CLS_ORDER if c in cls])
     return out
 
 
@@ -1116,7 +1115,8 @@ def user_rows(p, u, limit, default_only, data_only):
     scope, otype = scope_of(p, every), p.get("otype") or None
     ok = lambda r: a.in_scope(r, scope) and otype in (None, r["type"])
     rows = [r for r in every if ok(r) and not (data_only and r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA"))]
-    rows.sort(key=lambda r: (type_rank(r["type"]), r["object"], r["privilege"]))
+    rank = {k: type_rank(k) for k in {r["type"] for r in rows}}
+    rows.sort(key=lambda r: rank[r["type"]])  # grants() rows come sorted by object and privilege: a stable sort keeps it
     on, pv = p.get("on", ""), p.get("priv", "")
     privs = sorted({r["privilege"] for r in rows})
     rows = [r for r in rows if (not on or r["object"] == on) and (not pv or r["privilege"] == pv)]
@@ -1160,7 +1160,7 @@ def user_page(p, view):
     if p.get("schema") and not scope:
         banners.append(banner("info", f"{p['schema']} is not reached by {u}", ["Showing all of its access."]))
     if c["default_only"]:
-        n = len(a.grants(u, True, False, c["limit"])) - len(c["every"])
+        n = a.grant_count(u, True, False, c["limit"]) - len(c["every"])
         if n:
             banners.append(banner("info", f"{plural(n, 'grant')} hidden in this mode", [
                 "Default role only leaves out roles granted next to the default role (direct grants included). "

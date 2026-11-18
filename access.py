@@ -8,9 +8,11 @@ import contextvars
 import difflib
 import fnmatch
 import functools
+import gc
 import hashlib
 import itertools
 import json
+import operator
 import os
 import pathlib
 import re
@@ -22,6 +24,11 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+
+# A loaded account holds millions of objects, and a big page builds a million more (200k grant rows with their paths):
+# with the default 10, every such page paid one to three full collections over the whole data set (1-2 s each).
+# Young objects are still collected as usual; only the full sweep waits for far more allocations.
+gc.set_threshold(700, 10, 1000)
 
 # .env (template .env.example) fills in what the environment lacks: no file, a missing name or an empty value
 # leaves the environment variable (or the default) in place, and a variable set in the shell wins.
@@ -3173,16 +3180,21 @@ def reads(path):
 def sensitive_reach(user):
     """Sensitive data per granted role (depth 1, PUBLIC included): one row per (sensitive object, granted role).
     Row: object, cols (sensitive columns, [] = whole object), role, path (user->role->...->holder->object) or None,
-    masked {column: clear|masked|?} and rows (row policy: clear|masked|?) when there is a path."""
-    out, s = [], sensitive()
-    for st in starts(user, True):
-        got = reads(st)
-        for o in sorted(s):
-            p = got.get(o)
-            out.append(dict(object=o, cols=sensitive_cols(o), role=st[1], path=p,
-                            masked={c: masked(st[1], o, c) for c in sensitive_cols(o)} if p else {},
-                            rows=masked(st[1], o) if p else None))
-    return out
+    masked {column: clear|masked|?} and rows (row policy: clear|masked|?) when there is a path. Once per data set: the
+    rows are shared, do not change them."""
+    def make():
+        out, cols = [], {o: sensitive_cols(o) for o in sorted(sensitive())}
+        for st in starts(user, True):
+            b = bfs(st)  # reads(st) for the sensitive objects only: the first reader in bfs order (shortest) wins
+            idx = {r: i for i, r in enumerate(b)}
+            for o, cs in cols.items():
+                hs = [r for r, pv, k in on.get(o, ()) if pv in READ_PRIVS and r in idx]
+                p = b[min(hs, key=idx.get)] + [o] if hs else None
+                out.append(dict(object=o, cols=cs, role=st[1], path=p,
+                                masked={c: masked(st[1], o, c) for c in cs} if p else {},
+                                rows=masked(st[1], o) if p else None))
+        return out
+    return cached(("sensitive_reach", user), make)
 
 
 def readers(obj):
@@ -3470,37 +3482,57 @@ def grant_rows(name, user=False, default_only=False, limit=None):
     Row: privilege, type, object, database, schema, name, cls (priv_class), holder, granted (depth-1 role: "Use role"),
     direct (held by the role itself), depth, path (shortest, name->...->holder->object), paths (shortest first, at
     most MAX_PATHS, see paths_note; shared between rows of one holder and object, do not change them), count (every
-    path, counted without listing them), holders (every role holding the grant)."""
+    path, counted without listing them), holders (every role holding the grant; shared between rows of one holder
+    set, do not change it)."""
     sts, kids, cnt, hops = fast(name, user, default_only, limit)
-    keys, best, per, done = {}, None, {}, {}
+    keys, best, per, base = {}, None, {}, {}
     for h in cnt:
-        for pv, k, o in granted.get(h, []):
-            keys.setdefault((pv, k, o), {}).setdefault(h, 0)
-            keys[(pv, k, o)][h] += 1  # duplicate grant rows count twice, as in access_of()
-    out = []
-    for (pv, k, o), hs in sorted(keys.items(), key=lambda x: (x[0][2], x[0][0], x[0][1])):
-        count = sum(cnt[h] * n for h, n in hs.items())
-        ps = done.get((o, tuple(hs.items())))  # the privileges of one holder on one object share their path list
-        if ps is None:
+        for g in granted.get(h, ()):
+            hs = keys.setdefault(g, {})
+            hs[h] = hs.get(h, 0) + 1  # duplicate grant rows count twice, as in access_of()
+    out, cur = [], None
+    for g in sorted(keys, key=operator.itemgetter(2, 0, 1)):
+        pv, k, o = g
+        hs = keys[g]
+        hk = tuple(hs.items())
+        b = base.get(hk)  # role paths, count and row fields depend only on the holders: once per holder set
+        if b is None:
+            count = sum(cnt[h] * n for h, n in hs.items())
             if len(hs) == 1:
                 h = next(iter(hs))
                 if h not in per:
                     per[h] = listed(sts, kids, hops, {h})
-                ps = [q + [o] for q in per[h] for _ in range(hs[h])][:MAX_PATHS]
+                qs = [q for q in per[h] for _ in range(hs[h])][:MAX_PATHS]
             else:
-                ps = [q + [o] for q in listed(sts, kids, hops, set(hs)) for _ in range(hs[q[-1]])][:MAX_PATHS]
-            if count > len(ps):
+                qs = [q for q in listed(sts, kids, hops, set(hs)) for _ in range(hs[q[-1]])][:MAX_PATHS]
+            if count > len(qs):
                 best = best or shortest(sts, kids, hops)
-                ps = capped_paths(ps, count, min((best[h] for h in hs), key=len) + [o])
+                qs = capped_paths(qs, count, min((best[h] for h in hs), key=len))
             else:
-                ps = sorted(ps, key=len)
-            done[(o, tuple(hs.items()))] = ps
+                qs = sorted(qs, key=len)
+            q = qs[0]
+            fields = dict(holder=q[-1], granted=q[1] if user else q[0], direct=len(q) == 1 and not user,
+                          depth=depth(q, user))
+            b = base[hk] = (qs, count, fields, sorted(hs))
+        qs, count, fields, holders = b
+        if o != cur:  # rows come sorted by object: what one object's rows share is kept until the next object
+            cur, done = o, {}
+        ps = done.get(hk)  # the privileges of one holder on one object share their path list
+        if ps is None:
+            ps = done[hk] = [q + [o] for q in qs]
         db, sc, nm = split_name(o, k)
-        p = ps[0]
         out.append(dict(privilege=pv, type=k, object=o, database=db, schema=sc, name=nm, cls=priv_class(pv, k),
-                        holder=p[-2], granted=p[1] if user else p[0], direct=len(p) == 2 and not user,
-                        depth=depth(p[:-1], user), path=p, paths=ps, count=count, holders=sorted(hs)))
+                        **fields, path=ps[0], paths=ps, count=count, holders=holders))
     return out
+
+
+def grant_count(name, user=False, default_only=False, limit=None):
+    """len(grants()) without building its rows (a big user's default-role banner counts the other walk)."""
+    k = ("grants", name, user, default_only, limit, MAX_PATHS)
+    if k in memo:
+        return len(memo[k])
+    cnt = fast(name, user, default_only, limit)[2]
+    return len({g for h in cnt for g in granted.get(h, [])})
 
 
 def reach(name, user=False, default_only=False, limit=None):
@@ -3780,29 +3812,26 @@ def rules_of(ids):
     return [(n, SEVERITY.get(n, "Low"), RULES[n][0]) for n in nums]
 
 
-def group_objects(rows, level="schema"):
+def group_objects(rows, level="schema", keys=None):
     """grants() rows rolled up to schema ("DB.SCHEMA") or database: one row per group, most objects first.
     Row: group, level (schema | database | object for account-level objects), database, schema, objects (count),
     names, classes (read/write/own/use/manage/admin), sensitive (objects), findings (findings on its objects),
-    holders (grant holder roles)."""
-    out, fi, s = {}, finding_index()[0], sensitive()
-    for r in rows:
-        key = group_key(r, level)
-        lv = ("schema" if level == "schema" and r["schema"] else "database" if level == "database" and r["database"]
-              else "object")
-        g = out.setdefault(key, dict(group=key, level=lv, database=r["database"],
-                                     schema=r["schema"] if lv == "schema" else "", names=set(), classes=set(),
-                                     holders=set()))
-        g["names"].add(r["object"])
-        g["classes"].add(r["cls"])
-        g["holders"].update(r["holders"])
+    holders (grant holder roles). keys: group_key() of each row when the caller has them."""
+    by, fi, s = {}, finding_index()[0], sensitive()
+    for r, k in zip(rows, keys or [group_key(r, level) for r in rows]):
+        by.setdefault(k, []).append(r)
     res = []
-    for g in out.values():
-        names = sorted(g["names"])
-        res.append(g | dict(objects=len(names), names=names, holders=sorted(g["holders"]),
-                            classes=[c for c in CLS_ORDER if c in g["classes"]],
-                            sensitive=sum(o in s for o in names),
-                            findings=len({i for o in names for i in fi.get(o, ())})))
+    for key, rs in by.items():
+        f = rs[0]  # the first row of a group gives its level, database and schema
+        lv = ("schema" if level == "schema" and f["schema"] else "database" if level == "database" and f["database"]
+              else "object")
+        names = sorted({r["object"] for r in rs})
+        cls = {r["cls"] for r in rs}
+        hs = set().union(*{id(r["holders"]): r["holders"] for r in rs}.values())  # rows of one holder set share a list
+        res.append(dict(group=key, level=lv, database=f["database"], schema=f["schema"] if lv == "schema" else "",
+                        names=names, classes=[c for c in CLS_ORDER if c in cls], holders=sorted(hs),
+                        objects=len(names), sensitive=sum(o in s for o in names),
+                        findings=len({i for o in names for i in fi.get(o, ())})))
     return sorted(res, key=lambda g: (-g["objects"], g["group"]))
 
 
@@ -3841,13 +3870,14 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
     else:
         level = "schema" if n_schemas <= max_objects else "database"
 
-    def grouped(r):
-        return level == "type" or bool(r["schema"] if level == "schema" else level == "database" and r["database"])
+    def group(r):  # the group box of r, None when its object is drawn itself
+        if level == "type":
+            return f"{schema} · {r['type']}"
+        within = r["schema"] if level == "schema" else level == "database" and r["database"]
+        return group_key(r, level) if within else None
 
-    def key(r):
-        if not grouped(r):
-            return r["object"]
-        return f"{schema} · {r['type']}" if level == "type" else group_key(r, level)
+    gs = [group(r) for r in rows]
+    ks = [g or r["object"] for r, g in zip(rows, gs)]  # the end box of each row
 
     sts, kids, _, hops = fast(start, user, default_only, limit)
     if level == "object":
@@ -3860,21 +3890,20 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
     ch = chains(part)
     d = {n: min(v) for n, v in ch.items()}
     nodes = set(d) - {sid}
-    ends = list(dict.fromkeys(key(r) for r in rows))
+    ends = list(dict.fromkeys(ks))
     word = {"object": "Object" if len(ends) == 1 else "Objects", "schema": "Schemas", "database": "Databases",
             "type": "Object types"}[level]
     lanes = ([("User" if user else "Role", [sid])]
              + by_depth(nodes, d, "Depth {}", range(1 if user else 2, max([d[n] for n in nodes] + [0]) + 1))
              + [(word, ends)])
     edges, per, members, okey = role_links(part), {}, {}, {}
-    for r in rows:
-        k = key(r)
-        if grouped(r):
+    for r, k in zip(rows, gs):
+        if k:
             members.setdefault(k, set()).add(r["object"])
             okey[r["object"]] = k
             for h in r["holders"]:
                 per.setdefault((h, k, r["cls"], r["privilege"]), set()).add(r["object"])
-    edges += priv_links([r for r in rows if not grouped(r)])
+    edges += priv_links([r for r, k in zip(rows, gs) if not k])
     edges += [(a, b, c, pv, len(o)) for (a, b, c, pv), o in per.items()]
     bi = builtin_info() if schema is None and not otype else None
     if bi and "PUBLIC" in nodes | {sid}:  # Snowflake's own grants: one fold box under PUBLIC
@@ -3898,8 +3927,8 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
                                        f"{bi['objects']} objects: {', '.join(bi['roles'])}\nShow built-in draws them")
     return dict(lanes=lanes, edges=edges, notes=nts, info=info, kinds=kinds_, header=header, level=level,
                 shown=len(objs), total=len({r["object"] for r in every}),
-                groups=group_objects(rows, level) if level in ("schema", "database") else [],
-                types={key(r): r["type"] for r in rows} if level == "type" else {})
+                groups=group_objects(rows, level, ks) if level in ("schema", "database") else [],
+                types={k: r["type"] for r, k in zip(rows, gs)} if level == "type" else {})
 
 
 SUMMARY_ROLES, SUMMARY_LANES = 30, 6  # over this many role boxes or role lanes a graph is drawn as a summary
@@ -3986,7 +4015,7 @@ def graph_info(lanes, edges, okey=None):
     drawn_nodes = {n for _, ns in lanes for n in ns}
     hit = {n: set(fi.get(n, ())) for n in drawn_nodes}
     for o, g in okey.items():
-        hit[g] = hit.get(g, set()) | set(fi.get(o, ()))
+        hit.setdefault(g, set()).update(fi.get(o, ()))
     for n, ids in hit.items():
         if ids:
             info[n] = dict(rules=rules_of(ids))
