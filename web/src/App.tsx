@@ -75,9 +75,13 @@ export function redirect(page: string | null, params: Params): { page: Page; par
     const { name, ...rest } = params;
     return { page: "see", params: { ...rest, ...(name ? { [page]: name } : {}) } };
   }
-  if (page === "sensitive" && (params.a || params.b || params.tab === "compare")) { // Compare two roles, now screen 9
-    const { tab: _t, ...rest } = params;
+  if (page === "sensitive" && (params.a || params.b || [params.tab, params.part, params.show].includes("compare"))) { // Compare two roles, now screen 9
+    const { tab: _t, part: _p, show: _s, ...rest } = params;
     return { page: "compare", params: { ...rest, scope: "sensitive" } };
+  }
+  if (page === "compare" && params.show) { // the old "What each sees" and "Differences" tabs are one view now
+    const { show: _s, ...rest } = params;
+    return { page: "compare", params: rest };
   }
   if ((page === "check" || page === "request") && (params.who || params.what)) { // the brief's ?who=&what=&do= links
     const { who, what, ...rest } = params;

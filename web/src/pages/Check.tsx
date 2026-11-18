@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { CheckPage, ListItem, Path, Refs } from "../api/types";
-import { Banner, Card, CodeOutput, DataTable, EmptyState, KpiRow, Tabs } from "../components";
+import { Banner, Card, CodeOutput, DataTable, EmptyState, KpiRow, NameList, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 import { col, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
@@ -135,7 +135,7 @@ function Routes({ d }: { d: CheckPage }) {
                 <button type="button" className="ae-cut-main" aria-pressed={i === sel} onClick={() => setSel(i)}>
                   <b>{cutLabel(x.edges)}</b>
                   <span className="ae-muted">{x.people.length > 1
-                    ? `Ends this access for ${x.people.length} people: ${x.people.slice(0, 4).join(", ")}${x.people.length > 4 ? " …" : ""}.`
+                    ? <>Ends this access for {x.people.length} people:<NameList items={x.people} max={4} plain /></>
                     : x.people.length ? `Ends this access only for ${x.people[0]}.` : `Ends it for ${d.user} only: no one holds it.`}{x.lost > 0 ? ` ${d.user} also loses ${x.lost} other privilege${x.lost === 1 ? "" : "s"}.` : ""}</span>
                 </button>
                 <span className="ae-cut-side">
@@ -216,19 +216,14 @@ function RemoveOptions({ d }: { d: CheckPage }) {
   );
 }
 
-/** The old Can they? page, kept as the default tab: the answer, diagram and paths, what they see; removing it lives
- * on Routes & where to cut. */
+/** The default tab: the answer, then the graph of how the access gets there right under it, then the paths and the
+ * rest; removing it lives on Routes & where to cut. */
 function Answer({ d }: { d: CheckPage }) {
   const c = useApp();
   const a = d.answer;
   return (
     <>
       <Banner tone={a.yes ? (a.tone === "warn" ? "warn" : a.tone === "low" ? "info" : "bad") : "info"} title={a.title} lines={[a.text]} />
-      <KpiRow items={a.stats.map(([label, value]) => ({ label, value }))} />
-      {d.status && d.status !== "active" && <Banner tone="warn" title={`User is ${d.status}`} lines={d.dormant_days ? [`No login for ${d.dormant_days} days.`] : []} />}
-      {d.admin_paths.length > 0 && (
-        <Banner tone="bad" title={`Admin roles give this ${d.subject.user ? "user" : "role"} everything`} lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
-      )}
       <GraphCard g={d.graph} refs={d.refs} />
       {d.paths.length > 0 && (
         <Card title="Paths" sub={`${d.paths.length} way(s) to ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}`}>
@@ -239,6 +234,11 @@ function Answer({ d }: { d: CheckPage }) {
               col("w", "How", (r: CheckPage["paths"][number]) => r.how, { wrap: "wrap" }), pathCol<CheckPage["paths"][number]>(d.refs),
               col("act", "", () => "", { render: (r: CheckPage["paths"][number]) => { const ch = changeOfPath(r.path, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; } })]} />
         </Card>
+      )}
+      <KpiRow items={a.stats.map(([label, value]) => ({ label, value }))} />
+      {d.status && d.status !== "active" && <Banner tone="warn" title={`User is ${d.status}`} lines={d.dormant_days ? [`No login for ${d.dormant_days} days.`] : []} />}
+      {d.admin_paths.length > 0 && (
+        <Banner tone="bad" title={`Admin roles give this ${d.subject.user ? "user" : "role"} everything`} lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
       )}
       {d.owner.length > 0 && (
         <Card title="Through ownership" sub="The owner of an object can do everything on it">

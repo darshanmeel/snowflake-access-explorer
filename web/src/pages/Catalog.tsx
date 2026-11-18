@@ -36,8 +36,7 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
                 <span className="ae-objtags0">{r.labels.map((t) => <span key={t} className="ae-otag ae-sens-tag">{t.split("=").pop()}</span>)}</span>
                 <span className="ae-cat-prot">
                   <span><span className={`ae-pst ${STATUS[r.status][1]}`}>{STATUS[r.status][0]}</span> <span className="ae-small">{protectionText(r)}</span></span>
-                  {r.columns.length > 0 && <span className="ae-objtags0">{r.columns.map((x) => (
-                    <span key={x.column} className={`ae-colchip ${x.masked ? "ae-colchip-ok" : "ae-colchip-bad"}`} title={x.masked ? `Masked by ${x.policies.join(", ")}` : "No masking policy"}>{x.column}</span>))}</span>}
+                  {r.columns.length > 0 && <Cols cols={r.columns} />}
                 </span>
                 <span className="ae-cat-who"><MiniBar of={most} text={<><b className="ae-cat-n">{r.readers}</b> <span className="ae-muted">people{r.admin ? ` · +${r.admin} admin` : ""}</span></>}
                   parts={[{ key: "p", label: "People", value: r.readers, cls: r.status === "not" ? "high" : r.status === "partly" ? "medium" : "people" }, { key: "a", label: "Through an admin role", value: r.admin, cls: "admin" }]} /></span>
@@ -52,6 +51,30 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
         <span><span className="ae-colchip ae-colchip-ok">COL</span>masked</span>
         <span><span className="ae-dot2 ae-bar-high" />people: no column masked</span><span><span className="ae-dot2 ae-bar-medium" />partly masked</span><span><span className="ae-dot2 ae-bar-people" />all masked or whole object</span><span><span className="ae-dot2 ae-bar-admin" />through an admin role</span>
       </div>
+    </>
+  );
+}
+
+const FEW = 4; // column chips shown per object before "+N more": a wide table has dozens of tagged columns
+
+/** Sensitive columns of one object: a masked / unmasked bar, then the unmasked ones first, a few, the rest on a click. */
+function Cols({ cols }: { cols: { column: string; masked: boolean; policies: string[] }[] }) {
+  const [all, setAll] = useState(false);
+  const sorted = [...cols].sort((a, b) => Number(a.masked) - Number(b.masked));
+  const masked = cols.filter((x) => x.masked).length;
+  const shown = all ? sorted : sorted.slice(0, FEW);
+  return (
+    <>
+      {cols.length > 1 && (
+        <span className="ae-cat-bar" role="img" aria-label={`${masked} of ${cols.length} columns masked`}>
+          <span className="ae-cat-bar-ok" style={{ flex: masked }} /><span className="ae-cat-bar-bad" style={{ flex: cols.length - masked }} />
+        </span>
+      )}
+      <span className="ae-objtags0">
+        {shown.map((x) => (
+          <span key={x.column} className={`ae-colchip ${x.masked ? "ae-colchip-ok" : "ae-colchip-bad"}`} title={x.masked ? `Masked by ${x.policies.join(", ")}` : "No masking policy"}>{x.column}</span>))}
+        {cols.length > FEW && <button type="button" className="ae-link ae-small" onClick={() => setAll(!all)}>{all ? "show fewer" : `+${cols.length - FEW} more`}</button>}
+      </span>
     </>
   );
 }

@@ -1,5 +1,5 @@
 // Redesign building blocks: access ladder pill, path chips, finding chip, sensitive cell, filter chips, list toolbar,
-// code output (SQL / Terraform / ticket), identity card, empty state. Colours only from --ae-* variables.
+// code output (SQL / Terraform / ticket), identity card, empty state, name list. Colours only from --ae-* variables.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";
 import { useCsv } from "./table";
@@ -242,5 +242,37 @@ export function Waiting() {
   return (
     <p className="ae-muted ae-waiting" role="status"><span className="ae-spin" aria-hidden />Loading…{s >= 3 && ` ${s} s`}
       {s >= 10 && " · still working: on a big account the first open of a page works out its lookups, which can take a minute. It opens by itself."}</p>
+  );
+}
+
+export interface NameItem { key: string; label?: ReactNode; n?: ReactNode; open?: () => void }
+
+/** Names one per line, never comma text: the first `max` (links when they open), then "+N more", which opens `onMore`
+ *  or shows the rest here. Only spans and buttons, so it sits in a banner or a tile; `plain` (no buttons) inside a button. */
+export function NameList({ items, total = items.length, max = 8, onOpen, onMore, plain }: {
+  items: (string | NameItem)[]; total?: number; max?: number; onOpen?: (k: string) => void; onMore?: () => void; plain?: boolean;
+}) {
+  const [all, setAll] = useState(false);
+  if (!items.length && total <= 0) return null;
+  const xs = items.map((x) => (typeof x === "string" ? { key: x } as NameItem : x));
+  const shown = all ? xs : xs.slice(0, max), rest = total - shown.length;
+  const more = `+${rest.toLocaleString()} more`;
+  return (
+    <span className="ae-names">
+      {shown.map((x) => {
+        const open = plain ? undefined : x.open ?? (onOpen && (() => onOpen(x.key)));
+        return (
+          <span key={x.key} className="ae-names-i">
+            {open ? <button type="button" className="ae-link ae-mono" title={x.key} onClick={open}>{x.label ?? x.key}</button>
+              : <span className="ae-mono" title={x.key}>{x.label ?? x.key}</span>}
+            {x.n != null && <span className="ae-muted">{x.n}</span>}
+          </span>
+        );
+      })}
+      {rest > 0 && (plain ? <span className="ae-muted">{more}</span>
+        : onMore ? <button type="button" className="ae-link ae-names-more" onClick={onMore}>{more} →</button>
+        : !all && xs.length > shown.length ? <button type="button" className="ae-link ae-names-more" onClick={() => setAll(true)}>{more}</button>
+        : <span className="ae-muted">{more}</span>)}
+    </span>
   );
 }

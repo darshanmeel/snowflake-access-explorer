@@ -55,7 +55,7 @@ export function UserPage() {
             <Findings list={d.findings} total={d.findings_total} refs={d.refs} />
             <GraphCard g={d.graph} refs={d.refs} />
             {d.capped.length > 0 && <Banner tone="warn" title="Some walks were cut" lines={[`Chains longer than the hop limit were stopped: ${d.capped.slice(0, 5).join(", ")}`]} />}
-            <Tabs nav active={part} onChange={(t) => { setPart(t); c.set({ schema: null, otype: null, full: null }); }} tabs={[
+            <Tabs nav={c.inside ? 2 : 1} active={part} onChange={(t) => { setPart(t); c.set({ schema: null, otype: null, full: null }); }} tabs={[
               { key: "privs", label: "Privileges", count: d.kpis.privileges },
               ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),
               ...(d.can_read?.total ? [{ key: "sees", label: "What they see", count: d.can_read.total }] : []),

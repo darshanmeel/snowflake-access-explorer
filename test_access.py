@@ -250,6 +250,7 @@ def test_users():
     assert a.used_roles("ENGINEER_01")[F + "ANALYST"]["kind"] == "SECONDARY ROLE"
     assert a.search("REVENUE", a.objects + a.roles) == ["FINANCE.REPORT.VW_REVENUE_MONTHLY", "FINANCE.REPORT.TBL_REVENUE"]
     assert a.search("ANALYST_0", a.users)[:2] == ["ANALYST_01", "ANALYST_02"] and a.search("ANALYTS", a.users + a.roles)
+    assert a.search("report revenue", a.objects + a.roles) == ["FINANCE.REPORT.TBL_REVENUE", "FINANCE.REPORT.VW_REVENUE_MONTHLY"]  # every word, anywhere
     rv = a.review("FINANCE")
     assert {r["database"] for r in rv} == {"FINANCE"} and all(r["reviewer"] == "" for r in rv)
     assert any(r["user"] == "FIN_14" and r["status"] == "disabled" and r["object"] == "TBL_REVENUE" for r in rv)

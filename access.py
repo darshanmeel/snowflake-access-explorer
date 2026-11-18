@@ -68,6 +68,9 @@ DEFAULT_PUBLIC = set(os.environ.get("DEFAULT_PUBLIC",
 BUILTIN = os.environ.get("BUILTIN", "SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*").split(",")
 BUILTIN_RE = re.compile("|".join(fnmatch.translate(b) for b in BUILTIN))
 BUILTIN_NODE = "Snowflake built-in (via PUBLIC)"
+# INFORMATION_SCHEMA views: every query of a tool or driver that reads metadata touches them, so they flood activity,
+# Granted vs used and rules 27-28 without being data; left out unless INFO_SCHEMA=1
+INFO_SCHEMA = os.environ.get("INFO_SCHEMA", "0") == "1"
 MAX_HOPS = int(os.environ.get("MAX_HOPS", "50"))  # safety cap on role hops per walk
 # functional and technical role prefixes; another naming: ROLE_PREFIXES=<functional>,<technical>
 FUNC, TECH = os.environ.get("ROLE_PREFIXES", "F_,T_").split(",")
@@ -1498,6 +1501,11 @@ KEEP_BUILT = int(os.environ.get("KEEP_BUILT", "3"))  # data sets kept built besi
 built = {}  # (key, builtin) -> state() of a data set built before, with its cached results (memo)
 
 
+def info_schema(name):
+    """An INFORMATION_SCHEMA view or the schema itself (DB.INFORMATION_SCHEMA[.VIEW])."""
+    return ".INFORMATION_SCHEMA" in (name or "").upper()
+
+
 def is_builtin(name):
     return bool(BUILTIN_RE.match(name or ""))
 
@@ -1566,8 +1574,9 @@ def build(d, key=None, builtin=False):
     policies.extend(d["POLICY"])
     streams.update({x["STREAM_NAME"]: x["SOURCE_NAME"] for x in d["STREAM"]})
     for x in d["OBJECT_USE"] or []:
-        obj_use.setdefault(x["USER_NAME"], []).append(x)
-    acts.extend(d["ACTIVITY"] or [])
+        if INFO_SCHEMA or not info_schema(x["OBJECT_NAME"]):
+            obj_use.setdefault(x["USER_NAME"], []).append(x)
+    acts.extend(x for x in d["ACTIVITY"] or [] if INFO_SCHEMA or not info_schema(x["OBJECT_NAME"]))
     rules = tag_rules()
     for o in objects:
         hit = [t for t in tags_of(o) if tag_hit(rules, t[1], t[2])]
@@ -5030,14 +5039,20 @@ def review_parts(db=None):
 
 
 def search(q, names):
-    """Search ranking: substring matches first (prefix, then earlier position, then shorter); fuzzy matches only
-    when nothing contains q."""
+    """Search ranking: every word of q anywhere in the name, in any order ("core order" finds DWH.CORE.TBL_ORDER);
+    names holding q as typed first (prefix, then earlier position), then shorter; fuzzy matches only when nothing
+    holds every word."""
     q = q.strip().upper()
     if not q:
         return list(names)
-    hits = [n for n in names if q in n.upper()]
+    words = q.split()
+    hits = [n for n in names if all(w in n.upper() for w in words)]
     if hits:
-        return sorted(hits, key=lambda n: (n.upper().find(q) != 0, n.upper().find(q), len(n), n))
+        def rank(n):
+            u = n.upper()
+            at = u.find(q)
+            return (at < 0, at != 0, at if at >= 0 else u.find(words[0]), len(n), n)
+        return sorted(hits, key=rank)
     return difflib.get_close_matches(q, list(names), n=10, cutoff=0.6)
 
 

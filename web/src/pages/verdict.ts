@@ -95,3 +95,6 @@ export function subjectIn(p: Record<string, string | undefined>, page: "check" |
 
 /** Request page need from a Can they? privilege. */
 export const needOf = (priv: string) => (["SELECT", "USAGE", "READ", "MONITOR", "REFERENCES"].includes(priv) ? "read" : "change");
+
+/** Can they? do= for a step on an object (admin and names: every privilege held). */
+export const doOf = (level: string | null): Record<string, string> => (level === "read" || level === "change" || level === "own" ? { do: level } : {});

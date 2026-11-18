@@ -11,6 +11,7 @@ import { UserPage } from "./User";
 import { Load, Pick, PickFirst } from "./common";
 import { ladderParts, recent, remember } from "./Home";
 import { groupKey, type GroupBy } from "./screens";
+import { doOf } from "./verdict";
 
 const nameOf = (o: AccessObject) => o.label ?? o.object;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -233,7 +234,7 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
         {x.columns.length > 0 && ` ${x.columns.map((col) => `${col.column} is ${col.state} (${col.reason})`).join("; ")}.`}</p>
       <div className="ae-how-links">
         <button type="button" className="ae-link" onClick={() => c.nav("object", { name: x.object })}>Who else has access</button>
-        <button type="button" className="ae-link" onClick={() => c.nav("check", { ...(user ? { name: who } : { role: who }), obj: x.object })}>See all {x.ways} path{x.ways === 1 ? "" : "s"}</button>
+        <button type="button" className="ae-link" onClick={() => c.nav("check", { ...(user ? { name: who } : { role: who }), obj: x.object, ...doOf(x.level) })}>See all {x.ways} path{x.ways === 1 ? "" : "s"}</button>
         <button type="button" className="ae-link" onClick={() => { navigator.clipboard?.writeText(`USE ROLE ${use};`).then(() => setCopied(true), () => {}); }}>{copied ? "Copied" : "Copy USE ROLE statement"}</button>
       </div>
     </div>
@@ -245,7 +246,7 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
 function Detail({ name, user }: { name: string; user: boolean }) {
   const c = useApp();
   const { user: _u, role: _r, show: _s, ...rest } = c.params;
-  const inner = { ...c, page: (user ? "user" : "role") as typeof c.page, params: { ...rest, name } };
+  const inner = { ...c, page: (user ? "user" : "role") as typeof c.page, params: { ...rest, name }, inside: true };
   return (
     <div className="ae-embed">
       <AppCtx.Provider value={inner}>{user ? <UserPage /> : <RolePageView />}</AppCtx.Provider>

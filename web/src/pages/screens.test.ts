@@ -39,6 +39,10 @@ describe("access graph, what they see, compare", () => {
     expect(redirect("user", { name: "HR_01", part: "privs" })).toEqual({ page: "user", params: { name: "HR_01", part: "privs" } });
     expect(redirect("sensitive", { a: "F_A", b: "F_B" })).toEqual({ page: "compare", params: { a: "F_A", b: "F_B", scope: "sensitive" } });
     expect(redirect("sensitive", { tab: "compare" })).toEqual({ page: "compare", params: { scope: "sensitive" } });
+    expect(redirect("sensitive", { part: "compare" })).toEqual({ page: "compare", params: { scope: "sensitive" } });
+    expect(redirect("sensitive", { show: "compare" })).toEqual({ page: "compare", params: { scope: "sensitive" } });
+    expect(redirect("compare", { a: "A", show: "old" })).toEqual({ page: "compare", params: { a: "A" } });
+    expect(redirect("compare", { a: "A", show: "diff" })).toEqual({ page: "compare", params: { a: "A" } });
     expect(redirect("sensitive", {})).toEqual({ page: "sensitive", params: {} });
     expect(redirect("see", { name: "HR_01" })).toEqual({ page: "see", params: { user: "HR_01" } });
     expect(redirect("graph", { table: "DB.S.T" })).toEqual({ page: "graph", params: { table: "DB.S.T" } });

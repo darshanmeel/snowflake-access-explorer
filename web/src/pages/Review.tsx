@@ -3,7 +3,7 @@ import { download, useApi } from "../api/client";
 import type { PrivClass, ReviewPage, ReviewRow } from "../api/types";
 import { AccessTag, Banner, Card, DataTable, KpiRow, StatusDot, Tabs, useCsv } from "../components";
 import { apiParams, useApp } from "../ctx";
-import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
+import { col, Controls, Head, Load, NameLink, pathCol, Pick, Sel, Tog } from "./common";
 import { ReviewGrid } from "./ReviewGrid";
 
 const RANK = ["use", "read", "manage", "write", "own", "admin"];
@@ -47,7 +47,8 @@ function OldReview() {
         return (
           <>
             <Controls>
-              <Sel label="Database" value={f.db} onPick={(v) => c.set({ db: v, schema: null, object: null })} options={[["*", "All databases"], ...f.dbs.map((x): [string, string] => [x, x])]} />
+              <Pick label="Database" value={f.db === "*" ? "" : f.db} what="databases" width={200} onPick={(v) => c.set({ db: v, schema: null, object: null })} />
+              {f.db !== "*" && <button type="button" className="ae-link" onClick={() => c.set({ db: "*", schema: null, object: null })}>All databases</button>}
               <Sel label="Schema" value={f.schema} onPick={(v) => c.set({ schema: v, object: null })} options={opt(f.schemas, "All schemas")} />
               <Sel label="Object" value={f.object} onPick={(v) => c.set({ object: v })} options={opt(f.objects, "All objects")} />
               <Tog label="Active users only" on={f.active} onPick={(v) => c.set({ active: v ? "1" : null })} />

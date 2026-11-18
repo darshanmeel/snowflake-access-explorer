@@ -1557,22 +1557,34 @@ def home_page(p, view):
     if me:
         counts = a.cached(("home", me), lambda: a.ladder_counts(a.access_objects(a.grants(me, True), True)))
         mine = dict(user=me, counts=counts)
-    sev = {v: sum(x["severity"] == v for x in S["rows"]) for v in ("Critical", "High", "Medium", "Low")}
-    g = a.governance_kpis()
-    unmasked = sorted({(x["grantee"], x["detail"].split(" ")[1].rstrip(":")) for x in S["rows"] if x["num"] == "6"})
-    dormant = sorted({x["grantee"] for x in S["rows"] if x["num"] == "7"})
-    counts = dict(users=len(a.users), roles=len(a.roles), objects=len(a.objects), sensitive=len(S["sens"]))
-    per_rule = {}
-    for x in S["rows"]:
-        per_rule[x["num"]] = per_rule.get(x["num"], 0) + 1
-    return dict(view=view, me=mine, risks=sev if view == "shared" else None, counts=counts,
-                per_rule=per_rule if view == "shared" else None,
-                skipped=a.skipped_rules() if view == "shared" else None,  # HIERARCHY=0 / ACTIVITY=0: not in the counts
-                protection=dict(unmasked=sum(x["num"] == "6" for x in S["rows"]), unmasked_names=[dict(object=o, column=k) for o, k in unmasked[:NAMES]],
-                                unmasked_columns=len(unmasked), dormant=len(dormant), dormant_names=dormant[:NAMES], tagged=g["tagged_objects"],
-                                masked=g["masked_columns"], row_tables=g["row_tables"],
-                                row_list=[dict(object=o, policies=v) for o, v in a.row_tables().items()])
-                if view == "shared" else None)
+    if view != "shared":
+        return dict(view=view, me=mine, risks=None, counts=home_summary()["counts"], per_rule=None, skipped=None, protection=None)
+    h = home_summary()
+    return dict(view=view, me=mine, risks=h["risks"], counts=h["counts"], per_rule=h["per_rule"],
+                skipped=a.skipped_rules(),  # HIERARCHY=0 / ACTIVITY=0: not in the counts
+                protection=h["protection"])
+
+
+def home_summary():
+    """Home's numbers once per data set, one pass over the findings: per severity, per rule, the distinct unmasked
+    sensitive columns (rule 6) and the dormant readers (rule 7). The row-policy tables are listed on Sensitive data."""
+    def make():
+        sev, per_rule, unmasked, dormant, n6 = dict.fromkeys(("Critical", "High", "Medium", "Low"), 0), {}, set(), set(), 0
+        for x in S["rows"]:
+            sev[x["severity"]] = sev.get(x["severity"], 0) + 1
+            per_rule[x["num"]] = per_rule.get(x["num"], 0) + 1
+            if x["num"] == "6":
+                n6 += 1
+                unmasked.add((x["grantee"], x["detail"].split(" ")[1].rstrip(":")))
+            elif x["num"] == "7":
+                dormant.add(x["grantee"])
+        g, um, dm = a.governance_kpis(), sorted(unmasked), sorted(dormant)
+        return dict(risks=sev, per_rule=per_rule,
+                    counts=dict(users=len(a.users), roles=len(a.roles), objects=len(a.objects), sensitive=len(S["sens"])),
+                    protection=dict(unmasked=n6, unmasked_names=[dict(object=o, column=k) for o, k in um[:NAMES]],
+                                    unmasked_columns=len(um), dormant=len(dm), dormant_names=dm[:NAMES],
+                                    tagged=g["tagged_objects"], masked=g["masked_columns"], row_tables=g["row_tables"]))
+    return a.cached("home_summary", make)
 
 
 def mask_text(name, o, user=False):
@@ -1650,7 +1662,6 @@ def role_graph(p, c, up, ro, only=None):
                        gx=gx, src=gsrc(p, of="role", name=r), only=only)
 
 
-MAX_CUTS = 300  # Role page, "If revoked from": direct holders offered (PUBLIC is held by every user)
 MAX_HELD = 50  # Role page, held by: rows of each kind sent with the page (its small diagram); the table pages them
 
 
@@ -1782,11 +1793,10 @@ def role_page(p, view):
     ro_rows = [dict(object=x["object"], privileges=x["privileges"], holder=x["holder"], inherited=x["inherited"],
                     how=x["how"], read_only=x["read_only"], objects=x["objects"]) for x in ro]
     eff = c["eff"]
-    cuts = direct[:MAX_CUTS] + ([cut] if cut and cut not in direct[:MAX_CUTS] else [])
     return dict(
         view=view, role=dict(id=r, name=r, kind=nk(r), owner=owner, admin=admin_role),
         filters=dict(depth=limit, users=c["only_users"], sensitive=c["only_sens"], schema=scope,
-                     otype=p.get("otype", ""), cut=cut, lacks=lack, cuts=cuts, cuts_total=len(direct), gaps=gaps),
+                     otype=p.get("otype", ""), cut=cut, lacks=lack, cuts_total=len(direct), gaps=gaps),
         kpis=dict(privileges=s["privileges"], future=s["future"], effective=s["effective"], above=s["above"],
                   above_direct=s["above_direct"], users=s["users"], users_direct=s["users_direct"],
                   farthest=s["farthest"], sensitive=s["sensitive"], holds_roles=s["holds_roles"]),
@@ -2556,8 +2566,8 @@ def side_of(x):
 
 def compare_page(p, view):
     """Screen 9, two people or roles (a=, b=) compared on sensitive data, everything or one database (scope=, db=):
-    counts, rows with the differences first, the changes that make B match A or remove A's extras (text only), and
-    the old Compare two roles table over the sensitive objects."""
+    counts, rows with the differences first and the changes that make B match A or remove A's extras (text only).
+    The database picker searches /api/list?what=databases, so the page sends only the one picked."""
     need(a.users or a.roles, "No users or roles in this data.")
     me = (a.users[0] if view == "mine" or DEMO_USER not in a.users else DEMO_USER) if a.users else None
     x, xu = side_of(p.get("a") or me or a.roles[0])
@@ -2573,8 +2583,7 @@ def compare_page(p, view):
     db = p.get("db") if p.get("db") in dbs else dbs[0] if dbs else ""
     c = a.compare(x, xu, y, yu, scope, db)
     side = lambda n, u: dict(name=n, id=a.uid(n, u), kind="user" if u else nk(n))
-    old = pair_rows(x, xu, y, yu, [r["object"] for r in a.sensitive_rank()]) if S["sens"] else None
-    return dict(view=view, a=side(x, xu), b=side(y, yu), scope=scope, db=db, dbs=dbs, sensitive=bool(S["sens"]), old=old, **c)
+    return dict(view=view, a=side(x, xu), b=side(y, yu), scope=scope, db=db, sensitive=bool(S["sens"]), **c)
 
 
 # ---------- sensitive data ----------
@@ -2600,13 +2609,17 @@ def window(p, key, n):
 
 def sensitive_page(p, view):
     """Screen 7. objects and readers are long on a big account: one page each (o_offset= / r_offset=, limit=), with
-    objects_total / readers_total; limit=0 sends every row (the CSV)."""
+    objects_total / readers_total; limit=0 sends every row (the CSV). row_list: the tables with a row policy, sensitive
+    or not (shared only), one page at t_offset=."""
     mine = view == "mine"
     gov = a.governance_kpis()["text"] if not mine else None
+    rt = list(a.row_tables().items()) if not mine else []
+    tw, to = window(p, "t_offset", len(rt))
+    rows = dict(row_list=[dict(object=o, policies=v) for o, v in rt[tw]], row_total=len(rt), row_offset=to)
     empty = dict(view=view, governance=gov, filters=dict(tag="", db="", people=False, tags=[], dbs=[]),
                  kpis=dict(objects=0, columns=0, whole=0, people=0, admin=0, disabled=0, service=0, unmasked=0, stale=[]),
                  objects=[], objects_total=0, objects_offset=0, readers=[], readers_total=0, readers_offset=0,
-                 catalog=[], compare=dict(a="", b="", roles=[], rows=[], diff=[]))
+                 catalog=[]) | rows
     if not S["sens"]:
         state = ("mine" if mine else "unavailable" if a.run["SOURCES"].get("tags") == "UNAVAILABLE"
                  else "no_tags" if not a.tags else "none_sensitive")
@@ -2644,11 +2657,6 @@ def sensitive_page(p, view):
         return dict(active=len(r["people"]) - n, dormant=n + len(r["disabled"]), service=len(r["service"]),
                     admin=len(r["admin"]))
 
-    sr = a.sens_roles()
-    funcs = [r for r in a.roles if a.kind_of(r) == "functional"] or a.roles
-    top = sorted(funcs, key=lambda r: (-len(sr.get(r, ())), r))  # the most sensitive objects read first
-    x = p.get("a") if p.get("a") in a.roles else top[0]
-    y = p.get("b") if p.get("b") in a.roles else top[1] if len(top) > 1 else top[0]
     cols = sum(len(r["cols"]) for r in rank)
     ow, oo = window(p, "o_offset", len(rank))
     rw, ro = window(p, "r_offset", len(us))
@@ -2670,28 +2678,7 @@ def sensitive_page(p, view):
                       columns=r["columns"], unmasked=r["unmasked"], row_policies=r["row_policies"], readers=r["readers"],
                       admin=len(r["admin"]))
                  for r in a.catalog() if (not db or r["database"] == db)
-                 and (not tg or tg in r["labels"])],
-        compare=dict(a=x, b=y, roles=a.roles, **pair_rows(x, False, y, False, order)))
-
-
-def reads_of(n, user):
-    """Objects a role (or a user, through any role they hold) reads: {object: path}."""
-    return {o: q for s in (a.starts(n, True) if user else [[n]]) for o, q in a.reads(s).items()}
-
-
-def pair_rows(x, xu, y, yu, objs):
-    """Compare two roles (Sensitive data, and the first tab of Compare): what each sees of every object in objs (None:
-    cannot read it), and the differences in words."""
-    got, txt = {x: reads_of(x, xu), y: reads_of(y, yu)}, {}
-    for n, u in ((x, xu), (y, yu)):
-        for o in objs:
-            if o in got[n]:
-                txt[(n, o)] = mask_text(n, o, u)
-    diff = [f"{o}: through {n} yes; through {m} no" for o in objs for n, m in ((x, y), (y, x))
-            if o in got[n] and o not in got[m]]
-    diff += [f"{o}: {x} sees {txt[(x, o)]}; {y} sees {txt[(y, o)]}" for o in objs
-             if (x, o) in txt and (y, o) in txt and txt[(x, o)] != txt[(y, o)]]
-    return dict(diff=diff[:10] if x != y else [], rows=[dict(object=o, a=txt.get((x, o)), b=txt.get((y, o))) for o in objs])
+                 and (not tg or tg in r["labels"])], **rows)
 
 
 # ---------- rules ----------
@@ -2959,7 +2946,7 @@ def review_page(p, view):
     split = lambda v: [s for s in v.split(", ") if s]
     return dict(
         view="shared",
-        filters=dict(db=c["db"], dbs=c["dbs"], schema=c["sc"], schemas=sorted({x[2] for x in c["rv"]["objects"]} - {""}),
+        filters=dict(db=c["db"], schema=c["sc"], schemas=sorted({x[2] for x in c["rv"]["objects"]} - {""}),
                      object=c["ob"], objects=sorted({x[3] for x in c["rv"]["objects"] if not c["sc"] or x[2] == c["sc"]}),
                      active=c["active"], hideusage=noise),
         kpis=kpis, counts=counts, part=part, total=counts[part], offset=off, limit=lim, sort=key, dir=-1 if desc else 1,
@@ -3089,9 +3076,10 @@ def answer(n, k, name):
 
 
 def list_page(p, view):
-    """Users, roles, objects (type=), types, databases or the holders of role= (What if). q= keeps the matches in search
-    order and limit= the first ones (a picker asks for 50 per keystroke instead of the whole account); what= takes a
-    comma list ("users,roles": one picker for a person or role). total: the matches before the limit."""
+    """Users, roles, objects (type=), types, databases, or the holders of role= (What if; direct_holders: the Role
+    page's cut). q= keeps the matches in search order and limit= the first ones (a picker asks for 50 per keystroke
+    instead of the whole account); what= takes a comma list ("users,roles": one picker for a person or role). total:
+    the matches before the limit."""
     whats = p.get("what", "users").split(",")
     if len(whats) > 1:
         items = [i for w in whats for i in list_page(dict(p, what=w, q="", limit=""), view)["items"]]
@@ -3125,12 +3113,17 @@ def list_items(p, what):
             items = [dict(id=u, name=u, kind="user", type="direct" if r in a.roles_of.get(u, []) else "inherited",
                           status=a.status(u)) for u in sorted(us)]
         items.sort(key=lambda i: i["type"] != "direct")
+    elif what == "direct_holders":  # Role page, "If revoked from": who holds role=X by its own grant (graph ids)
+        r = p.get("role", "")
+        items = [dict(id=x, name=x, kind=nk(x), type="role", status=None) for x in sorted(a.held_by.get(r, []))]
+        items += [dict(id=a.uid(u, True), name=u, kind="user", type="user", status=a.status(u)) for u in sorted(a.users_of.get(r, []))]
     elif what == "types":
         items = [dict(id=t, name=t, kind=None, type=t, status=None) for t in sorted(set(a.kinds.values()))]
     elif what == "databases":
-        items = [dict(id=d, name=d, kind=None, type="DATABASE", status=None) for d in sorted({a.split_name(o)[0] for o in a.objects} - {""})]
+        items = [dict(id=d, name=d, kind=None, type="DATABASE", status=None)
+                 for d in a.cached("db_names", lambda: sorted({a.split_name(o)[0] for o in a.objects} - {""}))]  # per keystroke of the Compare / Review pickers
     else:
-        raise ApiError(400, "bad_param", "what must be users, roles, objects, types, databases, role_holders or user_holders")
+        raise ApiError(400, "bad_param", "what must be users, roles, objects, types, databases, role_holders, user_holders or direct_holders")
     return items
 
 
@@ -3204,24 +3197,32 @@ def meta(p, sid):
         with session(view, sid, p.get("builtin") == "1") as d:
             run = a.run
             when, old = snap_time(run) if view == "shared" else ("live", False)
-            worst = next((v for v in ("Critical", "High", "Medium", "Low") if any(x["severity"] == v for x in S["rows"])), None)
-            hit = [x["num"] for x in S["rows"] if x["severity"] == worst]
-            badge = {"rules": len(set(hit)), "sensitive": len(S["sens"])}  # rules failing at the worst severity
+            worst, hit, hit_rules, rule_counts = rule_badge()
+            badge = {"rules": hit_rules, "sensitive": len(S["sens"])}  # rules failing at the worst severity
             base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
                                               when=when, old=old),
                         sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view) + loop_notes(),
                         pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k],
-                                    title=f"{plural(len(hit), worst.lower() + ' finding')} in {plural(len(set(hit)), 'rule')}" if k == "rules" and hit else None)
+                                    title=f"{plural(hit, worst.lower() + ' finding')} in {plural(hit_rules, 'rule')}" if k == "rules" and hit else None)
                                for k, lab in PAGES.items() if not (view == "mine" and k in SHARED_ONLY)],
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
                         protection=protection() if view == "shared" else None,
                         builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
-                        rule_counts=dict(Counter(x["num"] for x in S["rows"])),  # the side menu's Findings: severity, then rule
+                        rule_counts=rule_counts,  # the side menu's Findings: severity, then rule
                         people=side_people() if view == "shared" else None,
                         default_user=(a.users[0] if a.users else None) if view == "mine" else None)  # shared: the pages ask for a pick
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)
     return clean(base)
+
+
+def rule_badge():
+    """meta's findings once per data set: the worst severity found, its findings and rules, and findings per rule."""
+    def make():
+        worst = next((v for v in ("Critical", "High", "Medium", "Low") if any(x["severity"] == v for x in S["rows"])), None)
+        hit = [x["num"] for x in S["rows"] if x["severity"] == worst]
+        return worst, len(hit), len(set(hit)), dict(Counter(x["num"] for x in S["rows"]))
+    return a.cached("rule_badge", make)
 
 
 def sql_copy(view, sid):
@@ -3239,7 +3240,7 @@ def protection():
     """Sidebar "Protection": counts that link to where they are explained; unmasked sensitive columns are rule 6."""
     g = a.governance_kpis()
     return dict(row_tables=g["row_tables"], masked_columns=g["masked_columns"], tagged_objects=g["tagged_objects"],
-                unmasked=sum(x["num"] == "6" for x in S["rows"]))
+                unmasked=home_summary()["protection"]["unmasked"])
 
 
 BUILD_ONLY_NOTE = ("Started with run.py --build: built from the parts kept, Snowflake is not read. "

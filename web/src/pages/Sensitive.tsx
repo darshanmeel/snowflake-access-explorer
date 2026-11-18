@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useApi } from "../api/client";
 import type { SensitivePage } from "../api/types";
-import { Banner, Card, DataTable, KpiRow, MaskDots, MiniBar, Tabs, type BarPart } from "../components";
+import { Banner, Card, DataTable, KpiRow, MaskDots, MiniBar, NameList, Tabs, type BarPart } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { Catalog } from "./Catalog";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
@@ -9,6 +9,8 @@ import { PagedTable } from "./paged";
 
 type O = SensitivePage["objects"][number];
 type R = SensitivePage["readers"][number];
+type T = SensitivePage["row_list"][number];
+const LINKED = ["catalog", "rows"]; // tabs other pages open with show=
 
 /** The people who can read an object, each once (the server counts them): active, dormant / disabled / never logged
  * in, service users, only through an admin role. */
@@ -34,14 +36,14 @@ const WHY: Record<string, string> = {
 export function SensitivePageView() {
   const c = useApp();
   const s = useApi<SensitivePage>("sensitive", apiParams(c));
-  const [part, setPart] = useState(c.params.show === "catalog" ? "catalog" : c.params.part ?? "objects"); // the old tables first
+  const [part, setPart] = useState(LINKED.includes(c.params.show ?? "") ? c.params.show! : c.params.part ?? "objects"); // the old tables first
   return (
     <>
       <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them."
         right={<div className="ae-row0"><button type="button" className="ae-btn" onClick={() => c.nav("flow", {})}>Data flow</button>
           <button type="button" className="ae-btn" onClick={() => c.nav("review", { show: "grid" })}>Review & sign-off</button></div>} />
       <Load s={s}>{(d) => {
-        if (d.state !== "ok") return <Banner tone="info" title="Nothing to show" lines={[WHY[d.state] ?? d.state]} />;
+        if (d.state !== "ok") return <><Banner tone="info" title="Nothing to show" lines={[WHY[d.state] ?? d.state]} />{d.row_total > 0 && <RowTables d={d} />}</>;
         const k = d.kpis;
         const cols = new Map(d.catalog.map((r) => [r.object, r.columns]));
         const most = Math.max(1, ...d.objects.map(readersOf));
@@ -60,14 +62,17 @@ export function SensitivePageView() {
               { label: "Disabled readers", value: k.disabled, tone: k.disabled ? "warn" : null },
               { label: "Unmasked columns", value: k.unmasked, tone: k.unmasked ? "bad" : null },
             ]} />
-            {k.stale.length > 0 && <Banner tone="warn" title="Disabled or dormant users still hold access" lines={[k.stale.join(", ")]} />}
-            <Tabs nav active={part} onChange={(k) => { setPart(k); c.set({ show: k === "catalog" ? "catalog" : null }); }} tabs={[
+            {k.stale.length > 0 && <Banner tone="warn" title={`Disabled or dormant users still hold access: ${k.stale.length.toLocaleString()}`}>
+              <NameList items={k.stale} onOpen={(u) => c.nav("access", { user: u })} onMore={() => c.nav("rules", { rule: "7" })} /></Banner>}
+            <p className="ae-muted"><button type="button" className="ae-link" onClick={() => c.nav("compare", { scope: "sensitive" })}>Compare two people or roles on sensitive data →</button></p>
+            <Tabs nav active={part} onChange={(k) => { setPart(k); c.set({ show: LINKED.includes(k) ? k : null }); }} tabs={[
               { key: "objects", label: "Sensitive objects", count: d.objects_total },
               { key: "readers", label: "Who can read them", count: d.readers_total },
-              { key: "compare", label: "Compare two roles" },
               { key: "catalog", label: "Catalog", count: d.catalog.length },
+              ...(d.row_total ? [{ key: "rows", label: "Row policies", count: d.row_total }] : []),
             ]} />
             {part === "catalog" && <Catalog rows={d.catalog} />}
+            {part === "rows" && <RowTables d={d} />}
             {part === "objects" && <Card title="Sensitive objects" scroll>
               <PagedTable path="sensitive" at="o_offset" total={d.objects_total} offset={d.objects_offset} pick={(x: SensitivePage) => x.objects}
                 csv="sensitive_objects.csv" rows={d.objects}
@@ -98,20 +103,21 @@ export function SensitivePageView() {
                   pathCol<R>(d.refs),
                 ]} />
             </Card>}
-            {part === "compare" && <Card title="Compare two roles" sub="What each sees in the sensitive objects">
-              <Controls>
-                <Sel label="Role A" value={d.compare.a} onPick={(v) => c.set({ a: v })} options={d.compare.roles.map((x): [string, string] => [x, x])} />
-                <Sel label="Role B" value={d.compare.b} onPick={(v) => c.set({ b: v })} options={d.compare.roles.map((x): [string, string] => [x, x])} />
-              </Controls>
-              {d.compare.diff.length > 0 && <Banner tone="warn" title="They differ" lines={d.compare.diff} />}
-              <DataTable csv="sensitive_compare.csv" rows={d.compare.rows}
-                columns={[col("o", "Object", (r: SensitivePage["compare"]["rows"][number]) => r.object, { wrap: "wrap" }),
-                  col("a", d.compare.a, (r: SensitivePage["compare"]["rows"][number]) => r.a ?? "no access", { wrap: "wrap" }),
-                  col("b", d.compare.b, (r: SensitivePage["compare"]["rows"][number]) => r.b ?? "no access", { wrap: "wrap" })]} />
-            </Card>}
           </>
         );
       }}</Load>
     </>
+  );
+}
+
+/** Every table with a row access policy, sensitive or not: one page at t_offset=. */
+function RowTables({ d }: { d: SensitivePage }) {
+  return (
+    <Card title="Tables with row policies" sub="Each row policy decides which rows a role sees. Open a table for who reads it." scroll>
+      <PagedTable path="sensitive" at="t_offset" total={d.row_total} offset={d.row_offset} pick={(x: SensitivePage) => x.row_list}
+        csv="row_policy_tables.csv" rows={d.row_list}
+        columns={[col("o", "Table", (r: T) => r.object, { render: (r: T) => <NameLink id={r.object} refs={d.refs} />, wrap: "wrap" }),
+          col("p", "Row policies", (r: T) => r.policies.join(", "), { render: (r: T) => r.policies.map((x) => <div key={x} className="ae-mono">{x}</div>), wrap: "wrap" })]} />
+    </Card>
   );
 }

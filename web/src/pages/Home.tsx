@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomePage, Page } from "../api/types";
-import { Card, StackBar, type BarPart } from "../components";
+import { Card, NameList, StackBar, type BarPart, type NameItem } from "../components";
 import { useApp } from "../ctx";
 import { Load } from "./common";
 import { skipNote } from "./Risks";
@@ -88,7 +88,6 @@ export function HomePageView() {
     else if (hits.q === q && items[0]) openItem(items[0]); // Enter waits for the hits of the text now in the box
   };
   const rec = recent();
-  const [rows, setRows] = useState(false);
   const first = items[0], me = c.meta.default_user;
   const who: Who | null = first ? { kind: first.kind, id: first.id, name: first.name } : me ? { kind: "user", id: me, name: me } : null;
   return (
@@ -172,20 +171,11 @@ export function HomePageView() {
                   <span className="ae-tile-l">Where sensitive data flows</span><span className="ae-tile-v ae-tile-vs">Data flow →</span>
                   <span className="ae-tile-c">people → roles → sensitive objects</span>
                 </button>
-                <button type="button" className={`ae-tile${rows ? " on" : ""}`} aria-pressed={rows} onClick={() => setRows(!rows)} disabled={!d.protection.row_tables}>
+                <button type="button" className="ae-tile" onClick={() => c.nav("sensitive", { show: "rows" })} disabled={!d.protection.row_tables}>
                   <span className="ae-tile-l">Tables with row policies</span><span className="ae-tile-v">{d.protection.row_tables}</span>
-                  <span className="ae-tile-c">{rows ? "hide the list" : "show the list"}</span>
+                  <span className="ae-tile-c">Row policies →</span>
                 </button>
               </div>
-              {rows && (
-                <Card title="Tables with row policies" sub="Each row policy decides which rows a role sees. Open a table for who reads it.">
-                  {d.protection.row_list.map((r) => (
-                    <button type="button" key={r.object} className="ae-suggest-row" onClick={() => c.nav("object", { name: r.object })}>
-                      <span className="ae-mono">{r.object}</span><span className="ae-muted">{r.policies.map((p) => p.split(".").pop()).join(", ")}</span>
-                    </button>
-                  ))}
-                </Card>
-              )}
             </section>
           )}
           {rec.length > 0 && (
@@ -205,18 +195,13 @@ const TOP = 3; // names a tile lists; the rest open on the rule
 
 /** A tile whose number opens the rule, with its first names as links (one per line) and "+N more". */
 function ListTile({ label, value, tone, items, total, onAll }: {
-  label: string; value: number; tone: "bad" | "warn"; items: { key: string; label: string; open: () => void }[]; total: number; onAll: () => void;
+  label: string; value: number; tone: "bad" | "warn"; items: NameItem[]; total: number; onAll: () => void;
 }) {
   return (
     <div className={`ae-tile ae-tile-list${value ? ` ae-tile-${tone}` : ""}`}>
       <button type="button" className="ae-link ae-tile-l" onClick={onAll}>{label}</button>
       <button type="button" className="ae-link ae-tile-v" onClick={onAll}>{value.toLocaleString()}</button>
-      {items.length > 0 && (
-        <ul className="ae-tile-ul">
-          {items.slice(0, TOP).map((x) => <li key={x.key}><button type="button" className="ae-link ae-mono" title={x.key} onClick={x.open}>{x.label}</button></li>)}
-        </ul>
-      )}
-      {total > TOP && <button type="button" className="ae-link ae-tile-c" onClick={onAll}>+{(total - TOP).toLocaleString()} more →</button>}
+      <NameList items={items} total={Math.max(total, items.length)} max={TOP} onMore={onAll} />
     </div>
   );
 }

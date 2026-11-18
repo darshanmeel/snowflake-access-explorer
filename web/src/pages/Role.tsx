@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
-import { Banner, Card, DataTable, Graph, KpiRow, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
+import { Banner, Card, DataTable, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog } from "./common";
 import { PagedTable } from "./paged";
@@ -53,8 +53,8 @@ function HeldBy({ d }: { d: RolePage }) {
         { key: "all", label: "All", count: h.total },
       ]} />
       {d.usage.holders > 0 && (
-        <p className="ae-muted">{d.usage.used} of {d.usage.holders} users who hold it used it in the query history
-          {d.usage.unused.length > 0 && <> · not used by {d.usage.unused.slice(0, 8).join(", ")}{d.usage.unused.length > 8 ? ` +${d.usage.unused.length - 8}` : ""}</>}</p>
+        <div className="ae-muted"><p>{d.usage.used} of {d.usage.holders} users who hold it used it in the query history{d.usage.unused.length > 0 && ", not used by:"}</p>
+          <NameList items={d.usage.unused} total={d.usage.holders - d.usage.used} onOpen={(u) => c.nav("access", { user: u })} /></div>
       )}
       {rows.length > 0 && <Graph graph={g} theme={c.theme} onNodeClick={o.node} maxHeight={420} />}
       {n > rows.length && <p className="ae-muted">The diagram draws the first {rows.length} of {n}, the shortest chains; the table has them all.</p>}
@@ -118,7 +118,7 @@ export function RolePageView() {
             </Card>
           )}
           <GraphCard g={d.graph} refs={d.refs} />
-          <Tabs nav active={part} onChange={setPart} tabs={[
+          <Tabs nav={c.inside ? 2 : 1} active={part} onChange={setPart} tabs={[
             { key: "privs", label: "Privileges", count: d.tabs.find((t) => t.key === "all")?.count ?? 0 },
             { key: "held", label: "Held by", count: d.held_by.total },
             ...(d.holds.types.length ? [{ key: "holds", label: "What it holds", count: d.holds.count }] : []),
@@ -131,10 +131,10 @@ export function RolePageView() {
           </Card>}
           {part === "held" && <Card title="Held by" sub="Every user and role that gets this role, through which chain, and what a revoke would take away">
             <HeldBy d={d} />
-            {d.filters.cuts.length > 0 && (
-              <Controls><Sel label="If revoked from" value={d.filters.cut} onPick={(v) => c.set({ cut: v })}
-                options={[["", "(pick a grantee)"], ...d.filters.cuts.map((x): [string, string] => [x, x])]} />
-                {d.filters.cuts_total > d.filters.cuts.length && <span className="ae-muted">First {d.filters.cuts.length} of {d.filters.cuts_total} direct holders</span>}</Controls>
+            {d.filters.cuts_total > 0 && (
+              <Controls><Pick label="If revoked from" value={d.filters.cut} what="direct_holders" params={{ role: d.role.name }} onPick={(v) => c.set({ cut: v })} />
+                {d.filters.cut ? <button type="button" className="ae-link" onClick={() => c.set({ cut: null })}>Clear</button>
+                  : <span className="ae-muted">{d.filters.cuts_total} direct holders: type to search</span>}</Controls>
             )}
             {d.held_by.revoke && (
               <Banner tone="warn" title={`Revoking from ${d.held_by.revoke.grantee} loses ${d.held_by.revoke.lost} privileges for ${d.held_by.revoke.users} users`}>

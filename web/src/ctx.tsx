@@ -13,6 +13,7 @@ export interface Ctx {
   theme: ThemeName;
   nav: (page: Page, params?: Params) => void; // another page (keeps data=)
   set: (patch: Record<string, string | null | undefined>) => void; // same page, merge params
+  inside?: boolean; // a page shown inside another (Access shows User / Role paths): its tabs nest one level deeper
 }
 
 export const AppCtx = createContext<Ctx>(null as unknown as Ctx);

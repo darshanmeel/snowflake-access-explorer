@@ -7,7 +7,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApi } from "../api/client";
 import type { ActivityBy, ActivityKey, ActivityPage, ActivityRow, ActivitySensitive } from "../api/types";
-import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips, Pager } from "../components";
+import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips, NameList, Pager } from "../components";
 import { useApp } from "../ctx";
 import { col, GraphCard, Load, Pick } from "./common";
 
@@ -289,7 +289,7 @@ function Warehouse({ d }: { d: ActivityPage }) {
           ))}</tbody>
         </table>
       </Sec>
-      {w.unused.length > 0 && <Sec title="Can use it, did not" sub="Access nobody used in the window: candidates to trim (Granted vs used)."><p className="ae-mono">{w.unused.join(", ")}</p></Sec>}
+      {w.unused.length > 0 && <Sec title="Can use it, did not" sub="Access nobody used in the window: candidates to trim (Granted vs used)."><NameList items={w.unused} onOpen={(u) => c.nav("access", { user: u })} /></Sec>}
     </div>
   );
 }

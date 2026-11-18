@@ -3,7 +3,7 @@ import { redirect } from "../App";
 import type { CheckPage, Nearest } from "../api/types";
 import { expiryOf, newRoleOf } from "../components/codegen";
 import { parseQuestion } from "./Home";
-import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
+import { cutLabel, cutTexts, cutWhatIf, doOf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 
 const roleEdge = { grantee: "F_ENGINEER", to: "HR.SC_W_PEOPLE", priv: null, user: false };
 const userEdge = { grantee: "ENGINEER_01", to: "F_ENGINEER", priv: null, user: true };
@@ -115,5 +115,14 @@ describe("Request access text", () => {
     const other = newRoleOf("DW.X", ["SELECT"], "TABLE", "HR.S.T", {}, undefined, true, { db: "DW", objDb: "HR" });
     expect(other.sql).toContain("can only hold privileges on objects in DW");
     expect(other.sql.split("\n").every((l) => !l || l.startsWith("--"))).toBe(true);
+  });
+});
+
+describe("doOf", () => {
+  it("sends Can they? the step a How link was about, every privilege for admin and names", () => {
+    expect(doOf("read")).toEqual({ do: "read" });
+    expect(doOf("own")).toEqual({ do: "own" });
+    expect(doOf("admin")).toEqual({});
+    expect(doOf(null)).toEqual({});
   });
 });

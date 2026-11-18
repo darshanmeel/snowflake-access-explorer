@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { download, qs, useApi } from "../api/client";
 import type { AdminPerson, FindingRow, Refs, FindingGroup, RulesPage } from "../api/types";
-import { Banner, Card, DataTable, PathText, SEVERITIES, Tabs, useCsv } from "../components";
+import { Banner, Card, DataTable, NameList, PathText, SEVERITIES, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { rulesOff, rulesQuery, useSaved } from "./changeplan";
 import { col, Head, Load, NameLink } from "./common";
@@ -41,7 +41,8 @@ export function RulesPageView() {
         const unknown = d.rows_unknown;
         return (
           <>
-            {unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read" lines={[`Rows are unknown for ${unknown.slice(0, 6).join(", ")}${unknown.length > 6 ? " and more" : ""}.`]} />}
+            {unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read: rows are unknown for">
+              <NameList items={unknown} onOpen={(o) => c.nav("object", { name: o })} /></Banner>}
             <Tabs nav active={show} onChange={(k) => c.set({ show: k === "checks" ? null : k })} tabs={[
               { key: "checks", label: "Rule checks", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
               { key: "fixes", label: "Risks & change plan" },

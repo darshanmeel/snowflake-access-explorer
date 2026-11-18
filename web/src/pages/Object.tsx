@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
 import type { CheckPage, ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
-import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, Graph, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, useCsv } from "../components";
+import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, Graph, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
@@ -13,6 +13,7 @@ import { PagedTable } from "./paged";
 import { AdminTable } from "./Rules";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 import { byLevel, NOTE, ORDER, sameLabel, stepsOf, TITLE } from "./who";
+import { doOf } from "./verdict";
 
 const STATUS: Record<string, string> = { active: "Active", dormant: "Dormant", never: "Never logged in", disabled: "Disabled" };
 const ini = (n: string) => { const w = n.match(/[A-Z]+|[0-9]+/g) ?? [n]; return w[0][0] + (w[1] ? (/\d/.test(w[1]) ? w[1].slice(-1) : w[1][0]) : ""); };
@@ -97,7 +98,8 @@ function AppNote({ app }: { app: NonNullable<WhoPage["app"]> }) {
     <Banner tone={out.length ? "bad" : "info"} title={`Viewers see the data of its owner role ${app.owner.join(", ")}, not their own`} lines={[
       `${viewers === 1 ? "1 person" : `${viewers} people`} can open it, through ${Object.keys(app.holders).join(", ") || "no role"}.`,
       sens.length ? `The owner reads sensitive ${sens.map(([o, cs]) => `${o}${cs.length ? ` (${cs.join(", ")})` : ""}`).join(", ")}.` : "The owner reads no sensitive data.",
-      ...(out.length ? [`${out.length === 1 ? "1 person" : `${out.length} people`} can see it here but can't read it themselves: ${out.map(([u, os]) => `${u} (${os.join(", ")})`).join("; ")}.`] : []),
+      ...(out.length ? [<>{out.length === 1 ? "1 person" : `${out.length} people`} can see it here but can't read it themselves:
+        <NameList items={out.map(([u, os]) => ({ key: u, n: os.length === 1 ? os[0] : `${os.length} objects` }))} onOpen={(u) => c.nav("access", { user: u })} /></>] : []),
       "An app that queries with a caller's rights connection shows each viewer only their own data; the grants can't tell which one it uses.",
     ]}>
       <button type="button" className="ae-link" onClick={() => c.set({ show: "activity" })}>Who opened it →</button>
@@ -177,7 +179,7 @@ function List({ d }: { d: WhoPage }) {
                   <button type="button" key={g.names.join()} className={`ae-whorow${sel && g.names.includes(sel.name) ? " on" : ""}`} onClick={() => pick(g.names[0])}>
                     <span className="ae-avatar ae-avatar-s" aria-hidden>{g.names.length > 1 ? g.names.length : ini(g.names[0])}</span>
                     <span className="ae-whoname"><span className="ae-mono">{sameLabel(g.names, g.route)}</span>
-                      <span className="ae-muted">{g.names.length > 1 ? g.names.slice(0, 6).join(", ") + (g.names.length > 6 ? ` and ${g.names.length - 6} more` : "") : `${STATUS[x.status]} · last login ${ago(x)}`}</span></span>
+                      {g.names.length > 1 ? <span className="ae-muted"><NameList items={g.names} max={3} plain /></span> : <span className="ae-muted">{`${STATUS[x.status]} · last login ${ago(x)}`}</span>}</span>
                     <span className={`ae-lvl ae-lvl-${g.level}`}>{TITLE[g.level]}</span>
                     <span className="ae-privs">{g.privileges.join(" · ") || "All privileges"}</span>
                     <span />
@@ -252,7 +254,7 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
       {e.ways > 1 && <p className="ae-muted">{plural(e.ways - 1, "other way")} lead{e.ways === 2 ? "s" : ""} here too, so removing one role may not remove the access.</p>}
       {d.object.id && <HowGraph who={role ? { role: e.name } : { name: e.name }} obj={d.object.id} ways={e.ways} key={e.name} />}
       <div className="ae-how-links">
-        {d.object.id && <button type="button" className="ae-btn ae-btn-s" onClick={() => c.nav("check", { [role ? "role" : "name"]: e.name, obj: d.object.id! })}>Open in Can they?</button>}
+        {d.object.id && <button type="button" className="ae-btn ae-btn-s" onClick={() => c.nav("check", { [role ? "role" : "name"]: e.name, obj: d.object.id!, ...doOf(e.level) })}>Open in Can they?</button>}
         {role && <button type="button" className="ae-link" onClick={() => c.nav("access", { role: e.name })}>Open the role</button>}
         {ch && <WhatIfButton ch={[ch]} />}
       </div>

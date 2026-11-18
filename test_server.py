@@ -154,7 +154,10 @@ def test_role():
     assert d["held_by"]["rows"] and d["kpis"]["effective"]
     t = js("/api/role?name=T_SALES_CORE_READ", ROLE)
     assert t["holds"]["types"] and t["holds"]["types"][0]["rows"][0]["cells"]
-    assert js(f"/api/role?name=F_ENGINEER&cut={d['filters']['cuts'][0]}")["held_by"]["revoke"]
+    hs = js("/api/list?what=direct_holders&role=F_ENGINEER")["items"]  # the cut picker searches, no name list in the page
+    assert "cuts" not in d["filters"] and len(hs) == d["filters"]["cuts_total"] and {i["kind"] for i in hs} >= {"user"}
+    assert js(f"/api/role?name=F_ENGINEER&cut={hs[0]['id']}")["held_by"]["revoke"]
+    assert js(f"/api/list?what=direct_holders&role=F_ENGINEER&q={hs[-1]['name']}&limit=5")["items"][0]["id"] == hs[-1]["id"]
     for r in a.roles:
         js(f"/api/role?name={r}", ROLE)
     dr = next(r for r in a.roles if a.role_kind(r) == "database")
@@ -293,7 +296,8 @@ def test_request():  # screen 15: suggested role, approver, read / change, alrea
 
 
 def test_sensitive_rules_review():
-    d = js("/api/sensitive", ["state", "kpis", "objects", "readers", "compare", "filters", "refs"])
+    d = js("/api/sensitive", ["state", "kpis", "objects", "readers", "filters", "refs"])
+    assert "compare" not in d  # Compare (scope=sensitive) does it, with pickers that search the server
     assert d["state"] == "ok" and d["objects"] and d["readers"]
     assert d["objects_total"] == len(d["objects"]) == d["kpis"]["objects"] and d["readers_total"] == len(d["readers"])
     p = js("/api/sensitive?limit=2&r_offset=2&o_offset=1")  # one page each; limit=0 every row (the CSV)
@@ -324,7 +328,8 @@ def test_sensitive_rules_review():
     assert all("ANALYST_01" in r["path"] and "CUSTOMER" in full(r).upper() for r in one["rows"])
     sens = js("/api/review?db=*")
     assert sens["part"] == "sens" and sens["total"] == sens["counts"]["sens"] and all(r["sensitive"] for r in sens["rows"])
-    db = rv["filters"]["dbs"][0]
+    assert "dbs" not in rv["filters"]  # the database picker searches /api/list?what=databases
+    db = js("/api/list?what=databases&limit=1")["items"][0]["id"]
     assert js(f"/api/review?db={db}&hideusage=0")["kpis"]["hidden_usage"] == 0
     cv = get(f"/api/review.csv?db={db}")
     assert "access_review_" in cv.headers["content-disposition"] and "Keep/Revoke" in cv.text
@@ -761,10 +766,11 @@ def test_graph_see_compare():  # screens 4, 7, 9
     r = js(f"/api/see?role={a.FUNC}ANALYST")
     assert r["who"]["kind"] == "functional" and r["role_usage"]["holders"] >= 1 and r["usage"] is None
     get("/api/see?user=NOPE", 404)
-    c = js("/api/compare", ["a", "b", "scope", "rows", "counts", "match", "extras", "old", "dbs"])
+    c = js("/api/compare", ["a", "b", "scope", "rows", "counts", "match", "extras"])
+    assert "old" not in c and "dbs" not in c  # one differences view; the database picker searches the server
     assert c["a"]["name"] == server.DEMO_USER and c["b"]["name"] != c["a"]["name"] and c["scope"] == "sensitive"
     assert all(ch["sql"] and "roleDb" in ch and "toDb" in ch for ch in c["match"] + c["extras"])  # SQL from access.with_sql
-    assert sum(c["counts"].values()) == len(c["rows"]) and c["old"]["rows"]
+    assert sum(c["counts"].values()) == len(c["rows"]) and c["rows"]
     x = js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all")
     assert x["counts"]["only_a"] > 0 and x["match"] and x["extras"] and x["a"]["kind"] == "functional"
     assert js("/api/compare?a=ENGINEER_01&b=ANALYST_01&scope=db&db=HR")["rows"][0]["diff"] == "only_a"
@@ -1013,8 +1019,10 @@ def test_review_fixes():  # search answers, row policy list, defaults that exist
     assert f[server.DEMO_USER]["answer"] == f"reads {n['read']} · changes {n['change']} · owns {n['own']}"
     wh = next(i for i in js("/api/find?q=WH_")["items"] if i["type"] == "WAREHOUSE")
     assert wh["answer"].endswith("access") and wh["answer"][0].isdigit()
-    rl = js("/api/home")["protection"]["row_list"]
-    assert [r["object"] for r in rl] == sorted(a.row_tables()) and len(rl) == js("/api/home")["protection"]["row_tables"]
+    s = js("/api/sensitive", ["row_list", "row_total", "row_offset"])  # Home sends only the count
+    assert [r["object"] for r in s["row_list"]] == sorted(a.row_tables()) and s["row_total"] == js("/api/home")["protection"]["row_tables"]
+    assert "row_list" not in js("/api/home")["protection"] and js("/api/sensitive?t_offset=1&limit=1")["row_list"][0]["object"] == sorted(a.row_tables())[1]
+    assert js("/api/meta")["pages"] and {"home_summary", "rule_badge"} <= set(a.memo)  # Home and meta count the findings once per data set
     old = server.DEMO_USER
     try:
         server.DEMO_USER = "NOBODY_HERE"; server.ANSWERS.clear()  # answers are kept per data set; this changes a setting

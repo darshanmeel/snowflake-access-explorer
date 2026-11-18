@@ -470,8 +470,7 @@ export interface RolePage {
     otype: string;
     cut: string;
     lacks: string;
-    cuts: string[]; // the first MAX_CUTS direct holders (and the cut picked)
-    cuts_total: number;
+    cuts_total: number; // direct holders: the cut picker searches /api/list?what=direct_holders
     gaps: string[];
   };
   kpis: {
@@ -754,8 +753,10 @@ export interface SensitivePage {
   }[]; // one page, as objects
   readers_total: number;
   readers_offset: number;
-  compare: { a: string; b: string; roles: string[]; rows: { object: string; a: string | null; b: string | null }[]; diff: string[] };
   catalog: CatalogRow[]; // screen 8, most exposed first
+  row_list: { object: string; policies: string[] }[]; // tables with a row policy, sensitive or not: one page at row_offset
+  row_total: number;
+  row_offset: number;
   refs: Refs;
 }
 
@@ -840,8 +841,7 @@ export interface ReviewRow {
 export interface ReviewPage {
   view: "shared";
   filters: {
-    db: string;
-    dbs: string[];
+    db: string; // "*": every database; the picker searches /api/list?what=databases
     schema: string;
     schemas: string[];
     object: string;
@@ -1019,7 +1019,7 @@ export interface HomePage {
   per_rule: Record<string, number> | null; // findings per rule (shared only): Home's findings by area
   skipped: Record<string, string> | null; // rules that did not run (shared only), as RulesPage.skipped
   protection: { unmasked: number; unmasked_names: { object: string; column: string }[]; unmasked_columns: number; dormant: number; dormant_names: string[]; tagged: number;
-    masked: number; row_tables: number; row_list: { object: string; policies: string[] }[] } | null;
+    masked: number; row_tables: number } | null; // the row-policy tables are listed on Sensitive data (show=rows)
 }
 
 // ---------- who has access (screen 2) ----------
@@ -1158,13 +1158,11 @@ export interface ComparePage {
   b: { name: string; id: string; kind: NodeKind };
   scope: "sensitive" | "all" | "db";
   db: string;
-  dbs: string[];
   sensitive: boolean;
   rows: CompareRow[];
   counts: Record<Diff, number>;
   match: CompareChange[]; // make B match A
   extras: CompareChange[]; // remove A's extras
-  old: { rows: { object: string; a: string | null; b: string | null }[]; diff: string[] } | null; // Compare two roles
   refs: Refs;
 }
 
