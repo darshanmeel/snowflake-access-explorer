@@ -41,12 +41,14 @@ describe("bars", () => {
     expect(ladderParts({ read: 6, change: 5, own: 2 }).map((p) => p.value)).toEqual([1, 3, 2]);
   });
 
-  it("counts Critical with High, and findings per area by severity", () => {
-    expect(sevParts({ Critical: 1, High: 2, Low: 4 }).map((p) => p.value)).toEqual([3, 0, 4]);
-    const rules = [{ num: "1", area: "Role model", severity: "Medium" }, { num: "4", area: "Role model", severity: "High" },
-      { num: "6", area: "Sensitive data", severity: "Medium" }];
-    const a = areaCounts(rules, { "1": 2, "4": 1 });
+  it("shows Critical on its own, and findings per area by each finding's severity", () => {
+    expect(sevParts({ Critical: 1, High: 2, Low: 4 }).map((p) => p.value)).toEqual([1, 2, 0, 4]);
+    expect(sevParts({ High: 2 }).map((p) => p.key)).toEqual(["High", "Medium", "Low"]);
+    const rules = [{ num: "1", area: "Role model" }, { num: "4", area: "Role model" }, { num: "5", area: "Admin" },
+      { num: "6", area: "Sensitive data" }];
+    const a = areaCounts(rules, { Medium: { "1": 2 }, High: { "4": 1, "5": 2 }, Critical: { "5": 1 } });
     expect(a.find((x) => x.area === "Role model")).toMatchObject({ total: 3, n: { High: 1, Medium: 2 } });
+    expect(a.find((x) => x.area === "Admin")).toMatchObject({ total: 3, n: { Critical: 1, High: 2 } });
     expect(a.find((x) => x.area === "Sensitive data")?.total).toBe(0);
   });
 

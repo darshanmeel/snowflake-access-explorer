@@ -177,7 +177,8 @@ export interface RuleInfo {
   num: string;
   title: string;
   why: string;
-  severity: Severity;
+  severity: Severity; // the rule's; some findings of rules 5 and 9 are Critical (critical: when)
+  critical?: string | null;
   area: string;
   spot: string;
   meaning: string;
@@ -213,10 +214,11 @@ export interface Meta {
   /** DuckDB copy of the data shown (cache.sql_info): file + schema, or why there is none */
   sql_copy?: { on: boolean; path: string; schema: string | null; note: string | null; written_at: string | null };
   error?: { detail: string; message: string }; // shared_not_loaded: SOURCE=direct reads only on a click
-  // rules: how many rules fail at the worst severity, title "75157 high findings in 6 rules"
+  // rules: findings at the worst severity, title "75157 high findings in 6 rules"
   pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; title?: string | null; group: "home" | "access" | "ask" | "risk" | "govern" }[];
   default_user: string | null; // My access: the signed-in user; shared: none, the pages ask for a pick
-  rule_counts: Record<string, number>; // findings per rule number: the side menu's Findings
+  rule_counts: Record<string, number>; // findings per rule number
+  rule_sev?: Partial<Record<Severity, Record<string, number>>>; // findings per severity, then rule (rules 5 and 9 can be in two): the side menu's Findings
   people?: { admins: number; stale: number } | null; // side menu: admin holders; disabled or dormant people holding roles (shared only)
   prefixes: { func: string; tech: string };
   admin_roles: string[];
@@ -767,7 +769,7 @@ export interface AdminPerson {
   service: boolean;
   roles: string[];
   account: string[]; // account privileges not through PUBLIC, the strong ones first
-  strong: string[]; // of them, those that change who can do what (server.ADMIN_LEVEL): red
+  strong: string[]; // of them, those that change who can do what (access.ADMIN_LEVEL): red
   paths: Path[];
   status: UserStatus;
   last_login: string | null;
@@ -792,7 +794,10 @@ export interface FindingGroup {
   people: number | null; // by rule, object and grantee
   kind: NodeKind | null; // the grantee's (grid, grantee)
   objects?: number; // by grantee: the objects its findings are on
-  said?: { text: string; findings: number }[]; // by grantee: what most of its findings say, objects as "…"
+  said?: { text: string; findings: number | null }[]; // by grantee: what most of its findings say, objects as "…" (rule 17: one example, findings null)
+  said_total?: number; // patterns in all
+  tags?: string[]; // rule 17: why the role counts as read-only (named / used read-only)
+  sevs?: Partial<Record<Severity, number>>; // findings per severity
 }
 
 export interface RulesPage {
@@ -1023,6 +1028,10 @@ export interface HomePage {
   risks: Record<Severity, number> | null;
   counts: { users: number; roles: number; objects: number; sensitive: number };
   per_rule: Record<string, number> | null; // findings per rule (shared only): Home's findings by area
+  rule_sev?: Partial<Record<Severity, Record<string, number>>>; // findings per severity, then rule (shared only)
+  subjects?: Record<Severity, { people: number; roles: number }>; // distinct people and roles per severity (shared only)
+  /** Critical, then High rules, fewest findings first (shared only) */
+  act_first?: { num: string; severity: Severity; title: string; findings: number; subjects: number; names: { id: string; kind: NodeKind }[] }[];
   skipped: Record<string, string> | null; // rules that did not run (shared only), as RulesPage.skipped
   protection: { unmasked: number; unmasked_names: { object: string; column: string }[]; unmasked_columns: number; dormant: number; dormant_names: string[]; tagged: number;
     masked: number; row_tables: number } | null; // the row-policy tables are listed on Sensitive data (show=rows)
@@ -1031,7 +1040,7 @@ export interface HomePage {
 
 /** Home's area cards (server.home_cards): first NAMES names, counts per part. */
 export interface HomeCards {
-  admins: { total: number; service: number; by_role: { role: string; people: number }[]; account_only: number; names: string[] };
+  admins: { total: number; service: number; by_role: { role: string; people: number }[]; account_only: number; names: { user: string; role: string; login: string }[] }; // riskiest first
   stale: { total: number; by_status: Record<string, number>; names: string[] };
   people: { by_status: Record<string, number>; service: number };
   roles: Record<string, number>; // per role kind

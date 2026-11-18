@@ -306,8 +306,8 @@ def test_sensitive_rules_review():
     assert all(set(o["readers"]) == {"active", "dormant", "service", "admin"} for o in d["objects"])
     js(f"/api/sensitive?people=1&db={d['filters']['dbs'][0]}")
     r = js("/api/rules", ["counts", "per_rule", "findings", "total", "admins", "admins_total", "rows_unknown", "refs"])
-    assert r["total"] and r["admins"] and r["counts"]["High"] and r["admins_total"] == len(r["admins"])
-    assert len(r["per_rule"]) == len(a.RULES) and r["filters"]["sev"] == "High"  # the worst severity by default
+    assert r["total"] and r["admins"] and r["counts"]["High"] and r["counts"]["Critical"] == 5 and r["admins_total"] == len(r["admins"])
+    assert len(r["per_rule"]) == len(a.RULES) and r["filters"]["sev"] == "Critical"  # the worst severity by default
     every = js("/api/rules?sev=all")
     assert {f["num"] for f in every["findings"]} == {g["key"] for g in every["groups"]} == {k for k, v in r["per_rule"].items() if v}
     js("/api/rules?sev=High&rule=4")
@@ -791,7 +791,7 @@ def test_graph_see_compare():  # screens 4, 7, 9
 
 def test_rules_paged():
     """Risks & fixes on a big account: counts and groups cover every finding, findings come a page at a time (of one
-    group when asked), the fix texts with /api/finding, and the side nav counts rules, not findings."""
+    group when asked), the fix texts with /api/finding, and the side nav counts findings at the worst severity."""
     every = js("/api/rules?sev=all", ["sev_counts", "groups", "groups_total", "findings_total", "offset", "limit", "areas"])
     n = every["total"]
     assert n == every["findings_total"] == sum(every["per_rule"].values()) == sum(every["sev_counts"].values()) > 4
@@ -816,9 +816,29 @@ def test_rules_paged():
     assert full["id"] == hit["id"] and {"iac", "sql", "changes"} <= set(full) and full["num"] == hit["num"]
     get("/api/finding?id=99999", 404)
     get("/api/finding?id=x", 404)
-    nav = {p["key"]: p for p in js("/api/meta")["pages"]}["rules"]
-    high = {f["num"] for f in js("/api/rules?sev=High&limit=500")["findings"]}
-    assert nav["badge"] == len(high) and nav["severity"] == "High" and nav["title"].endswith(f"in {len(high)} rules")
+    m = js("/api/meta")
+    nav = {p["key"]: p for p in m["pages"]}["rules"]
+    crit = js("/api/rules?sev=Critical&limit=500")["findings"]
+    assert nav["badge"] == len(crit) and nav["severity"] == "Critical" and nav["title"].endswith(f"in {len({f['num'] for f in crit})} rules")
+    # the side menu's Findings: per severity, then rule, every finding once
+    assert {s: sum(v.values()) for s, v in m["rule_sev"].items()} == {s: k for s, k in every["sev_counts"].items() if k}
+    assert m["rule_sev"]["Critical"] == {"7": 4, "26": 1} and {r["num"]: r["critical"] for r in m["rules"] if r["critical"]}.keys() == {"5", "9"}
+    # a rule's findings: most people reached first
+    r17 = [f["people_total"] for f in js("/api/rules?sev=all&group=17")["findings"]]
+    assert len(set(r17)) > 1 and r17 == sorted(r17, reverse=True)
+    # rule 17 per role: one example line without the heuristic, and why it counts as read-only as a tag
+    for g in js("/api/rules?sev=all&rule=17&by=grantee")["groups"]:
+        assert len(g["said"]) == 1 and g["said"][0]["findings"] is None and "heuristic" not in g["said"][0]["text"]
+        assert g["tags"] and set(g["tags"]) <= set(server.RO_HOW.values()) and sum(g["sevs"].values()) == g["findings"]
+    # Home: what to act on first (Critical, then High, fewest findings first) and people / roles per severity
+    h = js("/api/home", ["act_first", "subjects", "rule_sev"])
+    first = [(x["severity"], x["findings"]) for x in h["act_first"]]
+    assert first == sorted(first, key=lambda t: (server.SEV_RANK[t[0]], t[1])) and first[0][0] == "Critical"
+    assert len(h["act_first"]) == server.ACT_FIRST and all(x["names"] and x["subjects"] >= len(x["names"]) for x in h["act_first"])
+    assert h["subjects"]["Critical"] == dict(people=5, roles=0) and h["rule_sev"] == m["rule_sev"]
+    adm = js("/api/rules", ["admins"])["admins"]  # riskiest first: ACCOUNTADMIN / SECURITYADMIN holders
+    top = [bool({"ACCOUNTADMIN", "SECURITYADMIN"} & set(x["roles"])) for x in adm]
+    assert top == sorted(top, reverse=True) and js("/api/home")["cards"]["admins"]["names"][0]["user"] == adm[0]["user"]
 
 
 def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if changes; the plan runs as /api/whatif

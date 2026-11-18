@@ -5,7 +5,7 @@ import { Banner, Card, DataTable, NameList, PathText, SEVERITIES, StackBar, Tabs
 import { apiParams, useApp, useOpen } from "../ctx";
 import { rulesOff, rulesQuery, useSaved } from "./changeplan";
 import { col, Head, Load, NameLink } from "./common";
-import { FindingFix, GroupItems, RisksTab, RuleList, skipNote } from "./Risks";
+import { FindingFix, firstOf, GROUP_PAGE, GroupItems, RisksTab, RuleList, skipNote } from "./Risks";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 type Filters = { q: string; area: string; people: boolean };
@@ -25,7 +25,6 @@ export function RulesPageView() {
   const show = c.params.show === "fixes" || c.params.show === "list" ? c.params.show : "checks"; // the old page first
   const q = rulesQuery(apiParams(c), show, all ? [] : off, show === "checks" ? { ...f, q: q0 } : NONE);
   const s = useApi<RulesPage>("rules", q);
-  type Rule = (typeof c.meta.rules)[number];
   return (
     <>
       <Head title="Risks & fixes" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
@@ -53,11 +52,11 @@ export function RulesPageView() {
             {show === "fixes" && <RisksTab key={scope.join()} d={d} q={q} all={all} setAll={setAll} />}
             {show === "list" && <RuleList d={d} />}
             {show === "checks" && <>
-            <Tabs nav={2} active={tab} onChange={setTab} tabs={[
+            {/* in the page only: the side menu keeps three levels, and has these two as shortcuts of its own */}
+            <Tabs active={tab} onChange={setTab} tabs={[
               { key: "findings", label: "Findings", count: d.total },
               { key: "admins", label: "Admin holders", count: d.admins_total, tone: d.admins_total ? "bad" : null },
               { key: "stale", label: "Dormant & disabled", count: d.stale_total, tone: d.stale_total ? "warn" : null },
-              { key: "rules", label: "Rules", count: c.meta.rules.length },
             ]} />
             {tab === "findings" && (
               <Card>
@@ -76,18 +75,6 @@ export function RulesPageView() {
               <Card title="Disabled, dormant or never logged in, still holding roles" scroll
                 sub={`Rules 8 and 16, each person once. People who can read sensitive data (rule 7) come first. Dormant: no login for ${c.meta.limits.dormant_days} days.`}>
                 <StaleTable rows={d.stale} total={d.stale_total} split={d.stale_split} />
-              </Card>
-            )}
-            {tab === "rules" && (
-              <Card title="What each rule checks">
-                <DataTable csv="rules.csv" rows={c.meta.rules} maxHeight={640}
-                  onRowClick={(r: Rule) => c.set({ rule: r.num, part: null, show: null })}
-                  columns={[col("n", "Rule", (r: Rule) => Number(r.num), { num: true, width: 50 }),
-                    col("s", "Severity", (r: Rule) => r.severity, { wrap: "nowrap", render: (r: Rule) => <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span> }),
-                    col("t", "Check", (r: Rule) => r.title, { wrap: "wrap",
-                      render: (r: Rule) => <>{r.title}{d.skipped[r.num] && <span className="ae-muted"> · {d.skipped[r.num]}</span>}</> }), col("a", "Area", (r: Rule) => r.area, { wrap: "nowrap" }),
-                    col("f", "Found", (r: Rule) => d.per_rule[r.num] ?? 0, { num: true }),
-                    col("m", "Meaning", (r: Rule) => r.meaning, { wrap: "wrap" }), col("x", "Fix", (r: Rule) => r.fix, { wrap: "wrap" })]} />
               </Card>
             )}
             </>}
@@ -110,7 +97,7 @@ function FindingGroups({ d, q, f, setF }: {
   if (!all && !why) return null;
   return (
     <div className="ae-findings">
-      <Tabs nav={3} active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
+      <Tabs active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
         tabs={[...SEVERITIES.filter((s) => d.sev_counts[s]).map((s) => ({ key: s, label: s, count: d.sev_counts[s], tone: s === "Medium" ? "warn" as const : s === "Low" ? null : "bad" as const })),
           { key: "All", label: "All", count: all }]} />
       <div className="ae-controls ae-fd-filter">
@@ -124,6 +111,7 @@ function FindingGroups({ d, q, f, setF }: {
       </div>
       {why && <p className="ae-muted ae-fd-hidden">{plural(d.total, "finding")} match {why}.</p>}
       {d.groups.map((g, i) => <Group key={`${sev}:${g.key}`} g={g} q={q} open={d.groups.length === 1 || (i === 0 && g.findings <= 5)} />)}
+      {firstOf(d, d.filters.rule ? "roles and users" : "rules")}
       {!d.groups.length && <p className="ae-muted">Nothing here.</p>}
     </div>
   );
@@ -143,7 +131,7 @@ function RuleHead({ d }: { d: RulesPage }) {
         <h3>{r.title}</h3>
         <button type="button" className="ae-link" onClick={() => c.set({ rule: null, sev: null })}>Every rule</button>
       </div>
-      <p>{r.why}</p>
+      <p>{r.why}{r.critical && <> <span className="ae-sevpill ae-sev-Critical">Critical</span> when {r.critical}.</>}</p>
       <dl className="ae-rulehead-n">
         <div><dt>Findings</dt><dd>{(d.per_rule[r.num] ?? 0).toLocaleString()}</dd></div>
         <div><dt>Roles and users</dt><dd>{d.groups_total.toLocaleString()}</dd></div>
@@ -164,8 +152,15 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
         <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
         <span className={`ae-chip ae-chip-${g.kind ?? "plain"}`}>{g.key.replace(/ \(user\)$/, "")}</span>
         <span className="ae-muted">{plural(g.findings, "finding")}{g.objects ? ` on ${plural(g.objects, "object")}` : ""}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people} people`} affected` : ""}</span>
+        {g.tags?.map((t) => <span key={t} className="ae-tag">{t}</span>)}
       </button>
-      <ul className="ae-fg-said">{g.said.map((x) => <li key={x.text}><span className="ae-mono">{x.text}</span>{g.findings > 1 && <span className="ae-muted"> · {x.findings.toLocaleString()}×</span>}</li>)}</ul>
+      {!on && ( // open, the findings below say it
+        <ul className="ae-fg-said">
+          {g.said.map((x) => <li key={x.text}>{x.findings == null && g.findings > 1 && <span className="ae-muted">e.g. </span>}<span className="ae-mono">{x.text}</span>
+            {x.findings != null && g.findings > 1 && <span className="ae-muted"> · {x.findings.toLocaleString()}×</span>}</li>)}
+          {(g.said_total ?? 0) > g.said.length && <li className="ae-muted">and {plural(g.said_total! - g.said.length, "other pattern")}</li>}
+        </ul>
+      )}
       {on && (
         <GroupItems key={qs(q)} q={q} group={g.key}>{(list, refs, open) => (
           <ul className="ae-fd-list">{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
@@ -182,9 +177,15 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
         <span className="ae-muted">{plural(g.findings, "finding")}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people} people`}` : ""}</span>
       </button>
       {on && (
-        <GroupItems key={qs(q)} q={q} group={g.key}>{(list, refs, open) => (
-          <ul className="ae-fd-list">{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
-        )}</GroupItems>
+        <>
+          <p className="ae-muted ae-fg-note">
+            {g.findings > GROUP_PAGE ? `${GROUP_PAGE} a page, ` : ""}most people affected first.{" "}
+            <button type="button" className="ae-link" onClick={() => c.set({ rule: g.key })}>Per role / user</button>
+          </p>
+          <GroupItems key={qs(q)} q={q} group={g.key}>{(list, refs, open) => (
+            <ul className="ae-fd-list">{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
+          )}</GroupItems>
+        </>
       )}
     </div>
   );

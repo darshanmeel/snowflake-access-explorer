@@ -177,11 +177,26 @@ RULES = {  # number -> (title, why); severity in SEVERITY
     "29": ("Streamlit app shows its owner's sensitive data to people who cannot read it", "The app runs with its "
            "owner's rights, so everyone who can open it sees what the owner role reads, not what their own roles read."),
 }
-SEVERITY = {"1": "Medium", "2": "Medium", "3": "Low", "4": "High", "5": "High", "6": "Medium", "7": "High", "8": "Low",
+SEVERITY = {"1": "Medium", "2": "Medium", "3": "Low", "4": "High", "5": "High", "6": "Medium", "7": "Critical", "8": "Low",
             "9": "High", "10": "Medium", "11": "Low", "12": "High", "13": "Low", "14": "Low", "15": "Medium",
             "16": "Medium", "17": "High", "18": "Low", "19": "Medium", "20": "High", "21": "Medium", "22": "High",
-            "23": "High", "24": "Medium", "25": "High", "26": "High", "27": "Low", "28": "Medium", "29": "High"}  # rule number ->
-# severity, edit freely
+            "23": "High", "24": "Medium", "25": "High", "26": "Critical", "27": "Low", "28": "Medium", "29": "High"}  # rule number ->
+# severity, edit freely; Critical = act now. Rules 5 and 9 raise some findings to Critical (CRITICAL_WHEN)
+SEV_ORDER = ("Critical", "High", "Medium", "Low")
+CRITICAL_WHEN = {"5": "the holder is disabled, dormant or never logged in",
+                 "9": "it is an admin-level account privilege"}
+# account privileges that change who can do what (grants, roles, users, policies, shares): red in Admin holders,
+# Critical when granted to PUBLIC (rule 9)
+ADMIN_LEVEL = {"MANAGE GRANTS", "CREATE ROLE", "CREATE USER", "APPLY MASKING POLICY", "APPLY ROW ACCESS POLICY", "APPLY TAG",
+               "APPLY AGGREGATION POLICY", "APPLY PROJECTION POLICY", "APPLY PASSWORD POLICY", "APPLY SESSION POLICY",
+               "APPLY AUTHENTICATION POLICY", "CREATE DATABASE", "CREATE INTEGRATION", "CREATE SHARE", "IMPORT SHARE",
+               "CREATE ACCOUNT", "CREATE NETWORK POLICY", "ATTACH POLICY", "OVERRIDE SHARE RESTRICTIONS"}
+
+
+def sev_of(f):
+    """A finding's severity: its own (rules 5 and 9 can be Critical), else its rule's; findings kept from before the
+    per-finding severity have none."""
+    return f.get("severity") or SEVERITY.get(f["num"], "Low")
 
 # ---------- fake data: users -> group role -> functional roles -> technical roles -> objects ----------
 
@@ -3873,8 +3888,11 @@ def by_first(fe):
 def rules_of(ids):
     """[(num, severity, title)] of findings by index, one per rule, in rule order."""
     fs = finding_index()[2]
-    nums = sorted({fs[i]["num"] for i in ids}, key=int)
-    return [(n, SEVERITY.get(n, "Low"), RULES[n][0]) for n in nums]
+    worst = {}
+    for i in ids:
+        n = fs[i]["num"]
+        worst[n] = min(worst.get(n, "Low"), sev_of(fs[i]), key=SEV_ORDER.index)
+    return [(n, worst[n], RULES[n][0]) for n in sorted(worst, key=int)]
 
 
 def group_objects(rows, level="schema", keys=None):
@@ -5285,7 +5303,7 @@ def what_if(changes, cap=MAX_PATHS):
     key, k3 = (lambda f: (f["num"], f["grantee"], f["user"], f["detail"])), (lambda f: (f["num"], f["grantee"], f["user"]))
     bk, ak = {key(f): f for f in fb}, {key(f): f for f in fa}
     b3, a3 = {k3(f) for f in fb}, {k3(f) for f in fa}
-    fnd = [dict(num=f["num"], title=RULES[f["num"]][0], severity=SEVERITY.get(f["num"], "Low"), grantee=f["grantee"],
+    fnd = [dict(num=f["num"], title=RULES[f["num"]][0], severity=sev_of(f), grantee=f["grantee"],
                 kind="user" if f["user"] else role_kind(f["grantee"]), detail=f["detail"], path=f["path"], status=st,
                 changed=k3(f) in other)
            for st, mine_, theirs, other in (("fixed", bk, ak, a3), ("new", ak, bk, b3))
@@ -6215,7 +6233,7 @@ def diff(prev, kept=None, key=None, pairs=True):
                           now["user_roles"])
 
     def chip(f, gain):
-        return dict(num=f["num"], severity=SEVERITY.get(f["num"], "Low"), title=RULES[f["num"]][0], fixed=not gain)
+        return dict(num=f["num"], severity=sev_of(f), title=RULES[f["num"]][0], fixed=not gain)
 
     events, told = [], set()
     for gain, xs in ((True, added), (False, removed)):
@@ -6256,7 +6274,7 @@ def diff(prev, kept=None, key=None, pairs=True):
             objs = sorted({n for p in ps for n in p if n in side["sens"]})
             events.append(dict(kind="risk" if gain else "fixed", by=None, sensitive=bool(objs) or f["num"] in SENS_RULES,
                                impact=f["detail"],
-                               text=f"{'New' if gain else 'Fixed'} {SEVERITY.get(f['num'], 'Low').lower()} finding · "
+                               text=f"{'New' if gain else 'Fixed'} {sev_of(f).lower()} finding · "
                                     f"#{f['num']} {RULES[f['num']][0]}: {f['grantee']}",
                                findings=[chip(f, gain)], people=[f["grantee"]] if f["user"] else [], objects=objs,
                                link=dict(page="rules", params=dict(rule=f["num"])),
@@ -6266,11 +6284,11 @@ def diff(prev, kept=None, key=None, pairs=True):
     events.sort(key=lambda e: (order.index(e["kind"]), not e["findings"], -len(e["people"]), e["text"]))
     for i, e in enumerate(events):
         e["id"] = str(i)
-    sev = lambda fs: {v: sum(SEVERITY.get(f["num"], "Low") == v for f in fs) for v in ("Critical", "High", "Medium", "Low")}
+    sev = lambda fs: {v: sum(sev_of(f) == v for f in fs) for v in SEV_ORDER}
     now["memo"].clear()  # the walks of every role and object looked at: not kept with the loaded data set
     return dict(events=events, counts=event_counts(events), new=len(new), fixed=len(fixed),
                 severity=dict(new=sev(new), fixed=sev(fixed)),
-                high=sum(SEVERITY.get(f["num"]) in ("Critical", "High") for f in new),
+                high=sum(sev_of(f) in ("Critical", "High") for f in new),
                 gained=[(u, o) for u, objs, _ in gained for o in objs] if pairs else None,
                 lost=[(u, o) for u, objs, _ in lost for o in objs] if pairs else None,
                 sens_gained=sorted({u for u, objs, _ in gained if not now["sens"].isdisjoint(objs)}),
@@ -6319,7 +6337,7 @@ def rule_rows():
             who = sorted(set().union(*(lose(e) for e in f["edges"])))
             affects = len(who)
             impact = plural(affects, "user") + " lose" + "s" * (affects == 1) + " access"
-        out.append(dict(rule=f"{n} {t}", num=n, title=t, why=RULES[n][1], severity=SEVERITY.get(n, "Low"), edge=f["edge"],
+        out.append(dict(rule=f"{n} {t}", num=n, title=t, why=RULES[n][1], severity=sev_of(f), edge=f["edge"],
                         grantee=f["grantee"], kind="user" if f["user"] else role_kind(f["grantee"]), detail=f["detail"], path=f["path"],
                         paths=f.get("paths", [f["path"]]), edges=f["edges"], iac=iac, sql=sql, affects=affects, losers=who,
                         impact=impact or "—", same_fix=seen.get(sql, "") if sql else ""))
@@ -6333,16 +6351,18 @@ def checks():
     return [(f["num"], RULES[f["num"]][0], f["grantee"], f["detail"], f["path"]) for f in findings()]
 
 
-def find(num, grantee, detail, path, edges=(), edge=None, user=False, **kw):
+def find(num, grantee, detail, path, edges=(), edge=None, user=False, critical=False, **kw):
     """A finding; user: the grantee is a user (not a role of the same name); edge (from, to, privilege or None for a
     role link): the graph edge it applies to, by default the first grant edge of the fix, else the last link of path
-    when that is a role link (an edge into an object needs its privilege)."""
+    when that is a role link (an edge into an object needs its privilege); critical: Critical, not the rule's
+    severity (CRITICAL_WHEN)."""
     uniq = [dict(t) for t in dict.fromkeys(tuple(e.items()) for e in edges)]
     if edge is None and uniq:
         edge = (uniq[0]["grantee"], uniq[0]["to"], uniq[0]["priv"])
     elif edge is None and len(path) > 1 and role_kind(path[-1]) != "object":
         edge = (path[-2], path[-1], None)
-    return dict(num=num, grantee=grantee, detail=detail, path=path, edges=uniq, edge=edge, user=user, **kw)
+    return dict(num=num, grantee=grantee, detail=detail, path=path, edges=uniq, edge=edge, user=user,
+                severity="Critical" if critical else SEVERITY.get(num, "Low"), **kw)
 
 
 def is_build(r):
@@ -6489,10 +6509,12 @@ def rules_admin(only=None):
             for r, ps in group((p[-1], p) for p in admin_paths(u, user=True)).items():
                 p = ps[0]
                 if not ADMIN & set(p[1:-1]):
-                    out.append(find("5", u, r, p, [role_edge(p[-2], p[-1], len(p) == 2)], paths=ps, user=True))
+                    out.append(find("5", u, r, p, [role_edge(p[-2], p[-1], len(p) == 2)], paths=ps, user=True,
+                                    critical=is_disabled(u) or is_dormant(u)))
     for r, pv, k, o in privs:
         if r == "PUBLIC" and not (k == "ACCOUNT" and pv in DEFAULT_PUBLIC) and not is_builtin(o):
-            out.append(find("9", r, f"{pv} on {k} {o}", [r, o], [priv_edge(r, pv, k, o)]))
+            out.append(find("9", r, f"{pv} on {k} {o}", [r, o], [priv_edge(r, pv, k, o)],
+                            critical=k == "ACCOUNT" and pv in ADMIN_LEVEL))
     for child, parent in role_grants:
         if parent == "PUBLIC" and not is_builtin(child):
             out.append(find("9", parent, f"role {child}", [parent, child], [role_edge(parent, child)]))

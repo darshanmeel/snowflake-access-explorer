@@ -126,11 +126,11 @@ def rules():
     area = {n: v[1] for n, v in server.RULE_INFO.items()}
     areas = list(dict.fromkeys(area.values()))  # first-seen order of RULE_INFO
     assert set(area) == set(a.RULES)
-    tone = {"High": "bad", "Medium": "warn", "Low": "low"}
+    tone = {"Critical": "bad", "High": "bad", "Medium": "warn", "Low": "low"}
     rows = []
     for ar in areas:
         rows.append(f'<tr class="grp"><td colspan="4">{escape(ar)}</td></tr>')
-        for n in sorted((n for n in a.RULES if area[n] == ar), key=lambda n: (["High", "Medium", "Low"].index(
+        for n in sorted((n for n in a.RULES if area[n] == ar), key=lambda n: (a.SEV_ORDER.index(
                 a.SEVERITY[n]), int(n))):
             title, why = a.RULES[n]
             rows.append(f'<tr><td class="num">{n}</td><td><span class="sev {tone[a.SEVERITY[n]]}">{a.SEVERITY[n]}'

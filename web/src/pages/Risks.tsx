@@ -13,7 +13,7 @@ import { startOf } from "./screens";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const people = (n: number) => (n === 1 ? "1 person" : `${n} people`);
-const GROUP_PAGE = 50;
+export const GROUP_PAGE = 50;
 
 type Items = Pick<RulesPage, "findings" | "findings_total" | "refs">;
 
@@ -117,15 +117,25 @@ function Mute({ items }: { items: FindingRow[] }) {
   );
 }
 
-function Row({ head, count, n, max, open, onPick, children }: {
-  head: React.ReactNode; count: number; n: number; max: number; open: boolean; onPick: () => void; children: React.ReactNode;
+/** One group: a bar on a square-root scale, so thousands next to a few still shows both (the number is printed);
+ * sevs: the bar split by severity (By person: which kind of findings, not only how many). */
+function Row({ head, count, n, max, sevs, open, onPick, children }: {
+  head: React.ReactNode; count: number; n: number; max: number; sevs?: Partial<Record<string, number>>; open: boolean; onPick: () => void; children: React.ReactNode;
 }) {
+  const w = max ? Math.round((100 * Math.sqrt(n)) / Math.sqrt(max)) : 0;
   return (
     <div className={`ae-rrow${open ? " open" : ""}`}>
       <button type="button" className="ae-rrow-head" aria-expanded={open} onClick={onPick}>
         <span className="ae-rrow-name">{head}</span>
         <span className="ae-rrow-n">{count}</span>
-        <span className="ae-rrow-bar"><span className="ae-gbar"><span style={{ width: `${max ? Math.round((n / max) * 100) : 0}%` }} className="ae-gbar-bad" /></span><b>{n}</b></span>
+        <span className="ae-rrow-bar">
+          <span className="ae-sbar" title={sevs ? SEVERITIES.filter((s) => sevs[s]).map((s) => `${s} ${sevs[s]}`).join(" · ") : undefined}>
+            <span style={{ width: `${w}%` }}>
+              {sevs ? SEVERITIES.filter((s) => sevs[s]).map((s) => <span key={s} className={`ae-bar-${s.toLowerCase()}`} style={{ flex: sevs[s] }} />)
+                : <span className="ae-bar-high" style={{ flex: 1 }} />}
+            </span>
+          </span><b>{n}</b>
+        </span>
       </button>
       {open && <div className="ae-rrow-body">{children}</div>}
     </div>
@@ -139,7 +149,7 @@ export function skipNote(skipped: Record<string, string>) {
 }
 
 /** "first 200 of 5000 groups" when the server sent only the first ones. */
-const firstOf = (d: RulesPage, what: string) =>
+export const firstOf = (d: RulesPage, what: string) =>
   d.groups_total > d.groups.length ? <p className="ae-muted">First {d.groups.length} of {d.groups_total} {what}, most findings first. Search or filter to narrow them.</p> : null;
 
 /** Risks & change plan. d answers q (rulesQuery: by, sev, off); all shows the findings of rules turned off and muted. */
@@ -153,7 +163,8 @@ export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string
   const by = d.filters.by;
   const rules = c.meta.rules;
   const pass = rules.filter((r) => !d.per_rule[r.num] && !d.skipped[r.num]).length;
-  const highRules = rules.filter((r) => r.severity === "High" && d.per_rule[r.num]).length;
+  const top = (d.counts.Critical ?? 0) + d.counts.High; // findings to act on: Critical and High
+  const topRules = new Set(d.groups.filter((g) => by === "rule" && (g.sevs?.Critical || g.sevs?.High)).map((g) => g.key)).size;
   const info = (num: string) => rules.find((r) => r.num === num);
   // per person the bar is that person's findings (counted over rules); else the people the findings reach
   const groups = d.groups.map((g) => ({ ...g, count: by === "person" ? g.rules : g.findings, n: (by === "person" ? g.findings : g.people) ?? 0 }));
@@ -164,8 +175,8 @@ export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string
     <>
       <div className="ae-headrow">
         <p className="ae-answer">
-          {plural(rules.length - Object.keys(d.skipped).length, "rule")} checked, {pass} pass.{skipNote(d.skipped)} {d.counts.High > 0 && <b className="ae-bad">{plural(d.counts.High, "high finding")}</b>}
-          {d.counts.High > 0 && ` across ${plural(highRules, "rule")}.`} Fixes go into a plan you can test before touching Snowflake.
+          {plural(rules.length - Object.keys(d.skipped).length, "rule")} checked, {pass} pass.{skipNote(d.skipped)} {top > 0 && <b className="ae-bad">{plural(top, "critical or high finding")}</b>}
+          {top > 0 && (topRules ? ` across ${plural(topRules, "rule")}.` : ".")} Fixes go into a plan you can test before touching Snowflake.
         </p>
         <FilterChips label="Group findings by" value={by} onPick={(k) => { c.set({ by: k === "rule" ? null : k }); setOpen(null); }}
           items={[{ key: "rule", label: "By rule" }, { key: "person", label: "By person" }, { key: "object", label: "By object" }, { key: "grid", label: "Heat grid" }]} />
@@ -199,7 +210,7 @@ export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string
             const head = by === "rule" ? <><span className="ae-rrow-num">#{g.key}</span>{r?.title ?? g.title}</>
               : <span className="ae-mono">{g.key || (by === "person" ? "No person affected" : "Not about one object")}</span>;
             return (
-              <Row key={g.key} head={head} count={g.count} n={g.n} max={max} open={open === g.key} onPick={() => pick(g.key)}>
+              <Row key={g.key} head={head} count={g.count} n={g.n} max={max} sevs={by === "person" ? g.sevs : undefined} open={open === g.key} onPick={() => pick(g.key)}>
                 {by === "rule" && r && <p className="ae-rwhy">{r.why || r.meaning}</p>}
                 <GroupItems key={qs(q)} q={q} group={g.key}>{(items, _r, open) => {
                   const v = visible(items, [], all ? {} : mute);
@@ -220,8 +231,8 @@ export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string
             );
           })}
           {firstOf(d, by === "person" ? "people" : "objects")}
-          {!groups.length && <EmptyState title="Nothing here" art={d.counts.High + d.counts.Medium + d.counts.Low ? "search" : "clear"}>
-            {d.counts.High + d.counts.Medium + d.counts.Low ? "No finding at this level: its rules are off or the filters leave none." : "Every rule passes."}</EmptyState>}
+          {!groups.length && <EmptyState title="Nothing here" art={(d.counts.Critical ?? 0) + d.counts.High + d.counts.Medium + d.counts.Low ? "search" : "clear"}>
+            {(d.counts.Critical ?? 0) + d.counts.High + d.counts.Medium + d.counts.Low ? "No finding at this level: its rules are off or the filters leave none." : "Every rule passes."}</EmptyState>}
         </section>
         <PlanPanel />
       </div>)}
@@ -356,14 +367,14 @@ export function RuleList({ d }: { d: RulesPage }) {
                     <button type="button" className="ae-rule-name" aria-expanded={open === r.num} onClick={() => setOpen(open === r.num ? null : r.num)}>
                       <span className="ae-rrow-num">#{r.num}</span>{r.title}
                     </button>
-                    <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
-                    {n ? <button type="button" className="ae-link" onClick={() => c.set({ show: "fixes", rule: r.num, sev: r.severity, open: null, by: null })}>{plural(n, "finding")}</button>
+                    <span className={`ae-sevpill ae-sev-${r.severity}`} title={r.critical ? `Critical when ${r.critical}` : undefined}>{r.severity}</span>
+                    {n ? <button type="button" className="ae-link" onClick={() => c.set({ show: "fixes", rule: r.num, sev: r.critical ? "all" : r.severity, open: null, by: null })}>{plural(n, "finding")}</button>
                       : <span className="ae-muted">{d.skipped[r.num] ?? "passes"}</span>}
                     <label className="ae-toggle"><input type="checkbox" checked={on} onChange={(e) => rulesOff.set(e.target.checked ? off.filter((x) => x !== r.num) : [...off, r.num])} />{on ? "On" : "Off"}</label>
                   </div>
                   {open === r.num && (
                     <div className="ae-rule-body">
-                      <div><h4>What it checks</h4><p>{r.meaning || r.why}</p></div>
+                      <div><h4>What it checks</h4><p>{r.meaning || r.why}{r.critical && ` Critical when ${r.critical}.`}</p></div>
                       <div><h4>How to fix</h4><p>{r.fix}</p></div>
                     </div>
                   )}

@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS &DB.&SCHEMA.TBL_ACCESS_FINDING (   -- rule findings o
     RUN_ID VARCHAR(36),
     RULE_NUM VARCHAR(10),
     TITLE VARCHAR(500),
-    SEVERITY VARCHAR(20),            -- High, Medium, Low
+    SEVERITY VARCHAR(20),            -- Critical, High, Medium, Low
     GRANTEE VARCHAR(2000),           -- user, role or object the finding is about
     KIND VARCHAR(20),                -- user, admin, functional, technical, group, object
     DETAIL VARCHAR,

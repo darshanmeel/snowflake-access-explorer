@@ -2,8 +2,8 @@
 // account risks, data protection, recently viewed.
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
-import type { FindItem, HomeCards, HomePage, Page } from "../api/types";
-import { Card, NameList, StackBar, type BarPart } from "../components";
+import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
+import { Card, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
 import { useApp } from "../ctx";
 import { Load } from "./common";
 import { skipNote } from "./Risks";
@@ -170,11 +170,35 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
   const total = Object.values(risks).reduce((a, b) => a + b, 0);
   const ad = k.admins;
   const open = (u: string) => ({ key: u, label: u, open: () => c.nav("access", { user: u }) });
+  const who = (n: { people: number; roles: number }) => [n.people && plural(n.people, "person", "people"), n.roles && plural(n.roles, "role")].filter(Boolean).join(", ");
   return (
     <div className="ae-hcards">
-      <Card title={<>Risks <b className="ae-hc-n">{total.toLocaleString()}</b></>} right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", {})}>Risks & fixes</button>}>
-        <StackBar parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
-        {d.per_rule && <Areas perRule={d.per_rule} />}
+      <Card title={<>Risks <b className="ae-hc-n">{total.toLocaleString()}</b> <span className="ae-muted ae-hc-unit">findings</span></>}
+        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", {})}>Risks & fixes</button>}>
+        {d.act_first && d.act_first.length > 0 && (
+          <div className="ae-act" aria-label="Act first">
+            <div className="ae-muted ae-areas-h">Act first: critical, then high, rarest first</div>
+            {d.act_first.map((r) => (
+              <div key={`${r.severity}${r.num}`} className="ae-act-row">
+                <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
+                <button type="button" className="ae-link ae-act-t" onClick={() => c.nav("rules", { rule: r.num, sev: r.severity })}>#{r.num} {r.title}</button>
+                <span className="ae-muted">{plural(r.findings, "finding")}</span>
+                <span className="ae-act-names"><NameList items={r.names.map((x) => ({ key: x.id, label: x.id.replace(/ \(user\)$/, ""), open: () => openNode(c.nav, x.id, x.kind) }))}
+                  total={r.subjects} max={TOP} onMore={() => c.nav("rules", { rule: r.num, sev: r.severity })} /></span>
+              </div>
+            ))}
+          </div>
+        )}
+        {d.subjects && (
+          <ul className="ae-act-who" aria-label="People and roles per severity">
+            {SEVERITIES.filter((s) => risks[s]).map((s) => (
+              <li key={s}><button type="button" className="ae-link" onClick={() => c.nav("rules", { sev: s })}>
+                <span className={`ae-sevpill ae-sev-${s}`}>{s}</span> {who(d.subjects![s]) || plural(risks[s], "finding")}</button></li>
+            ))}
+          </ul>
+        )}
+        <StackBar label="Findings" parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
+        {d.rule_sev && <Areas ruleSev={d.rule_sev} />}
         {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
       </Card>
       <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{ad.total.toLocaleString()}</b></>}
@@ -183,7 +207,7 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
         <HBars rows={ad.by_role.map((r) => ({ key: r.role, label: r.role, n: r.people, cls: "high" }))
           .concat(ad.account_only ? [{ key: "acct", label: "Account privilege only", n: ad.account_only, cls: "medium" }] : [])} />
         <p className="ae-muted">{ad.service.toLocaleString()} of them service users.</p>
-        <NameList items={ad.names.map(open)} total={ad.total} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
+        <NameList items={ad.names.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.total} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
       </Card>
       <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{k.stale.total.toLocaleString()}</b></>}
         sub="Still holding roles (rules 8 and 16); those reading sensitive data first."
@@ -279,25 +303,35 @@ function Ladder({ counts }: { counts: { read: number; change: number; own: numbe
   return <StackBar parts={ladderParts(counts)} />;
 }
 
+const plural = (n: number, w: string, ws = `${w}s`) => `${n.toLocaleString()} ${n === 1 ? w : ws}`;
+
+/** A name from a finding: a person or role opens on Access, an object on Who has access. */
+const openNode = (nav: (p: Page, params: Record<string, string>) => void, id: string, kind: string) =>
+  kind === "user" ? nav("access", { user: id.replace(/ \(user\)$/, "") }) : kind === "object" ? nav("object", { name: id }) : nav("access", { role: id });
+
 export const sevParts = (n: Record<string, number>): BarPart[] => [
-  { key: "High", label: "High", value: (n.High ?? 0) + (n.Critical ?? 0), cls: "high" },
+  ...(n.Critical ? [{ key: "Critical", label: "Critical", value: n.Critical, cls: "critical" }] : []),
+  { key: "High", label: "High", value: n.High ?? 0, cls: "high" },
   { key: "Medium", label: "Medium", value: n.Medium ?? 0, cls: "medium" }, { key: "Low", label: "Low", value: n.Low ?? 0, cls: "low" }];
 
-/** Findings per rule area: per severity, from the findings per rule and each rule's area and severity. */
-export function areaCounts(rules: { num: string; area: string; severity: string }[], perRule: Record<string, number>) {
-  const out = new Map<string, Record<string, number>>();
-  for (const r of rules) {
-    const m = out.get(r.area) ?? { Critical: 0, High: 0, Medium: 0, Low: 0 };
-    m[r.severity] = (m[r.severity] ?? 0) + (perRule[r.num] ?? 0);
-    out.set(r.area, m);
+/** Findings per rule area and severity, from the findings per severity and rule (rules 5 and 9 can be in two). */
+export function areaCounts(rules: { num: string; area: string }[], ruleSev: Partial<Record<Severity, Record<string, number>>>) {
+  const area = new Map(rules.map((r) => [r.num, r.area]));
+  const out = new Map<string, Record<string, number>>(rules.map((r) => [r.area, { Critical: 0, High: 0, Medium: 0, Low: 0 }]));
+  for (const s of SEVERITIES) for (const [num, v] of Object.entries(ruleSev[s] ?? {})) {
+    const m = out.get(area.get(num) ?? "Other") ?? { Critical: 0, High: 0, Medium: 0, Low: 0 };
+    m[s] += v;
+    out.set(area.get(num) ?? "Other", m);
   }
   return [...out].map(([area, n]) => ({ area, n, total: Object.values(n).reduce((a, b) => a + b, 0) }));
 }
 
-/** One small bar per rule area, longest first; a click opens that area on the Rules list. */
-function Areas({ perRule }: { perRule: Record<string, number> }) {
+/** One small bar per rule area, worst severity first (a few critical findings above thousands of medium ones); a
+ * click opens that area on the Rules list. */
+function Areas({ ruleSev }: { ruleSev: Partial<Record<Severity, Record<string, number>>> }) {
   const c = useApp();
-  const rows = areaCounts(c.meta.rules, perRule).filter((r) => r.total).sort((x, y) => y.total - x.total);
+  const worst = (n: Record<string, number>) => SEVERITIES.findIndex((s) => n[s]);
+  const rows = areaCounts(c.meta.rules, ruleSev).filter((r) => r.total).sort((x, y) => worst(x.n) - worst(y.n) || y.total - x.total);
   const max = Math.max(1, ...rows.map((r) => r.total));
   if (!rows.length) return null;
   return (

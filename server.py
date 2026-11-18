@@ -46,7 +46,7 @@ SHARED_ONLY = {"review", "flow", "changes"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
 KNOWN = {"user", "functional", "technical", "group", "admin", "object"}
-SEVS = ["High", "Medium", "Low"]
+SEVS = ["Critical", "High", "Medium", "Low"]
 TABS = [("account", "Account"), ("granted", "Granted roles"), ("database_roles", "Database roles"), ("usage", "Usage"),
         ("warehouses", "Warehouses"), ("execute", "Execute"), ("read", "Read"), ("write", "Write"), ("own", "Own"),
         ("manage", "Manage")]
@@ -1561,26 +1561,42 @@ def home_page(p, view):
     if view != "shared":
         return dict(view=view, me=mine, risks=None, counts=home_summary()["counts"], per_rule=None, skipped=None, protection=None, cards=None)
     h = home_summary()
-    return dict(view=view, me=mine, risks=h["risks"], counts=h["counts"], per_rule=h["per_rule"],
+    return dict(view=view, me=mine, risks=h["risks"], counts=h["counts"], per_rule=h["per_rule"], subjects=h["subjects"],
+                act_first=h["act_first"], rule_sev=h["rule_sev"],
                 skipped=a.skipped_rules(),  # HIERARCHY=0 / ACTIVITY=0: not in the counts
                 protection=h["protection"], cards=home_cards())
 
 
 def home_summary():
     """Home's numbers once per data set, one pass over the findings: per severity, per rule, the distinct unmasked
-    sensitive columns (rule 6) and the dormant readers (rule 7). The row-policy tables are listed on Sensitive data."""
+    sensitive columns (rule 6) and the dormant readers (rule 7); per severity the distinct people and roles, and the
+    rules to act on first (Critical, then High, rarest first: rule 17's thousands do not bury rule 5's few). The
+    row-policy tables are listed on Sensitive data."""
     def make():
-        sev, per_rule, unmasked, dormant, n6 = dict.fromkeys(("Critical", "High", "Medium", "Low"), 0), {}, set(), set(), 0
+        sev, per_rule, unmasked, dormant, n6 = dict.fromkeys(SEVS, 0), {}, set(), set(), 0
+        who, per = {v: (set(), set()) for v in SEVS}, {}  # severity -> (people, roles); (severity, rule) -> grantees
         for x in S["rows"]:
             sev[x["severity"]] = sev.get(x["severity"], 0) + 1
             per_rule[x["num"]] = per_rule.get(x["num"], 0) + 1
+            if x["kind"] != "object":
+                who[x["severity"]][x["kind"] != "user"].add(x["grantee"])
+            per.setdefault((x["severity"], x["num"]), []).append(x)
             if x["num"] == "6":
                 n6 += 1
                 unmasked.add((x["grantee"], x["detail"].split(" ")[1].rstrip(":")))
             elif x["num"] == "7":
                 dormant.add(x["grantee"])
         g, um, dm = a.governance_kpis(), sorted(unmasked), sorted(dormant)
-        return dict(risks=sev, per_rule=per_rule,
+        top = sorted((k for k in per if k[0] in ("Critical", "High")), key=lambda k: (SEV_RANK[k[0]], len(per[k]), int(k[1])))
+        first = [dict(num=n, severity=v, title=a.RULES[n][0], findings=len(per[(v, n)]),
+                      names=[dict(id=a.uid(x["grantee"], x["kind"] == "user"), kind=norm(x["kind"]))
+                             for x in list({(x["grantee"], x["kind"]): x for x in per[(v, n)]}.values())[:NAMES]],
+                      subjects=len({(x["grantee"], x["kind"]) for x in per[(v, n)]})) for v, n in top[:ACT_FIRST]]
+        rule_sev = {}
+        for (v, n), xs in per.items():
+            rule_sev.setdefault(v, {})[n] = len(xs)
+        return dict(risks=sev, per_rule=per_rule, act_first=first, rule_sev=rule_sev,
+                    subjects={v: dict(people=len(p), roles=len(r)) for v, (p, r) in who.items()},
                     counts=dict(users=len(a.users), roles=len(a.roles), objects=len(a.objects), sensitive=len(S["sens"])),
                     protection=dict(unmasked=n6, unmasked_names=[dict(object=o, column=k) for o, k in um[:NAMES]],
                                     unmasked_columns=len(um), dormant=len(dm), dormant_names=dm[:NAMES],
@@ -1588,6 +1604,7 @@ def home_summary():
     return a.cached("home_summary", make)
 
 
+ACT_FIRST = 5  # rules Home's Risks card names first
 TOP_TYPES = 6  # object types Home names; the rest are one Other
 DAYS = 60  # days of activity Home draws
 
@@ -1608,7 +1625,10 @@ def home_cards():
         return dict(
             admins=dict(total=len(adm), service=sum(x["service"] for x in adm),
                         by_role=[dict(role=r, people=n) for r, n in by_role.most_common()],
-                        account_only=sum(not x["roles"] for x in adm), names=[x["user"] for x in adm][:NAMES]),
+                        account_only=sum(not x["roles"] for x in adm),
+                        names=[dict(user=x["user"], role=(x["roles"] or ["account privilege"])[0],
+                                    login=x["status"] if x["status"] in ("disabled", "never") else str(x["last_login"])[:10])
+                               for x in adm[:NAMES]]),
             stale=dict(total=len(stale), by_status=dict(Counter(a.status(u) for u in stale)), names=stale[:NAMES]),
             people=dict(by_status=dict(Counter(a.status(u) for u in a.users)), service=sum(map(a.is_service, a.users))),
             roles=dict(Counter(a.role_kind(r) for r in a.roles)),
@@ -2731,6 +2751,7 @@ def rule_index():
             g = a.uid(x["grantee"], user)
             out.append(dict(num=x["num"], sev=x["severity"], area=RULE_INFO.get(x["num"], ("", "Other"))[1], grantee=x["grantee"],
                             gid=g, kind=norm(x["kind"]), people=[x["grantee"]] if user else x["losers"][:50],
+                            reach=1 if user else len(x["losers"]),
                             objects=a.finding_objects(x), text=" ".join((x["title"], g, x["detail"], x["num"])).lower()))
         return out
     return a.cached("rule_index", make)
@@ -2772,12 +2793,28 @@ def rule_groups(ix, idx, by):
     for g in sums[:MAX_GROUPS]:  # what only the groups sent show
         its = m[g["key"]]
         g.update(rules=len({ix[i]["num"] for i in its}), title=a.RULES[g["key"]][0] if by == "rule" else None,
+                 sevs=dict(Counter(ix[i]["sev"] for i in its)),
                  kind=ix[its[0]]["kind"] if by in ("grid", "grantee") else None,
                  people=people(its) if by in ("object", "grantee") else g["people"])
         if by == "grantee":  # thousands of findings that say the same thing: its objects, and what most of them say
-            said = Counter(pattern(i) for i in its)
-            g.update(objects=len({o for i in its for o in ix[i]["objects"]}), said=[dict(text=t, findings=n) for t, n in said.most_common(3)])
+            g["objects"] = len({o for i in its for o in ix[i]["objects"]})
+            if all(ix[i]["num"] == "17" for i in its):  # one finding per object: one example, why it is read-only
+                ex, hows = ro_said(S["rows"][its[0]]["detail"]), {ro_said(S["rows"][i]["detail"], True) for i in its}
+                g.update(said=[dict(text=ex, findings=None)], said_total=1, tags=sorted(hows))
+            else:
+                said = Counter(pattern(i) for i in its)
+                g.update(said=[dict(text=t, findings=n) for t, n in said.most_common(3)], said_total=len(said))
     return {g["key"]: m[g["key"]] for g in sums}, sums
+
+
+RO_HOW = {"name": "named read-only", "behaviour": "used read-only", "both": "named and used read-only"}
+
+
+def ro_said(t, how=False):
+    """A rule 17 detail without its "mostly read: ...; " and "; heuristic: ..." parts, or (how) why the role counts as
+    read-only."""
+    t, _, h = t.partition("; heuristic: ")
+    return RO_HOW.get(h, h) if how else t.split("; ")[-1]
 
 
 def pattern(i):
@@ -2803,7 +2840,6 @@ def rules_page(p, view):
         count[ix[i]["num"]] += 1
     skipped = a.skipped_rules()  # HIERARCHY=0 / ACTIVITY=0: did not run, so they do not pass either
     sel = p.get("rule", "") if p.get("rule", "") in a.RULES else ""
-    lvl = lambda n: a.SEVERITY.get(n, "Low")
     off = set(p.get("off", "").split(",")) & set(a.RULES)
     q, area, ppl = p.get("q", "").strip().lower(), p.get("area", ""), p.get("people") == "1"
     pool = [i for i in mine if (not sel or ix[i]["num"] == sel) and ix[i]["num"] not in off and (not area or ix[i]["area"] == area)
@@ -2817,18 +2853,21 @@ def rules_page(p, view):
     by = p.get("by") if p.get("by") in ("person", "object", "grid", "grantee") else "rule"
     groups, sums = rule_groups(ix, shown, by)
     group = p.get("group")
-    items = groups.get(group, []) if group is not None else [i for g in groups.values() for i in g] if by == "rule" else shown
+    items = sorted(groups.get(group, []), key=lambda i: (-ix[i]["reach"], ix[i]["gid"])) if group is not None else [i for g in groups.values() for i in g] if by == "rule" else shown
     off_at, lim = num_param(p, "offset", 0, len(items)), max(1, num_param(p, "limit", FINDINGS_PAGE, 500))
     grid = None
     if by == "grid":
-        cols = sorted({ix[i]["num"] for i in shown}, key=lambda n: (SEV_RANK.get(lvl(n), 9), int(n)))
+        worst = {}
+        for i in shown:  # per finding: rules 5 and 9 can be Critical for some findings
+            worst[ix[i]["num"]] = min(worst.get(ix[i]["num"], 9), SEV_RANK.get(ix[i]["sev"], 9))
+        cols = sorted(worst, key=lambda n: (worst[n], int(n)))
         grid = dict(rules=cols, rows=[dict(grantee=g["key"], kind=g["kind"], severity=g["severity"], total=g["findings"],
                                            counts={n: c for n in cols if (c := sum(ix[i]["num"] == n for i in groups[g["key"]]))})
                                       for g in sums[:MAX_GROUPS]])
     out = dict(
         view=view, scope="mine" if view == "mine" else "account",
         filters=dict(grantee=who, sev=sev, rule=sel, q=q, area=area, people=ppl, off=sorted(off, key=int), by=by, group=group),
-        counts={**{s: sum(count[n] for n in a.RULES if lvl(n) == s) for s in SEVS},
+        counts={**{s: sum(ix[i]["sev"] == s for i in mine) for s in SEVS},
                 "Passing": sum(not count[n] and n not in skipped for n in a.RULES)},
         per_rule=count, skipped=skipped, sev_counts=sev_counts, hidden_off=sum(ix[i]["num"] in off for i in mine),
         areas=sorted({ix[i]["area"] for i in mine}), total=len(shown),
@@ -2839,25 +2878,24 @@ def rules_page(p, view):
         admins, st = admin_list(), stale_list()
         out.update(rows_unknown=[] if who else unknown, admins_total=len(admins), stale_total=len(st), stale=st[:MAX_ADMINS], stale_split=dict(Counter(x["status"] for x in st)), admins=[
             dict(user=x["user"], service=x["service"], roles=x["roles"], account=sorted(acct := {pv for pv, q in x["account"] if q[-1] != "PUBLIC"},
-                                                                                   key=lambda pv: (pv not in ADMIN_LEVEL, pv)),
-                 strong=sorted(acct & ADMIN_LEVEL), paths=x["paths"] + [q for _, q in x["account"] if q[-1] != "PUBLIC"], status=x["status"],
+                                                                                   key=lambda pv: (pv not in a.ADMIN_LEVEL, pv)),
+                 strong=sorted(acct & a.ADMIN_LEVEL), paths=x["paths"] + [q for _, q in x["account"] if q[-1] != "PUBLIC"], status=x["status"],
                  last_login=str(x["last_login"])[:16] if x["last_login"] else None) for x in admins[:MAX_ADMINS]])
     return out
 
 
-# account privileges that change who can do what (grants, roles, users, policies, shares): red in Admin holders; other
-# account privileges (VIEW LINEAGE, MONITOR USAGE, ...) are shown, not red. What PUBLIC holds is left out: every user has it.
-ADMIN_LEVEL = {"MANAGE GRANTS", "CREATE ROLE", "CREATE USER", "APPLY MASKING POLICY", "APPLY ROW ACCESS POLICY", "APPLY TAG",
-               "APPLY AGGREGATION POLICY", "APPLY PROJECTION POLICY", "APPLY PASSWORD POLICY", "APPLY SESSION POLICY",
-               "APPLY AUTHENTICATION POLICY", "CREATE DATABASE", "CREATE INTEGRATION", "CREATE SHARE", "IMPORT SHARE",
-               "CREATE ACCOUNT", "CREATE NETWORK POLICY", "ATTACH POLICY", "OVERRIDE SHARE RESTRICTIONS"}
+TOP_ADMIN = ("ACCOUNTADMIN", "SECURITYADMIN")
 
 
 def admin_list():
     """a.admin_people() without those whose only account privileges come through PUBLIC: every user has what PUBLIC
-    holds, so it would list everyone (rule 9 shows it once)."""
-    return a.cached("admin_list", lambda: [x for x in a.admin_people()
-                                           if x["roles"] or any(q[-1] != "PUBLIC" for _, q in x["account"])])
+    holds, so it would list everyone (rule 9 shows it once). Riskiest first: ACCOUNTADMIN / SECURITYADMIN holders, then
+    disabled, dormant or never logged in, then service users; their roles in that order too."""
+    def make():
+        out = [x | dict(roles=sorted(x["roles"], key=lambda r: (r not in TOP_ADMIN, TOP_ADMIN.index(r) if r in TOP_ADMIN else 0, r)))
+               for x in a.admin_people() if x["roles"] or any(q[-1] != "PUBLIC" for _, q in x["account"])]
+        return sorted(out, key=lambda x: (not set(x["roles"]) & set(TOP_ADMIN), x["status"] == "active", not x["service"], x["user"]))
+    return a.cached("admin_list", make)
 
 
 def stale_list():
@@ -3240,12 +3278,12 @@ def meta(p, sid):
                 mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0,
                 sql_copy=sql_copy(view, sid), inside=a.INSIDE, csv=csv_on(), pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
-                default_user=None, rule_counts={}, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
+                default_user=None, rule_counts={}, rule_sev={}, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
                 limits=dict(max_paths=a.MAX_PATHS, max_objects=a.MAX_OBJECTS, max_hops=a.MAX_HOPS,
                             dormant_days=a.DORMANT_DAYS, max_depth_rule=a.MAX_DEPTH_RULE),
                 read_privs=sorted(a.READ_PRIVS), sensitive_tags=a.SENSITIVE_TAGS,
-                rules=[dict(num=n, title=a.RULES[n][0], why=a.RULES[n][1], severity=a.SEVERITY.get(n, "Low"),
+                rules=[dict(num=n, title=a.RULES[n][0], why=a.RULES[n][1], severity=a.SEVERITY.get(n, "Low"), critical=a.CRITICAL_WHEN.get(n),
                             area=RULE_INFO.get(n, ("", "Other", "", ""))[1], spot=RULE_INFO.get(n, ("", "", "", ""))[0],
                             meaning=RULE_INFO.get(n, ("", "", "", ""))[2], fix=RULE_INFO.get(n, ("", "", "", ""))[3])
                        for n in sorted(a.RULES, key=int)],
@@ -3256,7 +3294,7 @@ def meta(p, sid):
             run = a.run
             when, old = snap_time(run) if view == "shared" else ("live", False)
             worst, hit, hit_rules, rule_counts = rule_badge()
-            badge = {"rules": hit_rules, "sensitive": len(S["sens"])}  # rules failing at the worst severity
+            badge = {"rules": hit, "sensitive": len(S["sens"])}  # findings at the worst severity
             base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
                                               when=when, old=old),
                         sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view) + loop_notes(),
@@ -3266,7 +3304,7 @@ def meta(p, sid):
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
                         protection=protection() if view == "shared" else None,
                         builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
-                        rule_counts=rule_counts,  # the side menu's Findings: severity, then rule
+                        rule_counts=rule_counts, rule_sev=home_summary()["rule_sev"],  # the side menu's Findings: severity, then rule
                         people=side_people() if view == "shared" else None,
                         default_user=(a.users[0] if a.users else None) if view == "mine" else None)  # shared: the pages ask for a pick
     except ApiError as x:

@@ -32,7 +32,7 @@ body { background: #F6F7F9; }
 .seg { display: inline-flex; border: 1px solid var(--ae-line); border-radius: 8px; overflow: hidden; }
 .seg button { font: inherit; font-size: 13px; padding: 6px 12px; background: none; border: 0; color: var(--ae-muted); cursor: pointer; }
 .seg button.on { background: var(--ae-accent); color: #fff; }
-.side-findings { margin: 0 0 4px 12px; padding-left: 8px; border-left: 1px solid var(--ae-line); }
+.side-findings { margin: 0 0 4px 12px; padding-left: 8px; border-left: 1px solid var(--ae-line); min-width: 0; }
 .side-findings details { margin: 0 0 2px; }
 .side-findings summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 10px; cursor: pointer; border-radius: 6px; font-weight: 400; font-size: 12.5px; }
 .side-findings summary:hover { background: var(--ae-sunk); }
@@ -50,8 +50,7 @@ body { background: #F6F7F9; }
 .side-sub { margin: 0 0 4px 12px; padding-left: 8px; border-left: 1px solid var(--ae-line); display: grid; gap: 1px; }
 .side-sub [role="tablist"] { display: grid; gap: 1px; }
 .side-subject { font-size: 11.5px; color: var(--ae-muted); padding: 4px 10px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.side nav .side-sub button, .side nav .side-link2 { min-height: 30px; font-size: 12.5px; }
-.side nav .side-link2 { padding-left: 22px; }
+.side nav .side-sub button { min-height: 30px; font-size: 12.5px; }
 .side-hide, .side-open { font: inherit; font-size: 15px; line-height: 1; border: 1px solid var(--ae-line); background: var(--ae-panel); color: var(--ae-muted); border-radius: 6px; cursor: pointer; min-width: 28px; min-height: 28px; }
 .side-hide { float: right; margin: -4px -2px 4px 4px; }
 .side-hide:hover, .side-open:hover { color: var(--ae-ink); }
@@ -195,7 +194,7 @@ div.ae-tile { cursor: default; }
 .ae-bar-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; }
 .ae-bar-legend > span { display: inline-flex; gap: 6px; align-items: center; }
 .ae-bar-lvl-read { background: var(--ae-lvl_read_bg); } .ae-bar-lvl-change { background: var(--ae-lvl_change_bg); } .ae-bar-lvl-own { background: var(--ae-lvl_own_bg); }
-.ae-bar-high { background: var(--ae-bad_ink); } .ae-bar-medium { background: var(--ae-warn_ink); } .ae-bar-low { background: var(--ae-line_strong); }
+.ae-bar-critical { background: color-mix(in srgb, var(--ae-bad_ink) 70%, var(--ae-ink)); } .ae-bar-high { background: var(--ae-bad_ink); } .ae-bar-medium { background: var(--ae-warn_ink); } .ae-bar-low { background: var(--ae-line_strong); }
 .ae-dot2.ae-lvl-read { background: var(--ae-lvl_read_bg); } .ae-dot2.ae-lvl-change { background: var(--ae-lvl_change_bg); } .ae-dot2.ae-lvl-own { background: var(--ae-lvl_own_bg); }
 .ae-embed > .ae-pagehead { display: none; }
 .ae-embed > .ae-controls .ae-field:first-child:has(datalist) { display: none; }
@@ -380,6 +379,7 @@ div.ae-tile { cursor: default; }
 .ae-rrow-bar { display: grid; grid-template-columns: 1fr 34px; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; }
 .ae-rrow-bar .ae-gbar { margin: 0; }
 .ae-gbar span.ae-gbar-bad { background: var(--ae-bad_ink); }
+.ae-sbar { display: block; height: 10px; border-radius: 5px; background: var(--ae-sunk); overflow: hidden; } .ae-sbar > span { display: flex; height: 100%; } .ae-sbar > span > span { height: 100%; }
 .ae-rrow-body { padding: 4px 16px 14px; display: grid; gap: 8px; }
 .ae-rwhy { margin: 4px 0; color: var(--ae-ink2); }
 .ae-rfix { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--ae-line); border-radius: 10px; background: var(--ae-panel); }
@@ -821,3 +821,9 @@ div.ae-tile { cursor: default; }
 .ae-daybars span.we { opacity: .45; }
 
 .ae-lines { display: grid; gap: 1px; } .ae-lines .ae-plain { color: var(--ae-ink); } .ae-lines .ae-tone-bad { color: var(--ae-bad_ink); font-weight: 600; }
+.ae-hc-unit { font-size: 12px; font-weight: 400; }
+.ae-act { display: grid; gap: 6px; margin-bottom: 10px; }
+.ae-act-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px; align-items: baseline; }
+.ae-act-t { text-align: left; }
+.ae-act-names { grid-column: 2 / -1; font-size: 12.5px; }
+.ae-act-who { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }

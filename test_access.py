@@ -275,7 +275,8 @@ def test_rules():
                  "13": 1, "14": 1, "15": 1, "16": 3, "17": 4, "18": 3, "19": 2, "20": 1, "21": 1, "22": 1, "23": 4,
                  "24": 1, "25": 1, "26": 1, "27": 1, "28": 1, "29": 1}
     assert set(a.SEVERITY) == set(a.RULES) == {str(i) for i in range(1, 30)}
-    assert all(x["severity"] == a.SEVERITY[x["num"]] for x in rows)
+    assert all(x["severity"] == a.SEVERITY[x["num"]] for x in rows)  # no rule 5 / 9 finding is Critical in the fake data
+    assert {x["num"] for x in rows if x["severity"] == "Critical"} == {"7", "26"}
     assert a.BUILD == [F + "DEPLOY"] or "BUILD_ROLES" in os.environ
     by = lambda num: [x for x in rows if x["num"] == num]
     assert {x["detail"].split(":")[0] for x in by("6")} == {"column PHONE", "column BIRTH_DATE", "column CLIENT_IP"}
@@ -1084,6 +1085,15 @@ def test_public():
                  [("PUBLIC", "VIEW LINEAGE", "ACCOUNT", "ACCOUNT"), ("PUBLIC", "SELECT", "TABLE", "DB.S.T")]))
     assert [x["detail"] for x in a.rules_admin() if x["num"] == "9"] == ["SELECT on TABLE DB.S.T"]
     assert not a.admin_people() and a.account_privs("U1", True)
+    # Critical: an admin-level account privilege on PUBLIC; an admin role held by someone who never logged in
+    a.build(tiny([("SYSADMIN", "R1")], [("R1", "U1"), ("ACCOUNTADMIN", "U2")],
+                 [("PUBLIC", "MANAGE GRANTS", "ACCOUNT", "ACCOUNT"), ("PUBLIC", "SELECT", "TABLE", "DB.S.T")]))
+    sev = {(x["num"], x["detail"]): x["severity"] for x in a.rule_rows() if x["num"] in ("5", "9")}
+    assert sev[("9", "MANAGE GRANTS on ACCOUNT ACCOUNT")] == "Critical" and sev[("9", "SELECT on TABLE DB.S.T")] == "High"
+    assert sev[("5", "SYSADMIN")] == sev[("5", "ACCOUNTADMIN")] == "Critical"  # tiny(): nobody has logged in
+    a.profile["U1"] = dict(LAST_SUCCESS_LOGIN=a.ref_time())
+    a.memo.clear()
+    assert [x["severity"] for x in a.rules_admin() if x["num"] == "5" and x["grantee"] == "U1"] == ["High"]
 
 
 def test_cap():
