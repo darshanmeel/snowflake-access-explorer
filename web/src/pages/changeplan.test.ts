@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { redirect } from "../App";
 import type { Finding, WhatIfChange, WhatIfUser } from "../api/types";
-import { addTo, changeText, findingKey, groupFindings, inPlan, objectImpact, planTexts, saved, toChange, toggleFix, visible } from "./changeplan";
+import { addTo, changeText, findingKey, inPlan, objectImpact, planTexts, rulesQuery, saved, toChange, toggleFix, visible } from "./changeplan";
 
 const f = (num: string, grantee: string, more: Partial<Finding> = {}): Finding => ({
   num, title: `rule ${num}`, severity: "High", area: "", grantee, kind: "user", what: `w${num}`, impact: null, people: [grantee],
@@ -37,10 +37,12 @@ describe("change plan", () => {
     expect(v.shown.map((x) => x.grantee)).toEqual(["ADMIN_01"]);
     expect([v.off, v.muted]).toEqual([1, 1]);
   });
-  it("groups by person and object, the ones without last", () => {
-    const xs = [f("1", "U1", { objects: ["A"] }), f("2", "R", { people: ["U1", "U2"], objects: ["A", "B"] }), f("13", "R2", { people: [] })];
-    expect(groupFindings(xs, "person").map((g) => [g.key, g.items.length])).toEqual([["U1", 2], ["U2", 1], ["", 1]]);
-    expect(groupFindings(xs, "object").map((g) => [g.key, g.items.length, g.people])).toEqual([["A", 2, 2], ["B", 1, 2], ["", 1, 0]]);
+  it("asks the server for the page's findings: grouped by rule on Rule checks, rules off only on the change plan", () => {
+    const none = { q: "", area: "", people: false };
+    expect(rulesQuery({ rule: "9", area: "Role model" }, "checks", ["5"], none)).toEqual({ rule: "9", by: "rule", sev: undefined, off: undefined, q: undefined, area: undefined, people: undefined });
+    expect(rulesQuery({ by: "grid" }, "fixes", ["5", "9"], { q: " x ", area: "Sensitive data", people: true }))
+      .toEqual({ by: "grid", sev: "all", off: "5,9", q: "x", area: "Sensitive data", people: "1" });
+    expect(rulesQuery({ by: "person", sev: "High" }, "fixes", [], none)).toMatchObject({ by: "person", sev: "High", off: "" });
   });
   it("writes the plan as SQL, Terraform and ticket text", () => {
     expect(toChange(r1)).toEqual({ op: "revoke", role: "F_A", to: "U1", toUser: true });
