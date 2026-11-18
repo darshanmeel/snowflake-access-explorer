@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
-import { Banner, Card, Combo, CsvOn, LoadLog, Root, SqlCtx, Waiting, type ThemeName } from "./components";
+import { Banner, Card, Combo, CsvOn, LoadLog, Root, SEVERITIES, SqlCtx, Waiting, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -167,7 +167,32 @@ function useWide() {
   return wide;
 }
 
-function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void }) {
+/** Findings in the side menu: each severity with findings, opening to its rules (most findings first); a rule opens
+ * on Risks & fixes with the rule on top and its findings per role or user. */
+function SideFindings({ meta, page, rule, nav }: { meta: Meta; page: Page; rule?: string; nav: (p: Page, params?: Params) => void }) {
+  const n = meta.rule_counts ?? {};
+  const sevs = SEVERITIES.map((s) => [s, meta.rules.filter((r) => r.severity === s && n[r.num]).sort((a, b) => n[b.num] - n[a.num])] as const)
+    .filter(([, rs]) => rs.length);
+  if (!sevs.length) return null;
+  return (
+    <nav aria-label="Findings" className="side-findings">
+      <h4>Findings</h4>
+      {sevs.map(([s, rs], i) => (
+        <details key={s} open={rs.some((r) => page === "rules" && r.num === rule) || (i === 0 && !rule)}>
+          <summary><span className={`ae-sevpill ae-sev-${s}`}>{s}</span><span className="ae-tab-count">{rs.reduce((t, r) => t + n[r.num], 0).toLocaleString()}</span></summary>
+          {rs.map((r) => (
+            <button type="button" key={r.num} className={page === "rules" && r.num === rule ? "on" : ""} aria-current={page === "rules" && r.num === rule ? "page" : undefined}
+              onClick={() => nav("rules", { rule: r.num, sev: "all" })} title={r.why}>
+              <span><span className="side-rule-n">{r.num}</span>{r.title}</span><span className="ae-tab-count">{n[r.num].toLocaleString()}</span>
+            </button>
+          ))}
+        </details>
+      ))}
+    </nav>
+  );
+}
+
+function Side({ meta, page, rule, nav }: { meta: Meta; page: Page; rule?: string; nav: (p: Page, params?: Params) => void }) {
   const wide = useWide();
   const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
@@ -175,6 +200,7 @@ function Side({ meta, page, nav }: { meta: Meta; page: Page; nav: (p: Page, para
     <aside className="side">
       <details className="side-menu" ref={menu} open={wide}>
         <summary>Menu · {LABEL[page]}</summary>
+        <SideFindings meta={meta} page={page} rule={rule} nav={nav} />
         {GROUPS.map(([g, title]) => {
           const ps = meta.pages.filter((p) => (p.group ?? "detail") === g);
           return ps.length ? (
@@ -398,7 +424,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           {busy && <span className="ae-muted top-busy" role="status"><span className="ae-spin" aria-hidden />{busy}</span>}
         </header>
         <div className="top-lock" {...lock}>
-        {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
+        {meta ? <Side meta={meta} page={loc.page} rule={loc.params.rule} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
         </div>
         <main className="main">
           {meta && <p className="ae-print-head">Access explorer · {LABEL[loc.page]}{["user", "role", "name", "a", "obj"].map((k) => loc.params[k]).filter(Boolean).map((v) => ` · ${v}`).join("")}

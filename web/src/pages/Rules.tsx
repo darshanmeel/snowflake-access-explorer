@@ -58,7 +58,7 @@ export function RulesPageView() {
             ]} />
             {tab === "findings" && (
               <Card>
-                {chips}
+                {d.filters.rule ? <RuleHead d={d} /> : chips}
                 <FindingGroups key={scope.join()} d={d} q={q} f={f} setF={setF} />
                 <p className="ae-muted">{d.counts.Passing} of {c.meta.rules.length} rules pass.{skipNote(d.skipped)}</p>
               </Card>
@@ -129,9 +129,50 @@ function FindingGroups({ d, q, f, setF }: {
   );
 }
 
+/** One rule picked (side menu or the list): what it checks, why, how to fix, its counts; its findings below, one line
+ * per role or user. */
+function RuleHead({ d }: { d: RulesPage }) {
+  const c = useApp();
+  const r = c.meta.rules.find((x) => x.num === d.filters.rule);
+  if (!r) return null;
+  return (
+    <div className={`ae-rulehead ae-sev-${r.severity}`}>
+      <div className="ae-rulehead-t">
+        <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
+        <span className="ae-fg-num">{r.num}</span>
+        <h3>{r.title}</h3>
+        <button type="button" className="ae-link" onClick={() => c.set({ rule: null, sev: null })}>Every rule</button>
+      </div>
+      <p>{r.why}</p>
+      <dl className="ae-rulehead-n">
+        <div><dt>Findings</dt><dd>{(d.per_rule[r.num] ?? 0).toLocaleString()}</dd></div>
+        <div><dt>Roles and users</dt><dd>{d.groups_total.toLocaleString()}</dd></div>
+        {r.area && <div><dt>Area</dt><dd>{r.area}</dd></div>}
+      </dl>
+      {r.meaning && <p><b>What it means.</b> {r.meaning}</p>}
+      {r.fix && <p><b>How to fix.</b> {r.fix}</p>}
+    </div>
+  );
+}
+
 function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | undefined>; open: boolean }) {
   const c = useApp();
   const [on, setOn] = useState(open);
+  if (g.said) return (  // one rule, per role or user: what its findings say, not each of them
+    <div className={`ae-fg ae-fg-who ae-sev-${g.severity}`}>
+      <button className="ae-fg-head" onClick={() => setOn(!on)} aria-expanded={on}>
+        <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
+        <span className={`ae-chip ae-chip-${g.kind ?? "plain"}`}>{g.key.replace(/ \(user\)$/, "")}</span>
+        <span className="ae-muted">{plural(g.findings, "finding")}{g.objects ? ` on ${plural(g.objects, "object")}` : ""}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people} people`} affected` : ""}</span>
+      </button>
+      <ul className="ae-fg-said">{g.said.map((x) => <li key={x.text}><span className="ae-mono">{x.text}</span>{g.findings > 1 && <span className="ae-muted"> · {x.findings.toLocaleString()}×</span>}</li>)}</ul>
+      {on && (
+        <GroupItems key={qs(q)} q={q} group={g.key}>{(list, refs, open) => (
+          <ul className="ae-fd-list">{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
+        )}</GroupItems>
+      )}
+    </div>
+  );
   return (
     <div className={`ae-fg ae-sev-${g.severity}`}>
       <button className="ae-fg-head" onClick={() => setOn(!on)} aria-expanded={on}>

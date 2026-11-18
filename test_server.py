@@ -859,6 +859,19 @@ def test_review_grid_catalog_flow():  # screens 6, 8, 16
     assert "flow" not in {p["key"] for p in js("/api/meta?view=mine")["pages"]}
 
 
+def test_rule_by_grantee():
+    """One rule (the side menu's Findings): its findings per role or user, with their objects and what most say; the
+    menu's counts per rule from meta."""
+    n = js("/api/meta")["rule_counts"]
+    assert n and all(v > 0 for v in n.values())
+    r = js("/api/rules?rule=18&by=grantee&sev=all")
+    assert r["filters"]["rule"] == "18" and r["total"] == n["18"] == sum(g["findings"] for g in r["groups"])
+    g = r["groups"][0]
+    assert g["said"] and g["said"][0]["findings"] <= g["findings"] and g["objects"] >= 1 and g["kind"]
+    one = js(f"/api/rules?rule=18&by=grantee&sev=all&group={g['key']}")
+    assert one["findings_total"] == g["findings"] and all(f["num"] == "18" for f in one["findings"])
+
+
 def test_usage_changes():  # screens 13, 14
     u = js("/api/usage?user=ENGINEER_01", ["who", "days", "periods", "available", "rows", "weeks", "counts", "changes", "refs"])
     assert u["available"] and u["days"] == 90 and u["periods"] == [30, 90, 180] and u["source"] == "demo values"

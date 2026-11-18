@@ -6603,6 +6603,8 @@ def unusual(role=None):
         for (k, o), h in sorted(held.items(), key=lambda x: (x[0][1], x[0][0])):
             need = own & STANDARD.get(k, set())
             extra, missing = h - std, (need - eff[(k, o)]) if h & need else set()
+            if "OWNERSHIP" in eff[(k, o)]:  # what OWNERSHIP of o already gives (SELECT, READ, ...) changes nothing: not unusual
+                extra &= {"OWNERSHIP"}
             if extra or missing:
                 out.append(dict(role=r, cap=cap, object=o, type=k, held=sorted(h), extra=sorted(extra),
                                 missing=sorted(missing)))

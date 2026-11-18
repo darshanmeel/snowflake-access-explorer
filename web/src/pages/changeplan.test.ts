@@ -37,9 +37,10 @@ describe("change plan", () => {
     expect(v.shown.map((x) => x.grantee)).toEqual(["ADMIN_01"]);
     expect([v.off, v.muted]).toEqual([1, 1]);
   });
-  it("asks the server for the page's findings: grouped by rule on Rule checks, rules off only on the change plan", () => {
+  it("asks the server for the page's findings: by rule on Rule checks, one rule per role or user, rules off only on the change plan", () => {
     const none = { q: "", area: "", people: false };
-    expect(rulesQuery({ rule: "9", area: "Role model" }, "checks", ["5"], none)).toEqual({ rule: "9", by: "rule", sev: undefined, off: undefined, q: undefined, area: undefined, people: undefined });
+    expect(rulesQuery({ rule: "9", area: "Role model" }, "checks", ["5"], none)).toEqual({ rule: "9", by: "grantee", sev: undefined, off: undefined, q: undefined, area: undefined, people: undefined });
+    expect(rulesQuery({}, "checks", [], none).by).toBe("rule");
     expect(rulesQuery({ by: "grid" }, "fixes", ["5", "9"], { q: " x ", area: "Sensitive data", people: true }))
       .toEqual({ by: "grid", sev: "all", off: "5,9", q: "x", area: "Sensitive data", people: "1" });
     expect(rulesQuery({ by: "person", sev: "High" }, "fixes", [], none)).toMatchObject({ by: "person", sev: "High", off: "" });

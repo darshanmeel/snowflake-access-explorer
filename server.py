@@ -14,6 +14,7 @@ import pathlib
 import re
 import threading
 import time
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -2738,7 +2739,7 @@ def rule_groups(ix, idx, by):
     m = {}
     for i in idx:
         x = ix[i]
-        for k in ([x["num"]] if by == "rule" else [x["gid"]] if by == "grid" else x["people" if by == "person" else "objects"] or [""]):
+        for k in ([x["num"]] if by == "rule" else [x["gid"]] if by in ("grid", "grantee") else x["people" if by == "person" else "objects"] or [""]):
             m.setdefault(k, []).append(i)
     people = lambda its: len({u for i in its for u in ix[i]["people"]})
     sums = [dict(key=k, findings=len(its), severity=min((ix[i]["sev"] for i in its), key=lambda s: SEV_RANK.get(s, 9)),
@@ -2750,8 +2751,21 @@ def rule_groups(ix, idx, by):
     for g in sums[:MAX_GROUPS]:  # what only the groups sent show
         its = m[g["key"]]
         g.update(rules=len({ix[i]["num"] for i in its}), title=a.RULES[g["key"]][0] if by == "rule" else None,
-                 kind=ix[its[0]]["kind"] if by == "grid" else None, people=people(its) if by == "object" else g["people"])
+                 kind=ix[its[0]]["kind"] if by in ("grid", "grantee") else None,
+                 people=people(its) if by in ("object", "grantee") else g["people"])
+        if by == "grantee":  # thousands of findings that say the same thing: its objects, and what most of them say
+            said = Counter(pattern(i) for i in its)
+            g.update(objects=len({o for i in its for o in ix[i]["objects"]}), said=[dict(text=t, findings=n) for t, n in said.most_common(3)])
     return {g["key"]: m[g["key"]] for g in sums}, sums
+
+
+def pattern(i):
+    """A finding's detail with its objects as "…": the same issue on many objects reads as one line."""
+    x = S["rows"][i]
+    t = x["detail"]
+    for o in sorted(a.finding_objects(x), key=len, reverse=True):
+        t = t.replace(o, "…")
+    return t
 
 
 def rules_page(p, view):
@@ -2779,7 +2793,7 @@ def rules_page(p, view):
     sev = p.get("sev", "")
     sev = sev if sev in SEV_RANK else "" if sev == "all" else next((s for s in SEV_RANK if sev_counts[s]), "")
     shown = [i for i in pool if not sev or ix[i]["sev"] == sev]
-    by = p.get("by") if p.get("by") in ("person", "object", "grid") else "rule"
+    by = p.get("by") if p.get("by") in ("person", "object", "grid", "grantee") else "rule"
     groups, sums = rule_groups(ix, shown, by)
     group = p.get("group")
     items = groups.get(group, []) if group is not None else [i for g in groups.values() for i in g] if by == "rule" else shown
@@ -3166,7 +3180,7 @@ def meta(p, sid):
                 mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0,
                 sql_copy=sql_copy(view, sid), inside=a.INSIDE, csv=csv_on(), pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
-                default_user=None, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
+                default_user=None, rule_counts={}, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
                 build_roles=list(a.BUILD),
                 limits=dict(max_paths=a.MAX_PATHS, max_objects=a.MAX_OBJECTS, max_hops=a.MAX_HOPS,
                             dormant_days=a.DORMANT_DAYS, max_depth_rule=a.MAX_DEPTH_RULE),
@@ -3193,6 +3207,7 @@ def meta(p, sid):
                         governance=a.governance_kpis()["text"] if view == "shared" else None,
                         protection=protection() if view == "shared" else None,
                         builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
+                        rule_counts=dict(Counter(x["num"] for x in S["rows"])),  # the side menu's Findings: severity, then rule
                         default_user=(a.users[0] if a.users else None) if view == "mine" else None)  # shared: the pages ask for a pick
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)

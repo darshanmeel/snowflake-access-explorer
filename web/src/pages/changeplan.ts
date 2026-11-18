@@ -61,7 +61,7 @@ export function visible<T extends Keyed>(list: T[], off: string[], mute: Record<
  * filters replace the URL's area (Rules list: where to scroll). */
 export function rulesQuery(p: Record<string, string | undefined>, show: string, off: string[], f: { q: string; area: string; people: boolean }) {
   const fixes = show === "fixes";
-  const by = fixes ? p.by ?? "rule" : "rule";
+  const by = fixes ? p.by ?? "rule" : p.rule ? "grantee" : "rule";  // one rule: its findings per role or user
   return { ...p, by, sev: p.sev ?? (by === "grid" ? "all" : undefined), off: fixes ? off.join(",") : undefined,
     q: f.q.trim() || undefined, area: f.area || undefined, people: f.people ? "1" : undefined };
 }

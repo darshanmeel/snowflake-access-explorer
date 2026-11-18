@@ -216,6 +216,7 @@ export interface Meta {
   // rules: how many rules fail at the worst severity, title "75157 high findings in 6 rules"
   pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; title?: string | null; group: "answers" | "admin" | "detail" }[];
   default_user: string | null; // My access: the signed-in user; shared: none, the pages ask for a pick
+  rule_counts: Record<string, number>; // findings per rule number: the side menu's Findings
   prefixes: { func: string; tech: string };
   admin_roles: string[];
   build_roles: string[];
@@ -783,8 +784,10 @@ export interface FindingGroup {
   severity: Severity; // the worst in the group
   findings: number;
   rules: number;
-  people: number | null; // by rule and object
-  kind: NodeKind | null; // the grantee's (grid)
+  people: number | null; // by rule, object and grantee
+  kind: NodeKind | null; // the grantee's (grid, grantee)
+  objects?: number; // by grantee: the objects its findings are on
+  said?: { text: string; findings: number }[]; // by grantee: what most of its findings say, objects as "…"
 }
 
 export interface RulesPage {
