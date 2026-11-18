@@ -3354,13 +3354,15 @@ def grid_cell(rs, kind):
     return dict(level=obj_level(pvs[0], kind), privileges=pvs, path=min((p for _, p in rs), key=len))
 
 
-def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_MAX):
+def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_MAX, people=None, keep=None):
     """Screen 6: people x objects. scope sensitive (the sensitive objects), db (objects of database db) or all;
     obj: people x the privileges on that one object instead (columns = privileges). A cell: grid_cell(), path
     user->...->holder->object; a user holding an admin role has "admin" in every column. hide_usage drops USAGE
     (objects left without a cell drop out). Rows: user, type, status, days, admin (admin roles held), roles (granted
-    roles on the paths: what a revoke takes away), cells {column id: cell}. Returns dict(columns, rows, total)."""
-    adm, cells, roles = admin_users(), {}, {}
+    roles on the paths: what a revoke takes away), cells {column id: cell}; keep(user, roles) picks the rows, people
+    caps them (admins, highest access, most cells first; cells built for those only). Returns dict(columns, rows,
+    total (objects), users (every row's user, before keep), matched (rows keep picked))."""
+    adm, has, roles = admin_users(), {}, {}  # has: user -> [(column, [(privilege, who_users entry)], kind, object)]
     if obj:
         k, got = kinds.get(obj, ""), {}
         for (x, pv), e in who_users(obj).items():
@@ -3368,39 +3370,53 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
         pvs = sorted({pv for v in got.values() for pv in v}, key=lambda pv: (-OBJ_LEVELS.index(obj_level(pv, k)), pv))
         cols = [dict(id=pv, name=pv, ns=obj, note=obj_level(pv, k), sensitive=False) for pv in pvs]
         for x, v in got.items():
-            cells[x] = {pv: dict(level=obj_level(pv, k), privileges=[pv], path=e["path"] + [obj]) for pv, e in v.items()}
+            has[x] = [(pv, [(pv, e)], k, obj) for pv, e in v.items()]
             roles[x] = set().union(*(e["firsts"] for e in v.values()))
         total = len(cols)
     else:
-        s, reach = sensitive(), {}
+        s, reach, per = sensitive(), {}, {}
         objs = sorted(s) if scope == "sensitive" else \
             [o for o in objects if split_name(o)[0] and (scope != "db" or split_name(o)[0] == db)]
-        for o in objs:
-            got = {}
-            for (x, pv), e in who_users(o).items():
-                if not (hide_usage and pv == "USAGE"):
-                    got.setdefault(x, []).append((pv, e))
-            for x, rs in got.items():
-                cells.setdefault(x, {})[o] = grid_cell([(pv, e["path"] + [o]) for pv, e in rs], kinds.get(o, ""))
-                roles.setdefault(x, set()).update(*(e["firsts"] for _, e in rs))
-            if got:
-                reach[o] = len(got)
+        for o in objs:  # who_users() reads only the grant holders: objects with the same ones (a schema's tables) share it
+            sig = tuple(on.get(o, []))
+            if sig not in per:
+                per[sig] = got = {}
+                for (x, pv), e in who_users(o).items():
+                    if not (hide_usage and pv == "USAGE"):
+                        got.setdefault(x, []).append((pv, e))
+                for x, rs in got.items():
+                    roles.setdefault(x, set()).update(*(e["firsts"] for _, e in rs))
+            if per[sig]:
+                reach[o] = len(per[sig])
         objs = sorted(reach, key=lambda o: (o not in s, -reach[o], o))
-        total, objs = len(objs), set(objs[:cap])
+        total, objs = len(objs), objs[:cap]
+        for o in objs:
+            for x, rs in per[tuple(on.get(o, []))].items():
+                has.setdefault(x, []).append((o, rs, kinds.get(o, ""), o))
         cols = [dict(id=o, name=split_name(o)[2] or o, ns=".".join(x for x in split_name(o)[:2] if x),
                      note=", ".join(sensitive_cols(o)) or ("whole object" if o in s else ""), sensitive=o in s)
-                for o in sorted(objs, key=lambda o: (o not in s, -reach[o], o))]
-        cells = {x: {o: v for o, v in cs.items() if o in objs} for x, cs in cells.items()}
-    for u in adm:  # admin roles inherit every role: every column
-        ps = admin_paths(u, True)
-        cells[u] = {c["id"]: dict(level="admin", privileges=["ALL"], path=min(ps, key=len)) for c in cols}
-        roles.setdefault(u, set()).update(q[1] for q in ps)
-    rows = [dict(user=u, type=str((profile.get(u) or {}).get("TYPE") or "PERSON"), status=status(u), days=login_days(u),
-                 admin=adm.get(u, []), roles=sorted(roles.get(u, set()) - {"PUBLIC"}), cells=cs)
-            for u, cs in cells.items() if cs]
-    rows.sort(key=lambda r: (not r["admin"], -max(OBJ_LEVELS.index(c["level"]) for c in r["cells"].values()),
-                             -len(r["cells"]), r["user"]))
-    return dict(columns=cols, rows=rows, total=total)
+                for o in objs]
+    lv, top = {}, OBJ_LEVELS.index("admin")  # level per shared row list and type, not per cell
+
+    def level(rs, k):
+        if (id(rs), k) not in lv:
+            lv[(id(rs), k)] = max(OBJ_LEVELS.index(obj_level(pv, k)) for pv, _ in rs)
+        return lv[(id(rs), k)]
+    for u, held in adm.items():
+        roles.setdefault(u, set()).update(*(firsts(u, r) for r in held))
+    rank = {u: (True, -max(level(rs, k) for _, rs, k, _ in xs), -len(xs), u) for u, xs in has.items() if u not in adm}
+    rank.update({u: (False, -top, -len(cols), u) for u in adm if cols})
+    shown = sorted((u for u in rank if not keep or keep(u, sorted(roles.get(u, set()) - {"PUBLIC"}))), key=rank.get)
+    rows = []
+    for u in shown[:people]:
+        if u in adm:  # admin roles inherit every role: every column; the shortest way in, counted not listed
+            ps = [up_rows(r)[(u, True)][1][::-1] for r in sorted(adm[u])]
+            cs = {c["id"]: dict(level="admin", privileges=["ALL"], path=min(ps, key=len)) for c in cols}
+        else:
+            cs = {c: grid_cell([(pv, e["path"] + [o]) for pv, e in rs], k) for c, rs, k, o in has[u]}
+        rows.append(dict(user=u, type=str((profile.get(u) or {}).get("TYPE") or "PERSON"), status=status(u),
+                         days=login_days(u), admin=adm.get(u, []), roles=sorted(roles.get(u, set()) - {"PUBLIC"}), cells=cs))
+    return dict(columns=cols, rows=rows, total=total, users=list(rank), matched=len(shown))
 
 
 # ---------- page aggregations: plain lists of dicts ----------
@@ -4801,36 +4817,47 @@ def review(db=None):
     """Access review export for one database (None: every database): one row per (user, object) with any privilege,
     then one row per admin user. Row: database, schema, object, type, user, user_type, status, last_login, privileges, classes, sensitive
     (tags), granted (depth-1 roles), path (shortest), reviewer, decision (blank, for sign-off)."""
-    out, adm, who, seen = [], admin_users(), {}, {}
-    for o in objects:
-        d, sc, nm = split_name(o)
-        if not d or db not in (None, d):
-            continue
-        k = kinds.get(o)
-        sig = (tuple(on.get(o, [])), k)  # objects with the same grant holders (a schema's tables) share their rows
-        if sig not in seen:
-            per = {}
-            for (x, pv), e in who_users(o).items():
-                per.setdefault(x, []).append((pv, e))
-            seen[sig] = rows = []
-            for x, v in sorted(per.items()):
-                if x not in who:  # per user once, not per object
-                    pr = profile.get(x) or {}
-                    who[x] = dict(user_type=pr.get("TYPE") or "PERSON", status=status(x), last_login=pr.get("LAST_SUCCESS_LOGIN"))
-                pvs = sorted(pv for pv, _ in v)
-                rows.append((x, dict(who[x], privileges=", ".join(pvs), classes=", ".join(sorted({priv_class(pv, k) for pv in pvs}))),
-                             ", ".join(sorted(set().union(*(e["firsts"] for _, e in v)))),
-                             " > ".join([x] + min((e["path"] for _, e in v), key=len)[1:])))
-        tags = ", ".join(sorted({tag_label(t, val) for _, t, val, _ in sens.get(o, [])}))
-        out += [dict(database=d, schema=sc, object=nm, type=k, user=x, **e, sensitive=tags, granted=g, path=f"{p} > {o}",
-                     reviewer="", decision="") for x, e, g, p in seen[sig]]
-    for u, rs in sorted(adm.items()):
-        out.append(dict(database=db or "(every database)", schema="", object="(every object, through an admin role)",
-                        type="", user=u,
-                        user_type=(profile.get(u) or {}).get("TYPE") or "PERSON", status=status(u),
-                        last_login=(profile.get(u) or {}).get("LAST_SUCCESS_LOGIN"), privileges="ALL", classes="own",
-                        sensitive="", granted=", ".join(rs), path="", reviewer="", decision=""))
-    return out
+    rv = review_parts(db)
+    return [dict(database=d, schema=sc, object=nm, type=k, user=x, **e, sensitive=tags, granted=g, path=f"{p} > {o}",
+                 reviewer="", decision="") for o, d, sc, nm, k, tags, sig in rv["objects"] for x, e, g, p in rv["rows"][sig]]         + rv["admins"]
+
+
+def review_parts(db=None):
+    """review() without a row per (user, object), once per data set and db: objects [(object, database, schema,
+    name, type, tags, sig)] that have a row, in objects order; rows {sig: [(user, fields, granted, path to the
+    holder)]} sorted by user (objects with the same grant holders and type share them); admins (the admin rows)."""
+    def make():
+        objs, adm, who, seen, base, cls = [], admin_users(), {}, {}, {}, {}
+        for o in objects:
+            d, sc, nm = split_name(o)
+            if not d or db not in (None, d):
+                continue
+            k = kinds.get(o)
+            sig = (tuple(on.get(o, [])), k)  # objects with the same grant holders (a schema's tables) share their rows
+            if sig not in seen:
+                h = tuple((r, pv) for r, pv, _ in sig[0])  # who_users() reads holder and privilege: tables and views share it
+                if h not in base:
+                    per = {}
+                    for (x, pv), e in who_users(o).items():
+                        per.setdefault(x, []).append((pv, e))
+                    base[h] = [(x, tuple(sorted(pv for pv, _ in v)), ", ".join(sorted(set().union(*(e["firsts"] for _, e in v)))),
+                                " > ".join([x] + min((e["path"] for _, e in v), key=len)[1:])) for x, v in sorted(per.items())]
+                seen[sig] = rows = []
+                for x, pvs, g, path in base[h]:
+                    if x not in who:  # per user once, not per object
+                        pr = profile.get(x) or {}
+                        who[x] = dict(user_type=pr.get("TYPE") or "PERSON", status=status(x), last_login=pr.get("LAST_SUCCESS_LOGIN"))
+                    if (pvs, k) not in cls:
+                        cls[(pvs, k)] = dict(privileges=", ".join(pvs), classes=", ".join(sorted({priv_class(pv, k) for pv in pvs})))
+                    rows.append((x, who[x] | cls[(pvs, k)], g, path))
+            if seen[sig]:
+                objs.append((o, d, sc, nm, k, ", ".join(sorted({tag_label(t, val) for _, t, val, _ in sens.get(o, [])})), sig))
+        admins = [dict(database=db or "(every database)", schema="", object="(every object, through an admin role)",
+                       type="", user=u, user_type=(profile.get(u) or {}).get("TYPE") or "PERSON", status=status(u),
+                       last_login=(profile.get(u) or {}).get("LAST_SUCCESS_LOGIN"), privileges="ALL", classes="own",
+                       sensitive="", granted=", ".join(rs), path="", reviewer="", decision="") for u, rs in sorted(adm.items())]
+        return dict(objects=objs, rows=seen, admins=admins)
+    return cached(("review", db), make)
 
 
 def search(q, names):
@@ -5732,32 +5759,81 @@ def loaded(d):
 
 
 def facts():
-    """What a diff compares, once per data set: access {(user, object): (step, privileges)} on tables and views, grants
-    {(grantee, privilege, granted on, object): granted_by} (role links to admin roles left out, as build() does),
-    user_roles {(role, user): granted_by}, findings {key: finding}, status {user: status}, sensitive objects, run.
-    access merges what each granted role reaches (table_reach), so no path is listed."""
+    """What a diff compares, once per data set: of {user: granted roles (PUBLIC too)}, kids {role: roles it holds},
+    own {role: own_tables()} (a user's reach is its roles' reach, side_reach(): no (user, object) pair is built per
+    user; fact_level() gives one), grants {(grantee, privilege, granted on, object): granted_by} (role links to admin
+    roles left out, as build() does), user_roles {(role, user): granted_by}, findings {key: finding}, status {user:
+    status}, sensitive objects, run, memo (side_reach results)."""
     def make():
-        acc, by = {}, {}  # by: granted roles -> their levels (users with the same roles share the work)
-        for u in users:
-            rs = tuple(sorted({s[-1] for s in starts(u, True)}))
-            if rs not in by:
-                got = {}
-                for r in rs:
-                    c = table_reach(r)
-                    both = [(o, got[o]) for o in got.keys() & c.keys()]
-                    got.update(c)
-                    for o, (pk, adm) in both:  # reached through two granted roles: merged
-                        got[o] = (pk_union(pk, c[o][0]), adm or c[o][1])
-                by[rs] = [(o, v) for o, v in ((o, table_level(*got[o])) for o in sorted(got)) if v[0]]
-            acc.update({(u, o): v for o, v in by[rs]})
         d = source["data"]
         gs = {(g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"]): g.get("GRANTED_BY") for g in d["GRANT"]
               if (source["builtin"] or not builtin_grant(g)) and not (g["GRANTED_ON"] in ROLE_ON and g["GRANTEE_ROLE"] in ADMIN)}
-        return dict(access=acc, grants=gs,
-                    user_roles={(x["ROLE_NAME"], x["USER_NAME"]): x.get("GRANTED_BY") for x in d["USER_ROLE"]},
+        return dict(of={u: tuple(sorted({s[-1] for s in starts(u, True)})) for u in users},
+                    kids={r: tuple(xs) for r, xs in holds.items()}, own={h: t for h in granted if (t := own_tables(h))},
+                    grants=gs, user_roles={(x["ROLE_NAME"], x["USER_NAME"]): x.get("GRANTED_BY") for x in d["USER_ROLE"]},
                     findings={(f["num"], f["grantee"], f["user"], f["detail"]): f for f in cached("findings", findings)},
-                    status={u: status(u) for u in users}, sens=set(sens), run=dict(run))
+                    status={u: status(u) for u in users}, sens=set(sens), run=dict(run), memo={})
     return cached("facts", make)
+
+
+def side_reach(side, r):
+    """table_reach(r) from facts() side (its lookups need not be loaded), once per side and role."""
+    m = side["memo"]
+    if r not in m:
+        seen, todo, got = {r}, [r], {}
+        while todo:
+            todo = [x for h in todo for x in side["kids"].get(h, ()) if x not in seen and not seen.add(x)]
+        for h in seen:
+            for o, (pk, adm) in side["own"].get(h, {}).items():
+                e = got.get(o)
+                got[o] = (pk, adm) if e is None else (pk_union(e[0], pk), e[1] or adm)
+        m[r] = got
+    return m[r]
+
+
+def fact_level(side, rs, o):
+    """(level, privileges) on table or view o of a user holding roles rs in facts() side, as access_objects() gives
+    them; level None when no data grant."""
+    pk, adm = frozenset(), False
+    for r in rs:
+        e = side_reach(side, r).get(o)
+        if e:
+            pk, adm = pk_union(pk, e[0]), adm or e[1]
+    return table_level(pk, adm)
+
+
+def moved(a_, b_):
+    """(user, object) pairs a_ gives a higher level than b_ (or b_ none), users in a_'s order, objects sorted. Only
+    roles whose own grants or held roles differ, and the roles above them, can reach differently: a user whose
+    granted roles stay and miss those is not looked at."""
+    rank, sides = LEVELS.index, (a_, b_)
+    dirty = {r for k in ("own", "kids") for r in a_[k].keys() | b_[k].keys() if a_[k].get(r) != b_[k].get(r)}
+    up, todo = set(dirty), list(dirty)
+    parents = [{} for _ in sides]
+    for i, x in enumerate(sides):
+        for r, ks in x["kids"].items():
+            for k in ks:
+                parents[i].setdefault(k, []).append(r)
+    while todo:
+        todo = [q for r in todo for ps in parents for q in ps.get(r, ()) if q not in up and not up.add(q)]
+    ch, memo, out = {}, {}, []
+
+    def changed(r):  # objects r reaches differently
+        if r not in ch:
+            x, y = side_reach(a_, r), side_reach(b_, r)
+            ch[r] = {o for o in x.keys() | y.keys() if x.get(o) != y.get(o)}
+        return ch[r]
+    for u, rs in a_["of"].items():
+        k = (rs, b_["of"].get(u, ()))
+        if k not in memo:
+            both = set(rs) & set(k[1])
+            objs = set().union(*(changed(r) for r in both & up),
+                               *(side_reach(a_, r).keys() for r in rs if r not in both),
+                               *(side_reach(b_, r).keys() for r in k[1] if r not in both))
+            memo[k] = [o for o in sorted(objs) if (lv := fact_level(a_, rs, o)[0])
+                       and (not (was := fact_level(b_, k[1], o)[0]) or rank(lv) > rank(was))]
+        out += [(u, o) for o in memo[k]]
+    return out
 
 
 def table_reach(r):
@@ -5856,24 +5932,24 @@ SENS_RULES = {"6", "7", "10", "11", "15", "22"}  # rules about sensitive data
 
 
 def side_objects(side):
-    return {o for _, o in side["access"]} | {k[3] for k in side["grants"] if k[2] not in ROLE_ON}
+    """Objects of side's grants; a table or view reached is one too (table_reach() reads grants)."""
+    return {k[3] for k in side["grants"] if k[2] not in ROLE_ON}
 
 
-def diff(prev):
+def diff(prev, kept=None):
     """Screen 14: what changed from data set prev to the loaded one. events [dict(id, kind gain | lose | user | risk |
     fixed, text, impact, by (GRANTED_BY, when known), edge (gain / lose: the grant as source, target, their kinds,
     privilege None for a role link, added), sensitive, findings [dict(num, severity, title, fixed)], link
     (page, params), subjects (every node it is about: uid() for users, so a user and a same-named role never match),
     people, objects)], counts per filter, new / fixed / high
-    findings, severity (new and fixed findings per severity), gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times."""
+    findings, severity (new and fixed findings per severity), gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times. kept: prev's findings, when kept from its own load."""
     now = facts()
     rank = LEVELS.index
     with loaded(prev):
+        if kept is not None:  # prev's findings from when it was the loaded data set: not checked again
+            memo.setdefault("findings", kept)
         old = facts()
-        gained = [(u, o) for (u, o), (lv, _) in now["access"].items()
-                  if (u, o) not in old["access"] or rank(lv) > rank(old["access"][(u, o)][0])]
-        lost = [(u, o) for (u, o), (lv, _) in old["access"].items()
-                if (u, o) not in now["access"] or rank(lv) > rank(now["access"][(u, o)][0])]
+        gained, lost = moved(now, old), moved(old, now)
         n3, o3 = {k[:3] for k in now["findings"]}, {k[:3] for k in old["findings"]}  # same rule, grantee: same finding
         fixed = [f for k, f in old["findings"].items() if k not in now["findings"] and k[:3] not in n3]
         new = [f for k, f in now["findings"].items() if k not in old["findings"] and k[:3] not in o3]
@@ -5894,7 +5970,7 @@ def diff(prev):
         for x in xs:
             told.update(id(f) for f in x["findings"])
             objs, target = sorted({o for _, o in x["pairs"]}), x["edge"][1]
-            top = max((side["access"][p][0] for p in x["pairs"]), key=rank, default="read")
+            top = max((fact_level(side, side["of"][u], o)[0] for u, o in x["pairs"]), key=rank, default="read")
             (src, tgt, pv), (sk, tk) = x["edge"], x["ends"]
             events.append(dict(kind="gain" if gain else "lose", text=x["text"], by=x["by"],
                                edge=dict(source=src, source_kind=sk, target=tgt, target_kind=tk, privilege=pv, added=gain),
@@ -5910,7 +5986,8 @@ def diff(prev):
         was, st = old["status"].get(u), now["status"].get(u)
         if was == st:
             continue
-        reads = sorted({o for (v, o) in now["access"] if v == u and o in now["sens"]})
+        rs = now["of"].get(u, ())
+        reads = sorted(o for o in now["sens"] if fact_level(now, rs, o)[0])
         text = (f"New user {u}" if was is None else f"User {u} is gone" if st is None else
                 f"{u} became dormant (no login for {DORMANT_DAYS} days)" if st == "dormant" else
                 f"{u} was disabled" if st == "disabled" else f"{u} is {st} now (was {was})")

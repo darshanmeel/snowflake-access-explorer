@@ -4,7 +4,9 @@ No logic of its own: every number, path and rule comes from access.py; this file
 FastAPI is imported only in make_app(), so st_react.py can `import server` and call serve() for the same JSON."""
 import csv
 import hashlib
+import heapq
 import io
+import itertools
 import json
 import os
 import pickle
@@ -341,6 +343,9 @@ def kept_rules(view, key, builtin, save=False):
     stamp = (key, builtin, a.rules_stamp(), SERVER_STAMP)
     if save:
         f.parent.mkdir(exist_ok=True)
+        was = cache.load(f) if f.is_file() else None
+        if isinstance(was, dict) and was.get("stamp", (None,))[0] != key:  # another data set's: What changed's earlier side
+            f.replace(cache.file(KEY).with_suffix(".prev.rules.pkl"))
         tmp = f.with_suffix(".tmp")
         tmp.write_bytes(pickle.dumps(dict(stamp=stamp, memo={k: a.memo[k] for k in KEPT if k in a.memo})))
         tmp.replace(f)
@@ -352,6 +357,17 @@ def kept_rules(view, key, builtin, save=False):
         a.memo.setdefault(k, v)
     a.say("Rule results kept from the last check of this data: not checked again")
     return True
+
+
+def prev_findings(d):
+    """The rule findings kept_rules() set aside for the previous snapshot d, while settings and code are the same,
+    else None (What changed checks d's rules again)."""
+    if MODE != "snowflake" or not cache.local() or a.source.get("builtin"):
+        return None
+    f = cache.file(KEY).with_suffix(".prev.rules.pkl")
+    got = cache.load(f) if f.is_file() else None
+    ok = isinstance(got, dict) and got.get("stamp") == (shared_key(d), False, a.rules_stamp(), SERVER_STAMP)
+    return got["memo"].get("findings") if ok else None
 
 
 # ---------- small helpers ----------
@@ -1903,7 +1919,7 @@ def changes_page(p, view):
                 "or Rebuild snapshot) brings a new one. Refresh after the next snapshot run, then come back."
                 if cache.HOURS > 0 else "CACHE_HOURS=0 keeps nothing on disk, so there is no earlier snapshot."))
         prev = got[0]
-    d = a.cached(("diff", cache.run_of(prev)), lambda: a.diff(prev))
+    d = a.cached(("diff", cache.run_of(prev)), lambda: a.diff(prev, prev_findings(prev)))
     ev = [e for e in d["events"] if not out["subject"] or out["subject"] in e["subjects"]]
     n, before = a.event_counts(ev), d["runs"]["before"]
     sub, mine = out["subject"], out["subject"] and a.node_kind(out["subject"]) == "user"  # subject= is a node id
@@ -2140,60 +2156,139 @@ def whatif_csv(p, view):
 
 # ---------- access review ----------
 
-REVIEW_KEYS = ["database", "schema", "object", "type", "user", "user_type", "status", "last_login", "privileges", "classes",
-               "sensitive", "granted", "path", "reviewer", "decision"]
 REVIEW_COLS = ["Database", "Schema", "Object", "Type", "User", "User type", "Status", "Last login", "Privileges", "Classes",
                "Sensitive", "Granted roles", "Path", "Reviewer", "Keep/Revoke"]
 
 
+REVIEW_SORT = {"o": "object", "db": "object", "u": 0, "l": "login", "p": "privileges", "g": 2, "path": 3}  # web columns
+REVIEW_PAGE = 50
+
+
 def review_ctx(p):
+    """The review filtered by db, schema, object and active, never a row per (user, object): ents [(entry, rows)]
+    in review order (entry as a.review_parts() objects, rows (user, fields, granted, path to the holder) shared by
+    objects with the same holders), the admin rows last as one entry with object None."""
     dbs = sorted({a.split_name(o)[0] for o in a.objects} - {""})
     need(dbs, "No databases in this data.")
     db = p.get("db") or dbs[0]
     need(db == "*" or db in dbs, f"{db} is not in this snapshot")
-    every = a.review(None if db == "*" else db)
+    rv = a.review_parts(None if db == "*" else db)
     sc = p.get("schema", "")
-    sc = sc if sc in {x["schema"] for x in every} else ""
+    sc = sc if sc in {x[2] for x in rv["objects"]} else ""
     ob = p.get("object", "")
-    active = flag(p, "active")
-    rs = [x for x in every if not (active and x["status"] == "disabled") and (not sc or x["schema"] == sc or not x["type"])
-          and (not ob or x["object"] == ob or not x["type"])]
-    rs.sort(key=lambda x: (not x["type"], type_rank(x["type"] or ""), x["database"], x["schema"], x["object"], x["user"]))
-    return dict(dbs=dbs, db=db, every=every, sc=sc, ob=ob, active=active, rs=rs)
+    active, kept = flag(p, "active"), {}
+    rows = lambda sig: kept.setdefault(sig, [r for r in rv["rows"][sig] if r[1]["status"] != "disabled"]) if active \
+        else rv["rows"][sig]
+    ents = [(x, rows(x[6])) for x in rv["objects"] if (not sc or x[2] == sc) and (not ob or x[3] == ob)]
+    ents.sort(key=lambda e: (type_rank(e[0][4] or ""), e[0][1], e[0][2], e[0][3]))
+    adm = [(x["user"], {k: x[k] for k in ("user_type", "status", "last_login", "privileges", "classes")}, x["granted"], "")
+           for x in rv["admins"] if not (active and x["status"] == "disabled")]
+    ents.append(((None, db if db != "*" else "(every database)", "", "(every object, through an admin role)", "", "", None), adm))
+    return dict(dbs=dbs, db=db, sc=sc, ob=ob, active=active, rv=rv, ents=[e for e in ents if e[1]])
+
+
+def review_text(x, r):
+    """What the web table's filter box looks in: the row's column texts, lower case."""
+    u, e, g, path = r
+    login = str(e["last_login"])[:16] if e["last_login"] else "never"
+    return "\x01".join([f"{x[1]}.{x[2]}.{x[3]}", u, login, e["privileges"], g, f"{path} > {x[0]}" if x[0] else ""]).lower()
 
 
 def review_page(p, view):
+    """Access review, one page of rows (offset=, limit=, sort= a REVIEW_SORT column, dir=1|-1, q= words that must
+    all be in a row, part=sens|all the tab): kpis and counts over the filtered review, rows counted per object and
+    built only for the page asked."""
     if view == "mine":
         raise ApiError(400, "shared_only", "The access review is about everyone: use the shared snapshot.")
     c = review_ctx(p)
-    rs, db = c["rs"], c["db"]
+    ents = c["ents"]
     noise = flag(p, "hideusage", True)
-    real = [x for x in rs if x["type"]]
-    hide = lambda x: noise and x["type"] in ("DATABASE", "SCHEMA")
+    hide = lambda k: noise and k in ("DATABASE", "SCHEMA")
+    real = [(x, rs) for x, rs in ents if x[0]]
+    us = {}
+    for rs in {id(rs): rs for _, rs in real}.values():  # per shared row list, not per object
+        us.update((r[0], r[1]["status"]) for r in rs)
+    kpis = dict(objects=len(real), users=len(us), not_active=sum(st != "active" for st in us.values()),
+                rows=sum(len(rs) for _, rs in ents), admin_rows=sum(len(rs) for x, rs in ents if not x[0]),
+                hidden_usage=sum(len(rs) for x, rs in real if hide(x[4])), sensitive=len({x[3] for x, _ in real if x[5]}))
+    words, found = (p.get("q") or "").lower().split(), {}
+    if words:
+        def hits(x, rs):  # words in the object's name hold for all its rows: a row list is searched once per word set
+            left = tuple(w for w in words if w not in f"{x[1]}.{x[2]}.{x[3]}".lower()) if x[0] else tuple(words)
+            k = (id(rs), left)
+            if k not in found:
+                found[k] = [r for r in rs if all(w in review_text(x, r) for w in left)] if left else rs
+            return found[k]
+        ents = [(x, got) for x, rs in ents if (got := hits(x, rs))]
+    counts = dict(sens=sum(len(rs) for x, rs in ents if x[5]), all=sum(len(rs) for _, rs in ents))
+    part = "all" if p.get("part") == "all" or not counts["sens"] else "sens"
+    if part == "sens":
+        ents = [(x, rs) for x, rs in ents if x[5]]
+    key = p.get("sort") if p.get("sort") in REVIEW_SORT else "o"
+    desc = p.get("dir") == "-1"
+    off = int(p["offset"]) if p.get("offset", "").isdigit() else 0
+    lim = max(1, min(int(p["limit"]), 1000)) if p.get("limit", "").isdigit() else REVIEW_PAGE
     label = {}  # per object, not per row
-    fl = lambda x: label.setdefault((x["database"], x["schema"], x["object"], x["type"]), a.future_label(
-        f'{x["database"]}.{x["schema"]}.{x["object"]}', x["type"] or ""))
+    fl = lambda x: label.setdefault(x, a.future_label(f"{x[1]}.{x[2]}.{x[3]}", x[4] or ""))
+    split = lambda v: [s for s in v.split(", ") if s]
     return dict(
         view="shared",
-        filters=dict(db=db, dbs=c["dbs"], schema=c["sc"], schemas=sorted({x["schema"] for x in c["every"]} - {""}),
-                     object=c["ob"], objects=sorted({x["object"] for x in c["every"] if x["type"] and (not c["sc"] or x["schema"] == c["sc"])}),
+        filters=dict(db=c["db"], dbs=c["dbs"], schema=c["sc"], schemas=sorted({x[2] for x in c["rv"]["objects"]} - {""}),
+                     object=c["ob"], objects=sorted({x[3] for x in c["rv"]["objects"] if not c["sc"] or x[2] == c["sc"]}),
                      active=c["active"], hideusage=noise),
-        kpis=dict(objects=len({(x["database"], x["schema"], x["object"]) for x in real}), users=len({x["user"] for x in real}),
-                  not_active=len({x["user"] for x in real if x["status"] != "active"}), rows=len(rs),
-                  admin_rows=len(rs) - len(real), hidden_usage=sum(map(hide, rs)),
-                  sensitive=len({x["object"] for x in real if x["sensitive"]})),
-        rows=[dict(database=x["database"], schema=x["schema"], object=x["object"], type=x["type"] or "",
-                   future_label=fl(x),
-                   user=x["user"], user_type=str(x["user_type"]), status=x["status"],
-                   last_login=str(x["last_login"])[:16] if x["last_login"] else None,
-                   privileges=[s for s in x["privileges"].split(", ") if s], classes=[s for s in x["classes"].split(", ") if s],
-                   sensitive=[s for s in x["sensitive"].split(", ") if s], granted=[s for s in x["granted"].split(", ") if s],
-                   path=x["path"].split(" > ") if x["path"] else [], admin=not x["type"], hidden=hide(x)) for x in rs])
+        kpis=kpis, counts=counts, part=part, total=counts[part], offset=off, limit=lim, sort=key, dir=-1 if desc else 1,
+        rows=[dict(database=x[1], schema=x[2], object=x[3], type=x[4] or "", future_label=fl(x),
+                   user=r[0], user_type=str(r[1]["user_type"]), status=r[1]["status"],
+                   last_login=str(r[1]["last_login"])[:16] if r[1]["last_login"] else None,
+                   privileges=split(r[1]["privileges"]), classes=split(r[1]["classes"]), sensitive=split(x[5]),
+                   granted=split(r[2]), path=f"{r[3]} > {x[0]}".split(" > ") if x[0] else [], admin=not x[0], hidden=hide(x[4]))
+              for x, r in review_slice(ents, key, desc, off, lim)])
+
+
+def review_slice(ents, key, desc, off, lim):
+    """Rows off..off+lim of the entries sorted by a web table column, as (entry, row) pairs. An object column sorts
+    the objects and skips whole ones; a row column merges the row lists, each sorted once, objects by name."""
+    full = lambda x: f"{x[1]}.{x[2]}.{x[3]}".casefold()
+    by = REVIEW_SORT[key]
+    if by == "object":
+        ok = (lambda x: (full(x),)) if key == "o" else (lambda x: (f"{x[1]}.{x[2]}".casefold(), full(x)))
+        out, at = [], off
+        for x, rs in sorted(ents, key=lambda e: ok(e[0]), reverse=desc):
+            if at >= len(rs):
+                at -= len(rs)
+                continue
+            out += [(x, r) for r in (rs[::-1] if desc else rs)[at:at + lim - len(out)]]
+            at = 0
+            if len(out) >= lim:
+                break
+        return out
+    rk = (lambda r: str(r[1]["last_login"])[:16] if r[1]["last_login"] else "never") if by == "login" else \
+        (lambda r: r[1]["privileges"]) if by == "privileges" else (lambda r: r[by])
+    groups = {}  # objects sharing one row list: one sorted stream
+    for x, rs in ents:
+        groups.setdefault(id(rs), (rs, []))[1].append(x)
+
+    def stream(gi, rs, xs):  # in (key, object, ...) order: rows with the same key go object by object
+        names = [(x[0] or "").casefold() if by == 3 else full(x) for x in xs]  # path: ends at the object itself
+        keyed = sorted(((rk(r).casefold(), i) for i, r in enumerate(rs)), reverse=desc)
+        for k, same in itertools.groupby(keyed, key=lambda t: t[0]):
+            ids = [i for _, i in same]
+            for j, f in enumerate(names):
+                for i in ids:
+                    yield k, f, gi, i, j
+    streams = [(rs, sorted(xs, key=lambda x: (x[0] or "").casefold() if by == 3 else full(x), reverse=desc))
+               for rs, xs in groups.values()]
+    merged = heapq.merge(*(stream(gi, rs, xs) for gi, (rs, xs) in enumerate(streams)), reverse=desc)
+    return [(streams[gi][1][j], streams[gi][0][i]) for _, _, gi, i, j in itertools.islice(merged, off, off + lim)]
+
+
+GRID_ROWS = int(os.environ.get("GRID_ROWS", "300"))  # review grid: people sent, admins and the highest access first
 
 
 def grid_page(p, view):
     """Screen 6 grid: people x objects (scope sensitive | db | all), or people x privileges of one object
-    (object=&columns=privileges). Rows carry suggest (dormant / disabled / never logged in: suggested revoke)."""
+    (object=&columns=privileges). Rows carry suggest (dormant / disabled / never logged in: suggested revoke); people=0
+    keeps service users, stale=1 only those suggested, q= a name in the user or its roles; at most GRID_ROWS rows."""
     if view == "mine":
         raise ApiError(400, "shared_only", "The access review is about everyone: use the shared snapshot.")
     dbs = sorted({a.split_name(o)[0] for o in a.objects} - {""})
@@ -2202,14 +2297,16 @@ def grid_page(p, view):
     scope = p.get("scope") if p.get("scope") in ("sensitive", "db", "all") else "sensitive" if S["sens"] else "all"
     db = p.get("db") or (dbs[0] if dbs else "")
     need(scope != "db" or db in dbs, f"{db} is not in this snapshot")
-    g = a.review_grid(scope, db, obj or None, flag(p, "hideusage", True))
+    people, stale, q = flag(p, "people", True), flag(p, "stale"), (p.get("q") or "").strip().lower()
+    keep = lambda u, roles: (not people or not a.is_service(u)) and (not stale or a.stale(u)) and         (not q or any(q in x.lower() for x in [u, *roles]))  # the web's People only, Only dormant / disabled, search
+    g = a.review_grid(scope, db, obj or None, flag(p, "hideusage", True), people=GRID_ROWS, keep=keep)
     rows = [r | dict(last_login=login(r["user"])[0], suggest=r["status"] if a.stale(r["user"]) else None)
             for r in g["rows"]]
-    people = [r for r in rows if r["type"] not in ("SERVICE", "LEGACY_SERVICE")]
+    ppl, adm = [u for u in g["users"] if not a.is_service(u)], a.admin_users()
     return dict(view="shared", scope="object" if obj else scope, db=db, dbs=dbs, object=obj, columns=g["columns"],
-                rows=rows, total=g["total"], cap=a.GRID_MAX, sensitive=len(S["sens"]),
-                counts=dict(people=len(people), admin=sum(bool(r["admin"]) for r in people),
-                            stale=sum(bool(r["suggest"]) for r in people), service=len(rows) - len(people)))
+                rows=rows, matched=g["matched"], rows_cap=GRID_ROWS, total=g["total"], cap=a.GRID_MAX, sensitive=len(S["sens"]),
+                counts=dict(people=len(ppl), admin=sum(u in adm for u in ppl), stale=sum(map(a.stale, ppl)),
+                            service=len(g["users"]) - len(ppl)))
 
 
 def flow_page(p, view):
@@ -2230,7 +2327,10 @@ def review_csv(p, view):
     c = review_ctx(p)
     now, where = datetime.now(), "every database" if c["db"] == "*" else c["db"]
     filt = [f"schema {c['sc']}"] * bool(c["sc"]) + [f"object {c['ob']}"] * bool(c["ob"]) + ["disabled excluded"] * c["active"]
-    text = csv_text(REVIEW_COLS, [[x[k] if x[k] is not None else "" for k in REVIEW_KEYS] for x in c["rs"]],
+    v = lambda x: "" if x is None else x
+    rows = ([x[1], x[2], x[3], x[4], u, v(e["user_type"]), v(e["status"]), v(e["last_login"]), e["privileges"], e["classes"],
+             x[5], g, f"{path} > {x[0]}" if x[0] else "", "", ""] for x, rs in c["ents"] for u, e, g, path in rs)
+    text = csv_text(REVIEW_COLS, rows,
                     [["Access review", where], ["Run", a.run.get("RUN_ID"), str(a.run.get("FINISHED_AT"))[:16]],
                      ["Filter", ", ".join(filt) or "all users"], ["Generated", f"{now:%Y-%m-%d %H:%M}"]])
     return f"access_review_{'ALL' if c['db'] == '*' else c['db']}_{now:%Y-%m-%d}.csv", text

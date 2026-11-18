@@ -682,16 +682,23 @@ unknown note); rule texts per number are in `meta.rules`.
 
 `GET /api/rules.csv` (same params): the findings CSV of app.rules_page (header lines Rule checks, Run, Generated).
 
-### GET /api/review?db=*|DB&schema=&object=&active=0&hideusage=1
+### GET /api/review?db=*|DB&schema=&object=&active=0&hideusage=1&part=sens|all&q=&sort=o&dir=1&offset=0&limit=50
 
-Access review, shared only. Producer: `a.review(None if db == "*" else db)`, sorted and filtered as
-`app.review_page`. `hideusage` affects the screen rows only.
+Access review, shared only, one page of rows. Producer: `a.review_parts(None if db == "*" else db)`: per object its
+row list, shared by the objects with the same grant holders, so no row per (user, object) is built; `server.review_page`
+filters (schema, object, active), counts and builds the rows of the page asked only. `part` is the tab (`sens`: objects
+with a sensitivity tag; `all` when none has one), `q` words that must all be in a row's texts (object, user, last
+login, privileges, granted roles, path), `sort` a table column (`o` object, `db` schema, `u` user, `l` last login,
+`p` privileges, `g` granted roles, `path`: the path to the grant holder, then the object), `dir` 1 or -1, `limit` up to
+1000. `kpis` cover the filtered review (before `q` and `part`); `counts` the rows per tab after `q`; `total` the rows of
+`part`. `hideusage` affects the screen rows only.
 
 ```jsonc
 {
   "filters": {"db": "SALES", "dbs": ["FINANCE", "SALES"], "schema": "", "schemas": ["CORE"], "object": "",
               "objects": ["TBL_CUSTOMER"], "active": false, "hideusage": true},
   "kpis": {"objects": 14, "users": 22, "not_active": 3, "rows": 60, "admin_rows": 2, "hidden_usage": 9, "sensitive": 2},
+  "counts": {"sens": 12, "all": 60}, "part": "sens", "total": 12, "offset": 0, "limit": 50, "sort": "o", "dir": 1,
   "rows": [{"database": "SALES", "schema": "CORE", "object": "TBL_CUSTOMER", "type": "TABLE", "future_label": null,
             "user": "ANALYST_01", "user_type": "PERSON", "status": "active", "last_login": "...",
             "privileges": ["SELECT"], "classes": ["read"], "sensitive": ["SENSITIVITY=PII"], "granted": ["GRP_ANALYSTS"],
@@ -701,11 +708,14 @@ Access review, shared only. Producer: `a.review(None if db == "*" else db)`, sor
 }
 ```
 
-### GET /api/grid?scope=sensitive|db|all&db=&hideusage=1 | object=&columns=privileges
+### GET /api/grid?scope=sensitive|db|all&db=&hideusage=1&people=1&stale=0&q= | object=&columns=privileges
 
-Screen 6 grid, shared only. Producer: `a.review_grid(scope, db, obj, hide_usage)`: people x objects (sensitive first,
-most people first, up to `GRID_MAX` columns) or people x the privileges of one object. A user holding an admin role
-has `admin` in every column.
+Screen 6 grid, shared only. Producer: `a.review_grid(scope, db, obj, hide_usage, people=GRID_ROWS, keep=...)`: people x
+objects (sensitive first, most people first, up to `GRID_MAX` columns; objects are ranked by their people counted
+before any cell is built) or people x the privileges of one object. A user holding an admin role has `admin` in every
+column. `people=0` keeps service users, `stale=1` only the dormant or disabled, `q` a name in the user or its granted
+roles; of the `matched` rows the first `GRID_ROWS` (300) are sent, admins and the highest access first. `counts`
+cover every row before those filters.
 
 ```jsonc
 {
@@ -714,7 +724,7 @@ has `admin` in every column.
   "rows": [{"user": "FIN_14", "type": "PERSON", "status": "disabled", "days": 244, "last_login": "...", "admin": [],
             "roles": ["GRP_EMEA_ALL"], "suggest": "disabled",                 // roles: what a revoke takes away
             "cells": {"FINANCE.REPORT.TBL_REVENUE": {"level": "change", "privileges": ["INSERT", "SELECT"], "path": ["..."]}}}],
-  "total": 5, "cap": 60, "sensitive": 5, "counts": {"people": 21, "admin": 2, "stale": 4, "service": 1},
+  "matched": 22, "rows_cap": 300, "total": 5, "cap": 60, "sensitive": 5, "counts": {"people": 21, "admin": 2, "stale": 4, "service": 1},
   "refs": {}
 }
 ```
@@ -724,7 +734,7 @@ browser (reviewer, time, scope, one row per person with the decision and the acc
 
 ### GET /api/review.csv?db=&schema=&object=&active=0
 
-`text/csv`, `Content-Disposition: attachment; filename=access_review_<DB|ALL>_<yyyy-mm-dd>.csv`. Every row (USAGE
+`text/csv`, `Content-Disposition: attachment; filename=access_review_<DB|ALL>_<yyyy-mm-dd>.csv`. Every row of the filters, all pages and both tabs (USAGE
 included), columns Database, Schema, Object, Type, User, User type, Status, Last login, Privileges, Classes,
 Sensitive, Granted roles, Path, Reviewer, Keep/Revoke, with the header lines of `app.review_page` (Access review, Run,
 Filter, Generated). Other tables export CSV in the browser from the JSON rows.
@@ -821,6 +831,9 @@ that makes ACCESS_HISTORY readable) when the snapshot has no usage.
 What changed: `a.diff(prev)` between the loaded snapshot and the previous one (`cache.prev(key)`: the copy kept in
 `.cache/` when a newer run arrived; fake mode: `a.fake_previous()`). `available` false with `reason` inside Snowflake,
 in My access, with `CACHE_HOURS=0` or before a second run. `subject` (user, role or object) keeps the events about it.
+The diff compares reach per granted role (`a.facts`, `a.moved`: only roles whose grants changed and the roles above
+them are walked), never every (user, object) pair; the previous snapshot's rule findings come from
+`.cache/<key>.prev.rules.pkl` (set aside when a newer run's rules were saved), else they are checked again.
 
 ```json
 {"available": true, "subject": null, "before": "2026-10-26 07:00", "now": "2026-11-02 07:00",

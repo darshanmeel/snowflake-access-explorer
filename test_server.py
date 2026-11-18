@@ -216,12 +216,25 @@ def test_sensitive_rules_review():
     assert f["grantee"] and {"num", "severity", "what", "impact", "paths", "iac", "sql"} <= set(f)
     csv = get("/api/rules.csv")
     assert csv.headers["content-type"].startswith("text/csv") and "Rule checks" in csv.text
-    rv = js("/api/review?db=*", ["filters", "kpis", "rows", "refs"])
-    assert rv["rows"] and rv["kpis"]["rows"] == len(rv["rows"])
+    rv = js("/api/review?db=*&part=all", ["filters", "kpis", "counts", "part", "total", "offset", "limit", "rows", "refs"])
+    assert rv["rows"] and rv["kpis"]["rows"] == rv["counts"]["all"] == rv["total"] > rv["limit"] == len(rv["rows"])
+    every = [r for k in range(0, rv["total"], 40) for r in js(f"/api/review?db=*&part=all&sort=u&offset={k}&limit=40")["rows"]]
+    assert len(every) == rv["total"] and [r["user"].lower() for r in every] == sorted(r["user"].lower() for r in every)
+    assert len({json.dumps(r, sort_keys=True) for r in every}) == rv["total"]  # paged: every row once
+    full = lambda r: f'{r["database"]}.{r["schema"]}.{r["object"]}'.lower()
+    back = js("/api/review?db=*&part=all&sort=o&dir=-1&limit=5")["rows"]
+    assert [full(r) for r in back] == sorted(map(full, every))[::-1][:5]
+    one = js("/api/review?db=*&part=all&q=analyst_01 customer&limit=1000")
+    assert one["rows"] and one["total"] == len(one["rows"]) < rv["total"]
+    assert all("ANALYST_01" in r["path"] and "CUSTOMER" in full(r).upper() for r in one["rows"])
+    sens = js("/api/review?db=*")
+    assert sens["part"] == "sens" and sens["total"] == sens["counts"]["sens"] and all(r["sensitive"] for r in sens["rows"])
     db = rv["filters"]["dbs"][0]
     assert js(f"/api/review?db={db}&hideusage=0")["kpis"]["hidden_usage"] == 0
     cv = get(f"/api/review.csv?db={db}")
     assert "access_review_" in cv.headers["content-disposition"] and "Keep/Revoke" in cv.text
+    n = js(f"/api/review?db={db}&part=all")["total"]
+    assert len(cv.text.strip().splitlines()) == n + 6  # every row, after 4 head lines, a blank one and the columns
     get("/api/review?db=NOPE", 404)
 
 
@@ -686,6 +699,17 @@ def test_review_grid_catalog_flow():  # screens 6, 8, 16
     assert al["total"] > len(js("/api/grid?scope=all")["columns"]) - 1 and len(al["columns"]) <= al["cap"]
     o = js("/api/grid?object=SALES.CORE.TBL_CUSTOMER&columns=privileges")
     assert o["scope"] == "object" and "SELECT" in {x["id"] for x in o["columns"]}
+    every, old = js("/api/grid?scope=all&people=0"), server.GRID_ROWS
+    server.GRID_ROWS = 3  # people capped after the filters: admins and the highest access first
+    try:
+        few = js("/api/grid?scope=all&people=0&hideusage=1")  # another URL: answers are kept per URL
+        assert [r["user"] for r in few["rows"]] == [r["user"] for r in every["rows"]][:3] and len(every["rows"]) > 3
+        assert few["matched"] == len(every["rows"]) and few["counts"] == every["counts"]
+    finally:
+        server.GRID_ROWS = old
+    assert any(a.is_service(r["user"]) for r in every["rows"]) and not any(a.is_service(r["user"]) for r in al["rows"])
+    q = js("/api/grid?scope=all&q=analyst")
+    assert q["rows"] and all("ANALYST" in " ".join([r["user"], *r["roles"]]) for r in q["rows"]) and q["matched"] < every["matched"]
     get("/api/grid?object=NOPE&columns=privileges", 404)
     get("/api/grid?scope=db&db=NOPE", 404)
     try:

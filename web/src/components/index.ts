@@ -5,7 +5,7 @@ export { Graph, type GraphProps } from "./Graph";
 export { Legend } from "./Legend";
 export { LoadLog } from "./LoadLog";
 export { Combo, type ComboProps } from "./Combo";
-export { DataTable, Pager, type Column, type DataTableProps } from "./DataTable";
+export { DataTable, Pager, type Column, type DataTableProps, type ServerTable } from "./DataTable";
 export { AccessTag, PrivilegeTabs, type PrivilegeTabsProps } from "./PrivilegeTabs";
 export { PathText } from "./PathText";
 export { PathStrip, foldPath } from "./PathStrip";

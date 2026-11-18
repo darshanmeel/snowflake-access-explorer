@@ -800,7 +800,14 @@ export interface ReviewPage {
     hidden_usage: number;
     sensitive: number;
   };
-  rows: ReviewRow[];
+  counts: { sens: number; all: number }; // rows per tab, after q
+  part: "sens" | "all";
+  total: number; // rows of the tab shown
+  offset: number;
+  limit: number;
+  sort: string;
+  dir: 1 | -1;
+  rows: ReviewRow[]; // one page: offset .. offset + limit
   refs: Refs;
 }
 
@@ -1129,7 +1136,9 @@ export interface GridPage {
   dbs: string[];
   object: string;
   columns: { id: string; name: string; ns: string; note: string; sensitive: boolean }[];
-  rows: GridRow[];
+  rows: GridRow[]; // the first rows_cap of matched: admins and the highest access first
+  matched: number; // rows the filters (people, stale, q) keep
+  rows_cap: number;
   total: number;
   cap: number;
   sensitive: number;
