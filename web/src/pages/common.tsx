@@ -12,7 +12,11 @@ export function col<R>(key: string, label: string, get: Column<R>["get"], more: 
 
 /** Shared data with nobody picked yet: the page waits for a pick instead of answering for someone chosen for it. */
 export function PickFirst({ what = "a person or role" }: { what?: string }) {
-  return <EmptyState title={`Pick ${what}`}>Pick one in the box above to see their access.</EmptyState>;
+  return (
+    <EmptyState title={`The data is ready: pick ${what}`}>
+      Search in the box above to see their access, or open any page on the left. The search at the top finds people, roles and objects.
+    </EmptyState>
+  );
 }
 
 /** Loading / error frame around a page's answer. */

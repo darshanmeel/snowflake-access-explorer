@@ -180,6 +180,8 @@ def stages():
     """Stage 1, the reads (parts from disk, the missing ones from Snowflake), then stage 2: the local and SQL copies
     (cache.get), the lookups and the rule checks, so the first page does not build them unseen."""
     t0 = time.monotonic()
+    if cache.ready(KEY, MODE == "snowflake"):  # after a restart: the saved copy, with its steps in the load log too
+        a.say("Opening the saved copy in .cache/ (no Snowflake read)")
     d = cache.get(KEY, read_shared, disk=MODE == "snowflake")[0]
     built(d)
     t = cache.COPYING.get(KEY)
@@ -213,14 +215,16 @@ def load_shared(ask=False):
     """ask: a page wants it. Read directly from Snowflake (SOURCE=direct) only on a click (reload what=load): it can
     take minutes, and someone may want only My access; a copy in memory or .cache/, or the parts kept, are used at once."""
     disk = MODE == "snowflake"
+    if ask and LOAD.locked() and not cache.ready(KEY, disk):  # a read runs (page reloaded mid-read): wait for it, never "not loaded"
+        raise ApiError(409, "shared_loading", "The shared data is being read: the pages open when it is done.")
     if ask and disk and DIRECT and not cache.ready(KEY) and not cache.parts_read_at(KEY):
         raise ApiError(409, "shared_not_loaded", "The shared data is read from Snowflake on request: Load shared data.")
-    if cache.ready(KEY, disk):  # every page asks: no progress entry for an answer from memory or the local file
+    if cache.ready(KEY, False):  # every page asks: no progress entry for an answer from memory
         return cache.get(KEY, read_shared, disk)[0]
     if not LOAD.acquire(blocking=not ask):  # a page never waits behind a read: it says so and asks again after it
         raise ApiError(409, "shared_loading", "The shared data is being read: the pages open when it is done.")
     try:
-        if cache.ready(KEY, disk):  # read by the load this one waited for
+        if cache.ready(KEY, False):  # read by the load this one waited for
             return cache.get(KEY, read_shared, disk)[0]
         return tracked(KEY, "shared", stages)
     except ApiError:
