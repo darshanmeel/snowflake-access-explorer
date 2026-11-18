@@ -102,7 +102,7 @@ function Body({ d }: { d: AccessPage }) {
         <div className="ae-tile ae-tile-sens"><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{n.sensitive}</span></div>
         <button type="button" className="ae-tile" onClick={() => { c.set({ show: "summary" }); setTimeout(() => document.getElementById("runs")?.scrollIntoView(), 50); }}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
       </div>
-      <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: user ? "Diagram & privileges" : "Diagram, held by & holds" },
         { key: "summary", label: "One row per object", count: d.data },
         { key: "activity", label: "Activity" },

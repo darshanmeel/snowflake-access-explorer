@@ -202,7 +202,7 @@ export function WhatIfPageView() {
     <>
       <Head title="What if" sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake."
         right={<button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks & fixes</button>} />
-      <Tabs active={show} onChange={(k) => c.set({ show: k === "changes" ? null : k, by: null })} tabs={[
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "changes" ? null : k, by: null })} tabs={[
         { key: "changes", label: "Changes & impact tables", count: list.length || null },
         { key: "plan", label: "Change plan" },
       ]} />

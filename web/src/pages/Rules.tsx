@@ -42,7 +42,7 @@ export function RulesPageView() {
         return (
           <>
             {unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read" lines={[`Rows are unknown for ${unknown.slice(0, 6).join(", ")}${unknown.length > 6 ? " and more" : ""}.`]} />}
-            <Tabs active={show} onChange={(k) => c.set({ show: k === "checks" ? null : k })} tabs={[
+            <Tabs nav active={show} onChange={(k) => c.set({ show: k === "checks" ? null : k })} tabs={[
               { key: "checks", label: "Rule checks", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
               { key: "fixes", label: "Risks & change plan" },
               { key: "list", label: "Rules", count: c.meta.rules.length },
@@ -51,7 +51,7 @@ export function RulesPageView() {
             {show === "fixes" && <RisksTab key={scope.join()} d={d} q={q} all={all} setAll={setAll} />}
             {show === "list" && <RuleList d={d} />}
             {show === "checks" && <>
-            <Tabs active={tab} onChange={setTab} tabs={[
+            <Tabs nav={2} active={tab} onChange={setTab} tabs={[
               { key: "findings", label: "Findings", count: d.total },
               { key: "admins", label: "Admin holders", count: d.admins_total, tone: d.admins_total ? "bad" : null },
               { key: "rules", label: "Rules", count: c.meta.rules.length },
@@ -101,18 +101,9 @@ function FindingGroups({ d, q, f, setF }: {
   if (!all && !why) return null;
   return (
     <div className="ae-findings">
-      <div className="ae-tabs" role="tablist">
-        {[...SEVERITIES, "All" as const].map((s) => {
-          const n = s === "All" ? all : d.sev_counts[s] ?? 0;
-          const on = s === "All" ? !sev : sev === s;
-          return (
-            <button key={s} role="tab" aria-selected={on} disabled={!n}
-              className={`ae-tab ae-sevtab ae-sev-${s}${on ? " on" : ""}`} onClick={() => c.set({ sev: s === "All" ? "all" : s })}>
-              {s}<span className="ae-tab-count">{n}</span>
-            </button>
-          );
-        })}
-      </div>
+      <Tabs nav={3} active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
+        tabs={[...SEVERITIES.filter((s) => d.sev_counts[s]).map((s) => ({ key: s, label: s, count: d.sev_counts[s], tone: s === "Medium" ? "warn" as const : s === "Low" ? null : "bad" as const })),
+          { key: "All", label: "All", count: all }]} />
       <div className="ae-controls ae-fd-filter">
         {d.areas.length > 1 && (
           <select className="ae-input" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} aria-label="Area">

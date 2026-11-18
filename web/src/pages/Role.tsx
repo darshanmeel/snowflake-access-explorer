@@ -118,7 +118,7 @@ export function RolePageView() {
             </Card>
           )}
           <GraphCard g={d.graph} refs={d.refs} />
-          <Tabs active={part} onChange={setPart} tabs={[
+          <Tabs nav active={part} onChange={setPart} tabs={[
             { key: "privs", label: "Privileges", count: d.tabs.find((t) => t.key === "all")?.count ?? 0 },
             { key: "held", label: "Held by", count: d.held_by.total },
             ...(d.holds.types.length ? [{ key: "holds", label: "What it holds", count: d.holds.count }] : []),

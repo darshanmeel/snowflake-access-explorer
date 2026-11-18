@@ -66,7 +66,7 @@ function Body({ d }: { d: CheckPage }) {
           ))}
         </ul>
       </section>
-      <Tabs active={at} onChange={(k) => c.set({ show: k === "answer" ? null : k })} tabs={tabs} />
+      <Tabs nav active={at} onChange={(k) => c.set({ show: k === "answer" ? null : k })} tabs={tabs} />
       {at === "answer" && <Answer d={d} />}
       {at === "routes" && <Routes d={d} />}
       {at === "nearest" && <NearestWays d={d} />}

@@ -1559,7 +1559,7 @@ def home_page(p, view):
         mine = dict(user=me, counts=counts)
     sev = {v: sum(x["severity"] == v for x in S["rows"]) for v in ("Critical", "High", "Medium", "Low")}
     g = a.governance_kpis()
-    unmasked = sorted({x["grantee"].split(".")[-1] + "." + x["detail"].split(" ")[1].rstrip(":") for x in S["rows"] if x["num"] == "6"})[:8]
+    unmasked = sorted({(x["grantee"], x["detail"].split(" ")[1].rstrip(":")) for x in S["rows"] if x["num"] == "6"})
     dormant = sorted({x["grantee"] for x in S["rows"] if x["num"] == "7"})
     counts = dict(users=len(a.users), roles=len(a.roles), objects=len(a.objects), sensitive=len(S["sens"]))
     per_rule = {}
@@ -1568,8 +1568,8 @@ def home_page(p, view):
     return dict(view=view, me=mine, risks=sev if view == "shared" else None, counts=counts,
                 per_rule=per_rule if view == "shared" else None,
                 skipped=a.skipped_rules() if view == "shared" else None,  # HIERARCHY=0 / ACTIVITY=0: not in the counts
-                protection=dict(unmasked=sum(x["num"] == "6" for x in S["rows"]), unmasked_names=unmasked,
-                                dormant=len(dormant), dormant_names=dormant[:8], tagged=g["tagged_objects"],
+                protection=dict(unmasked=sum(x["num"] == "6" for x in S["rows"]), unmasked_names=[dict(object=o, column=k) for o, k in unmasked[:NAMES]],
+                                unmasked_columns=len(unmasked), dormant=len(dormant), dormant_names=dormant[:NAMES], tagged=g["tagged_objects"],
                                 masked=g["masked_columns"], row_tables=g["row_tables"],
                                 row_list=[dict(object=o, policies=v) for o, v in a.row_tables().items()])
                 if view == "shared" else None)
@@ -3174,6 +3174,15 @@ def theme_tokens():
     return out
 
 
+def side_people():
+    """Side menu counts: admin holders (an admin role, or an account privilege through a role other than PUBLIC: what
+    PUBLIC holds every user has, so it would count everyone; rule 9 shows it once) and people who are disabled or
+    dormant yet hold roles (rules 8 and 16), each person once."""
+    return a.cached("side_people", lambda: dict(
+        admins=sum(1 for x in a.admin_people() if x["roles"] or any(q[-1] != "PUBLIC" for _, q in x["account"])),
+        stale=sum(1 for u in a.users if a.stale(u) and a.roles_of.get(u))))
+
+
 def meta(p, sid):
     view = p.get("view", "shared")
     base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
@@ -3208,6 +3217,7 @@ def meta(p, sid):
                         protection=protection() if view == "shared" else None,
                         builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
                         rule_counts=dict(Counter(x["num"] for x in S["rows"])),  # the side menu's Findings: severity, then rule
+                        people=side_people() if view == "shared" else None,
                         default_user=(a.users[0] if a.users else None) if view == "mine" else None)  # shared: the pages ask for a pick
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)

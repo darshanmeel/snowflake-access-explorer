@@ -2,8 +2,8 @@
 // (graph, by path / by user or role, users × privileges) is the default tab; the new list by level is next to it.
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
-import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
-import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, useCsv } from "../components";
+import type { CheckPage, ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
+import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, Graph, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
@@ -74,7 +74,7 @@ function Who({ d }: { d: WhoPage }) {
       </div>
       <For d={d} />
       {d.app && <AppNote app={d.app} />}
-      <Tabs active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: admin ? "Admin holders table" : "Diagram, paths & users" },
         { key: "who", label: "Who has access", count: d.counts.people },
         ...(admin ? [] : [{ key: "activity", label: "Activity" }, { key: "history", label: "History" }]),
@@ -250,13 +250,30 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
         ))}
       </ol>
       {e.ways > 1 && <p className="ae-muted">{plural(e.ways - 1, "other way")} lead{e.ways === 2 ? "s" : ""} here too, so removing one role may not remove the access.</p>}
+      {d.object.id && <HowGraph who={role ? { role: e.name } : { name: e.name }} obj={d.object.id} ways={e.ways} key={e.name} />}
       <div className="ae-how-links">
-        {!role && d.object.id && <button type="button" className="ae-link" onClick={() => c.nav("check", { name: e.name, obj: d.object.id! })}>All paths (Can they?)</button>}
-        {role && d.object.id && <button type="button" className="ae-link" onClick={() => c.nav("check", { role: e.name, obj: d.object.id! })}>All paths (Can they?)</button>}
+        {d.object.id && <button type="button" className="ae-btn ae-btn-s" onClick={() => c.nav("check", { [role ? "role" : "name"]: e.name, obj: d.object.id! })}>Open in Can they?</button>}
         {role && <button type="button" className="ae-link" onClick={() => c.nav("access", { role: e.name })}>Open the role</button>}
         {ch && <WhatIfButton ch={[ch]} />}
       </div>
     </Card>
+  );
+}
+
+/** Every path from the person or role to the object as a small graph (Can they?'s graph), on a click: it asks the
+ * server, and the shortest path above already answers most questions. */
+function HowGraph({ who, obj, ways }: { who: Record<string, string>; obj: string; ways: number }) {
+  const c = useApp();
+  const [on, setOn] = useState(false);
+  const s = useApi<CheckPage>(on ? "check" : null, { ...who, obj, do: "read", view: c.view });
+  const o = useOpen(s.data?.refs);
+  return (
+    <div className="ae-how-graph">
+      <button type="button" className="ae-link" aria-expanded={on} onClick={() => setOn(!on)}>{on ? "Hide the graph" : `Show ${ways > 1 ? `all ${ways} paths` : "the path"} as a graph`}</button>
+      {on && <Load s={s}>{(d) => d.graph
+        ? <Graph graph={d.graph} theme={c.theme} onNodeClick={o.node} legend={false} maxHeight={380} />
+        : <p className="ae-muted">No path to draw.</p>}</Load>}
+    </div>
   );
 }
 

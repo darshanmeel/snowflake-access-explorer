@@ -98,8 +98,25 @@ function Seg<K extends string>({ value, items, onPick, label }: { value: K; item
   return <FilterChips label={label} value={value} onPick={(k) => onPick(k as K)} items={items.map(([key, l]) => ({ key, label: l }))} />;
 }
 
-function Tile({ label, value, cap, tone }: { label: ReactNode; value: ReactNode; cap?: ReactNode; tone?: "warn" | "bad" | null }) {
-  return <div className={`ae-log-tile${tone ? ` ae-tone-${tone}` : ""}`}><span className="ae-log-tl">{label}</span><span className="ae-log-tv">{value}</span>{cap != null && <span className="ae-muted">{cap}</span>}</div>;
+function Tile({ label, value, cap, tone, children }: { label: ReactNode; value: ReactNode; cap?: ReactNode; tone?: "warn" | "bad" | null; children?: ReactNode }) {
+  return <div className={`ae-log-tile${tone ? ` ae-tone-${tone}` : ""}`}><span className="ae-log-tl">{label}</span><span className="ae-log-tv">{value}</span>{cap != null && <span className="ae-muted">{cap}</span>}{children}</div>;
+}
+
+const TOP = 3; // names listed in a tile; the rest are "+N more", in the section the tile links to
+
+/** The first names of a tile as links, each with its count, then "+N more" to the section with all of them. */
+function TileList({ items, onItem, more }: { items: { key: string; n: number }[]; onItem: (k: string) => void; more: string }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <ul className="ae-tile-ul">
+        {items.slice(0, TOP).map((x) => (
+          <li key={x.key}><button type="button" className="ae-link ae-mono" title={x.key} onClick={() => onItem(x.key)}>{x.key}</button><span className="ae-muted">{fmt(x.n)}</span></li>
+        ))}
+      </ul>
+      <a className="ae-link" href={more}>{items.length > TOP ? `+${items.length - TOP} more` : "Details"} →</a>
+    </>
+  );
 }
 
 function Activity({ d: raw }: { d: ActivityPage }) {
@@ -142,7 +159,8 @@ function Activity({ d: raw }: { d: ActivityPage }) {
       <p className="ae-log-lead">{lead(d, objs, total)}</p>
       <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} · days and hours in business time {tzl(work)} · reads, writes and DDL · no query text
         {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}</p>
-      {d.what === "app" ? <AppViewers d={d} /> : <Tiles d={d} work={work} />}
+      {d.what === "app" ? <AppViewers d={d} /> : <Tiles d={d} work={work} open={open} />}
+      {one && d.rows?.some((r) => offOf(r, work) > 0) && <OffHours d={d} work={work} open={open} />}  {/* the tile's details */}
       {!one && <>  {/* one table, view or app: the PDF's one-object layout, without the overview sections */}
         <OffHours d={d} work={work} open={open} />
         <Touched d={d} work={work} open={open} />
@@ -174,10 +192,12 @@ function lead(d: ActivityPage, objs: number, total: number): ReactNode {
   return <>{n} read or changed {plural(objs, "object")} {fmt(total)} times in {d.days} days{d.what === "role" ? " (queries run with this role)" : ""}. See which, with which role and client, and when.</>;
 }
 
-function Tiles({ d, work }: { d: ActivityPage; work: Work }) {
+function Tiles({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) {
   const rows = d.rows!;
   const n = (a: string) => rows.filter((r) => r.action === a).reduce((s, r) => s + r.queries, 0);
   const offU = new Set(rows.filter((r) => offOf(r, work)).map((r) => r.user));
+  const offBy = new Map<string, number>();
+  rows.forEach((r) => { const k = offOf(r, work); if (k) offBy.set(r.user, (offBy.get(r.user) ?? 0) + k); });
   const busy = d.by!.object[0];
   return (
     <div className="ae-log-tiles">
@@ -193,7 +213,9 @@ function Tiles({ d, work }: { d: ActivityPage; work: Work }) {
         <Tile label="Sensitive objects" value={d.by!.object.filter((b) => d.objects?.[b.key]?.sensitive).length} cap="read or changed in the window" />
       </>}
       <Tile label="People off-hours" value={offU.size} tone={offU.size ? "warn" : null}
-        cap={`on ${plural(new Set(rows.filter((r) => offOf(r, work)).map((r) => r.object)).size, "object")} · weekends or outside ${biz(work)}`} />
+        cap={`on ${plural(new Set(rows.filter((r) => offOf(r, work)).map((r) => r.object)).size, "object")} · weekends or outside ${biz(work)}`}>
+        <TileList items={[...offBy].map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n)} onItem={(u) => open("user", u)} more="#ae-log-off" />
+      </Tile>
       <Warn d={d} />
     </div>
   );
@@ -288,7 +310,7 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
   const max = Math.max(1, ...gs.flatMap((g) => g.rs.map((r) => offOf(r, work))));
   const kind = new Map(d.rows!.map((r) => [r.user, r.kind]));
   return (
-    <Sec title="Off-hours use by people" sub={sub} sql="off" right={<Seg label="Group off-hours" value={by} items={[["user", "By user"], ["object", "By object"]]} onPick={setBy} />}>
+    <Sec id="ae-log-off" title="Off-hours use by people" sub={sub} sql="off" right={<Seg label="Group off-hours" value={by} items={[["user", "By user"], ["object", "By object"]]} onPick={setBy} />}>
       <div className="ae-log-people">
           {shown.map((g) => {
             const m = new Map<string, { off: number; types: Set<string>; via: Set<string>; last: string }>();

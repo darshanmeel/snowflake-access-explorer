@@ -47,7 +47,7 @@ function Body({ d }: { d: SeePage }) {
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", sub)}>Show as graph</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
       </div>
-      <Tabs active={tab} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
+      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: "What they see · tables" },
         { key: "cards", label: "Column by column", count: d.counts?.objects ?? 0 },
       ]} />

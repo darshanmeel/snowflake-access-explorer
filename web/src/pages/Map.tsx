@@ -56,7 +56,7 @@ export function GraphPageView() {
             onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />
         </div>
       )}
-      <Tabs active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k })} tabs={[
+      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k })} tabs={[
         { key: "diagram", label: "Role hierarchy, by depth" },
         { key: "trace", label: "Trace graph" },
       ]} />

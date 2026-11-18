@@ -1,10 +1,10 @@
 // App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
 // Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
-import { Banner, Card, Combo, CsvOn, LoadLog, Root, SEVERITIES, SqlCtx, Waiting, type ThemeName } from "./components";
+import { Banner, Card, Combo, CsvOn, LoadLog, NavTabsCtx, Root, SEVERITIES, SqlCtx, Waiting, type NavTabs, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -181,6 +181,42 @@ function PrintHead({ meta, page, params }: { meta: Meta; page: Page; params: Par
   );
 }
 
+/** 96412 -> "96k", 1234567 -> "1.2M": side menu counts stay one short word; the exact number is in the tooltip. */
+export const short = (n: number) => n < 1000 ? String(n) : n < 1e6 ? `${+(n / 1e3).toFixed(n < 1e4 ? 1 : 0)}k` : `${+(n / 1e6).toFixed(1)}M`;
+
+function Count({ n, cls = "" }: { n: number; cls?: string }) {
+  return <span className={`ae-tab-count${cls}`} title={n.toLocaleString()}>{short(n)}</span>;
+}
+
+/** Under the open page's entry: the person, role or object it shows, then its tabs (Tabs nav), so they are one click
+ * away without the page's own tab bar. */
+function SideSub({ tabs, subject }: { tabs: NavTabs[]; subject?: string }) {
+  if (!tabs[0] && !subject) return null;
+  return (
+    <div className="side-sub">
+      {subject && <div className="side-subject ae-mono" title={subject}>{subject}</div>}
+      {tabs[0] && <SideTabs tabs={tabs} />}
+    </div>
+  );
+}
+
+/** One level of a page's tabs; the next level (the tabs inside the open one) nests under the open tab. */
+function SideTabs({ tabs }: { tabs: NavTabs[] }) {
+  const [t, ...deeper] = tabs;
+  return (
+    <div role="tablist" aria-label="Sections of this page">
+      {t.tabs.map((x) => (
+        <Fragment key={x.key}>
+          <button type="button" role="tab" aria-selected={x.key === t.active} className={x.key === t.active ? "on" : ""} onClick={() => t.pick(x.key)}>
+            <span>{x.label}</span>{x.count != null && <Count n={x.count} cls={x.tone ? ` ae-tone-${x.tone}` : ""} />}
+          </button>
+          {x.key === t.active && deeper[0] && <div className="side-sub">{<SideTabs tabs={deeper} />}</div>}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
 /** Findings in the side menu: each severity with findings, opening to its rules (most findings first); a rule opens
  * on Risks & fixes with the rule on top and its findings per role or user. */
 function SideFindings({ meta, page, rule, nav }: { meta: Meta; page: Page; rule?: string; nav: (p: Page, params?: Params) => void }) {
@@ -189,43 +225,62 @@ function SideFindings({ meta, page, rule, nav }: { meta: Meta; page: Page; rule?
     .filter(([, rs]) => rs.length);
   if (!sevs.length) return null;
   return (
-    <nav aria-label="Findings" className="side-findings">
-      <h4>Findings</h4>
+    <div aria-label="Findings by severity, then rule" className="side-findings">
       {sevs.map(([s, rs], i) => (
-        <details key={s} open={rs.some((r) => page === "rules" && r.num === rule) || (i === 0 && !rule)}>
-          <summary><span className={`ae-sevpill ae-sev-${s}`}>{s}</span><span className="ae-tab-count">{rs.reduce((t, r) => t + n[r.num], 0).toLocaleString()}</span></summary>
+        <details key={s} open={rs.some((r) => page === "rules" && r.num === rule) || (i === 0 && page === "rules" && !rule)}>
+          <summary><span className={`ae-sevpill ae-sev-${s}`}>{s}</span><Count n={rs.reduce((t, r) => t + n[r.num], 0)} /></summary>
           {rs.map((r) => (
             <button type="button" key={r.num} className={page === "rules" && r.num === rule ? "on" : ""} aria-current={page === "rules" && r.num === rule ? "page" : undefined}
-              onClick={() => nav("rules", { rule: r.num, sev: "all" })} title={r.why}>
-              <span><span className="side-rule-n">{r.num}</span>{r.title}</span><span className="ae-tab-count">{n[r.num].toLocaleString()}</span>
+              onClick={() => nav("rules", { rule: r.num, sev: "all" })} title={`${r.num} ${r.title}: ${r.why}`}>
+              <span><span className="side-rule-n">{r.num}</span>{r.title}</span><Count n={n[r.num]} />
             </button>
           ))}
         </details>
       ))}
-    </nav>
+    </div>
   );
 }
 
-function Side({ meta, page, rule, nav }: { meta: Meta; page: Page; rule?: string; nav: (p: Page, params?: Params) => void }) {
+function Side({ meta, page, params, tabs, nav, onShut }: {
+  meta: Meta; page: Page; params: Params; tabs: NavTabs[]; nav: (p: Page, params?: Params) => void; onShut: () => void;
+}) {
   const wide = useWide();
   const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
+  const rule = page === "rules" ? params.rule : undefined;
+  const subject = params.user ?? params.role ?? params.name ?? params.table ?? params.a;
+  const admins = page === "object" && params.preset === "admin", stale = page === "rules" && params.st === "stale";
+  const ppl = meta.people;
   return (
     <aside className="side">
+      {wide && <button type="button" className="side-hide" onClick={onShut} title="Hide the menu: the page takes the full width and shows its own tabs" aria-label="Hide the menu">«</button>}
       <details className="side-menu" ref={menu} open={wide}>
         <summary>Menu · {LABEL[page]}</summary>
-        <SideFindings meta={meta} page={page} rule={rule} nav={nav} />
         {GROUPS.map(([g, title]) => {
           const ps = meta.pages.filter((p) => (p.group ?? "detail") === g);
           return ps.length ? (
             <nav key={g} aria-label={title}>
               <h4>{title}</h4>
-              {ps.map((p) => (
-                <button type="button" key={p.key} className={p.key === page ? "on" : ""} aria-current={p.key === page ? "page" : undefined} onClick={() => nav(p.key)}>
-                  <span>{p.label}</span>
-                  {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`} title={p.title ?? undefined}>{p.severity ? `${p.badge} ${p.severity.toLowerCase()} rule${p.badge === 1 ? "" : "s"}` : p.badge}</span>}
-                </button>
-              ))}
+              {ps.map((p) => {
+                const on = p.key === page && !admins && !stale;
+                return (
+                  <Fragment key={p.key}>
+                    <button type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => nav(p.key)}>
+                      <span>{p.label}</span>
+                      {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`} title={p.title ?? p.badge.toLocaleString()}>{p.severity ? `${p.badge} ${p.severity.toLowerCase()} rule${p.badge === 1 ? "" : "s"}` : short(p.badge)}</span>}
+                    </button>
+                    {on && <SideSub tabs={tabs} subject={subject} />}
+                    {p.key === "rules" && ppl && <>
+                      <button type="button" className={`side-link2${admins ? " on" : ""}`} aria-current={admins ? "page" : undefined} onClick={() => nav("object", { preset: "admin" })}
+                        title="Users holding an admin role or an account-level privilege"><span>Admin holders</span><Count n={ppl.admins} cls={ppl.admins ? " ae-tone-bad" : ""} /></button>
+                      {(admins || stale) && <SideSub tabs={tabs} />}
+                      <button type="button" className={`side-link2${stale ? " on" : ""}`} aria-current={stale ? "page" : undefined} onClick={() => nav("rules", { st: "stale" })}
+                        title="People disabled, dormant or never logged in who still hold roles (rules 8 and 16), each once"><span>Dormant & disabled</span><Count n={ppl.stale} cls={ppl.stale ? " ae-tone-warn" : ""} /></button>
+                    </>}
+                    {p.key === "rules" && <SideFindings meta={meta} page={page} rule={rule} nav={nav} />}
+                  </Fragment>
+                );
+              })}
             </nav>
           ) : null;
         })}
@@ -346,6 +401,13 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   // data they have; inside Streamlit it answers when done
   const [bg, setBg] = useState<{ job: number; what: string; line: string } | null>(null);
   const [logOpen, setLogOpen] = useState(false);  // the load log: its own panel, opened from the top bar
+  // the open page's tabs per level (Tabs nav), listed in the side menu; a level stops at the first one missing
+  const [navLevels, setNavLevels] = useState<(NavTabs | null)[]>([]);
+  const publishTabs = useCallback((level: number, t: NavTabs | null) => setNavLevels((xs) => { const n = [...xs]; n[level - 1] = t; return n; }), []);
+  const navTabs: NavTabs[] = [];
+  for (const t of navLevels) { if (!t) break; navTabs.push(t); }
+  const [shut, setShutState] = useState(() => { try { return localStorage.getItem("ae-side") === "shut"; } catch { return false; } });
+  const setShut = (v: boolean) => { setShutState(v); try { localStorage.setItem("ae-side", v ? "shut" : "open"); } catch { /* no storage */ } };
   const title = (what: string, ok: boolean | null) => what === "rebuild" ? (ok ? "Snapshot rebuilt" : "Snapshot not rebuilt")
     : ok ? "Read Snowflake again" : "Read Snowflake again failed";
   const refresh = (what: "page" | "rebuild") => run(what === "rebuild" ? "Rebuilding snapshot…" : "Reading Snowflake…", async () => {
@@ -405,7 +467,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
     <Root theme={printing ? "light" : theme}>
       <SqlCtx.Provider value={hasData ? setSql : null}>
       <CsvOn.Provider value={meta?.csv !== false}>
-      <div className="app">
+      <div className={`app${shut ? " side-shut" : ""}`}>
         <header className="top">
           <button type="button" className="top-logo" onClick={() => nav("home")} aria-label="Access explorer: home">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
@@ -438,7 +500,9 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           {busy && <span className="ae-muted top-busy" role="status"><span className="ae-spin" aria-hidden />{busy}</span>}
         </header>
         <div className="top-lock" {...lock}>
-        {meta ? <Side meta={meta} page={loc.page} rule={loc.params.rule} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
+        {!meta ? <aside className="side" /> : shut
+          ? <aside className="side side-rail"><button type="button" className="side-open" onClick={() => setShut(false)} title="Show the menu" aria-label="Show the menu">»</button></aside>
+          : <Side meta={meta} page={loc.page} params={loc.params} tabs={navTabs} nav={(p, params) => nav(p, params ?? {})} onShut={() => setShut(true)} />}
         </div>
         <main className="main">
           {meta && <PrintHead meta={meta} page={loc.page} params={loc.params} />}
@@ -470,7 +534,9 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           {loadingShared && !busy && <p className="ae-muted" role="status">The shared data is being read from Snowflake: the pages open when it is done.</p>}
           {ctx && !needMine && !needShared && !loadingShared && (
             <AppCtx.Provider value={ctx}>
-              <Body key={`${view}:${loc.page}`} />
+              <NavTabsCtx.Provider value={publishTabs}>
+                <Body key={`${view}:${loc.page}`} />
+              </NavTabsCtx.Provider>
             </AppCtx.Provider>
           )}
         </main>

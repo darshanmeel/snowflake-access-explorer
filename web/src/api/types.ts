@@ -217,6 +217,7 @@ export interface Meta {
   pages: { key: Page; label: string; badge: number | null; severity?: Severity | null; title?: string | null; group: "answers" | "admin" | "detail" }[];
   default_user: string | null; // My access: the signed-in user; shared: none, the pages ask for a pick
   rule_counts: Record<string, number>; // findings per rule number: the side menu's Findings
+  people?: { admins: number; stale: number } | null; // side menu: admin holders; disabled or dormant people holding roles (shared only)
   prefixes: { func: string; tech: string };
   admin_roles: string[];
   build_roles: string[];
@@ -1017,7 +1018,7 @@ export interface HomePage {
   counts: { users: number; roles: number; objects: number; sensitive: number };
   per_rule: Record<string, number> | null; // findings per rule (shared only): Home's findings by area
   skipped: Record<string, string> | null; // rules that did not run (shared only), as RulesPage.skipped
-  protection: { unmasked: number; unmasked_names: string[]; dormant: number; dormant_names: string[]; tagged: number;
+  protection: { unmasked: number; unmasked_names: { object: string; column: string }[]; unmasked_columns: number; dormant: number; dormant_names: string[]; tagged: number;
     masked: number; row_tables: number; row_list: { object: string; policies: string[] }[] } | null;
 }
 

@@ -159,14 +159,12 @@ export function HomePageView() {
             <section className="ae-prot">
               <h3>Data protection</h3>
               <div className="ae-tiles">
-                <button type="button" className={`ae-tile${d.protection.unmasked ? " ae-tile-bad" : ""}`} onClick={() => c.nav("rules", { rule: "6" })}>
-                  <span className="ae-tile-l">Sensitive columns not masked</span><span className="ae-tile-v">{d.protection.unmasked}</span>
-                  <span className="ae-tile-c ae-mono">{d.protection.unmasked_names.join(", ")}</span>
-                </button>
-                <button type="button" className={`ae-tile${d.protection.dormant ? " ae-tile-warn" : ""}`} onClick={() => c.nav("rules", { rule: "7" })}>
-                  <span className="ae-tile-l">Dormant or disabled people reading sensitive data</span><span className="ae-tile-v">{d.protection.dormant}</span>
-                  <span className="ae-tile-c ae-mono">{d.protection.dormant_names.join(", ")}</span>
-                </button>
+                <ListTile label="Sensitive columns not masked" value={d.protection.unmasked} tone="bad" total={d.protection.unmasked_columns}
+                  items={d.protection.unmasked_names.map((x) => ({ key: `${x.object}.${x.column}`, label: `${x.object.split(".").pop()}.${x.column}`, open: () => c.nav("object", { name: x.object }) }))}
+                  onAll={() => c.nav("rules", { rule: "6" })} />
+                <ListTile label="Dormant or disabled people reading sensitive data" value={d.protection.dormant} tone="warn" total={d.protection.dormant}
+                  items={d.protection.dormant_names.map((u) => ({ key: u, label: u, open: () => c.nav("access", { user: u }) }))}
+                  onAll={() => c.nav("rules", { rule: "7" })} />
                 <button type="button" className="ae-tile" onClick={() => c.nav("sensitive", { show: "catalog" })}>
                   <span className="ae-tile-l">Tagged objects · masked columns</span><span className="ae-tile-v">{d.protection.tagged} · {d.protection.masked}</span>
                 </button>
@@ -199,6 +197,26 @@ export function HomePageView() {
           )}
         </>
       )}</Load>
+    </div>
+  );
+}
+
+const TOP = 3; // names a tile lists; the rest open on the rule
+
+/** A tile whose number opens the rule, with its first names as links (one per line) and "+N more". */
+function ListTile({ label, value, tone, items, total, onAll }: {
+  label: string; value: number; tone: "bad" | "warn"; items: { key: string; label: string; open: () => void }[]; total: number; onAll: () => void;
+}) {
+  return (
+    <div className={`ae-tile ae-tile-list${value ? ` ae-tile-${tone}` : ""}`}>
+      <button type="button" className="ae-link ae-tile-l" onClick={onAll}>{label}</button>
+      <button type="button" className="ae-link ae-tile-v" onClick={onAll}>{value.toLocaleString()}</button>
+      {items.length > 0 && (
+        <ul className="ae-tile-ul">
+          {items.slice(0, TOP).map((x) => <li key={x.key}><button type="button" className="ae-link ae-mono" title={x.key} onClick={x.open}>{x.label}</button></li>)}
+        </ul>
+      )}
+      {total > TOP && <button type="button" className="ae-link ae-tile-c" onClick={onAll}>+{(total - TOP).toLocaleString()} more →</button>}
     </div>
   );
 }

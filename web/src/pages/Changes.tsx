@@ -20,7 +20,7 @@ export function ChangesPageView() {
   return (
     <>
       <Head title="What changed" sub="This snapshot against the previous one: who gained or lost access, and which findings are new or fixed." />
-      <Tabs active={show} onChange={(k) => c.set({ show: k === "feed" ? null : k })} tabs={[
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "feed" ? null : k })} tabs={[
         { key: "feed", label: "Changes" }, { key: "watch", label: "Watched questions", count: n }]} />
       {show === "feed" ? <ChangeFeed /> : <Watched />}
     </>

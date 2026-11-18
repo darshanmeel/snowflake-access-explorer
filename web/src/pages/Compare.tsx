@@ -51,7 +51,7 @@ function Body({ d }: { d: ComparePage }) {
         </p>
       </div>
       {d.scope === "sensitive" && !d.sensitive && <Banner tone="info" title="No sensitive objects known" lines={["Pick everything or one database as the scope."]} />}
-      <Tabs active={tab} onChange={(k) => c.set({ show: k === "old" ? null : k })} tabs={[
+      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "old" ? null : k })} tabs={[
         { key: "old", label: "What each sees", count: d.old?.rows.length ?? 0 },
         { key: "diff", label: "Differences", count: n.only_a + n.only_b + n.different },
       ]} />

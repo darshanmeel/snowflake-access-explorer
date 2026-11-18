@@ -16,7 +16,7 @@ export function ReviewPageView() {
   return (
     <>
       <Head title="Review & sign-off" sub="Who can reach what, ready for sign-off. Decisions stay in this browser; nothing is written to Snowflake." />
-      <Tabs active={show} onChange={(k) => c.set(k === "grid" ? { show: "grid" } : { show: null, columns: null, object: null, scope: null })} tabs={[
+      <Tabs nav active={show} onChange={(k) => c.set(k === "grid" ? { show: "grid" } : { show: null, columns: null, object: null, scope: null })} tabs={[
         { key: "old", label: "Access review" },
         { key: "grid", label: "Review grid & sign-off" },
       ]} />

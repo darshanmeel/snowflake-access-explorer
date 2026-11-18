@@ -61,7 +61,7 @@ export function SensitivePageView() {
               { label: "Unmasked columns", value: k.unmasked, tone: k.unmasked ? "bad" : null },
             ]} />
             {k.stale.length > 0 && <Banner tone="warn" title="Disabled or dormant users still hold access" lines={[k.stale.join(", ")]} />}
-            <Tabs active={part} onChange={(k) => { setPart(k); c.set({ show: k === "catalog" ? "catalog" : null }); }} tabs={[
+            <Tabs nav active={part} onChange={(k) => { setPart(k); c.set({ show: k === "catalog" ? "catalog" : null }); }} tabs={[
               { key: "objects", label: "Sensitive objects", count: d.objects_total },
               { key: "readers", label: "Who can read them", count: d.readers_total },
               { key: "compare", label: "Compare two roles" },

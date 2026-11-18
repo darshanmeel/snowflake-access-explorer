@@ -84,7 +84,7 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
         </p>
         {period}
       </div>
-      <Tabs active={show} onChange={(k) => c.set({ show: k === "table" ? null : k })} tabs={[
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "table" ? null : k })} tabs={[
         { key: "table", label: "Granted vs used", count: n.objects },
         { key: "trim", label: "Trim to what is used", count: n.changes },
       ]} />
