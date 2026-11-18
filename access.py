@@ -45,7 +45,7 @@ for line in ENV.read_text(encoding="utf-8-sig").splitlines() if ENV.is_file() el
 def in_snowflake():
     """Streamlit in Snowflake: the app has an active Snowpark session (its own, with the owner's rights). INSIDE=1/0
     in the settings says so explicitly. Not a missing SNOWFLAKE_ACCOUNT: a local run without .env is not inside."""
-    if os.environ.get("FAKE") == "1":
+    if os.environ.get("FAKE") in ("1", "twin"):
         return False
     if os.environ.get("INSIDE") in ("0", "1"):
         return os.environ["INSIDE"] == "1"
@@ -73,6 +73,8 @@ BUILTIN_NODE = "Snowflake built-in (via PUBLIC)"
 INFO_SCHEMA = os.environ.get("INFO_SCHEMA", "0") == "1"
 MAX_HOPS = int(os.environ.get("MAX_HOPS", "50"))  # safety cap on role hops per walk
 # functional and technical role prefixes; another naming: ROLE_PREFIXES=<functional>,<technical>
+if os.environ.get("FAKE") == "twin":  # the synthetic twin (twin.py) is named R_F_ / R_T_
+    os.environ.setdefault("ROLE_PREFIXES", "R_F_,R_T_")
 FUNC, TECH = os.environ.get("ROLE_PREFIXES", "F_,T_").split(",")
 # may hold OWNER roles (rule 4): the build identity; fnmatch patterns, e.g. BUILD_ROLES=F_DEPLOY,F_*_STEWARD
 BUILD = os.environ.get("BUILD_ROLES", FUNC + "DEPLOY").split(",")

@@ -2257,6 +2257,19 @@ def test_progress():
     a.each(slow, ["A"], what="no sink")  # outside progress(): nothing to report to, no error
 
 
+def test_twin():
+    """The synthetic twin (twin.py, FAKE=twin) at a fiftieth: same every run, a finding for each rule, and about the
+    profile's users, roles and objects times the scale."""
+    import twin
+    s = 0.02
+    assert twin.twin(s) == twin.twin(s)
+    a.build(twin.twin(s))
+    got = {c[0] for c in a.checks()}
+    assert got == {str(i) for i in range(1, 30)}, sorted(set(map(str, range(1, 30))) - got, key=int)
+    for n, want in ((len(a.users), twin.USERS), (len(a.roles), 4237), (len(a.objects), twin.OBJECTS)):
+        assert abs(n - want * s) <= 0.3 * want * s, (n, want * s)
+
+
 if __name__ == "__main__":
     import traceback
     again = "ROLE_PREFIXES" in os.environ  # the rerun with another naming

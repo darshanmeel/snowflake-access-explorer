@@ -2,6 +2,7 @@
 
     python run.py                  local web app (React) on Snowflake data -> http://localhost:8000
     python run.py --fake           fake data, no Snowflake
+    python run.py --fake twin --scale 0.1   the synthetic twin of a big account (twin.py), a tenth of its size
     python run.py streamlit        the Streamlit version -> http://localhost:8501
     python run.py --port 9000      another port (WEB_PORT / STREAMLIT_PORT in .env or the environment)
     python run.py --direct | --objects   SOURCE: read grants directly, or the TBL_ACCESS_ snapshot tables
@@ -26,7 +27,8 @@ def command(argv=None, env=os.environ):
     """(cmd, env) to start the app run.py is asked for."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("app", nargs="?", choices=["web", "streamlit"], default=env.get("APP", "web"))
-    p.add_argument("--fake", action="store_true")
+    p.add_argument("--fake", nargs="?", const="1", choices=["1", "twin"])
+    p.add_argument("--scale", type=float)
     p.add_argument("--port", type=int)
     p.add_argument("--direct", dest="source", action="store_const", const="direct")
     p.add_argument("--objects", dest="source", action="store_const", const="objects")
@@ -38,7 +40,9 @@ def command(argv=None, env=os.environ):
     args = p.parse_args(argv)
     env = dict(env)
     if args.fake:
-        env["FAKE"] = "1"
+        env["FAKE"] = args.fake
+    if args.scale:
+        env["FAKE_SCALE"] = str(args.scale)
     if args.source:
         env["SOURCE"] = args.source
     if args.cache_dir:  # from where run.py was started; the app runs in its own folder

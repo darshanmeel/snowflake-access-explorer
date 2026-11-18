@@ -21,6 +21,7 @@ from decimal import Decimal
 
 import access as a
 import cache
+import twin
 import ui
 
 MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|objects (README > Settings)
@@ -163,7 +164,7 @@ def progress(view=None):
 def read_shared(key=KEY):
     """The shared data from its source, its reads kept as parts of key (refresh: a key of its own until it is built)."""
     if MODE == "fake":
-        return a.fake()
+        return twin.data()  # access.fake(), or the twin for FAKE=twin
     if DIRECT and cache.local() and (OFFLINE or cache.parts_of(key)):  # the SQL lines below then name saved files too
         a.say(f"Building from the saved reads in {cache.parts_dir(key)}: Snowflake is not connected, each SQL line below "
               "names the saved result it loads" if OFFLINE else
@@ -2530,7 +2531,7 @@ def changes_page(p, view):
     if view == "mine":
         return out | dict(reason="What changed compares two shared snapshots: open it on the shared snapshot.")
     if MODE == "fake":
-        prev = a.fake_previous()
+        prev = twin.data_previous()
     else:
         got = None if a.INSIDE else cache.prev(KEY)
         if not got:

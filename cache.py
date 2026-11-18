@@ -42,7 +42,7 @@ def lock(key):
 
 def config(env=os.environ):
     """(mode, source, where): mode fake|snowflake; source fake|direct|objects; where = DB.SCHEMA of the objects, else ''."""
-    if env.get("FAKE") == "1":
+    if env.get("FAKE") in ("1", "twin"):
         return "fake", "fake", ""
     where = env.get("ACCESS_SNAPSHOT", "")
     source = (env.get("SOURCE") or ("objects" if where else "direct")).lower()
@@ -62,7 +62,8 @@ def name(what, user=None, where=""):
     this copy."""
     e = os.environ
     return "_".join(filter(None, (e.get("SNOWFLAKE_ACCOUNT", "local"), what, where, user or e.get("SNOWFLAKE_USER"),
-                                  e.get("SNOWFLAKE_ROLE"), "noactivity" * (not access.ACTIVITY_ON))))
+                                  e.get("SNOWFLAKE_ROLE"), "noactivity" * (not access.ACTIVITY_ON),
+                                  e.get("FAKE") == "twin" and "twin" + e.get("FAKE_SCALE", "1"))))
 
 
 def local():
