@@ -23,5 +23,5 @@ DDL: `sql/1_setup.sql:67-75`. Grain: run x object x domain x column x tag (infer
 - ACCOUNT_USAGE: `sql/1_setup.sql:574-581` (`OBJECT_DELETED IS NULL`; Enterprise edition, `:374-375`).
 - Fallback per table/view of the grant data: `sql/1_setup.sql:583-609` (objects from `data_objects` `:349-353`; cap `TAG_FALLBACK_MAX=300` `:152`).
 - Error -> UNAVAILABLE, this run's rows deleted, run stays OK: `sql/1_setup.sql:610-612`.
-- Read: `access.py:1492`; inheritance DB > schema > table > column `access.py:2737-2753`; sensitive set `access.py:1498-1502`; `SENSITIVE_TAGS` default `access.py:109-110`.
+- Read: `access.py:1492`; inheritance DB > schema > table > column `access.py:2738-2754`; sensitive set `access.py:1498-1502`; `SENSITIVE_TAGS` default `access.py:109-110`.
 - Unclear: OBJECT_NAME / APPLY_METHOD semantics marked "to verify" `sql/1_setup.sql:572-573,382-383`.

@@ -28,14 +28,14 @@ sequenceDiagram
 ## Steps
 
 1. `a.progress(fn)` sets the sink in a context variable; `a.say(text)` sends to it (and keeps it as the last line), a no-op outside — access.py:638-665. Two loads at once (shared and My access) keep their own lines. A heartbeat thread adds "Still working after N min: <steps running>" (or the last line) every `BEAT` (60) s, so a statement that runs for minutes still shows signs of life — access.py:635-658.
-1a. `a.step(name)` wraps a build step: "<name>…", the heartbeat names it while it runs, then "<name>: done in N s" — access.py:672-684. Used for "Building the role graph", "Checking the rules" (server.py:168-172) and the DuckDB copy (cache.py:261); `findings()` adds "Slowest rules: ..." (access.py:6255-6258).
+1a. `a.step(name)` wraps a build step: "<name>…", the heartbeat names it while it runs, then "<name>: done in N s" — access.py:672-684. Used for "Building the role graph", "Checking the rules" (server.py:168-172) and the DuckDB copy (cache.py:261); `findings()` adds "Slowest rules: ..." (access.py:6256-6259).
 2. `each()` hands the caller's sink and a worker number to its threads (`initializer=start`), labels waves (`what`: a count per tenth, a timeout on its own line) or names each heavy read (`[w2] ...`) — access.py:695-738.
 3. `snapshot()`, `mine()` and `live()` say each step and end with `done in N s` — `snapshot()` access.py:508-593, `mine()` access.py:757-882, `live()` access.py:883-1275.
 4. `server.tracked(key, view, fn)` keeps `PROGRESS[key] = {view, running, start, lines}` (last `MAX_LINES` 200, under `PLOCK`), says `failed: ...` on an error — server.py:59-64, server.py:108-126. Used by `load_shared`, `load_mine` and the rebuild CALL — server.py:190, server.py:261, server.py:2408-2408. With `LOG_LINES` (python server.py, app.py) each line is also printed as `HH:MM:SS [view] text` — server.py:116-117.
 5. `server.progress(view)` returns the newest running read (or idle) and `job`, the last background refresh; it only reads `PROGRESS`, so asking never starts a load — server.py:129-136. Route `GET /api/progress` — server.py:2598-2600; `/api/reload` runs in a thread pool so the poll answers meanwhile — server.py:2596. uvicorn leaves `GET /api/progress` out of its access log (`quiet_log` / `NoProgress`, server.py:2657-2668).
 6. Local React: `peek()` (GET without the cache, `null` inside Streamlit) — web/src/api/client.ts:46-50; `LoadLog` polls every second while `busy` or `m.loading`, keeps the newest line in view — web/src/components/LoadLog.tsx:6-31, web/src/App.tsx:274, web/src/App.tsx:403; styles `.ae-loadlog` — web/src/components/styles.css:295-300.
 7. Streamlit in Snowflake: `answer()` serves `progress` too — st_react.py:34-35; `shown(box, r, sid)` runs the request in a thread kept in session state (a rerun waits for it), draws the last 40 lines into the `st.empty()` box above the app once a second, then clears it — st_react.py:54-78, st_react.py:87, st_react.py:96.
-8. Contract: `Progress` type — web/src/api/types.ts:165-171; API doc — web/API.md:245-251.
+8. Contract: `Progress` type — web/src/api/types.ts:165-171; API doc — web/API.md:250-256.
 
 ## Example (test_server.test_progress, fake connection)
 

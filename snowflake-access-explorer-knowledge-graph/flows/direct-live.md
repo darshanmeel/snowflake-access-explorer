@@ -55,7 +55,7 @@ sequenceDiagram
 13. Object use / activity notes `ACCOUNT_USAGE`, `SKIPPED` (ACTIVITY=0) or `UNAVAILABLE`; streams: `SHOW STREAMS IN ACCOUNT` — access.py:1243-1273.
 14. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)`; says `done in N s` — access.py:1274-1275.
 15. Kept with `cache.get` -> `store()` (memory + file) under the key's own lock; SQL copy (in a thread) gets run id `direct-<timestamp>` — cache.py:122-161.
-16. Must stay in step with `SP_ACCESS_SNAPSHOT` (docstring) — access.py:883-887; checked by `test_live`, `test_live_inside`, `test_switches`, `test_progress` — test_access.py:572, test_access.py:486, test_access.py:2130.
+16. Must stay in step with `SP_ACCESS_SNAPSHOT` (docstring) — access.py:883-887; checked by `test_live`, `test_live_inside`, `test_switches`, `test_progress` — test_access.py:572, test_access.py:486, test_access.py:2134.
 
 ## Example (mock query that answers everything empty; no Snowflake)
 

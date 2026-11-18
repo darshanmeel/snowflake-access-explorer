@@ -48,7 +48,7 @@ sequenceDiagram
 14. Direct inside: `live()` with the owner role; `USE SECONDARY ROLES` and `CURRENT_DATABASE` may be refused — access.py:904-912.
 15. Long loads: `shown()` runs `answer()` in a thread kept in `st.session_state["_ae_running"]` (a rerun waits for it instead of reading again) and, about once a second, writes `server.progress()` lines into the `st.empty()` box above the app, cleared at the end; `answer()` also serves `progress` — st_react.py:54-78, st_react.py:87, st_react.py:96, st_react.py:34-35 ([flows/load-progress.md](load-progress.md)). `WORKERS` reads share the app's session from `each()`'s threads (marked "to verify" in st_react.py:58, access.py:543).
 16. Settings in `sis/.env`: `STATEMENT_TIMEOUT`, `WORKERS`, `ACTIVITY=0`, `HIERARCHY=0` as locally — sis.env.example:24-33.
-17. Tests: `test_streamlit_bridge` (same answers as HTTP) — test_server.py:268; `test_pages` (every page key handed to the component) — test_access.py:904.
+17. Tests: `test_streamlit_bridge` (same answers as HTTP) — test_server.py:268; `test_pages` (every page key handed to the component) — test_access.py:908.
 
 ## Example (FAKE=1, local, no Snowflake)
 

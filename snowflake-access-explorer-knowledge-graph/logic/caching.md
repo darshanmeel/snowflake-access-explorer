@@ -44,13 +44,13 @@ flowchart TD
 - `prev(key)`: returns it with its mtime, or None (`cache.py:99-105`); used by What changed (`server.py:1871`).
 
 ## Built data sets (`access.py`)
-- `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1421`, `access.py:1611-1615`).
+- `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1421`, `access.py:1612-1616`).
 - `build(d, key, builtin)`: same `(key, builtin)` as loaded -> no work; the loaded one is saved to `built`, at most `KEEP_BUILT` (3) kept (oldest dropped); a key in `built` is restored instead of rebuilt (`access.py:1424-1450`).
 - Shared build key: `("shared", RUN_ID, FINISHED_AT)` (`shared_key`, `server.py:150-152`, used at `server.py:286`); My access gets a random key per load (`server.py:270-272`).
-- Test: `test_built` (`test_access.py:1209`), `test_cache` (`test_access.py:1672`).
+- Test: `test_built` (`test_access.py:1213`), `test_cache` (`test_access.py:1676`).
 
 ## Rule results across restarts
-- `server.kept_rules(view, key, builtin, save)`: shared data in Snowflake mode, disk allowed: `findings`, `rows`, `ro`, `breaks` of `a.memo` in `.cache/<key>.rules.pkl` with the stamp `(build key, builtin, a.rules_stamp(), SERVER_STAMP)`; restored while the stamp matches (`server.py:306-329`). `rules_stamp()` hashes `access.py` and every `environ.get` setting it names with its value (`access.py:3844-3848`); `SERVER_STAMP` hashes `server.py` (`server.py:307`).
+- `server.kept_rules(view, key, builtin, save)`: shared data in Snowflake mode, disk allowed: `findings`, `rows`, `ro`, `breaks` of `a.memo` in `.cache/<key>.rules.pkl` with the stamp `(build key, builtin, a.rules_stamp(), SERVER_STAMP)`; restored while the stamp matches (`server.py:306-329`). `rules_stamp()` hashes `access.py` and every `environ.get` setting it names with its value (`access.py:3845-3849`); `SERVER_STAMP` hashes `server.py` (`server.py:307`).
 
 ## SQL copy (DuckDB)
 - `DUCKDB` env (unset: after each Snowflake read; `1` also fake); `store()` starts `sql_copy(key, d, at)` in a `COPYING` thread (`cache.py:149-152`, `cache.py:234-300`): one schema per key, the read before as `_PREV`, per table one INSERT from an Arrow table of text columns (pyarrow) or UNNESTed text lists (`text()`: dicts / lists as compact JSON, booleans as true/false, `cache.py:225-231`), all under `SQL_LOCK` because every key writes the one `.cache/access.duckdb` (`cache.py:261-291`). Details: [data/duckdb-copy.md](../data/duckdb-copy.md).

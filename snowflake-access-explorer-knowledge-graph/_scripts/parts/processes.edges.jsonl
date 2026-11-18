@@ -45,8 +45,8 @@
 {"from": "process:test", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:11", "status": "verified"}
 {"from": "process:test", "to": "dir:web/dist", "type": "reads", "evidence": "test_server.py:523-535", "status": "verified"}
 {"from": "process:test", "to": "dir:web/dist-st", "type": "reads", "evidence": "test_server.py:523-535", "status": "verified"}
-{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:2091-2101", "status": "verified"}
-{"from": "process:test", "to": "file:sql/4_streamlit.sql", "type": "reads", "evidence": "test_access.py:937-944", "status": "verified"}
+{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:2095-2105", "status": "verified"}
+{"from": "process:test", "to": "file:sql/4_streamlit.sql", "type": "reads", "evidence": "test_access.py:941-948", "status": "verified"}
 {"from": "process:access_requests", "to": "role:APP_ROLE", "type": "grants", "evidence": "README.html:690", "status": "verified"}
 {"from": "process:access_requests", "to": "role:DEV_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:1241-1245", "status": "verified"}
 {"from": "process:container_services", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:381", "status": "verified"}
@@ -82,7 +82,7 @@
 {"from": "document:CLAUDE.md", "to": "process:run_local", "type": "documents", "evidence": "CLAUDE.md:28-30", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "process:container_services", "type": "documents", "evidence": "CLAUDE.md:42", "status": "verified"}
 {"from": "document:web/API.md", "to": "module:server.py", "type": "documents", "evidence": "web/API.md:1-5", "status": "verified"}
-{"from": "document:web/API.md", "to": "endpoint:GET /api/request", "type": "documents", "evidence": "web/API.md:525", "status": "verified"}
+{"from": "document:web/API.md", "to": "endpoint:GET /api/request", "type": "documents", "evidence": "web/API.md:531", "status": "verified"}
 {"from": "document:web/ST.md", "to": "file:sql/4_streamlit.sql", "type": "documents", "evidence": "web/ST.md:52-56", "status": "verified"}
 {"from": "document:web/ST.md", "to": "process:sis_manual_check", "type": "documents", "evidence": "web/ST.md:45-50", "status": "verified"}
 {"from": "document:web/ST.md", "to": "process:build_web", "type": "documents", "evidence": "web/ST.md:8-19", "status": "verified"}
@@ -140,20 +140,20 @@
 {"from": "function:run_sql.py:check_names", "to": "config:settings.sql:WORKERS", "type": "reads", "evidence": "run_sql.py:29-31", "status": "verified"}
 {"from": "function:run_sql.py:check_names", "to": "config:settings.sql:ACTIVITY", "type": "reads", "evidence": "run_sql.py:29-31", "status": "verified"}
 {"from": "module:test_access.py", "to": "test_case:test_access.py:test_missing_names", "type": "contains", "evidence": "test_access.py:783", "status": "verified"}
-{"from": "module:test_access.py", "to": "test_case:test_access.py:test_empty_reads", "type": "contains", "evidence": "test_access.py:794", "status": "verified"}
-{"from": "module:test_access.py", "to": "test_case:test_access.py:test_none_fuzz", "type": "contains", "evidence": "test_access.py:878", "status": "verified"}
-{"from": "module:test_access.py", "to": "test_case:test_access.py:test_duck_reach", "type": "contains", "evidence": "test_access.py:1127", "status": "verified"}
+{"from": "module:test_access.py", "to": "test_case:test_access.py:test_empty_reads", "type": "contains", "evidence": "test_access.py:798", "status": "verified"}
+{"from": "module:test_access.py", "to": "test_case:test_access.py:test_none_fuzz", "type": "contains", "evidence": "test_access.py:882", "status": "verified"}
+{"from": "module:test_access.py", "to": "test_case:test_access.py:test_duck_reach", "type": "contains", "evidence": "test_access.py:1131", "status": "verified"}
 {"from": "module:test_server.py", "to": "test_case:test_server.py:test_pages_empty", "type": "contains", "evidence": "test_server.py:761", "status": "verified"}
 {"from": "module:test_server.py", "to": "test_case:test_server.py:test_background", "type": "contains", "evidence": "test_server.py:867", "status": "verified"}
 {"from": "module:test_server.py", "to": "test_case:test_server.py:test_kept_rules", "type": "contains", "evidence": "test_server.py:915", "status": "verified"}
 {"from": "module:test_server.py", "to": "test_case:test_server.py:test_parts", "type": "contains", "evidence": "test_server.py:950", "status": "verified"}
-{"from": "test_case:test_access.py:test_missing_names", "to": "function:access.py:tidy", "type": "illustrates", "evidence": "test_access.py:783", "status": "verified"}
-{"from": "test_case:test_access.py:test_empty_reads", "to": "function:access.py:snapshot", "type": "illustrates", "evidence": "test_access.py:794", "status": "verified"}
-{"from": "test_case:test_access.py:test_empty_reads", "to": "function:cache.py:store", "type": "illustrates", "evidence": "test_access.py:794", "status": "verified"}
-{"from": "test_case:test_access.py:test_none_fuzz", "to": "function:access.py:tidy", "type": "illustrates", "evidence": "test_access.py:878", "status": "verified"}
-{"from": "test_case:test_access.py:test_duck_reach", "to": "function:access.py:duck", "type": "illustrates", "evidence": "test_access.py:1127", "status": "verified"}
-{"from": "test_case:test_access.py:test_duck_reach", "to": "function:access.py:lose_all", "type": "illustrates", "evidence": "test_access.py:1127", "status": "verified"}
-{"from": "test_case:test_access.py:test_duck_reach", "to": "function:access.py:read_shares", "type": "illustrates", "evidence": "test_access.py:1127", "status": "verified"}
+{"from": "test_case:test_access.py:test_missing_names", "to": "function:access.py:tidy", "type": "illustrates", "evidence": "test_access.py:793", "status": "verified"}
+{"from": "test_case:test_access.py:test_empty_reads", "to": "function:access.py:snapshot", "type": "illustrates", "evidence": "test_access.py:798", "status": "verified"}
+{"from": "test_case:test_access.py:test_empty_reads", "to": "function:cache.py:store", "type": "illustrates", "evidence": "test_access.py:798", "status": "verified"}
+{"from": "test_case:test_access.py:test_none_fuzz", "to": "function:access.py:tidy", "type": "illustrates", "evidence": "test_access.py:882", "status": "verified"}
+{"from": "test_case:test_access.py:test_duck_reach", "to": "function:access.py:duck", "type": "illustrates", "evidence": "test_access.py:1131", "status": "verified"}
+{"from": "test_case:test_access.py:test_duck_reach", "to": "function:access.py:lose_all", "type": "illustrates", "evidence": "test_access.py:1131", "status": "verified"}
+{"from": "test_case:test_access.py:test_duck_reach", "to": "function:access.py:read_shares", "type": "illustrates", "evidence": "test_access.py:1131", "status": "verified"}
 {"from": "test_case:test_server.py:test_pages_empty", "to": "function:server.py:note_info", "type": "illustrates", "evidence": "test_server.py:761", "status": "verified"}
 {"from": "test_case:test_server.py:test_background", "to": "function:server.py:refresh", "type": "illustrates", "evidence": "test_server.py:867", "status": "verified"}
 {"from": "test_case:test_server.py:test_background", "to": "function:server.py:renew", "type": "illustrates", "evidence": "test_server.py:867", "status": "verified"}
@@ -167,3 +167,4 @@
 {"from": "function:run.py:command", "to": "process:run_local", "type": "part_of", "evidence": "run.py:24", "status": "verified"}
 {"from": "module:test_server.py", "to": "test_case:test_server.py:test_newer_run", "type": "contains", "evidence": "test_server.py:402", "status": "verified"}
 {"from": "test_case:test_server.py:test_newer_run", "to": "function:access.py:snapshot", "type": "illustrates", "evidence": "test_server.py:402", "status": "verified"}
+{"from": "test_case:test_access.py:test_missing_names", "to": "function:access.py:tidy_stamp", "type": "illustrates", "evidence": "test_access.py:791", "status": "verified"}

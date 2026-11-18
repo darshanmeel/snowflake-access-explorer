@@ -56,7 +56,7 @@ sequenceDiagram
 
 - First read, now 2026-11-03: the activity SELECT carries the default tag `'access-explorer'`, `'2026-09-04'::DATE` and SESSIONS (`test_access.py:597-598`).
 - Second read with earlier rows up to 2026-10-19: the SELECT starts at `'2026-10-18'::DATE` and the kept rows come first (`test_access.py:622-625`).
-- Other names (`test_tag_settings`, `test_access.py:2122-2127`): `QUERY_TAG=it's`, `STREAMLIT_APP=ST_OTHER` -> the SELECT has `<> 'it''s'` and `NOT LIKE '%.ST_OTHER%'`.
+- Other names (`test_tag_settings`, `test_access.py:2126-2131`): `QUERY_TAG=it's`, `STREAMLIT_APP=ST_OTHER` -> the SELECT has `<> 'it''s'` and `NOT LIKE '%.ST_OTHER%'`.
 - SP on DuckDB (no ACCESS_HISTORY): `("UNAVAILABLE", "...ACCESS_HISTORY...")`, no rows for the run (`test_sql.py:321-324`).
 - Shared read (`test_history_shared`, `test_sql.py:639-679`): `inspect.getsource(a.history_sql)` is in the setup text; one INSERT ALL fills both tables; when it fails each step runs its own INSERT; a skipped step leaves the other reading alone.
 - Weeks (`test_object_use_weeks`, `test_sql.py:498-556`): copying all but the last two weeks and reading from that Monday gives the rows of a read of every week.

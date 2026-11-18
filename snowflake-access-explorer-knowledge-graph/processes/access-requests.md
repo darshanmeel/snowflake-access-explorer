@@ -31,7 +31,7 @@ flowchart LR
 - Answers: which existing role to ask for, who approves, what text goes in the PR or ticket — README.html:327-329.
 - Person: `GRANT ROLE x TO USER u`; role: `GRANT ROLE x TO ROLE r` with too-broad and rule 1 warnings; database role: skeleton or why not — README.html:335.
 - Approver from the object's owner tag (`OWNER_TAGS`), else blank; expiry and reason go into comments; output is SQL, Terraform or ticket text, never run — README.html:336-339.
-- API: `GET /api/request` uses `a.need_privs`, `a.suggest`, `a.approver`, `a.object_stats`; text built in `codegen.ts` — web/API.md:525-542.
+- API: `GET /api/request` uses `a.need_privs`, `a.suggest`, `a.approver`, `a.object_stats`; text built in `codegen.ts` — web/API.md:531-548.
 
 ## Unclear
 - The IaC tool/repo and reconciliation job are not in this repo (unclear which tool; Terraform text is offered — README.html:339).

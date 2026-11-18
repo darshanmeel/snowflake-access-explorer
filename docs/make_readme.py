@@ -55,7 +55,7 @@ FLOW = {
     "fail": mid(C1[3] + 70, 320, "step", "", "FAILED run", "its rows deleted"),
     "run": mid(C1[4] + 70, 200, "data", "DATA", "OK run", "TBL_ACCESS_*"),
     "rebuild": mid(C1[1] + 70, 460, "step", "", "Rebuild snapshot", "button, top bar"),
-    "reload": mid(C1[3] + 70, 460, "step", "", "Read again (↻)", "drops the app's copy"),
+    "reload": mid(C1[3] + 70, 460, "step", "", "Read again (↻)", "in the background"),
     "load": mid(C1[4] + 70, 460, "step", "", "Load last OK run", "kept 24 h"),
     "open": mid(C1[4] + 70, 580, "actor", "", "Open a page", "or a shared link"),
 }

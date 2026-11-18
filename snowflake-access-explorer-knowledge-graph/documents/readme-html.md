@@ -26,5 +26,5 @@ flowchart LR
 - Streamlit in Snowflake: two options, the app's name from `STREAMLIT_APP` (default ST_ACCESS_EXPLORER) — README.html:696-709; Query with SQL (DuckDB) — README.html:710; Role model — README.html:727; SQL without the app — README.html:735; Data sources — README.html:748; Settings — README.html:756; Limits — README.html:759.
 
 ## Relates to
-- Generated parts: docs/make_readme.py — docs/make_readme.py:125-155; checked by test_readme_rules — test_access.py:2091-2101.
+- Generated parts: docs/make_readme.py — docs/make_readme.py:125-155; checked by test_readme_rules — test_access.py:2095-2105.
 - The daily task SQL is in README.html:686-688 and README.md:281-283 (Objects in Snowflake); no setup script creates the task.

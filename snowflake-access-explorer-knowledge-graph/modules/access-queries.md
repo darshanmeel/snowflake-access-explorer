@@ -23,10 +23,10 @@ flowchart LR
 
 | File | Answers | Mirrors in the app | path:line |
 |---|---|---|---|
-| `1_user_roles.sql` | Every role a user holds, shortest PATH, WAYS | `access.walk()` (access.py:2068) | access_queries/1_user_roles.sql:1-76 |
-| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:2539) | access_queries/2_user_access.sql:1-85 |
-| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:2539) | access_queries/3_role_access.sql:1-72 |
-| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:1995) | access_queries/4_role_holders.sql:1-79 |
+| `1_user_roles.sql` | Every role a user holds, shortest PATH, WAYS | `access.walk()` (access.py:2069) | access_queries/1_user_roles.sql:1-76 |
+| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:2540) | access_queries/2_user_access.sql:1-85 |
+| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:2540) | access_queries/3_role_access.sql:1-72 |
+| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:1996) | access_queries/4_role_holders.sql:1-79 |
 | `5_object_users.sql` | Who reaches one exact object (and privilege) | `access.on` + `up()` | access_queries/5_object_users.sql:1-94 |
 | `functions.sql` | The five as table functions `AQ_USER_ROLES` ... `AQ_OBJECT_USERS` in `AQ_DB.AQ_SCHEMA` | | access_queries/functions.sql:1-339 |
 | `access_examples.ipynb` | Snowflake Notebook: inputs cell, 5 `create_N` cells, 8 examples twice (`a_*` call the functions, `b_*` plain queries) | | access_queries/access_examples.ipynb:1-1329 |
@@ -81,7 +81,7 @@ Example (test data of test_queries.py): `1_user_roles.sql` for `ANALYST_01` give
 
 ## Used by the app's SQL panel
 
-- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:5048-5057`, `access.py:5192-5220`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
+- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:5049-5058`, `access.py:5193-5221`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
 
 ## Unclear
 

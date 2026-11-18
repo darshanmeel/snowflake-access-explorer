@@ -156,14 +156,14 @@
 {"from": "column:TBL_ACCESS_USER_ROLE.ROLE_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "sql/1_setup.sql:982-983,595; access.py:1488", "status": "verified"}
 {"from": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "sql/1_setup.sql:976-980; access.py:1461-1465", "status": "verified"}
 {"from": "column:TBL_ACCESS_USAGE.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:1486-1487", "status": "verified"}
-{"from": "column:TBL_ACCESS_USAGE.NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "access.py:2715-2718", "status": "inferred"}
-{"from": "column:TBL_ACCESS_TAG.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2737-2753", "status": "verified"}
-{"from": "column:TBL_ACCESS_POLICY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2798-2806", "status": "verified"}
-{"from": "column:TBL_ACCESS_POLICY.TAG_NAME", "to": "column:TBL_ACCESS_TAG.TAG_NAME", "type": "fk", "evidence": "access.py:2807-2810", "status": "verified"}
-{"from": "column:TBL_ACCESS_STREAM.STREAM_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:6146", "status": "verified"}
-{"from": "column:TBL_ACCESS_STREAM.SOURCE_NAME", "to": "column:TBL_ACCESS_TAG.OBJECT_NAME", "type": "fk", "evidence": "access.py:6142-6143", "status": "verified"}
+{"from": "column:TBL_ACCESS_USAGE.NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "access.py:2716-2719", "status": "inferred"}
+{"from": "column:TBL_ACCESS_TAG.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2738-2754", "status": "verified"}
+{"from": "column:TBL_ACCESS_POLICY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:2799-2807", "status": "verified"}
+{"from": "column:TBL_ACCESS_POLICY.TAG_NAME", "to": "column:TBL_ACCESS_TAG.TAG_NAME", "type": "fk", "evidence": "access.py:2808-2811", "status": "verified"}
+{"from": "column:TBL_ACCESS_STREAM.STREAM_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:6147", "status": "verified"}
+{"from": "column:TBL_ACCESS_STREAM.SOURCE_NAME", "to": "column:TBL_ACCESS_TAG.OBJECT_NAME", "type": "fk", "evidence": "access.py:6143-6144", "status": "verified"}
 {"from": "column:TBL_ACCESS_OBJECT_USE.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:1495-1496", "status": "verified"}
-{"from": "column:TBL_ACCESS_OBJECT_USE.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:5432-5436", "status": "inferred"}
+{"from": "column:TBL_ACCESS_OBJECT_USE.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:5433-5437", "status": "inferred"}
 {"from": "column:TBL_ACCESS_FINDING.GRANTEE", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "sql/1_setup.sql:166-167", "status": "inferred"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:run", "type": "contains", "evidence": "sql/1_setup.sql:861", "status": "verified"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:grants", "type": "contains", "evidence": "sql/1_setup.sql:363", "status": "verified"}
@@ -333,9 +333,9 @@
 {"from": "table:TBL_ACCESS_ACTIVITY", "to": "column:TBL_ACCESS_ACTIVITY.QUERIES", "type": "contains", "evidence": "sql/1_setup.sql:118", "status": "verified"}
 {"from": "table:TBL_ACCESS_ACTIVITY", "to": "column:TBL_ACCESS_ACTIVITY.LAST_USED", "type": "contains", "evidence": "sql/1_setup.sql:119", "status": "verified"}
 {"from": "column:TBL_ACCESS_ACTIVITY.RUN_ID", "to": "column:TBL_ACCESS_RUN.RUN_ID", "type": "fk", "evidence": "access.py:545", "status": "verified"}
-{"from": "column:TBL_ACCESS_ACTIVITY.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:6205", "status": "inferred"}
-{"from": "column:TBL_ACCESS_ACTIVITY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:6205", "status": "inferred"}
-{"from": "column:TBL_ACCESS_ACTIVITY.ROLE_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "access.py:5273", "status": "inferred"}
+{"from": "column:TBL_ACCESS_ACTIVITY.USER_NAME", "to": "column:TBL_ACCESS_USER.USER_NAME", "type": "fk", "evidence": "access.py:6206", "status": "inferred"}
+{"from": "column:TBL_ACCESS_ACTIVITY.OBJECT_NAME", "to": "column:TBL_ACCESS_GRANT.OBJECT_NAME", "type": "fk", "evidence": "access.py:6206", "status": "inferred"}
+{"from": "column:TBL_ACCESS_ACTIVITY.ROLE_NAME", "to": "column:TBL_ACCESS_GRANT.GRANTEE_ROLE", "type": "fk", "evidence": "access.py:5274", "status": "inferred"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:activity", "type": "contains", "evidence": "sql/1_setup.sql:779", "status": "verified"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:activity_sql", "type": "contains", "evidence": "sql/1_setup.sql:732", "status": "verified"}
 {"from": "function:sql/1_setup.sql:activity", "to": "function:sql/1_setup.sql:activity_sql", "type": "calls", "evidence": "sql/1_setup.sql:798", "status": "verified"}

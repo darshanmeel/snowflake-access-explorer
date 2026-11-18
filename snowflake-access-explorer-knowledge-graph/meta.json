@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-17",
- "commit": "448bdbbf777f86128096b82782bcb4b2d6eb0b02",
+ "commit": "43d5042723090a24008018dd0998e4761fbc5ed8",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -12,7 +12,7 @@
  },
  "counts": {
   "nodes": 2071,
-  "edges": 6203,
+  "edges": 6204,
   "node_types": {
    "build_output": 2,
    "business_rule": 92,
@@ -118,7 +118,7 @@
    "exposes": 67,
    "fk": 26,
    "grants": 15,
-   "illustrates": 512,
+   "illustrates": 513,
    "implements": 277,
    "imports": 378,
    "part_of": 200,
@@ -135,10 +135,10 @@
   "CLAUDE.md": "24b102eedf7e9ee96ade21a3a6f8bedd640d0e282fe898c91055cd95c3810644",
   "LICENSE-APACHE": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
   "LICENSE-MIT": "ca553b75fe9ff718aee4e5c37cbd1505626ebe66ed23ed9eee0abfdd3a5e2d49",
-  "README.html": "67bf4627e47627979854bb1316d72b7c42b3c0d1a3fac202644998d1aaa40b6d",
-  "README.md": "d01882515e40e5eaebc3a3adca4f8c7c5fa898db21e652852e5c0812db2b02a0",
+  "README.html": "7fe3e45a9f0ea25d3bbfe286f6a5a1542bf0b14df0339ad87871d14c38e69403",
+  "README.md": "df497e39c2fd5a29763d965e9ccad7bc7c70b4acf3e3fda0b0e4d4499d5de460",
   "THIRD_PARTY.md": "c948d1fcd2941f071b9c71bde325bd4871d6150346a589f8af49cc3e415d66dc",
-  "access.py": "6f870d418240a8427ce7d6b8621dce86e2832c9c07f987856d116aa8cb97e00a",
+  "access.py": "8480bfd386549ac2412d68c9b0723c5b5c04f8b8002b57b90958e876791dfd74",
   "access_queries/1_user_roles.sql": "b380e8b902d2b32993a125dea6472c51d25bdda165871b8f712888ee4e9a441e",
   "access_queries/2_user_access.sql": "afe29ef13d6d5fe5bc2aee6825ce17b0d5a0a19e01d1fbd83bbbb8c6e29a71a5",
   "access_queries/3_role_access.sql": "ef4512af5e7989ad43184e149966ba452dac975df4a4dfd072b166cbfc36cf2c",
@@ -190,11 +190,11 @@
   "docs/img/redesign/user_paths.png": "086b347305a47f016ae3e31e99a9b9fa20b6a23a84d087839eb5d1a3d8cb398b",
   "docs/img/redesign/whatif.png": "3aa9b1a07e9a0a22abb5a632849ab2a30867818613c7f603ef0198773b000492",
   "docs/img/redesign/whatif_plan.png": "567fea055ed47be608de6f2ab4c2d7881e3fa4b474f647860753c4d9e512541d",
-  "docs/make_readme.py": "266c20674606f0bb73be7142c60d8771eab9f83a79e006c90d9ee2657f26c1dd",
-  "docs/overview.html": "148a594846867fce91a1a5e7827f1f54eda7ae480629c38e62bcedccd4420812",
+  "docs/make_readme.py": "04a1fe8a5406c9d2d8813292d7c95b50448abce03435a9c9e977a8edc17d0bfa",
+  "docs/overview.html": "cbc27b2310f0a6fff46162b7d6e7835eb073497bafa57aea3c0ceef8d716d971",
   "docs/redesign-notes.md": "222fd4a45c14c1fffa0ab8bed22aacf7799b096efd5122a6305226b9203ce106",
   "docs/review-2026-11-09.md": "737066ba51d617c613f9822b94b9725830a94e682cfe6fa0b826578a2b2a0f5c",
-  "docs/technical.html": "ab10ac278898f6ac4ce364213d2c6bca83ce146acb2ba012c685c647096d54a8",
+  "docs/technical.html": "daa10ec36b670f344dd1a949fa39200bad41c7e90448515ddcdc4f51045db310",
   "environment.yml": "aff9e7a17b337730f9564a3a5da8ee26e7464aba4e4239e31a4d2dbe6cca1358",
   "requirements-dev.txt": "8ffc3d0f405252197b136659ecd8ce9733ef93febe95eb8054e8d1f4d315e120",
   "requirements-web.txt": "08ce16146ffd0ce56b0733e4018bcb2115c25164c156d07e160fdda36ea6e571",
@@ -214,12 +214,12 @@
   "sql/4_streamlit.sql": "c6d377dc45f63521f2a181b8c1ac394bcca7b6e639c744bff5bf69429e26cef4",
   "sql/4_streamlit_verify.sql": "66a9e61fd377626998b948e30a4b863f0aaf2fa6ada83806055b32bc6de121d1",
   "st_react.py": "737710ce02f95ad01f210162d0705f09eef44fff7163d3044ac41c786f7ca80d",
-  "test_access.py": "12b103a9450b22df2ceaac57af91dc1a2c9e82e69c46fb1d4c5c7e111026700d",
+  "test_access.py": "9116812d300a68224229c256dd24ca02897258f2a7e2af8dfdef0f101e3e879c",
   "test_server.py": "5822e9b7849df0805d14dd0597466f1869c18fd06f321011eb0644edc0f9fd36",
   "test_sql.py": "ef729e4b9250ac49b9dd64634cfa9dc97244bf35c7a66ba7a9d28acb04aed2f9",
   "ui.py": "fec29f8810757b1fd4e70c3e20187be1977b88875f695f3058a2ba58ba0c467a",
   "web/.gitignore": "853bdb9e4c430bb46f05289d0d2c37d6b99128f78ab80d4fa929c50af733be90",
-  "web/API.md": "68f3a5606b47eb61f5d55b71bff6f1cdf8f4dd471e931ddde1102acbf6778b91",
+  "web/API.md": "fc0de9f4203d57815703d59c144c5b1af109e75e1e9d74716e3482edebfe1695",
   "web/ST.md": "f5cd4baad3adcb16fcf7851a416105e154863cef0d7de39067874f6d6cc09a25",
   "web/dist-st/assets/ibm-plex-mono-latin-400-normal-DMJ8VG8y.woff2": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7",
   "web/dist-st/assets/ibm-plex-mono-latin-500-normal-DSY6xOcd.woff2": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22",
@@ -318,5 +318,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-17 22:14 UTC"
+ "updated": "2026-11-18 07:11 UTC"
 }

@@ -55,7 +55,7 @@ flowchart TD
 - Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:72-83.
 - Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:358.
 - Verify: Streamlit exists (expect 1), stage files, exactly 4 assets, grants on the app — sql/4_streamlit_verify.sql:3-15.
-- Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:937-944, web/ST.md:54-55.
+- Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:941-948, web/ST.md:54-55.
 - Manual check in Snowsight: hint disappears, Home shows data, no CSP errors — web/ST.md:45-50.
 
 ## Roles and grants needed

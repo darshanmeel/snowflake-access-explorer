@@ -15,7 +15,7 @@ flowchart LR
   SQL[sql/: setup, snapshot, streamlit deploy] --> SF
 ```
 
-- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:508` snapshot, `access.py:883` live, `access.py:1545` tidy, `access.py:3868` duck, `access.py:5789` checks, `access.py:4944` activity), cache (`cache.py`, parts `cache.py:429` parted), server (`server.py:2541` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:22` st_react.app).
+- Boxes: Snowflake side (`sql/1_setup.sql`), data and rules (`access.py:508` snapshot, `access.py:883` live, `access.py:1545` tidy, `access.py:3869` duck, `access.py:5790` checks, `access.py:4945` activity), cache (`cache.py`, parts `cache.py:429` parted), server (`server.py:2541` make_app), two front ends (`web/src/App.tsx:256` VIEWS, `app.py:22` st_react.app).
 - Login: `sf.connect()` (`sf.py:19-43`) uses the app session inside Snowflake, else a key pair or browser SSO from `.env`; PrivateLink keeps the plain `SNOWFLAKE_ACCOUNT` and adds `SNOWFLAKE_HOST` (the `<org>-<account>.privatelink` host, passed as `host=`) plus private DNS (`sf.py:28-29`, `README.md:186-201`; `processes/privatelink-login.md`).
 - Hard rule: the app never runs GRANT / REVOKE / DDL (`CLAUDE.md`, see `documents/claude-md.md`).
 
@@ -52,9 +52,7 @@ flowchart LR
 
 ## Code vs docs
 
-- Business hours: README.html calls `WORK_HOURS` local time shifted from UTC by the Activity tab's slider (`README.html:758`), and the tab does shift them (`web/src/pages/Activity.tsx:22-26`); the comments at `access.py:104`, `web/src/api/types.ts:1252` and the `offOf` doc line (`web/src/pages/Activity.tsx:24`) still say UTC hours.
-
-- Reload and progress: `web/API.md:236-251` says `page` / `rebuild` drop the cache and answer `{ok, result, message}`, and `/api/progress` gives `{running, view, lines}`; the code reads every part again in the background under its own key and swaps it in when built, answers `{ok, started, job, ...}`, adds `job` to `/api/progress`, and answers 409 `shared_loading` to a page while a load runs (`server.py:2354-2421`, `server.py:136`, `server.py:185-186`). Code is the fact (conflict, `documents/web-api-md.md`).
+- None open: README.html, web/API.md and the code comments agree on the checked points (business hours local, shifted from UTC by the Activity slider: `README.html:758`, `access.py:104`, `web/src/api/types.ts:1252`; reload / progress background refresh: `web/API.md:236-257`, `server.py:2354-2421`).
 
 ## Known gaps
 

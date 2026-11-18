@@ -22,10 +22,10 @@ flowchart LR
 
 ## test_access.py
 - Forces `FAKE=1` — test_access.py:14.
-- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:2164-2183.
-- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1386-1404.
-- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:572, CLAUDE.md:22; `test_pages` — test_access.py:904; `test_sis_upload` — test_access.py:937; `test_counted` — test_access.py:1156; `test_readme_rules` (README.html generated parts up to date) — test_access.py:2091-2101.
-- Missing data never fails: `test_missing_names`, `test_empty_reads`, `test_none_fuzz` (test_access.py:783-901); the DuckDB walk equals the Python walk: `test_duck_reach` (test_access.py:1127-1144).
+- Runs every `test_` function, reports all failures, then reruns itself with `ROLE_PREFIXES=ZF_,ZT_` (drops `BUILD_ROLES`) — test_access.py:2168-2187.
+- `test_perf`: budgets × `PERF_SCALE` (default 1), best of runs; `PERF=0` skips — test_access.py:1390-1408.
+- Named tests: `test_live` (live() in step with SP_ACCESS_SNAPSHOT) — test_access.py:572, CLAUDE.md:22; `test_pages` — test_access.py:908; `test_sis_upload` — test_access.py:941; `test_counted` — test_access.py:1160; `test_readme_rules` (README.html generated parts up to date) — test_access.py:2095-2105.
+- Missing data never fails: `test_missing_names`, `test_empty_reads`, `test_none_fuzz` (test_access.py:783-905); the DuckDB walk equals the Python walk: `test_duck_reach` (test_access.py:1131-1148).
 
 ## test_sql.py
 - Forces `FAKE=1`, imports `duckdb` (so requirements-web.txt / dev needed) — test_sql.py:13-15, requirements-dev.txt:3.

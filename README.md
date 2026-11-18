@@ -136,10 +136,10 @@ With `SOURCE=direct` the shared data is read only when you click **Load shared d
 once), so **My access** works without waiting for it. Without ACCOUNT_USAGE it reads with one `SHOW` per role, sent 16 at a
 time (`SHOW_THREADS`; the heavy ACCOUNT_USAGE reads `WORKERS` at a time); `IMPORTED PRIVILEGES` on database `SNOWFLAKE` makes it one fast query. The side menu's
 **Incomplete** box says what could not be read and which grant fixes it. While it reads, the page shows what the app is
-doing line by line (each read, `SHOW` counts, `[w2]` = worker 2, a timeout with the `STATEMENT_TIMEOUT` to set), in both
-versions.
+doing line by line (each read, `SHOW` counts, `[w2]` = worker 2, a timeout with the `STATEMENT_TIMEOUT` to set, and every 60 s a line saying what is still running), in both
+versions and in the terminal. The first load locks the page until the data is there; the **SQL** button shows once there is data.
 
-Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The top bar shows **Data from &lt;time&gt;**; **↻** (Read Snowflake again) reads it again; with `objects`, while the last OK run is the one held, one small query keeps that copy. The side menu's **Data from** box says where the data came from, how long it is kept and where its [SQL copy](#query-the-data-with-sql-duckdb) is. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
+Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The top bar shows **Data from &lt;time&gt;**; **↻** (Read Snowflake again) reads it again; with `objects`, while the last OK run is the one held, one small query keeps that copy. Locally **↻** and **Rebuild snapshot** run in the background: the pages keep the data they have, the top bar shows **Reading again: &lt;last line&gt;** (click for the log), and the new read replaces it only once built; a failed read keeps the old one. Streamlit answers when the read is done. The rule results of the shared data are kept in `.cache/<key>.rules.pkl`, so a restart checks the rules again only when the data, the settings or `access.py` changed. The side menu's **Data from** box says where the data came from, how long it is kept and where its [SQL copy](#query-the-data-with-sql-duckdb) is. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
 
 ### 1. Install once (PowerShell; needs Python 3.10+ and git, no Node or npm)
 ```
@@ -222,7 +222,7 @@ SNOWFLAKE_HOST=<org>-<account>.privatelink.snowflakecomputing.com
 | `CSV` | unset (on) | `0` = no CSV export: every CSV button is hidden and the CSV downloads are refused, locally and inside Snowflake. Whoever can open the app still reads what is on screen, so who gets `APP_ROLE` or the server is the real control |
 | `KEEP_BUILT` | `3` | Data sets kept built in memory besides the loaded one (shared, My access, `builtin=1`): switching back costs no rebuild |
 
-More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, `MAX_PATHS`, ...): README.html. Path counts are exact and counted over the role graph; full chains are listed up to `MAX_PATHS`, so big accounts stay quick (README.html > Limits).
+More settings (`ROLE_PREFIXES`, `DORMANT_DAYS`, `MAX_PATHS`, ...): README.html. Path counts are exact and counted over the role graph; full chains are listed up to `MAX_PATHS`, so big accounts stay quick (README.html > Limits). The rule checks over every user and role count role paths in an in-memory DuckDB (5,000 roles and 5,000 users: about 13 s instead of 161 s in Python); without `duckdb`, or when a role loop or `MAX_HOPS` makes the counted walk differ, Python walks.
 
 ### Query the data with SQL (DuckDB)
 After each read from Snowflake (shared data and My access) the app also writes what it read to `.cache/access.duckdb`, a

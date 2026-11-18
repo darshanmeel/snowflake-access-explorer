@@ -32,11 +32,11 @@ flowchart LR
 - Mapping key -> table: `TABLES` / `OPTIONAL` `access.py:67-68`, `SELECT * EXCLUDE (RUN_ID) FROM {where}.TBL_ACCESS_{t}` `access.py:543`.
 - No producer's rows carry RUN_ID: `snapshot()` reads `SELECT * EXCLUDE (RUN_ID)` (`access.py:543`); `live()` / `mine()` rows have no RUN_ID key (`access.py:923-956,483-484`).
 - `ACTIVITY=0`: `OBJECT_USE` and `ACTIVITY` are `[]` and `run.SOURCES` say `SKIPPED` (`access.py:567-568`, `access.py:1253`, `access.py:1265`).
-- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:551`; `act_state()` then explains it (`access.py:4934-4936`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:143-145`, `access.py:1255-1265`).
+- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:551`; `act_state()` then explains it (`access.py:4935-4937`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:143-145`, `access.py:1255-1265`).
 
-## Shape guaranteed by `tidy()` (`access.py:1545-1597`)
+## Shape guaranteed by `tidy()` (`access.py:1545-1598`)
 
-- Once per data set and code version is the intent: tidy() returns early when d["_tidy"] equals tidy_stamp() (`access.py:1551`); nothing in the repo sets `_tidy`, so it runs on every build() that is not cached (`access.py:1452`; not verified).
+- Once per data set and code version: tidy() returns early when d["_tidy"] equals tidy_stamp() (`access.py:1551`) and sets `_tidy` before it returns (`access.py:1597`), so a rebuild of the same set (restart, What if) skips the row scan; `test_missing_names` checks it (`test_access.py:791-794`).
 - `run` is a dict with dict `SOURCES` and `NOTES`; every table key is a list of dicts with every column of `sql/1_setup.sql` (`COLUMNS`, `access.py:70-90`; missing columns None; `GRANT_OPTION`, `GRANTED_BY` filled without a note, `QUIET` `access.py:1507`); an `OPTIONAL` table that is None stays None.
 - A missing table -> `[]`, its source `UNAVAILABLE`, a note (`access.py:1558-1564`).
 - Rows without the `NEED` columns (`access.py:1508-1511`), a parseable DAY / WEEK or an action READ / WRITE / DDL (`usable`, `access.py:1536-1542`) are left out; NOTES `missing_names` counts them with up to 3 short examples (`access.py:1584-1593`).
