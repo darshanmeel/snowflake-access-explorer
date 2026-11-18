@@ -163,6 +163,10 @@ def read_shared(key=KEY):
     """The shared data from its source, its reads kept as parts of key (refresh: a key of its own until it is built)."""
     if MODE == "fake":
         return a.fake()
+    if DIRECT and cache.local() and (OFFLINE or cache.parts_of(key)):  # the SQL lines below then name saved files too
+        a.say(f"Building from the saved reads in {cache.parts_dir(key)}: Snowflake is not connected, each SQL line below "
+              "names the saved result it loads" if OFFLINE else
+              f"Reads already saved in {cache.parts_dir(key)} are loaded, not sent to Snowflake again")
     if DIRECT:
         old = cache.old(key, KEY)  # kept with the parts: a resumed load asks for the same activity days
         d = with_query(lambda q: a.live(q, old.get("ACTIVITY"), old.get("OBJECT_USE")), key)
