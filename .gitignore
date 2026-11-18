@@ -12,3 +12,6 @@ sis/
 
 # code review reports (darshan-singh-meel-review): local output, not committed
 /reviews/
+
+# agent worktrees (local only)
+/.claude/worktrees/
