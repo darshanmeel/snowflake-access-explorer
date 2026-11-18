@@ -4,11 +4,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { ChangeEvent, ChangesPage, CheckPage, ListItem, WhoPage } from "../api/types";
-import { Card, EmptyState, FilterChips, FindingChip, GrantLink, Tabs } from "../components";
+import { Card, EmptyState, FilterChips, FindingChip, GrantLink, Pager, Tabs } from "../components";
 import { useApp } from "../ctx";
 import { useSaved } from "./changeplan";
 import { Head, Load, Pick, Sel } from "./common";
-import { answerOf, ICON, keep, question, recheck, watches, watchId, type Filter, type Watch, type WatchKind } from "./history";
+import { answerOf, ICON, question, recheck, watches, watchId, type Filter, type Watch, type WatchKind } from "./history";
+import { PAGE } from "./paged";
 
 const CTA: Record<string, string> = { object: "See who", access: "Open", rules: "Fix" };
 
@@ -26,19 +27,21 @@ export function ChangesPageView() {
   );
 }
 
-/** The feed, for every subject or only one (History tab of a person, role or object). */
+/** The feed, for every subject or only one (History tab of a person, role or object). The server filters (f) and
+ * pages it (ev_at, limit): a big change has tens of thousands of events. */
 export function ChangeFeed({ subject }: { subject?: string }) {
   const c = useApp();
-  const s = useApi<ChangesPage>("changes", { view: c.view, subject });
+  const s = useApi<ChangesPage>("changes", { view: c.view, subject, f: c.params.f, offset: c.params.ev_at, limit: c.params.limit });
   return <Load s={s}>{(d) => <Feed d={d} />}</Load>;
 }
 
 function Feed({ d }: { d: ChangesPage }) {
   const c = useApp();
-  const [f, setF] = useState<Filter>((c.params.f as Filter) ?? "all");
+  const f = (d.f ?? "all") as Filter;
+  const setF = (k: Filter) => c.set({ f: k === "all" ? null : k, ev_at: null });
   if (!d.available) return <Card><EmptyState title="Nothing to compare with yet" art="wait">{d.reason}</EmptyState></Card>;
   const n = d.counts!;
-  const shown = d.events.filter((e) => keep(e, f));
+  const shown = d.events, size = Number(c.params.limit) || PAGE;
   return (
     <Card>
       <p className="ae-answer">{d.subject ? <>For <span className="ae-mono">{d.subject}</span>: {d.text?.replace(/^Since/, "since")}</> : d.text}</p>
@@ -47,7 +50,7 @@ function Feed({ d }: { d: ChangesPage }) {
         { key: "all", label: "All", count: n.all }, { key: "gain", label: "Gained access", count: n.gain },
         { key: "lose", label: "Lost access", count: n.lose }, { key: "risk", label: "New findings", count: n.risk },
         { key: "sensitive", label: "Sensitive only", count: n.sensitive }]} />
-      {!shown.length ? <EmptyState title={d.events.length ? "Nothing under this filter" : "No changes"} art={d.events.length ? "search" : "clear"}>{d.events.length ? "Pick another filter." : `Nothing changed since ${d.before}.`}</EmptyState> : (
+      {!shown.length ? <EmptyState title={n.all ? "Nothing under this filter" : "No changes"} art={n.all ? "search" : "clear"}>{n.all ? "Pick another filter." : `Nothing changed since ${d.before}.`}</EmptyState> : (
         <div className="ae-feed">
           <div className="ae-feed-day">{d.before} → {d.now}</div>
           {shown.map((e) => <Item key={e.id} e={e} onOpen={() => c.nav(e.link.page, e.link.params)} onRule={(num) => c.nav("rules", { rule: num })}
@@ -55,6 +58,8 @@ function Feed({ d }: { d: ChangesPage }) {
               e.edge && id === e.edge.target && e.edge.target_kind === "object" ? { name: id } : (e.edge && id === e.edge.source && e.edge.source_kind === "user") ? { user: id } : { role: id })} />)}
         </div>
       )}
+      {d.events_total > size && <Pager at={Math.floor(d.offset / size)} size={size} total={d.events_total} sizes={[25, 50, 100, 250]}
+        onPage={(k) => c.set({ ev_at: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), ev_at: null })} />}
       <p className="ae-muted ae-foot">The difference between two snapshots the app read; "by" is GRANTED_BY from the grant data. Nothing is written to Snowflake.</p>
     </Card>
   );

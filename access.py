@@ -4,12 +4,14 @@ Data: fake() (layered RBAC model), snapshot() (the TBL_ACCESS_ tables filled by 
 or mine() (the logged-in user's own access, live). All return the same dict; build() turns it into the lookups below.
 """
 import atexit
+import bisect
 import contextvars
 import difflib
 import fnmatch
 import functools
 import gc
 import hashlib
+import heapq
 import itertools
 import json
 import operator
@@ -5857,11 +5859,12 @@ def restore(saved):
 
 
 @contextmanager
-def loaded(d):
-    """The lookups of data set d inside the block; the loaded ones, with their cached results, are put back after."""
+def loaded(d, key=None):
+    """The lookups of data set d inside the block; the loaded ones, with their cached results, are put back after.
+    key: d's build key, so a set still kept built (the one a refresh replaced) is not built and checked again."""
     saved, was = state(), dict(built)  # the build below stores the loaded set in built: put built back too
     try:
-        build(d, builtin=source.get("builtin", False))
+        build(d, key, source.get("builtin", False))
         yield
     finally:
         restore(saved)
@@ -5871,10 +5874,10 @@ def loaded(d):
 
 def facts():
     """What a diff compares, once per data set: of {user: granted roles (PUBLIC too)}, kids {role: roles it holds},
-    own {role: own_tables()} (a user's reach is its roles' reach, side_reach(): no (user, object) pair is built per
-    user; fact_level() gives one), grants {(grantee, privilege, granted on, object): granted_by} (role links to admin
+    own {role: own_tables()} (a user's reach is its roles' reach: no (user, object) pair is built per user;
+    fact_level() gives one), grants {(grantee, privilege, granted on, object): granted_by} (role links to admin
     roles left out, as build() does), user_roles {(role, user): granted_by}, findings {key: finding}, status {user:
-    status}, sensitive objects, run, memo (side_reach results)."""
+    status}, sensitive objects, run, memo (side_below, side_on, side_tables results)."""
     def make():
         d = source["data"]
         gs = {(g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"]): g.get("GRANTED_BY") for g in d["GRANT"]
@@ -5891,10 +5894,8 @@ def side_reach(side, r):
     """table_reach(r) from facts() side (its lookups need not be loaded), once per side and role."""
     m = side["memo"]
     if r not in m:
-        seen, todo, got = {r}, [r], {}
-        while todo:
-            todo = [x for h in todo for x in side["kids"].get(h, ()) if x not in seen and not seen.add(x)]
-        for h in seen:
+        got = {}
+        for h in side_below(side, (r,)):
             for o, (pk, adm) in side["own"].get(h, {}).items():
                 e = got.get(o)
                 got[o] = (pk, adm) if e is None else (pk_union(e[0], pk), e[1] or adm)
@@ -5902,48 +5903,85 @@ def side_reach(side, r):
     return m[r]
 
 
+def side_tables(side, r):
+    """Tables and views role r reaches in facts() side (its lookups need not be loaded), once per side and role."""
+    m = side["memo"]
+    if ("tables", r) not in m:
+        m[("tables", r)] = set().union(*(side["own"].get(h, {}).keys() for h in side_below(side, (r,))))
+    return m[("tables", r)]
+
+
+def side_on(side):
+    """{table or view: roles holding a grant on it} of facts() side, once per side."""
+    m = side["memo"]
+    if ("on",) not in m:
+        on_ = m[("on",)] = {}
+        for h, objs in side["own"].items():
+            for x in objs:
+                on_.setdefault(x, []).append(h)
+    return m[("on",)]
+
+
+def side_below(side, rs):
+    """Roles rs hold in facts() side, rs included, once per side and role tuple (users share them)."""
+    m = side["memo"]
+    if ("below", rs) not in m:
+        seen = set(rs)
+        todo = list(seen)
+        while todo:
+            todo = [x for h in todo for x in side["kids"].get(h, ()) if x not in seen and not seen.add(x)]
+        m[("below", rs)] = seen
+    return m[("below", rs)]
+
+
 def fact_level(side, rs, o):
-    """(level, privileges) on table or view o of a user holding roles rs in facts() side, as access_objects() gives
-    them; level None when no data grant."""
-    pk, adm = frozenset(), False
-    for r in rs:
-        e = side_reach(side, r).get(o)
-        if e:
+    """(level, privileges) on table or view o of a user holding roles rs (a tuple) in facts() side, as access_objects()
+    gives them; level None when no data grant. Over o's few holders, not every table rs reaches: a diff asks this for
+    millions of (user, object) pairs."""
+    pk, adm, got = frozenset(), False, side_below(side, rs)
+    for h in side_on(side).get(o, ()):
+        if h in got:
+            e = side["own"][h][o]
             pk, adm = pk_union(pk, e[0]), adm or e[1]
     return table_level(pk, adm)
 
 
 def moved(a_, b_):
-    """(user, object) pairs a_ gives a higher level than b_ (or b_ none), users in a_'s order, objects sorted. Only
-    roles whose own grants or held roles differ, and the roles above them, can reach differently: a user whose
-    granted roles stay and miss those is not looked at."""
-    rank, sides = LEVELS.index, (a_, b_)
-    dirty = {r for k in ("own", "kids") for r in a_[k].keys() | b_[k].keys() if a_[k].get(r) != b_[k].get(r)}
-    up, todo = set(dirty), list(dirty)
-    parents = [{} for _ in sides]
-    for i, x in enumerate(sides):
-        for r, ks in x["kids"].items():
-            for k in ks:
-                parents[i].setdefault(k, []).append(r)
-    while todo:
-        todo = [q for r in todo for ps in parents for q in ps.get(r, ()) if q not in up and not up.add(q)]
-    ch, memo, out = {}, {}, []
+    """(user, object) pairs a_ gives a higher level than b_ (or b_ none), users in a_'s order, objects sorted."""
+    return [(u, o) for u, objs, _ in moved_blocks(a_, b_) for o in objs]
 
-    def changed(r):  # objects r reaches differently
-        if r not in ch:
-            x, y = side_reach(a_, r), side_reach(b_, r)
-            ch[r] = {o for o in x.keys() | y.keys() if x.get(o) != y.get(o)}
-        return ch[r]
+
+def moved_blocks(a_, b_):
+    """moved() without one pair per (user, object): [(user, objects, levels)], objects sorted and levels their a_
+    level (LEVELS index, bytes), one list shared by the users with the same granted roles on both sides. Only roles
+    whose own grants or held roles differ (dirty) change what the roles above them reach, and only on the objects they
+    differ on: a user's shared roles are compared on those objects of the dirty roles they hold. A role only b_ grants
+    cannot raise a_'s level (a level only grows with privileges); a_'s extra roles are compared on all they reach.
+    Comparing more objects than that changes nothing: the levels decide."""
+    rank = LEVELS.index
+    dirty = {r for k in ("own", "kids") for r in a_[k].keys() | b_[k].keys() if a_[k].get(r) != b_[k].get(r)}
+    delta, memo, objs_of, out = {}, {}, {}, []
+    for d in dirty:  # the objects d reaches differently through its own grants or a role it holds on one side only
+        x, y = a_["own"].get(d, {}), b_["own"].get(d, {})
+        kx, ky = set(a_["kids"].get(d, ())), set(b_["kids"].get(d, ()))
+        delta[d] = set().union({o for o in x.keys() | y.keys() if x.get(o) != y.get(o)},
+                               *(side_tables(a_, k) for k in kx - ky), *(side_tables(b_, k) for k in ky - kx))
     for u, rs in a_["of"].items():
         k = (rs, b_["of"].get(u, ()))
         if k not in memo:
-            both = set(rs) & set(k[1])
-            objs = set().union(*(changed(r) for r in both & up),
-                               *(side_reach(a_, r).keys() for r in rs if r not in both),
-                               *(side_reach(b_, r).keys() for r in k[1] if r not in both))
-            memo[k] = [o for o in sorted(objs) if (lv := fact_level(a_, rs, o)[0])
-                       and (not (was := fact_level(b_, k[1], o)[0]) or rank(lv) > rank(was))]
-        out += [(u, o) for o in memo[k]]
+            had = set(k[1])
+            both = tuple(r for r in rs if r in had)
+            if both not in objs_of:
+                ds = (side_below(a_, both) | side_below(b_, both)) & dirty
+                objs_of[both] = set().union(*(delta[d] for d in ds))
+            got = []
+            for o in sorted(objs_of[both].union(*(side_tables(a_, r) for r in rs if r not in had))):
+                lv = fact_level(a_, rs, o)[0]
+                if lv and (not (was := fact_level(b_, k[1], o)[0]) or rank(lv) > rank(was)):
+                    got.append((o, rank(lv)))
+            memo[k] = ([o for o, _ in got], bytes(v for _, v in got)) if got else None
+        if memo[k]:
+            out.append((u, *memo[k]))
     return out
 
 
@@ -5995,25 +6033,50 @@ def names_text(xs):
     return ", ".join(xs) if len(xs) <= 2 else f"{xs[0]}, {xs[1]} and {plural(len(xs) - 2, 'other')}"
 
 
-def impact_text(pairs, top, gain, sensitive):
-    """'ANALYST_01, ANALYST_02 can now read SALES.MART.VW_CUSTOMER', from the (user, object) pairs that changed."""
-    if not pairs:
+def impact_text(us, objs, top, gain, sensitive):
+    """'ANALYST_01, ANALYST_02 can now read SALES.MART.VW_CUSTOMER', from the users and objects whose access changed."""
+    if not us:
         return ("Nobody gains new access: everyone it reaches had it another way" if gain else
                 "Nobody loses access: they keep it another way")
-    us, objs = {u for u, _ in pairs}, {o for _, o in pairs}
     k = sum(o in sensitive for o in objs)
     what = next(iter(objs)) if len(objs) == 1 else f"{len(objs)} objects" + f" ({k} sensitive)" * bool(k)
     return f"{names_text(us)} {'can now' if gain else 'can no longer'} {VERB[top]} {what}"
 
 
-def grant_events(keys, links, gain, pairs, fs, by):
-    """One event per grant added (gain) or removed, on the lookups of the data set that has it: the (user, object)
-    pairs that changed through it and the findings it started (gain) or ended (fs). links: keys are (role, user)."""
-    out = []
+def grant_events(keys, links, gain, blocks, fs, by):
+    """One event per grant added (gain) or removed, on the lookups of the data set that has it: the users and objects
+    whose access changed through it (of moved_blocks() blocks), the highest level among them (top) and the findings it
+    started (gain) or ended (fs). links: keys are (role, user). blocks and fs are indexed once: a big change has
+    thousands of events and millions of (user, object) pairs."""
+    mine, fx_of, below_, out = {u: (objs, lvs) for u, objs, lvs in blocks}, {}, {}, []
+    for i, f in enumerate(fs):
+        for e in {f["edge"]} | {(e["grantee"], e["to"], e["priv"]) for e in f["edges"]}:
+            fx_of.setdefault(e, []).append(i)
+
+    def reach(role):  # every object granted to role or a role it holds
+        if role not in below_:
+            below_[role] = {x for r in bfs([role]) for _, _, x in granted.get(r, [])}
+        return below_[role]
+
+    def hits(us, objs):  # users, objects and highest level of the changed pairs of a user in us and an object in objs
+        who, what, top = [], set(), -1
+        for u in (us if len(us) < len(mine) else [u for u in mine if u in us]):
+            if u not in mine:
+                continue
+            os_, lvs = mine[u]
+            if len(objs) < len(os_):
+                ix = [i for o in objs if (i := bisect.bisect_left(os_, o)) < len(os_) and os_[i] == o]
+            else:
+                ix = [i for i, o in enumerate(os_) if o in objs]
+            if ix:
+                who.append(u)
+                what.update(os_[i] for i in ix)
+                top = max(top, max(lvs[i] for i in ix))
+        return who, what, LEVELS[top] if top >= 0 else "read"
     for key in keys:
         if links:
             role, u = key
-            us, objs = {u}, {x for r in bfs([role]) for _, _, x in granted.get(r, [])}
+            us, objs = {u}, reach(role)
             text = f"{u} was granted role {role}" if gain else f"Role {role} was revoked from {u}"
             edge, subj, who = (u, role, None), [role], [u]
             ends = ("user", role_kind(role))
@@ -6021,14 +6084,14 @@ def grant_events(keys, links, gain, pairs, fs, by):
             r, pv, on_, o = key
             link = on_ in ROLE_ON and pv == "USAGE"
             us = ups(r)[1]
-            objs = {x for q in bfs([o]) for _, _, x in granted.get(q, [])} if link else {o}
+            objs = reach(o) if link else {o}
             text = (f"{r} was granted role {o}" if link else f"{r} was granted {pv} on {o}") if gain else \
                 (f"Role {o} was revoked from {r}" if link else f"{pv} on {o} was revoked from {r}")
             edge, subj, who = (r, o, None if link else pv), [r, o], []
             ends = (role_kind(r), role_kind(o) if link else "object")
-        fx = [f for f in fs if f["edge"] == edge or any((e["grantee"], e["to"], e["priv"]) == edge for e in f["edges"])]
-        out.append(dict(edge=edge, ends=ends, pairs=[(u, o) for u, o in pairs if u in us and o in objs], subjects=subj, users=who,
-                        by=by.get(key), findings=fx, text=text))
+        people, objects, top = hits(us, objs)
+        out.append(dict(edge=edge, ends=ends, people=sorted(people), objects=objects, top=top, subjects=subj, users=who,
+                        by=by.get(key), findings=[fs[i] for i in fx_of.get(edge, ())], text=text))
     return out
 
 
@@ -6040,6 +6103,7 @@ def event_counts(events):
 
 
 SENS_RULES = {"6", "7", "10", "11", "15", "22"}  # rules about sensitive data
+EVENT_NAMES = 200  # people and objects a What changed event lists: one grant on a big account reaches every user
 
 
 def side_objects(side):
@@ -6047,20 +6111,21 @@ def side_objects(side):
     return {k[3] for k in side["grants"] if k[2] not in ROLE_ON}
 
 
-def diff(prev, kept=None):
+def diff(prev, kept=None, key=None, pairs=True):
     """Screen 14: what changed from data set prev to the loaded one. events [dict(id, kind gain | lose | user | risk |
     fixed, text, impact, by (GRANTED_BY, when known), edge (gain / lose: the grant as source, target, their kinds,
     privilege None for a role link, added), sensitive, findings [dict(num, severity, title, fixed)], link
     (page, params), subjects (every node it is about: uid() for users, so a user and a same-named role never match),
     people, objects)], counts per filter, new / fixed / high
-    findings, severity (new and fixed findings per severity), gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times. kept: prev's findings, when kept from its own load."""
+    findings, severity (new and fixed findings per severity), gained and lost (user, object) pairs, people who gained a sensitive object, and the two run times. kept: prev's findings, when kept from its own load; key: prev's build key (see loaded);
+    pairs=False: gained and lost None (millions on a big change). An event names its first EVENT_NAMES people and
+    objects; its impact counts them all."""
     now = facts()
-    rank = LEVELS.index
-    with loaded(prev):
+    with loaded(prev, key):
         if kept is not None:  # prev's findings from when it was the loaded data set: not checked again
             memo.setdefault("findings", kept)
         old = facts()
-        gained, lost = moved(now, old), moved(old, now)
+        gained, lost = moved_blocks(now, old), moved_blocks(old, now)
         n3, o3 = {k[:3] for k in now["findings"]}, {k[:3] for k in old["findings"]}  # same rule, grantee: same finding
         fixed = [f for k, f in old["findings"].items() if k not in now["findings"] and k[:3] not in n3]
         new = [f for k, f in now["findings"].items() if k not in old["findings"] and k[:3] not in o3]
@@ -6080,19 +6145,18 @@ def diff(prev, kept=None):
         objs_of = side_objects(side) if xs else set()  # once per side, not per event
         for x in xs:
             told.update(id(f) for f in x["findings"])
-            objs, target = sorted({o for _, o in x["pairs"]}), x["edge"][1]
-            top = max((fact_level(side, side["of"][u], o)[0] for u, o in x["pairs"]), key=rank, default="read")
+            target, ppl = x["edge"][1], x["people"][:EVENT_NAMES]
+            objs = sorted(x["objects"]) if len(x["objects"]) <= EVENT_NAMES else heapq.nsmallest(EVENT_NAMES, x["objects"])
             (src, tgt, pv), (sk, tk) = x["edge"], x["ends"]
             events.append(dict(kind="gain" if gain else "lose", text=x["text"], by=x["by"],
                                edge=dict(source=src, source_kind=sk, target=tgt, target_kind=tk, privilege=pv, added=gain),
-                               impact=impact_text(x["pairs"], top, gain, side["sens"]),
-                               sensitive=target in side["sens"] or any(o in side["sens"] for o in objs),
+                               impact=impact_text(x["people"], x["objects"], x["top"], gain, side["sens"]),
+                               sensitive=target in side["sens"] or not side["sens"].isdisjoint(x["objects"]),
                                findings=list({f["num"]: chip(f, gain) for f in x["findings"]}.values()),
                                link=dict(page="object", params=dict(name=target)) if target in objs_of else
                                dict(page="access", params=dict(role=target)),
-                               subjects=sorted(set(x["subjects"]) | {uid(u, True) for u in x["users"]}
-                                               | {uid(u, True) for u, _ in x["pairs"]} | set(objs)),
-                               people=sorted({u for u, _ in x["pairs"]}), objects=objs))
+                               subjects=sorted(set(x["subjects"]) | {uid(u, True) for u in x["users"] + ppl} | set(objs)),
+                               people=ppl, objects=objs))
     for u in sorted(set(now["status"]) | set(old["status"])):
         was, st = old["status"].get(u), now["status"].get(u)
         if was == st:
@@ -6125,10 +6189,13 @@ def diff(prev, kept=None):
     for i, e in enumerate(events):
         e["id"] = str(i)
     sev = lambda fs: {v: sum(SEVERITY.get(f["num"], "Low") == v for f in fs) for v in ("Critical", "High", "Medium", "Low")}
+    now["memo"].clear()  # the walks of every role and object looked at: not kept with the loaded data set
     return dict(events=events, counts=event_counts(events), new=len(new), fixed=len(fixed),
                 severity=dict(new=sev(new), fixed=sev(fixed)),
-                high=sum(SEVERITY.get(f["num"]) in ("Critical", "High") for f in new), gained=gained, lost=lost,
-                sens_gained=sorted({u for u, o in gained if o in now["sens"]}),
+                high=sum(SEVERITY.get(f["num"]) in ("Critical", "High") for f in new),
+                gained=[(u, o) for u, objs, _ in gained for o in objs] if pairs else None,
+                lost=[(u, o) for u, objs, _ in lost for o in objs] if pairs else None,
+                sens_gained=sorted({u for u, objs, _ in gained if not now["sens"].isdisjoint(objs)}),
                 runs=dict(before=str(old["run"].get("FINISHED_AT"))[:16], now=str(now["run"].get("FINISHED_AT"))[:16]))
 
 

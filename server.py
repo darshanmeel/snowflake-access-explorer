@@ -2400,10 +2400,16 @@ def usage_page(p, view):
     return out | a.granted_used(name, user, days)
 
 
+NAMES = 20  # people, objects and subjects sent per What changed event
+
+
 def changes_page(p, view):
     """Screen 14: the loaded snapshot against the previous one (demo: a.fake_previous(); else the copy cache.py kept
-    in .cache/ when a refresh replaced it). subject= keeps the events about one user, role or object (a node id: a.uid() for users)."""
-    out = dict(view=view, subject=p.get("subject") or None, available=False, events=[], counts=None)
+    in .cache/ when a refresh replaced it). subject= keeps the events about one user, role or object (a node id: a.uid() for users).
+    f= (all, gain, lose, risk, sensitive) keeps one filter's events; they come one page at a time (offset=, limit=:
+    PAGE, 0 every one), with events_total: a big change has tens of thousands. An event sends its first NAMES people,
+    objects and subjects (plus subject=): one change on a big account names every user, and no page lists them."""
+    out = dict(view=view, subject=p.get("subject") or None, available=False, events=[], events_total=0, offset=0, counts=None)
     if view == "mine":
         return out | dict(reason="What changed compares two shared snapshots: open it on the shared snapshot.")
     if MODE == "fake":
@@ -2418,20 +2424,46 @@ def changes_page(p, view):
                 "or Rebuild snapshot) brings a new one. Refresh after the next snapshot run, then come back."
                 if cache.HOURS > 0 else "CACHE_HOURS=0 keeps nothing on disk, so there is no earlier snapshot."))
         prev = got[0]
-    d = a.cached(("diff", cache.run_of(prev)), lambda: a.diff(prev, prev_findings(prev)))
+    d = diff_of(prev)
     ev = [e for e in d["events"] if not out["subject"] or out["subject"] in e["subjects"]]
     n, before = a.event_counts(ev), d["runs"]["before"]
     sub, mine = out["subject"], out["subject"] and a.node_kind(out["subject"]) == "user"  # subject= is a node id
-    gained = [u for u in d["sens_gained"]
-              if not sub or (u == a.node_name(sub) if mine else any(u in e["people"] for e in ev))]
+    seen = set().union(*(e["people"] for e in ev)) if sub and not mine else set()
+    gained = [u for u in d["sens_gained"] if not sub or (u == a.node_name(sub) if mine else u in seen)]
     text = (f"Since the snapshot of {before}: {plural(n['all'], 'change')}"
             + (f", {plural(d['high'], 'new high finding')}" if d["high"] and not out["subject"] else "")
             + (f", {len(gained)} {'person' if len(gained) == 1 else 'people'} gained sensitive access" if gained else "") + ".")
-    ev = [e | dict(edge=e["edge"] | dict(source_kind=norm(e["edge"]["source_kind"]), target_kind=norm(e["edge"]["target_kind"])))
-          if e.get("edge") else e for e in ev]
-    return out | dict(available=True, events=ev, counts=n, text=text, before=before,
+    f = p.get("f") if p.get("f") in ("gain", "lose", "risk", "sensitive") else "all"
+    shown = [e for e in ev if f == "all" or (e["kind"] == f if f in ("gain", "lose") else e["sensitive"] if f == "sensitive"
+                                              else any(not x["fixed"] for x in e["findings"]))]
+    sl, off = window(p, "offset", len(shown))
+    short = lambda xs: xs[:NAMES] + ([sub] if sub and sub not in xs[:NAMES] and sub in xs else [])
+    ev = [e | dict(people=short(e["people"]), objects=short(e["objects"]), subjects=short(e["subjects"]))
+          | (dict(edge=e["edge"] | dict(source_kind=norm(e["edge"]["source_kind"]), target_kind=norm(e["edge"]["target_kind"])))
+             if e.get("edge") else {}) for e in shown[sl]]
+    return out | dict(available=True, events=ev, events_total=len(shown), offset=off, f=f, counts=n, text=text, before=before,
                       now=d["runs"]["now"], new=d["new"], fixed=d["fixed"], high=d["high"],
                       severity=None if out["subject"] else d["severity"])
+
+
+def diff_of(prev):
+    """a.diff() of the loaded data set against prev, without its (user, object) pairs, once per pair of data sets:
+    a refresh makes it (renew), and .cache/<key>.diff.pkl keeps it across restarts while both data sets, the
+    settings, access.py and this file are the ones that made it."""
+    def make():
+        stamp = (shared_key(prev), shared_key(a.source["data"]), a.source.get("builtin"), a.rules_stamp(), SERVER_STAMP)
+        f = cache.file(KEY).with_suffix(".diff.pkl") if MODE == "snowflake" and cache.local() else None
+        got = cache.load(f) if f and f.is_file() else None
+        if isinstance(got, dict) and got.get("stamp") == stamp:
+            return got["diff"]
+        with a.step("Comparing with the previous snapshot"):
+            d = a.diff(prev, prev_findings(prev), shared_key(prev), pairs=False)
+        if f:
+            tmp = f.with_suffix(".tmp")
+            tmp.write_bytes(pickle.dumps(dict(stamp=stamp, diff=d)))
+            tmp.replace(f)
+        return d
+    return a.cached(("diff", cache.run_of(prev)), make)
 
 
 # ---------- compare (screen 9) ----------
@@ -3172,10 +3204,25 @@ def renew(what):
                         "Click again within the hour to read only those.")
         built(d)
         cache.swap(KEY, new, d)  # its parts become the key's
+        compared(d)
         return dict(ok=True, result=res, message="Snapshot rebuilt." if what == "rebuild" and not DIRECT
                     else "Read Snowflake again.")
     with LOAD:
         return tracked(KEY, "shared", work)
+
+
+def compared(d):
+    """What changed of new data set d against the previous snapshot, made while the one it replaced is still kept
+    built with its rule findings (a.built), so its first open answers at once. A failure only leaves it to that open."""
+    prev = None if a.INSIDE else cache.prev(KEY)
+    if not prev:
+        return
+    try:
+        with LOCK:
+            a.build(d, shared_key(d))
+            diff_of(prev[0])
+    except Exception as x:
+        a.say(f"What changed is compared on its first open instead: {a.line(x)}")
 
 
 def call_snapshot():

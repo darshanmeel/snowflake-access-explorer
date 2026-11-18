@@ -1277,8 +1277,11 @@ export interface ChangesPage {
   subject: string | null;
   available: boolean;
   reason?: string;
-  events: ChangeEvent[];
-  counts: ChangeCounts | null;
+  events: ChangeEvent[]; // this page of the filter's events (f, offset; limit server.PAGE)
+  events_total: number;
+  offset: number;
+  f?: "all" | "gain" | "lose" | "risk" | "sensitive";
+  counts: ChangeCounts | null; // over every event
   text?: string;
   before?: string;
   now?: string;
