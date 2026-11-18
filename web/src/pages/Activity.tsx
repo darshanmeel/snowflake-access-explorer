@@ -348,8 +348,8 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
  * named, or days (narrow cells, a date every 5 days, weekends marked). */
 const MAX_ROWS = 12, MAX_COLS = 8;
 
-function Heat({ corner, rows: allRows, cols: allCols, value: cell, color, rowHead, colHead, days }: {
-  corner: string; rows: string[]; cols: string[]; value: (r: string, c: string) => number; color: string;
+function Heat({ corner, colName, rows: allRows, cols: allCols, value: cell, color, rowHead, colHead, days }: {
+  corner: string; colName?: string; rows: string[]; cols: string[]; value: (r: string, c: string) => number; color: string;
   rowHead?: (r: string) => ReactNode; colHead?: (c: string) => ReactNode; days?: boolean;
 }) {
   const [all, setAll] = useState(false);
@@ -365,6 +365,21 @@ function Heat({ corner, rows: allRows, cols: allCols, value: cell, color, rowHea
   const rt = (r: string) => cols.reduce((n, c) => n + value(r, c), 0), ct = (c: string) => rows.reduce((n, r) => n + value(r, c), 0);
   const total = rows.reduce((n, r) => n + rt(r), 0);
   const weekend = (c: string) => days && [0, 6].includes(new Date(c + "T00:00:00Z").getUTCDay());
+  if (!days && (allRows.length === 1 || allCols.length === 1)) { // one row or one column: a grid says nothing a sentence or bars cannot
+    const one = allRows.length === 1, line = one ? allCols : allRows;
+    const n = (x: string) => (one ? cell(allRows[0], x) : cell(x, allCols[0]));
+    const max = Math.sqrt(Math.max(1, ...line.map(n)));
+    return (
+      <div>
+        <p>{fmt(total)} queries, all {one ? `${corner.toLowerCase()} ` : `${(colName ?? "").toLowerCase()} `}
+          <b className="ae-mono">{one ? allRows[0] : allCols[0]}</b>{line.length === 1 && <> · <b className="ae-mono">{line[0]}</b></>}.</p>
+        {line.length > 1 && <div className="ae-hbars">{line.map((x) => (
+          <div key={x} className="ae-hbar"><span className="ae-area-name ae-mono" title={x}>{x}</span>
+            <span className="ae-area-track" style={{ width: `${(100 * Math.sqrt(n(x))) / max}%`, background: color }} />
+            <b className="ae-area-n">{fmt(n(x))}</b></div>))}</div>}
+      </div>
+    );
+  }
   return (
     <div className="ae-scroll">
       <table className={`ae-log-heat${days ? " ae-log-heat-days" : ""}`}>
@@ -629,7 +644,7 @@ function Matrix({ d, rows }: { d: ActivityPage; rows: ActivityRow[] }) {
     <Sec title={`${LABEL[rk]} × ${name}`} sql="matrix" sub="Queries in each cell · row and column totals"
       right={<div className="ae-row"><span className="ae-muted">Rows</span><Seg label="Rows" value={rk} items={[["role", "Role"], ["client", "Client"], ["user", "User"]]} onPick={setRk} />
         <span className="ae-muted">Columns</span><Seg label="Columns" value={ck} items={[["client", "Client"], ["action", "Statement type"], ["type", "Statement"], ["day", "Last 30 days"]]} onPick={setCk} /></div>}>
-      <Heat corner={LABEL[rk]} rows={rs} cols={cs} value={value} color="var(--ae-e_write)" days={ck === "day"}
+      <Heat corner={LABEL[rk]} colName={name} rows={rs} cols={cs} value={value} color="var(--ae-e_write)" days={ck === "day"}
         colHead={(b) => ck === "action" ? <span className="ae-log-colh"><i style={{ background: ACT[b as keyof typeof ACT] }} />{{ WRITE: "DML", READ: "Read", DDL: "DDL" }[b as "WRITE"]}</span> : <span className="ae-mono">{b}</span>} />
     </Sec>
   );

@@ -69,11 +69,11 @@ const KIND_ORDER = ["user", "admin", "functional", "group", "technical", "databa
 /** ELK layered, one layer per lane (interactive layering keeps the lane of every box), orthogonal edges routed around
  * the boxes, crossings minimised with the input order (kind, database, name) as the tie-break, so alike boxes sit
  * together. Every box of a lane gets the lane's width: lines leave a lane at one x. */
-export async function layout(g: Graph): Promise<Layout> {
+export async function layout(g: Graph, down = false): Promise<Layout> {
   const size = new Map(g.nodes.map((n) => [n.id, nodeSize(n)]));
   const laneW = new Map<number, number>();
   for (const n of g.nodes) laneW.set(n.lane, Math.max(laneW.get(n.lane) ?? 0, size.get(n.id)!.w));
-  for (const n of g.nodes) size.get(n.id)!.w = laneW.get(n.lane)!;
+  if (!down) for (const n of g.nodes) size.get(n.id)!.w = laneW.get(n.lane)!;
   const laneOf = new Map(g.nodes.map((n) => [n.id, n.lane]));
   const forward = g.edges.filter((e) => laneOf.has(e.source) && laneOf.has(e.target) && laneOf.get(e.source)! < laneOf.get(e.target)!);
   const rank = (n: GraphNode) => KIND_ORDER.indexOf(n.kind) + 1 || KIND_ORDER.length;
@@ -82,9 +82,9 @@ export async function layout(g: Graph): Promise<Layout> {
   const root: ElkNode = {
     id: "root",
     layoutOptions: {
-      "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL",
+      "elk.algorithm": "layered", "elk.direction": down ? "DOWN" : "RIGHT", "elk.edgeRouting": "ORTHOGONAL",
       "elk.layered.layering.strategy": "INTERACTIVE", "elk.padding": "[top=0,left=0,bottom=0,right=0]",
-      "elk.spacing.nodeNode": String(ROW_GAP), "elk.layered.spacing.nodeNodeBetweenLayers": String(LANE_GAP),
+      "elk.spacing.nodeNode": String(ROW_GAP), "elk.layered.spacing.nodeNodeBetweenLayers": String(down ? 34 : LANE_GAP),
       "elk.spacing.edgeEdge": "5", "elk.spacing.edgeNode": "12", "elk.layered.spacing.edgeNodeBetweenLayers": "18",
       "elk.layered.spacing.edgeEdgeBetweenLayers": "5", "elk.layered.mergeEdges": "true",
       // big drawings (an opened fold box, ?full=1) get fewer crossing-minimisation passes: seconds, not a frozen tab
@@ -92,7 +92,7 @@ export async function layout(g: Graph): Promise<Layout> {
       "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF", "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
     },
-    children: order.map((n) => ({ id: n.id, x: n.lane * 2000, y: 0, width: size.get(n.id)!.w, height: size.get(n.id)!.h })),
+    children: order.map((n) => ({ id: n.id, x: down ? 0 : n.lane * 2000, y: down ? n.lane * 2000 : 0, width: size.get(n.id)!.w, height: size.get(n.id)!.h })),
     edges: forward.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
   };
   try {
@@ -100,14 +100,15 @@ export async function layout(g: Graph): Promise<Layout> {
     const nodes = new Map<string, Placed>();
     for (const c of res.children ?? []) {
       const s = size.get(c.id)!;
-      nodes.set(c.id, { id: c.id, x: c.x ?? 0, y: TOP + (c.y ?? 0), w: s.w, h: s.h });
+      nodes.set(c.id, { id: c.id, x: c.x ?? 0, y: (down ? 0 : TOP) + (c.y ?? 0), w: s.w, h: s.h });
     }
     const routes = new Map<string, Pt[]>();
     for (const e of res.edges ?? []) {
       const s = e.sections?.[0];
-      if (s) routes.set(e.id, [s.startPoint, ...(s.bendPoints ?? []), s.endPoint].map((p) => ({ x: p.x, y: TOP + p.y })));
+      if (s) routes.set(e.id, [s.startPoint, ...(s.bendPoints ?? []), s.endPoint].map((p) => ({ x: p.x, y: (down ? 0 : TOP) + p.y })));
     }
-    return finish(g, nodes, routes);
+    const out = finish(g, nodes, routes);
+    return down ? { ...out, lanes: [] } : out; // top to bottom: a lane is a row, no lane headers
   } catch {
     return finish(g, columns(g, size), new Map()); // ELK refused the graph: plain columns, curved lines
   }

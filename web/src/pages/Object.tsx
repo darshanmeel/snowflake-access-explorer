@@ -243,16 +243,19 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
     : e.level === "admin" && !e.privileges.length ? "An admin role inherits everything" : `${TITLE[e.level]}, ${plural(steps.length - 1, "step")} away`;
   return (
     <Card title={`How ${e.name} gets in`} sub={sum}>
-      <ol className="ae-steps">
-        {steps.map((s, i) => (
-          <li key={i}>
-            <span className={`ae-stepdot${i === 0 ? " first" : i === steps.length - 1 ? " last" : ""}`} aria-hidden />
-            <div><button type="button" className="ae-link ae-mono" onClick={() => onOpen(e.path[i])}>{s.name}</button><div className="ae-muted">{s.kind}</div></div>
-          </li>
-        ))}
-      </ol>
-      {e.ways > 1 && <p className="ae-muted">{plural(e.ways - 1, "other way")} lead{e.ways === 2 ? "s" : ""} here too, so removing one role may not remove the access.</p>}
-      {d.object.id && <HowGraph who={role ? { role: e.name } : { name: e.name }} obj={d.object.id} ways={e.ways} key={e.name} />}
+      {d.object.id && <HowGraph who={role ? { role: e.name } : { name: e.name }} obj={d.object.id} level={e.level} key={e.name} />}
+      <details className="ae-how-steps" open={!d.object.id}>
+        <summary>The shortest path, step by step</summary>
+        <ol className="ae-steps">
+          {steps.map((s, i) => (
+            <li key={i}>
+              <span className={`ae-stepdot${i === 0 ? " first" : i === steps.length - 1 ? " last" : ""}`} aria-hidden />
+              <div><button type="button" className="ae-link ae-mono" onClick={() => onOpen(e.path[i])}>{s.name}</button><div className="ae-muted">{s.kind}</div></div>
+            </li>
+          ))}
+        </ol>
+      </details>
+      {e.ways > 1 && <p className="ae-muted">{plural(e.ways, "way")} lead here, so removing one role may not remove the access.</p>}
       <div className="ae-how-links">
         {d.object.id && <button type="button" className="ae-btn ae-btn-s" onClick={() => c.nav("check", { [role ? "role" : "name"]: e.name, obj: d.object.id!, ...doOf(e.level) })}>Open in Can they?</button>}
         {role && <button type="button" className="ae-link" onClick={() => c.nav("access", { role: e.name })}>Open the role</button>}
@@ -262,19 +265,17 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
   );
 }
 
-/** Every path from the person or role to the object as a small graph (Can they?'s graph), on a click: it asks the
- * server, and the shortest path above already answers most questions. */
-function HowGraph({ who, obj, ways }: { who: Record<string, string>; obj: string; ways: number }) {
+/** Every path from the person or role to the object, drawn (Can they?'s graph for the step they have): the answer to
+ * "how", shown as soon as someone is picked. */
+function HowGraph({ who, obj, level }: { who: Record<string, string>; obj: string; level: string }) {
   const c = useApp();
-  const [on, setOn] = useState(false);
-  const s = useApi<CheckPage>(on ? "check" : null, { ...who, obj, do: "read", view: c.view });
+  const s = useApi<CheckPage>("check", { ...who, obj, ...doOf(level), view: c.view });
   const o = useOpen(s.data?.refs);
   return (
     <div className="ae-how-graph">
-      <button type="button" className="ae-link" aria-expanded={on} onClick={() => setOn(!on)}>{on ? "Hide the graph" : `Show ${ways > 1 ? `all ${ways} paths` : "the path"} as a graph`}</button>
-      {on && <Load s={s}>{(d) => d.graph
-        ? <Graph graph={d.graph} theme={c.theme} onNodeClick={o.node} legend={false} maxHeight={380} />
-        : <p className="ae-muted">No path to draw.</p>}</Load>}
+      <Load s={s}>{(d) => d.graph
+        ? <Graph graph={d.graph} theme={c.theme} onNodeClick={o.node} legend={false} maxHeight={460} minZoom={0.6} down />
+        : <p className="ae-muted">No path to draw.</p>}</Load>
     </div>
   );
 }
