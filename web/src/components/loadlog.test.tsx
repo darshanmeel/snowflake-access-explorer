@@ -22,6 +22,8 @@ describe("LoadLog", () => {
     expect(log.getAttribute("aria-live")).toBe("polite");
     expect(log.children.length).toBe(2);
     rerender(<LoadLog active={false} poll={poll} />);
+    expect(screen.getByText("Reading Snowflake: the last load")).toBeTruthy();  // kept for a later look
+    rerender(<LoadLog active={false} open={false} poll={poll} />);
     expect(screen.queryByRole("log")).toBeNull();
     const calls = poll.mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(3000); });

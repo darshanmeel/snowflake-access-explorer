@@ -240,7 +240,7 @@ export function Waiting() {
   const [s, setS] = useState(0);
   useEffect(() => { const t = window.setInterval(() => setS((x) => x + 1), 1000); return () => clearInterval(t); }, []);
   return (
-    <p className="ae-muted" role="status"><span className="ae-spin" aria-hidden />Loading…{s >= 3 && ` ${s} s`}
+    <p className="ae-muted ae-waiting" role="status"><span className="ae-spin" aria-hidden />Loading…{s >= 3 && ` ${s} s`}
       {s >= 10 && " · still working: on a big account the first open of a page works out its lookups, which can take a minute. It opens by itself."}</p>
   );
 }

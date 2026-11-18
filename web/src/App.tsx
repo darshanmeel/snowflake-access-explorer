@@ -296,7 +296,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   // Read Snowflake again / Rebuild snapshot: the server reads in the background (started) while the pages keep the
   // data they have; inside Streamlit it answers when done
   const [bg, setBg] = useState<{ job: number; what: string; line: string } | null>(null);
-  const [bgOpen, setBgOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);  // the load log: its own panel, opened from the top bar
   const title = (what: string, ok: boolean | null) => what === "rebuild" ? (ok ? "Snapshot rebuilt" : "Snapshot not rebuilt")
     : ok ? "Read Snowflake again" : "Read Snowflake again failed";
   const refresh = (what: "page" | "rebuild") => run(what === "rebuild" ? "Rebuilding snapshot…" : "Reading Snowflake…", async () => {
@@ -316,14 +316,12 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
         if (!j || j.id !== bg.job) {  // the server restarted: that refresh is gone
           clearCache();
           setBg(null);
-          setBgOpen(false);
           setNotice({ tone: "bad", title: title(bg.what, false), text: "The server restarted during it: click again." });
           return;
         }
         if (j.state !== "running") {  // done: the pages fetch the new data; failed: the old stays
           clearCache();
           setBg(null);
-          setBgOpen(false);
           setNotice({ tone: j.ok ? "info" : "bad", title: title(bg.what, j.ok), text: j.message ?? "" });
           return;
         }
@@ -373,7 +371,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} disabled={!!busy} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
           {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
           {bg && (
-            <button type="button" className="ae-btn top-bg" onClick={() => setBgOpen(!bgOpen)} aria-expanded={bgOpen}
+            <button type="button" className="ae-btn top-bg" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen}
               title="The pages keep the data they have until the new read is ready. Click for the full log.">
               <span className="ae-spin" aria-hidden /><b>{bg.what === "rebuild" ? "Rebuilding" : "Reading again"}:</b>&nbsp;<span className="top-bg-line">{bg.line}</span>
             </button>
@@ -383,6 +381,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
             {hasData && <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner; right-click works too">{"</>"} on any card: its SQL</span>}
             {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (or right-click the page)">{"</>"} SQL</button>}
+            <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
             <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           </span>
           </div>
@@ -400,7 +399,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
               <button type="button" className="ae-btn ae-btn-s" onClick={() => setNotice(null)}>Dismiss</button>
             </Banner>
           )}
-          <LoadLog active={!!busy || m.loading || loadingShared || bgOpen} poll={poll} />
+          <LoadLog active={!!busy || m.loading || loadingShared || !!bg} open={logOpen} onClose={() => setLogOpen(false)} poll={poll} />
           {m.error && <ErrorBox e={m.error} />}
           {!meta && !m.error && <Waiting />}
           {needMine && (

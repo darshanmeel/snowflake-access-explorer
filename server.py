@@ -182,7 +182,7 @@ def stages():
     (cache.get), the lookups and the rule checks, so the first page does not build them unseen."""
     t0 = time.monotonic()
     if cache.ready(KEY, MODE == "snowflake"):  # after a restart: the saved copy, with its steps in the load log too
-        a.say("Opening the saved copy in .cache/ (no Snowflake read)")
+        a.say(f"Opening the saved copy in {cache.DIR} (no Snowflake read)")
     d = cache.get(KEY, read_shared, disk=MODE == "snowflake")[0]
     built(d)
     t = cache.COPYING.get(KEY)
@@ -206,8 +206,7 @@ def built(d):
                 with a.step("Working out what each fix changes"):
                     ro = a.cached("ro", a.readonly_writes) if a.HIERARCHY_ON else []
                     a.cached("breaks", lambda: breaks(rows, ro))
-            with a.step("Saving the rule results"):
-                kept_rules("shared", shared_key(d), False, save=True)
+            kept_rules("shared", shared_key(d), False, save=True)  # written beside the pages, not before them
         with a.step("Preparing the pages"):
             a.cached("sens", a.sensitive)
 
@@ -356,22 +355,48 @@ def kept_rules(view, key, builtin, save=False):
         return False
     f = cache.file(KEY).with_suffix(".rules.pkl")
     stamp = (key, builtin, a.rules_stamp(), SERVER_STAMP)
-    if save:
-        f.parent.mkdir(parents=True, exist_ok=True)
-        was = cache.load(f) if f.is_file() else None
-        if isinstance(was, dict) and was.get("stamp", (None,))[0] != key:  # another data set's: What changed's earlier side
-            f.replace(cache.file(KEY).with_suffix(".prev.rules.pkl"))
-        tmp = f.with_suffix(".tmp")
-        tmp.write_bytes(pickle.dumps(dict(stamp=stamp, memo={k: a.memo[k] for k in KEPT if k in a.memo})))
-        tmp.replace(f)
+    if save:  # in a thread: the pages need a.memo, not the file, and a big file takes a while to write
+        memo = {k: a.memo[k] for k in KEPT if k in a.memo}
+        if BACKGROUND:
+            threading.Thread(target=save_rules, args=(f, stamp, memo), daemon=True).start()
+        else:
+            save_rules(f, stamp, memo)
         return True
-    got = cache.load(f) if f.is_file() else None
-    if not (isinstance(got, dict) and got.get("stamp") == stamp):
+    if not (got := rules_file(f, full=False)) or got[0] != stamp or not (got := rules_file(f)):
         return False
-    for k, v in got["memo"].items():
+    for k, v in got[1].items():
         a.memo.setdefault(k, v)
     a.say("Rule results kept from the last check of this data: not checked again")
     return True
+
+
+RULES_LOCK = threading.Lock()  # one rules file write at a time
+
+
+def rules_file(f, full=True):
+    """(stamp, memo) of a rules file, memo None unless full: the stamp is read alone, so checking it never loads the
+    results. None when missing, unreadable or in the older one-object format."""
+    try:
+        with open(f, "rb") as h:
+            stamp = pickle.load(h)
+            return (stamp, pickle.load(h) if full else None) if isinstance(stamp, tuple) else None
+    except Exception:
+        return None
+
+
+def save_rules(f, stamp, memo):
+    """Write a rules file: the stamp, then the results. The one it replaces, of another data set, becomes the previous
+    snapshot's (What changed)."""
+    with RULES_LOCK:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        was = rules_file(f, full=False)
+        tmp = f.with_suffix(".tmp")
+        with open(tmp, "wb") as h:
+            pickle.dump(stamp, h)
+            pickle.dump(memo, h, protocol=pickle.HIGHEST_PROTOCOL)
+        if was and was[0][0] != stamp[0]:
+            f.replace(cache.file(KEY).with_suffix(".prev.rules.pkl"))
+        tmp.replace(f)
 
 
 def prev_findings(d):
@@ -380,9 +405,8 @@ def prev_findings(d):
     if MODE != "snowflake" or not cache.local() or a.source.get("builtin"):
         return None
     f = cache.file(KEY).with_suffix(".prev.rules.pkl")
-    got = cache.load(f) if f.is_file() else None
-    ok = isinstance(got, dict) and got.get("stamp") == (shared_key(d), False, a.rules_stamp(), SERVER_STAMP)
-    return got["memo"].get("findings") if ok else None
+    got = rules_file(f)
+    return got[1].get("findings") if got and got[0] == (shared_key(d), False, a.rules_stamp(), SERVER_STAMP) else None
 
 
 # ---------- small helpers ----------
