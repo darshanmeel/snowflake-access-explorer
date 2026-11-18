@@ -25,7 +25,7 @@ TypeScript types: `web/src/api/types.ts` (keep both in step).
   `"group"` with the raw value kept in `raw_kind`. Object types (`a.kinds`) pass through as strings; the UI falls back
   to a plain grey box for a type it does not know.
 - **Errors:** `{"detail": "<code>", "message": "<plain words>"}` with HTTP 400 (bad param), 404 (name not in the data:
-  `not_found`), 409 (`mine_not_loaded`; `mine_unavailable` inside Snowflake, where the app has its owner's rights and `meta.mine_available` is false), 503 (`shared_unreadable`, message = `a.line(error)`).
+  `not_found`), 409 (`mine_not_loaded`; `mine_unavailable` inside Snowflake, where the app has its owner's rights and `meta.mine_available` is false), 503 (`shared_unreadable` / `mine_unreadable`, message = `server.load_error()`: `a.line(error)`, plus "Set SNOWFLAKE_WAREHOUSE in .env ..." for 000606).
 
 ## Common query params
 
@@ -285,7 +285,7 @@ read / change / own ladder), `risks` (rule findings per severity), `per_rule` (f
 `unmasked_names`, row-policy tables `row_tables` / `row_list`, dormant users who reach sensitive data with
 `dormant_names`).
 
-### GET /api/access?view=&user=|role=&filter=&q=&usage=0&cell=&min=&sort=risk|name&group=none|schema|type&offset=0&limit=250
+### GET /api/access?view=&user=|role=&filter=&q=&usage=0&cell=&min=&sort=risk|name&group=none|schema|type&offset=0&limit=50
 
 A person or a role (My access with `view=mine`): `who` (name, kind, type, status, last login, default role, holders),
 `counts` (read, change, own, runnable, account powers, admin, sensitive, schemas, usage), `objects` (one page of the
@@ -386,7 +386,7 @@ privileges, `via PUBLIC` grouped) plus `privileges` rows with `tab: "account"`. 
 (All stays). Each tab's diagram: `GET /api/graph?of=user-tab`. The `usage` card's `takes` (objects removing an
 unused role takes away) is `a.loses_objects`, counted once per data set, user and role.
 
-### GET /api/privs?<the user page's params>&tab=&q=&sort=&dir=1|-1&offset=0&limit=250
+### GET /api/privs?<the user page's params>&tab=&q=&sort=&dir=1|-1&offset=0&limit=50
 
 User page, one Privileges tab's table, paged on the server (a big user has 200k privilege rows): one row per object
 of the tab (as `components/tabs.ts byObject`: the strongest access, every grant, the shortest path and up to 4 more).
@@ -398,7 +398,7 @@ of the tab (as `components/tabs.ts byObject`: the strongest access, every grant,
            "grants": ["SELECT"], "holder": "T_SALES_CORE_READ", "depth": 2,
            "path": ["ENGINEER_01", "F_ANALYST", "T_SALES_CORE_READ", "SALES.CORE.TBL_CUSTOMER"], "more": [],
            "count": 2, "sensitive": true}],
- "total": 21, "offset": 0, "limit": 250}
+ "total": 21, "offset": 0, "limit": 50}
 ```
 
 The Role page's Privileges tables use the same endpoint with `of=role` and the role page's params (`name`, `depth`,
@@ -916,12 +916,12 @@ in My access, with `CACHE_HOURS=0` or before a second run. `subject` (user, role
 The diff compares reach per granted role (`a.facts`, `a.moved`: only roles whose grants changed and the roles above
 them are walked), never every (user, object) pair; the previous snapshot's rule findings come from
 `.cache/<key>.prev.rules.pkl` (set aside when a newer run's rules were saved), else they are checked again. A refresh
-that brings a new run makes the diff right away, while the run it replaced is still built (`server.compared`), and
+that brings a new run makes the diff right away when the run it replaced is still built (`server.compared`; a same-run refresh leaves it to the first open), and
 keeps it in memory and in `.cache/<key>.diff.pkl` (stamped with both runs, the settings and the code), so the first
 open, also after a restart, does not compare again. `f` (`all`, `gain`, `lose`, `risk`, `sensitive`) keeps one
 filter's events; they come one page at a time (`offset`, `limit`: 50 by default, 0 every one) with `events_total`;
 `counts` are over every event. An event's `people`, `objects` and `subjects` hold its first 20 (plus `subject`), the
-`impact` text counts them all.
+`impact` text counts them all. Each event lists its first `a.EVENT_NAMES` (200) people and objects and has `capped: true` when there are more; with `subject` the `text` then adds "Big changes name only their first 200 people and objects, so some about <subject> may be missing here."
 
 ```json
 {"available": true, "subject": null, "before": "2026-10-26 07:00", "now": "2026-11-02 07:00",

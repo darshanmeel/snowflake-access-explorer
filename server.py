@@ -55,7 +55,6 @@ MAX_MEMBERS = 1000  # members of a combined box sent for expansion (the graph gr
 MAX_BOX = a.MAX_OBJECTS  # a tab diagram draws one box each up to this many objects / roles per lane
 LAZY = 300  # over this many members in all combined boxes, a graph sends their counts only: a box's members come from
 # graph?group=<box> when it is opened (a big user's graph was 27k member nodes, 19 MB)
-PAGE = 250  # rows per page of a table paged on the server (privs, access)
 MAX_MULTI = 300  # User page, "Reached more than one way": paths listed (the total counts them all)
 MAX_LANE = 24  # role boxes one lane of a big (lazy) graph draws; more fold into one box, as web/src/components/graphs.ts does
 GSRC = ("view", "builtin", "roles", "depth", "dataonly", "schema", "otype", "on", "priv", "full", "sensitive", "users")
@@ -72,7 +71,7 @@ BACKGROUND = not a.INSIDE  # refresh in a thread; inside Snowflake on the script
 MAX_LINES = 200
 ANSWERS = {}  # (data, endpoint, params) -> answer: a page seen before skips LOCK, so users don't queue behind each other
 MAX_ANSWERS = 200
-PAGE = 50  # rows per page of a table the server pages (sensitive objects and readers, an object's users)
+PAGE = 50  # rows per page of a table the server pages (privs, access, sensitive objects and readers, an object's users)
 
 
 class ApiError(Exception):
