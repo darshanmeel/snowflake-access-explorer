@@ -63,7 +63,9 @@ export function Pick({ label, value, what, params, options, onPick, width = 240,
   return (
     <label className="ae-field">
       <span>{label}</span>
-      <Combo<ListItem> label={label} value={value} width={width} placeholder="type to search" search={search} keyOf={(i) => i.id}
+      {/* keyed by what it searches: a picker reused on another page or type never shows the last one's list */}
+      <Combo<ListItem> key={`${what}|${JSON.stringify(params ?? {})}|${options ? "o" : ""}`} label={label} value={value} width={width}
+        placeholder="type to search" search={search} keyOf={(i) => i.id}
         onPick={(i) => { if (i.id !== value || (user !== undefined && (i.kind === "user") !== user)) onPick(i.id, i); }}
         render={(i) => <><span className="ae-mono">{i.id}</span>{(i.kind || i.type) && <span className="ae-muted">{i.kind && i.kind !== "object" ? KIND_SHORT[i.kind] ?? i.kind : (i.type ?? "").toLowerCase()}</span>}</>} />
     </label>

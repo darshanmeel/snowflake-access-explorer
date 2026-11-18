@@ -26,11 +26,17 @@ export function ObjectPageView() {
   const admin = c.params.preset === "admin";
   const s = useApi<WhoPage>("who", { view: c.view, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }) });
   const id = s.data?.object.id ?? c.params.name ?? "";
+  const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
+  const type = c.params.type || undefined; // narrows the Object search only
   return (
     <>
       <div className="ae-headrow">
         <div className="ae-h1 ae-h1-pick">
-          {admin ? "Who holds an admin role" : <>Who has access to <Pick label="Object" value={id} width={360} what="objects" onPick={(v) => c.nav("object", { name: v })} /></>}
+          {admin ? "Who holds an admin role" : <>Who has access to
+            <Sel label="Type" value={c.params.type ?? ""} onPick={(v) => c.set({ type: v || null })}
+              options={[["", "Any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id])]} />
+            <Pick label="Object" value={id} width={360} what="objects" params={{ type }}
+              onPick={(v) => c.nav("object", type ? { name: v, type } : { name: v })} /></>}
         </div>
       </div>
       <Load s={s}>{(d) => <Who d={d} />}</Load>
@@ -271,7 +277,6 @@ export function ObjectDetail() {
   const name = c.params.name ?? "";
   const [tab, setTab] = useState("all");
   const [part, setPart] = useState(c.params.part ?? "who");
-  const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
   // no name: the server picks the first object of the type (as app.py)
   const s = useApi<ObjectPage>("object", { ...apiParams(c), name });
   const op = useOpen(s.data?.refs);
@@ -279,10 +284,6 @@ export function ObjectDetail() {
     <>
       <Head title="Object" sub="Who can reach a table, view or other object, and how." />
       <Controls>
-        <Sel label="Type" value={c.params.type ?? ""} onPick={(v) => c.nav("object", v ? { type: v } : {})}
-          options={[["", "Any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id])]} />
-        <Pick label="Object" value={name || s.data?.object.id || ""} width={360} what="objects" params={{ type: c.params.type }}
-          onPick={(v) => c.nav("object", c.params.type ? { name: v, type: c.params.type } : { name: v })} />
         <Tog label="Active users only" on={c.params.active === "1"} onPick={(v) => c.set({ active: v ? "1" : null })} />
         <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} />
         {s.data && <Sel label="Privilege" value={c.params.priv ?? ""} onPick={(v) => c.set({ priv: v })}
