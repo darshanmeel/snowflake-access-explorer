@@ -10,6 +10,7 @@ sql_copy(): each read from Snowflake also goes to .cache/access.duckdb, the TBL_
 import contextvars
 import datetime as dt
 import decimal
+import functools
 import hashlib
 import importlib
 import os
@@ -165,9 +166,13 @@ def swap(key, new, d):
     """d, read with its parts under key new (a refresh), becomes key's data: its parts replace key's."""
     with lock(key):
         if local():
-            shutil.rmtree(parts_dir(key), ignore_errors=True)
+            old = parts_dir(key).with_name(parts_dir(key).name + ".gone")
+            shutil.rmtree(old, ignore_errors=True)
+            if parts_dir(key).is_dir():
+                parts_dir(key).rename(old)  # moved away whole first: a file held open on Windows fails here, nothing lost
             if parts_dir(new).is_dir():
                 parts_dir(new).rename(parts_dir(key))
+            shutil.rmtree(old, ignore_errors=True)
         return store(key, d)
 
 
@@ -359,11 +364,12 @@ def old(key, base=None):
     return keep
 
 
+@functools.cache
 def engine():
     """What writes and reads parquet: pyarrow, else duckdb, else None (no parts: a load reads everything, as before)."""
-    for m in ("pyarrow", "duckdb"):
+    for m, mod in (("pyarrow", "pyarrow.parquet"), ("duckdb", "duckdb")):  # pyarrow may import without its parquet DLL
         try:
-            importlib.import_module(m)
+            importlib.import_module(mod)
             return m
         except ImportError:
             pass
@@ -380,6 +386,8 @@ def duck_type(vals):
         return f"DECIMAL(38, {max(-v.as_tuple().exponent for v in vals if v is not None)})"
     if issubclass(k, dt.datetime):
         return "TIMESTAMPTZ" if any(v.tzinfo for v in vals if v is not None) else "TIMESTAMP"
+    if k is int and all(-2**63 <= v < 2**63 for v in vals if v is not None):
+        return "BIGINT"  # Parquet has no HUGEINT: DuckDB would write it as DOUBLE, read back as floats
     types = [(bool, "BOOLEAN"), (int, "HUGEINT"), (float, "DOUBLE"), (str, "VARCHAR"), (bytes, "BLOB"), (dt.date, "DATE")]
     return next(t for py, t in types if issubclass(k, py))
 
@@ -394,8 +402,8 @@ def write_part(f, rows):
     else:  # DuckDB: one typed list per column, as sql_copy() inserts
         import duckdb
         cols = list(dict.fromkeys(k for r in rows for k in r))
-        vals = [[r.get(c) for r in rows] for c in cols]
-        types = [duck_type(v) for v in vals]
+        vals = [[json.dumps(v) if isinstance(v, (dict, list)) else v for v in (r.get(c) for r in rows)] for c in cols]
+        types = [duck_type(v) for v in vals]  # a dict or list as its JSON text, as Snowflake answers a VARIANT
         con = duckdb.connect()
         try:
             con.execute("CREATE TABLE t (" + ", ".join(access.ident(c) + " " + t for c, t in zip(cols, types)) + ")")
@@ -431,10 +439,11 @@ def parted(query, key, offline=False):
     a wave to its keep(). offline (run.py --build): never Snowflake, a part that is not there fails as not exported.
     A USE statement answered from its part runs again before the first statement that goes to Snowflake: the reads
     after it need the session setting."""
-    d, mlock, ulock, said, uses = parts_dir(key), threading.Lock(), threading.Lock(), [], []
+    d, mlock, ulock, said, uses, used = parts_dir(key), threading.Lock(), threading.Lock(), [], [], set()
     man, eng = parts_of(key), engine()
 
     def take(name, timed_out=False):  # the kept results of a part (rows, or an exception, per statement), else None
+        used.add(name)
         m = man.get(name)  # timed_out: a part with timed-out statements too (a wave reads only those again)
         if not m or (m["status"] == "failed" and not offline and not timed_out):
             return None
@@ -442,6 +451,8 @@ def parted(query, key, offline=False):
             got = read_part(d / m["file"]) if m["file"] else []
         except Exception:  # a file gone or damaged: read again
             return None
+        if m["statements"] == 1 and not m["errors"] and not (got and "__i" in got[0]):
+            return [got]  # one statement's rows as written: no second copy (millions of rows)
         by = {}
         for r in got:
             by.setdefault(r.pop("__i"), []).append(r)
@@ -452,7 +463,13 @@ def parted(query, key, offline=False):
                        [{c: r.get(c) for c in cols} for r in by.get(i, [])])
         return out
 
+    def save():  # parts.json, under mlock
+        tmp = d / "parts.tmp"
+        tmp.write_text(json.dumps(man), encoding="utf-8")
+        tmp.replace(d / "parts.json")
+
     def put(name, results):
+        used.add(name)
         if offline or any(isinstance(r, Exception) and access.lost(r) for r in results):
             return  # a lost session is no answer: read again next time
         if eng is None:
@@ -469,7 +486,10 @@ def parted(query, key, offline=False):
             if cols not in sets:
                 sets.append(cols)
             of.append(sets.index(cols))
-            rows += [x | {"__i": i} for x in r]
+            if len(results) == 1:
+                rows = r  # one statement: no index column, no copy
+            else:
+                rows += [x | {"__i": i} for x in r]
         try:
             d.mkdir(parents=True, exist_ok=True)
             if rows:
@@ -481,9 +501,17 @@ def parted(query, key, offline=False):
             man[name] = dict(file=f"{name}.parquet" if rows else None, rows=len(rows), read_at=time.time(),
                              statements=len(results), colsets=sets, of=of, errors=errors,
                              status="failed" if any(e[0] == "timeout" for e in errors.values()) else "ok")
-            tmp = d / "parts.tmp"
-            tmp.write_text(json.dumps(man), encoding="utf-8")
-            tmp.replace(d / "parts.json")
+            save()
+
+    def prune():  # after a whole load: the parts it did not ask for (an older run's tables, older activity days) go
+        with mlock:
+            gone = [n for n in man if n not in used]
+            for n in gone:
+                if man[n]["file"]:
+                    (d / man[n]["file"]).unlink(missing_ok=True)
+                del man[n]
+            if gone and d.is_dir():
+                save()
 
     def ask(sql):
         if offline:
@@ -547,5 +575,7 @@ def parted(query, key, offline=False):
         put(name, got)
         return got
     q.keep = keep
-    q.fresh = (lambda sql: q(sql)) if offline else ask  # what may change between loads (the last OK run): not kept
+    # what may change between loads (the last OK run): always asked, its answer kept for an offline build
+    q.fresh = q if offline else (lambda sql: saved(lambda _: part_name(access.step_name(sql), [sql]))(sql))
+    q.prune = prune
     return q

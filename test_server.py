@@ -1,4 +1,5 @@
 """server.py on the fake data: every endpoint answers 200 with the keys of web/API.md. Run: python test_server.py"""
+import importlib
 import json
 import os
 import re
@@ -404,7 +405,7 @@ def test_newer_run():
     once the local copy is gone (CACHE_HOURS), and an unchanged run reads no table again."""
     import pathlib
     import tempfile
-    cache, run = server.cache, ["r1"]
+    cache, run, last = server.cache, ["r1"], server.cache.last
     table = re.compile(r"SELECT \* EXCLUDE \(RUN_ID\) FROM D\.S\.TBL_ACCESS_(\w+) WHERE RUN_ID = '(\w+)'")
     d = a.fake()
 
@@ -428,8 +429,35 @@ def test_newer_run():
             cache.file(server.KEY).unlink()
             sent.clear()
             assert server.load_shared()["run"]["RUN_ID"] == "r2" and not any(table.match(s) for s in sent)
+            names = [m.get("file") for m in cache.parts_of(server.KEY).values()]
+            assert not any("r1" in str(n) for n in names) and len(names) == len(a.TABLES + a.OPTIONAL) + 1, names
+            cache.MEM.pop(server.KEY)
+            cache.file(server.KEY).unlink()
+            cache.last = lambda key: None  # run.py --build without the local copy: the last run comes from its part
+            server.OFFLINE, sent[:] = True, []
+            d = server.load_shared()
+            assert d["run"]["RUN_ID"] == "r2" and d["GRANT"] and not sent
         finally:
-            cache.DIR = old_dir
+            cache.DIR, server.OFFLINE = old_dir, False
+            cache.last = last
+
+
+def test_lost_session():
+    """Direct mode: a session lost halfway is no empty data set; the load stops with the message, nothing is kept."""
+    n = [0]
+
+    def answer(sql):
+        n[0] += 1
+        if n[0] > 3:
+            raise ConnectionError("session gone")
+        return []
+    with snowflake(answer, direct=True):
+        try:
+            server.load_shared()
+            raise AssertionError("a lost session loaded")
+        except server.ApiError as x:
+            assert "session gone" in str(x.args) + str(vars(x)), vars(x)
+        assert server.KEY not in server.cache.MEM
 
 
 def test_rebuild_outcome():
@@ -958,6 +986,19 @@ def test_parts():
     old = cache.DIR, cache.HOURS
     cache.DIR, cache.HOURS = pathlib.Path(tempfile.mkdtemp()), 24
     asked, slow = [], [True]
+    rows, engine = [{"N": 3, "B": True, "F": 0.5, "S": "x", "__i": 0}], cache.engine
+    for eng in ("pyarrow", "duckdb"):  # either writer reads back what it was given: an int stays an int
+        try:
+            importlib.import_module(eng + ".parquet" if eng == "pyarrow" else eng)
+        except ImportError:  # e.g. pyarrow without its parquet DLL: engine() picks duckdb
+            continue
+        cache.engine = lambda: eng
+        try:
+            cache.write_part(cache.DIR / f"{eng}.parquet", rows)
+            got = cache.read_part(cache.DIR / f"{eng}.parquet")
+            assert got == rows and type(got[0]["N"]) is int, (eng, got)
+        finally:
+            cache.engine = engine
 
     def query(sql):
         asked.append(sql)

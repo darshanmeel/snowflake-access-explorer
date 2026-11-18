@@ -855,7 +855,7 @@ def mine(query, db):
     except Exception as au:
         try:
             usage = info_schema(query, dbs, lambda d: f"""WITH Q AS (SELECT ROLE_NAME, WAREHOUSE_NAME, START_TIME FROM TABLE({d}.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER(
-                    USER_NAME => '{who}', END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000)))""" + agg)
+                    USER_NAME => '{who}', END_TIME_RANGE_START => DATEADD(HOUR, -167, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000)))""" + agg)
             src["usage"] = "INFORMATION_SCHEMA"
         except Exception as e:
             usage, src["usage"] = [], "UNAVAILABLE"
@@ -938,6 +938,8 @@ def live(query, old=None, old_use=None):
     unread = {v: None if not isinstance(r, Exception) else f"{AU}.{v} not readable: {line(r)}"
               for v, r in zip(views, each(query, [f"SELECT 1 FROM {AU}.{v} LIMIT 1" for v in views],
                                           what="ACCOUNT_USAGE views"))}
+    for v in (v for v in views if unread[v]):  # why a SHOW fallback runs: in the load log, not only in the notes
+        say(unread[v])
     if not ACTIVITY_ON:
         unread |= {"ACCESS_HISTORY": SKIP_ACTIVITY, "SESSIONS": SKIP_ACTIVITY}
     sqls = {}
@@ -967,7 +969,7 @@ def live(query, old=None, old_use=None):
     else:
         sqls["USAGE"] = usage_sql(f"""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME
                 FROM TABLE({ident(db or "SNOWFLAKE")}.INFORMATION_SCHEMA.QUERY_HISTORY(
-                END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()),
+                END_TIME_RANGE_START => DATEADD(HOUR, -167, CURRENT_TIMESTAMP()),
                 RESULT_LIMIT => 10000))""", False)
     if not unread["TAG_REFERENCES"]:
         sqls["TAG"] = f"""SELECT CASE DOMAIN WHEN 'DATABASE' THEN OBJECT_NAME
@@ -1549,7 +1551,7 @@ def tidy(d):
     error. An OPTIONAL table that is None stays None: use_state / act_state say the setup predates it. Once per data
     set and code version (_tidy): a restart or What if does not scan millions of rows again."""
     if d.get("_tidy") == tidy_stamp():
-        return
+        return d
     run = d.get("run") if isinstance(d.get("run"), dict) else {}
     run = d["run"] = dict(run, SOURCES=run.get("SOURCES") if isinstance(run.get("SOURCES"), dict) else {},
                           NOTES=run.get("NOTES") if isinstance(run.get("NOTES"), dict) else {})

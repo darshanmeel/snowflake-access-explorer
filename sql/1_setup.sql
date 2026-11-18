@@ -532,7 +532,7 @@ def usage(session, run_id, mode):
                        WHERE START_TIME >= DATEADD(DAY, -{DAYS}, CURRENT_TIMESTAMP())""", True), ("ACCOUNT_USAGE", None))
     try:
         session.sql(insert_sql("""SELECT USER_NAME, ROLE_NAME, WAREHOUSE_NAME, NULL AS SECONDARY_ROLE_STATS, START_TIME FROM TABLE(&DB.INFORMATION_SCHEMA.QUERY_HISTORY(
-                  END_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000))""", False)).collect(**TIMED)
+                  END_TIME_RANGE_START => DATEADD(HOUR, -167, CURRENT_TIMESTAMP()), RESULT_LIMIT => 10000))""", False)).collect(**TIMED)
         return ready("INFORMATION_SCHEMA", why + "; INFORMATION_SCHEMA.QUERY_HISTORY: 7 days, max 10000 queries, owner's view only")
     except Exception as e:
         return ready("UNAVAILABLE", why + f"; INFORMATION_SCHEMA.QUERY_HISTORY: {first_line(e)}")

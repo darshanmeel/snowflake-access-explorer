@@ -84,9 +84,17 @@ def with_query(fn, key=None):
     parts are all kept logs in to nothing. key: every read kept as a part of key (cache.parted), so a load that stops
     resumes where it stopped; OFFLINE: from the parts only, never a connection."""
     import sf
-    conn, clock = [], threading.Lock()
+    conn, clock, gone = [], threading.Lock(), []
 
     def query(sql):
+        try:
+            return ask(sql)
+        except Exception as e:
+            if a.lost(e):
+                gone.append(e)
+            raise
+
+    def ask(sql):
         with clock:  # one login, also when each()'s threads ask at once; a failed one fails every statement the same
             if not conn:
                 try:
@@ -99,7 +107,13 @@ def with_query(fn, key=None):
         return [dict(zip(cols, r)) for r in got]
 
     try:
-        return fn(cache.parted(query, key, OFFLINE) if key and cache.local() else query)
+        q = cache.parted(query, key, OFFLINE) if key and cache.local() else query
+        got = fn(q)
+        if gone:  # live() and mine() turn a failed read into an empty table: a lost session is no empty data set
+            raise gone[0]
+        if q is not query:
+            q.prune()  # the parts this load did not ask for: an older run's tables, older activity days
+        return got
     finally:
         if conn and not isinstance(conn[0], Exception) and sf.owned():  # inside Snowflake: the app's session, kept open
             conn[0].close()
@@ -142,14 +156,16 @@ def read_shared(key=KEY):
         return a.fake()
     if DIRECT:
         old = cache.old(key, KEY)  # kept with the parts: a resumed load asks for the same activity days
-        return with_query(lambda q: a.live(q, old.get("ACTIVITY"), old.get("OBJECT_USE")), key)
-    # the same run: one small query; with parts each table is a part of its own, read once
-    return with_query(lambda q: a.snapshot(q, WHERE, old=cache.last(KEY)), key)
+        d = with_query(lambda q: a.live(q, old.get("ACTIVITY"), old.get("OBJECT_USE")), key)
+    else:  # the same run: one small query; with parts each table is a part of its own, read once
+        d = with_query(lambda q: a.snapshot(q, WHERE, old=cache.last(KEY)), key)
+    d["_read"] = time.time()  # a new build key (and rule check) even when the run is the same: a failed table read again
+    return a.tidy(d)  # before it is kept: a restart skips the row scan, the SQL copy thread sees no rows change
 
 
 def shared_key(d):
     run = d.get("run") or {}  # build() makes it a dict; the key is taken before
-    return "shared", run.get("RUN_ID"), str(run.get("FINISHED_AT"))
+    return "shared", run.get("RUN_ID"), str(run.get("FINISHED_AT")), d.get("_read")  # _read: a re-read of the same run
 
 
 def stages():
@@ -294,11 +310,13 @@ def session(view, sid, builtin=False):
         a.capped.clear()
         S["view"], S["known"] = view, None
         S["sens"] = a.cached("sens", a.sensitive)
-        had = "rows" in a.memo or kept_rules(view, key, builtin)
+        if not all(k in a.memo for k in KEPT):
+            kept_rules(view, key, builtin)
+        had = {k for k in KEPT if k in a.memo}
         rows = S["rows"] = a.cached("rows", a.rule_rows) if a.roles else []
         ro = (lambda: a.cached("ro", a.readonly_writes)) if a.HIERARCHY_ON else list  # HIERARCHY=0: rule 17 off
         S["breaks"] = a.cached("breaks", lambda: breaks(rows, ro())) if rows else {}
-        if not had and a.roles:
+        if a.roles and any(k in a.memo and k not in had for k in KEPT):  # built() keeps rows; rule 17 and breaks here
             kept_rules(view, key, builtin, save=True)
         yield d
 
@@ -2413,6 +2431,10 @@ def renew(what):
         if time.time() - (cache.parts_read_at(new) or 0) > 3600:  # a refresh that failed within the hour resumes
             cache.clear_parts(new)
         d = read_shared(new)
+        late = [n for n, m in cache.parts_of(new).items() if m["status"] == "failed"]
+        if late:  # timed out (not unreadable: that stays empty with a note): the old data stays
+            return dict(ok=False, result=res, message=f"{len(late)} reads timed out: the data you have is kept. "
+                        "Click again within the hour to read only those.")
         built(d)
         cache.swap(KEY, new, d)  # its parts become the key's
         return dict(ok=True, result=res, message="Snapshot rebuilt." if what == "rebuild" and not DIRECT
