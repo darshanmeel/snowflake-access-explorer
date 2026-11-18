@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AccessObject, CatalogRow, GridRow, UsageRow } from "../api/types";
 import { groupOf, shortcuts } from "./Home";
-import { usageCsv, usageRows } from "./history";
+import { usageCsv } from "./history";
 import { byName, groupKey } from "./screens";
 import { catalogCsv, catalogOf, gridRows, hits } from "./signoff";
 
@@ -14,7 +14,7 @@ const grow = (user: string, roles: string[]): GridRow => ({
 });
 const use = (object: string): UsageRow => ({
   object, type: "TABLE", database: "DB", schema: "S", sensitive: false, level: "change", used: null, privileges: ["SELECT"],
-  unused: ["SELECT"], weeks: [], reads: 0, writes: 0, last: null, people: [], holder: "T_R", suggest: "drop", text: "", changes: [],
+  unused: ["SELECT"], weeks: [], reads: 0, writes: 0, last: null, holder: "T_R", suggest: "drop", text: "",
 });
 const obj = (object: string, type: string, schema: string | null) => ({ object, type, database: "DB", schema } as AccessObject);
 
@@ -30,7 +30,6 @@ describe("list toolbar search and CSV", () => {
     expect(catalogOf(rows, "all", "pii=").map((r) => r.object)).toEqual(["DB.S.LOG"]);
     expect(catalogCsv(rows).split("\n")[0]).toContain("Columns not masked");
     expect(gridRows([grow("ANN", ["F_A"]), grow("BOB", ["F_B"])], true, false, "f_b").map((r) => r.user)).toEqual(["BOB"]);
-    expect(usageRows([use("DB.S.A"), use("DB.S.B")], "all", "s.b").map((r) => r.object)).toEqual(["DB.S.B"]);
     expect(usageCsv([use("DB.S.A")]).split("\n")[1]).toContain("not used");
   });
 });

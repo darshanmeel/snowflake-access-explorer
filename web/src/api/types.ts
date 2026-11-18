@@ -340,6 +340,13 @@ export interface StateWhy<S> {
   body?: string | null;
 }
 
+/** What they see, a page of objects at a time (v_offset=, limit=): only the fields the table shows. */
+export interface Sees {
+  rows: { object: string; columns: (StateWhy<ColState> & { column: string })[]; rows: StateWhy<RowsState> & { condition?: string | null } }[];
+  total: number;
+  offset: number;
+}
+
 export interface DataView {
   object: string;
   name: string;
@@ -422,7 +429,7 @@ export interface UserPage {
   tabs: Tab[];
   roles: ReachRow[]; // the privilege rows themselves come a page at a time from GET privs (PrivsPage)
   multi: { rows: { privilege: string; cls: PrivClass; object: string; depth: number; path: Path }[]; total: number; shown: number };
-  can_read: DataView[] | null;
+  can_read: Sees | null;
   sensitive: { known: boolean; roles: string[]; rows: SensitiveReach[] } | null;
   granted: { role: string; kind: NodeKind; default: boolean; used: { queries: number; last_used: string } | null; used_text: string }[];
   usage: UsageCard;
@@ -504,15 +511,19 @@ export interface RolePage {
     types: {
       type: string;
       privs: string[];
+      count: number; // every object of the type; rows: one page of the open type (htype, h_offset), none for the rest
+      offset: number;
       rows: { object: string; name: string; cells: Record<string, HoldCell>; text: string }[];
     }[];
-    other: { privilege: string; cls: PrivClass; type: string; object: string; name: string }[];
+    other: { privilege: string; cls: PrivClass; type: string; object: string; name: string }[]; // one page (o_offset)
+    other_total: number;
+    other_offset: number;
     count: number;
     objects: number;
   };
   tabs: Tab[]; // privilege rows: GET /api/privs?of=role, a page at a time
   roles: ReachRow[];
-  can_read: DataView[] | null;
+  can_read: Sees | null;
   capped: string[];
   refs: Refs;
 }
@@ -1107,10 +1118,12 @@ export interface SeePage {
   who: { kind: NodeKind; name: string; id: string; type: string; status: UserStatus | null; default_role: string | null;
     secondary_all: boolean; roles: string[] };
   known: boolean; // policies readable here (not in My access without tags)
-  cards: SeeCard[];
+  cards: SeeCard[]; // one page (c_offset, limit) of the sensitive ones, or of all (all=1)
+  cards_total: number;
+  cards_offset: number;
   counts: { objects: number; sensitive: number; columns: number; clear: number; masked: number; unknown: number;
     unprotected: number; rows: number } | null;
-  can_read: DataView[] | null;
+  can_read: Sees | null;
   sensitive: { known: boolean; roles: string[]; rows: SensitiveReach[] } | null;
   usage: UsageCard | null; // a person
   role_usage: RoleUsage | null; // a role
@@ -1230,11 +1243,9 @@ export interface UsageRow {
   reads: number;
   writes: number;
   last: string | null;
-  people: string[]; // who used it (a role: its people)
   holder: string;
   suggest: "keep" | "trim" | "drop";
   text: string;
-  changes: WhatIfChange[]; // revokes of the unused privileges where they are granted
 }
 export interface UsagePage {
   view: View;
@@ -1245,10 +1256,15 @@ export interface UsagePage {
   reason: string | null;
   enable: string;
   source: string | null;
-  rows: UsageRow[];
+  rows: UsageRow[]; // one page (u_offset, limit) of the filter (f) and search (q)
+  rows_total: number;
+  offset: number;
+  f: string;
   weeks: string[]; // Monday of each week
-  counts: { objects: number; used: number; drop: number; trim: number; keep: number; write_unused: number; changes: number } | null;
-  changes: WhatIfChange[];
+  counts: { objects: number; used: number; drop: number; trim: number; keep: number; write_unused: number; changes: number; sensitive: number } | null;
+  changes: WhatIfChange[]; // none when changes_capped (more than the server lists)
+  changes_capped: boolean;
+  trim_text: string; // what the trim takes away, object by object
   sql: string; // the trim as What if writes it
   people: number;
   refs: Refs;

@@ -1,9 +1,10 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
 import { useEffect, useState, type ReactNode } from "react";
 import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
-import type { Banner as B, DataView, ListItem, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
+import type { Banner as B, ListItem, Sees, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
 import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, Waiting, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
+import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 export function col<R>(key: string, label: string, get: Column<R>["get"], more: Partial<Column<R>> = {}): Column<R> {
@@ -220,16 +221,18 @@ export const StateTag = (x: StateWhy<string>) => <span className={`ae-st ${tone(
 
 interface VRow { object: string; item: string; state: string; reason: string }
 
-/** What a role or user sees in each object they can read: columns clear or masked, rows all or filtered. */
-export function DataViews({ views, title = "What they see when they read" }: { views: DataView[] | null; title?: string }) {
-  if (!views?.length) return null;
-  const rows: VRow[] = views.flatMap((v) => [
-    ...v.columns.map((x) => ({ object: v.object, item: x.column, state: x.state as string, reason: x.reason })),
+/** What a role or user sees in each object they can read: columns clear or masked, rows all or filtered. The server
+ * pages it by object (v_offset); the CSV asks for every one. */
+export function DataViews({ s, path, title = "What they see when they read" }: { s: Sees | null; path: string; title?: string }) {
+  if (!s?.total) return null;
+  const flat = (x: Sees): VRow[] => x.rows.flatMap((v) => [
+    ...v.columns.map((c) => ({ object: v.object, item: c.column, state: c.state as string, reason: c.reason })),
     { object: v.object, item: "(rows)", state: v.rows.state as string, reason: v.rows.reason + (v.rows.condition ? ` · ${v.rows.condition}` : "") },
   ]);
   return (
-    <Card title={title} sub="Only objects with sensitive columns or row policies">
-      <DataTable csv="data_views.csv" rows={rows}
+    <Card title={title} sub={`Only objects with sensitive columns or row policies · ${s.total} objects`}>
+      <PagedTable path={path} at="v_offset" total={s.total} offset={s.offset} pick={(d: { can_read: Sees | null }) => (d.can_read ? flat(d.can_read) : [])}
+        csv="data_views.csv" rows={flat(s)}
         columns={[
           col("o", "Object", (r: VRow) => r.object, { wrap: "wrap" }),
           col("i", "Column", (r: VRow) => r.item),

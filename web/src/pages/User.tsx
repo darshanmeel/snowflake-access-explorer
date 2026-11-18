@@ -58,7 +58,7 @@ export function UserPage() {
             <Tabs active={part} onChange={(t) => { setPart(t); c.set({ schema: null, otype: null, full: null }); }} tabs={[
               { key: "privs", label: "Privileges", count: d.kpis.privileges },
               ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),
-              ...(d.can_read?.length ? [{ key: "sees", label: "What they see", count: d.can_read.length }] : []),
+              ...(d.can_read?.total ? [{ key: "sees", label: "What they see", count: d.can_read.total }] : []),
               ...(d.sensitive?.known && d.sensitive.rows.length ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }] : []),
               { key: "usage", label: "Role usage", count: d.usage.roles.length },
             ]} />
@@ -73,7 +73,7 @@ export function UserPage() {
                     col("d", "Depth", (r: MR) => r.depth, { num: true }), pathCol<MR>(d.refs)]} />
               </Card>
             )}
-            {part === "sees" && <DataViews views={d.can_read} title="What they see when they read" />}
+            {part === "sees" && <DataViews s={d.can_read} path="user" title="What they see when they read" />}
             {part === "sens" && d.sensitive && (
               <Card title="Sensitive data they can see" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
                 <DataTable csv="sensitive_reach.csv" rows={d.sensitive.rows}

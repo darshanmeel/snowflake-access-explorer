@@ -1253,7 +1253,7 @@ def user_page(p, view):
         roles=[reach_row(x) for x in reach],
         multi=dict(rows=[dict(privilege=r["privilege"], cls=r["cls"], object=r["object"], depth=a.depth(x[:-1], True),
                               path=x) for r, x in multi], total=sum(len(r["paths"]) for r in many), shown=len(multi)),
-        can_read=[v for v in a.data_views(u, True) if not (scope or c["on"] or c["pv"]) or v["object"] in objs] if shared else None,
+        can_read=sees(p, [v for v in a.data_views(u, True) if not (scope or c["on"] or c["pv"]) or v["object"] in objs]) if shared else None,
         sensitive=sens_reach(u, objs if scope else None),
         granted=[dict(role=r, kind=norm(a.role_kind(r)), default=r == dr, used=use.get(r) and dict(
             queries=use[r]["queries"], last_used=str(use[r]["last_used"])[:16]),
@@ -1355,33 +1355,45 @@ SHORT = {"1": "technical role held directly", "2": "privilege on a functional ro
 SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
 
 
+def finding_edges():
+    """S["rows"] once per data set: per grantee, the findings with role links (their link pairs); per object an edge
+    goes to, (finding, edge grantee, privilege). row_findings then looks up what it needs instead of scanning every
+    finding of every role on the paths (PUBLIC alone has thousands)."""
+    def make():
+        linked, by_to = {}, {}
+        for x in S["rows"]:
+            pairs = [(e["grantee"], e["to"]) for e in x["edges"] if not e["priv"]]
+            if pairs:
+                linked.setdefault(x["grantee"], []).append((x, pairs))
+            for e in x["edges"]:
+                by_to.setdefault(e["to"], []).append((x, e["grantee"], e["priv"]))
+        return linked, by_to
+    return a.cached(("finding_edges", id(S["rows"])), make)
+
+
 def row_findings(subject, user, objs, rows):
     """Findings that sit on each access row: the finding is about the subject or a role on the row's paths, and one of
     its grants (edges) is a privilege the row has on the object, or a role link on those paths (data and runnable rows
     only: a link explains a privilege, not a power). One list per entry of objs."""
-    xs = {}  # grantee -> its findings (a finding's chip depends only on its rule number)
-    for x in S["rows"]:
-        if x["kind"] != "user" or (user and x["grantee"] == subject):
-            xs.setdefault(x["grantee"], []).append(x)
+    ok = lambda x: x["kind"] != "user" or (user and x["grantee"] == subject)
+    linked, by_to = finding_edges()
     of, hs = a.path_roles(subject, user), {}
     for r in rows:
         hs.setdefault(r["object"], set()).update(r["holders"])
     chip = lambda x: dict(num=x["num"], severity=x["severity"], label=SHORT.get(x["num"], x["title"]))
-    links, grants, out = {}, {}, []  # per set of path roles: chips of its role links, its grants {object: [(x, priv)]}
+    links, out = {}, []  # per set of path roles: chips of its role links
     for o in objs:
         on = of(hs.get(o["object"], ()))
         if on not in links:
-            xs_on = [x for g in on & xs.keys() for x in xs[g]]
-            links[on] = {x["num"]: chip(x) for x in xs_on
-                         if any(e["grantee"] in on and e["to"] in on and not e["priv"] for e in x["edges"])}
-            grants[on] = {}
-            for x in xs_on:
-                for e in x["edges"]:
-                    if e["grantee"] in on:
-                        grants[on].setdefault(e["to"], []).append((x, e["priv"]))
+            got = {}
+            for g in on & linked.keys():
+                for x, pairs in linked[g]:
+                    if x["num"] not in got and ok(x) and any(f in on and t in on for f, t in pairs):
+                        got[x["num"]] = chip(x)
+            links[on] = got
         hit = dict(links[on]) if o["category"] in ("data", "runnable") else {}
-        for x, pv in grants[on].get(o["object"], ()):
-            if x["num"] not in hit and pv in (None, *o["privileges"]):
+        for x, g, pv in by_to.get(o["object"], ()):
+            if x["num"] not in hit and g in on and x["grantee"] in on and ok(x) and pv in (None, *o["privileges"]):
                 hit[x["num"]] = chip(x)
         out.append(sorted(hit.values(), key=lambda f: (SEV_RANK.get(f["severity"], 9), int(f["num"]))))
     return out
@@ -1752,12 +1764,16 @@ def role_page(p, view):
         return ("direct" if (o, pv) in direct_pv else "inherited" if pv in x["has"] else "owner" if pv in x["implied"]
                 else "lacks")
 
-    types_ = []
-    for t in sorted({objs[o]["type"] for o in shown}, key=lambda t: (type_rank(t), t)):
-        cols = a.valid_privs(t)
-        types_.append(dict(type=t, privs=cols, rows=[dict(object=o, name=objs[o]["name"], cells={pv: cell(o, pv) for pv in cols},
-                                                          text=hl[o]["text"]) for o in shown if objs[o]["type"] == t]))
+    types_, ts = [], sorted({objs[o]["type"] for o in shown}, key=lambda t: (type_rank(t), t))
+    active = p.get("htype") if p.get("htype") in ts else ts[0] if ts else ""
+    for t in ts:  # one page of the open type's rows (htype=, h_offset=, limit=): a big role holds 100k objects
+        cols, os_ = a.valid_privs(t), [o for o in shown if objs[o]["type"] == t]
+        w, h_off = window(p, "h_offset", len(os_)) if t == active else (slice(0, 0), 0)
+        types_.append(dict(type=t, privs=cols, count=len(os_), offset=h_off,
+                           rows=[dict(object=o, name=objs[o]["name"], cells={pv: cell(o, pv) for pv in cols}, text=hl[o]["text"])
+                                 for o in os_[w]]))
     acc = account(admin, acct)
+    ow, o_off = window(p, "o_offset", len(other))  # account and future grants: thousands on a big role
     ro_rows = [dict(object=x["object"], privileges=x["privileges"], holder=x["holder"], inherited=x["inherited"],
                     how=x["how"], read_only=x["read_only"], objects=x["objects"]) for x in ro]
     eff = c["eff"]
@@ -1776,10 +1792,11 @@ def role_page(p, view):
         held_by=dict(rows=us[:MAX_HELD] + rs[:MAX_HELD], total=len(h["rows"]), users=len(us), roles=len(rs),
                      revoke=h["revoke"]),
         holds=dict(types=types_, other=[dict(privilege=x["privilege"], cls=x["cls"], type=x["type"], object=x["object"],
-                                             name=x["name"]) for x in other], count=len(hold), objects=len(objs)),
+                                             name=x["name"]) for x in other[ow]], other_total=len(other), other_offset=o_off,
+                   count=len(hold), objects=len(objs)),
         tabs=a.cached(("role_tabs", c["key"]), lambda: tab_list(eff, [], c["held"], acc)),
         roles=[reach_row(x) for x in c["held"]],
-        can_read=[v for v in a.data_views(r, False) if not scope or v["object"] in {x["object"] for x in eff}]
+        can_read=sees(p, [v for v in a.data_views(r, False) if not scope or v["object"] in {x["object"] for x in eff}])
         if S["view"] == "shared" else None,
         capped=sorted(a.capped))
 
@@ -2347,15 +2364,17 @@ def see_page(p, view):
     or masked and why), the old What they see / Sensitive data they can see tables, and role usage."""
     name, user = subject(p, view)
     ok = view != "mine" or bool(S["sens"])
-    s = a.seen(name, user) if ok else dict(cards=[], counts=None)
+    s = a.cached(("seen", name, user), lambda: a.seen(name, user)) if ok else dict(cards=[], counts=None)
+    cards = [x for x in s["cards"] if p.get("all") == "1" or x["sensitive"]]  # Column by column, one page (c_offset=)
+    w, c_off = window(p, "c_offset", len(cards))
     pr = (a.profile.get(name) or {}) if user else {}
     who = dict(kind="user" if user else nk(name), name=name, id=a.uid(name, user),
                type=str(pr.get("TYPE") or "PERSON") if user else KIND.get(norm(a.role_kind(name)), "Role"),
                status=a.status(name) if user else None, default_role=pr.get("DEFAULT_ROLE") or None,
                secondary_all="ALL" in str(pr.get("DEFAULT_SECONDARY_ROLES") or "").upper(),
                roles=sorted(a.roles_of.get(name, [])) if user else [])
-    return dict(view=view, who=who, known=ok, cards=s["cards"], counts=s["counts"],
-                can_read=a.data_views(name, user) if ok else None, sensitive=sens_reach(name) if user else None,
+    return dict(view=view, who=who, known=ok, cards=cards[w], cards_total=len(cards), cards_offset=c_off, counts=s["counts"],
+                can_read=sees(p, a.data_views(name, user)) if ok else None, sensitive=sens_reach(name) if user else None,
                 usage=usage(name) if user else None, role_usage=None if user else role_usage(name))
 
 
@@ -2428,8 +2447,26 @@ def usage_page(p, view):
     out = dict(view=view, who=who, days=days, periods=list(a.PERIODS), available=ok, reason=why, enable=ENABLE_USE,
                source=(a.run.get("SOURCES") or {}).get("object_use") or ("demo values" if MODE == "fake" else None))
     if not ok:
-        return out | dict(rows=[], weeks=[], counts=None, changes=[], sql="", people=0)
-    return out | a.granted_used(name, user, days)
+        return out | dict(rows=[], rows_total=0, offset=0, f="all", weeks=[], counts=None, changes=[], sql="", people=0,
+                          trim_text="", changes_capped=False)
+    g = a.cached(("granted_used", name, user, days), lambda: a.granted_used(name, user, days))
+    f = p.get("f") if p.get("f") in ("drop", "trim", "keep", "sensitive") else "all"
+    q = p.get("q", "").strip().lower()
+    rows = [r for r in g["rows"] if (f == "all" or (r["sensitive"] if f == "sensitive" else r["suggest"] == f))
+            and (not q or q in r["object"].lower())]
+    w, off = window(p, "u_offset", len(rows))
+    big = len(g["changes"]) > TRIM_MAX
+    cut = [r for r in g["rows"] if r["changes"]]
+    text = " · ".join(f"{', '.join(dict.fromkeys(c['privilege'] for c in r['changes']))} on {r['object'].split('.')[-1]}"
+                      for r in cut[:TRIM_NAMES]) + (f" · and {len(cut) - TRIM_NAMES} more objects" if len(cut) > TRIM_NAMES else "")
+    return out | dict(days=g["days"], weeks=g["weeks"], people=g["people"], f=f, offset=off, rows_total=len(rows),
+                      rows=[{k: v for k, v in r.items() if k not in ("changes", "people")} for r in rows[w]],
+                      counts=g["counts"] | dict(sensitive=sum(r["sensitive"] for r in g["rows"])), trim_text=text,
+                      changes=[] if big else g["changes"], sql="" if big else g["sql"], changes_capped=big)
+
+
+TRIM_MAX = 1000  # revokes Granted vs used lists and hands to the change plan; more: the CSV has every unused privilege
+TRIM_NAMES = 20  # objects named in the trim's one-line summary
 
 
 NAMES = 20  # people, objects and subjects sent per What changed event
@@ -2536,6 +2573,16 @@ def compare_page(p, view):
 
 
 # ---------- sensitive data ----------
+
+def sees(p, views):
+    """What they see (data_views), one page of objects (v_offset=, limit=; 0: every one, for the CSV), with only what
+    the table shows: a big account has thousands of governed objects, each with its policy text."""
+    w, off = window(p, "v_offset", len(views))
+    rows = [dict(object=v["object"], columns=[dict(column=c["column"], state=c["state"], reason=c["reason"]) for c in v["columns"]],
+                 rows=dict(state=v["rows"]["state"], reason=v["rows"]["reason"], condition=v["rows"].get("condition")))
+            for v in views[w]]
+    return dict(rows=rows, total=len(views), offset=off)
+
 
 def window(p, key, n):
     """The rows of a long table the page sends: slice(offset, offset + limit) of n rows from the params key= (offset)

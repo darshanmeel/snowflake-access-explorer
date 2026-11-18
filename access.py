@@ -2677,9 +2677,21 @@ def admin_paths(name, user=False, default_only=False, limit=None):
 def account_privs(name, user=False, default_only=False, limit=None):
     """Account-level privileges (MANAGE GRANTS, CREATE DATABASE, ...): rows (privilege, path), at most MAX_PATHS
     paths."""
+    acct = account_grants()
     sts, kids, cnt, hops = fast(name, user, default_only, limit)
-    hs = {r for r in cnt if any(k == "ACCOUNT" for _, k, _ in granted.get(r, []))}
-    return [(pv, p) for p in listed(sts, kids, hops, hs) for pv, k, o in granted[p[-1]] if k == "ACCOUNT"]
+    return [(pv, p) for p in listed(sts, kids, hops, cnt.keys() & acct.keys()) for pv in acct[p[-1]]]
+
+
+def account_grants():
+    """{role: [account-level privilege, in granted order]}, once per data set: a big role has 100k grants to scan."""
+    def make():
+        out = {}
+        for r, gs in granted.items():
+            for pv, k, _ in gs:
+                if k == "ACCOUNT":
+                    out.setdefault(r, []).append(pv)
+        return out
+    return cached("account_grants", make)
 
 
 def admin_holders():
@@ -2912,6 +2924,7 @@ SQL_OK = {"IS_ROLE_IN_SESSION", "CURRENT_ROLE", "CURRENT_USER", "INVOKER_ROLE", 
           "OBJECT_INSERT", "CURRENT_DATE", "CURRENT_TIMESTAMP", "WHEN", "THEN"}
 
 
+@functools.lru_cache(maxsize=4096)  # the same policy text on thousands of columns; read only, never changed
 def clear_for(body):
     """Roles that see a masking policy's value in clear (or a row policy's rows), from the policy text, not evaluated.
     Returns (roles, exact): roles {role: "session" (IS_ROLE_IN_SESSION, hierarchy-aware) | "primary" (CURRENT_ROLE)};
@@ -2936,19 +2949,35 @@ def pol(p, via=None):
                 tag=p.get("TAG_NAME"), via=via, clear=clear_for(p["POLICY_BODY"]))
 
 
+def policy_index():
+    """POLICY rows by object, and those attached to a tag by tag name, each with its place in policies, once per data
+    set: policies_of looks up obj instead of scanning every policy for every object."""
+    def make():
+        on, by_tag = {}, {}
+        for i, p in enumerate(policies):
+            if p["OBJECT_NAME"] and (p["POLICY_KIND"] == "ROW_ACCESS_POLICY" or p["COLUMN_NAME"]):
+                on.setdefault(p["OBJECT_NAME"], []).append((i, p))
+            elif not p["OBJECT_NAME"] and p.get("TAG_NAME"):
+                by_tag.setdefault(p["TAG_NAME"].upper(), []).append((i, p))
+        return on, by_tag
+    return cached("policy_at", make)
+
+
 def policies_of(obj):
     """Policies on obj: dict(columns={column: [policy]}, rows=[policy]). policy: name, kind, body, args, tag,
     via (tag the column carries for a tag-based policy, else None), clear (clear_for(body))."""
+    on, by_tag = policy_index()
+    hits = [(i, 0, p, None, None) for i, p in on.get(obj, [])]
+    if by_tag:  # attached to a tag: every column carrying that tag
+        hits += [(i, j, p, c, t) for j, (c, t, _, _) in enumerate(tags_of(obj)) if c for i, p in by_tag.get(t.upper(), [])]
     cols, rows = {}, []
-    for p in policies:
-        if p["OBJECT_NAME"] == obj and p["POLICY_KIND"] == "ROW_ACCESS_POLICY":
+    for _, _, p, c, t in sorted(hits, key=lambda x: x[:2]):  # the order one scan of policies gives
+        if t is not None:
+            cols.setdefault(c, []).append(pol(p, t))
+        elif p["POLICY_KIND"] == "ROW_ACCESS_POLICY":
             rows.append(pol(p))
-        elif p["OBJECT_NAME"] == obj and p["COLUMN_NAME"]:
+        else:
             cols.setdefault(p["COLUMN_NAME"], []).append(pol(p))
-        elif not p["OBJECT_NAME"] and p.get("TAG_NAME"):  # attached to a tag: every column carrying that tag
-            for c, t, _, _ in tags_of(obj):
-                if c and t.upper() == p["TAG_NAME"].upper():
-                    cols.setdefault(c, []).append(pol(p, t))
     return dict(columns=cols, rows=rows)
 
 
@@ -3134,7 +3163,12 @@ def governed():
 
 
 def data_views(name, user=None):
-    """data_view() of every table/view name can read that has a tag or a policy (the per-role / per-user summary)."""
+    """data_view() of every table/view name can read that has a tag or a policy (the per-role / per-user summary), once
+    per data set."""
+    return cached(("data_views", name, user), lambda: views_of(name, user))
+
+
+def views_of(name, user):
     out = []
     for o in cached("governed", governed):
         if tags_of(o) or policies_of(o)["columns"] or policies_of(o)["rows"]:
@@ -3173,6 +3207,10 @@ def row_tables():
 
 def governance_kpis():
     """Account KPIs: dict(row_tables, masked_columns, tagged_objects, text {label: "N tables" | "not used"})."""
+    return cached("gov", governance)
+
+
+def governance():
     rows = len(row_tables())
     cols = sum(len(policies_of(o)["columns"]) for o in objects if is_data(kinds[o]))
     tagged = len({t["OBJECT_NAME"] for t in tags})
@@ -4475,9 +4513,9 @@ def brings(role, obj):
     return cached(("brings", role, obj), make)
 
 
-def role_objects(role):
-    """What role reaches, for brings(), once per data set: rows (privilege rows), on {object: rows}, data {data object:
-    (level, where)}, where {(level, where): data objects}, as access_objects() of grants(role) gives them."""
+def role_rows(role):
+    """What role reaches, once per data set: keys {(privilege, type, object): holders}, rows (their count), on
+    {object: rows}. Enough to rank the ways in (extra_of); role_objects() adds the levels for the ones shown."""
     def make():
         keys, on_ = {}, {}
         for h in bfs([role]):
@@ -4486,13 +4524,27 @@ def role_objects(role):
                     keys[(pv, k, o)] = set()
                     on_[o] = on_.get(o, 0) + 1
                 keys[(pv, k, o)].add(h)
+        return dict(keys=keys, rows=len(keys), on=on_)
+    return cached(("role_rows", role), make)
+
+
+def extra_of(role, obj):
+    """Privilege rows role brings besides those on obj: brings()["extra"] without the levels."""
+    x = role_rows(role)
+    return x["rows"] - x["on"].get(obj, 0)
+
+
+def role_objects(role):
+    """What role reaches, for brings(), once per data set: rows (privilege rows), on {object: rows}, data {data object:
+    (level, where)}, where {(level, where): data objects}, as access_objects() of grants(role) gives them."""
+    def make():
         data, where = {}, {}
-        for x in object_levels(keys, role):
+        for x in object_levels(role_rows(role)["keys"], role):
             if x["category"] == "data" and x["level"]:
                 w = (x["level"], f"{x['database']}.{x['schema']}" if x["schema"] else x["database"] or x["object"])
                 data[x["object"]] = w
                 where[w] = where.get(w, 0) + 1
-        return dict(rows=len(keys), on=on_, data=data, where=where)
+        return dict(rows=role_rows(role)["rows"], on=role_rows(role)["on"], data=data, where=where)
     return cached(("role_objects", role), make)
 
 
@@ -4548,10 +4600,12 @@ def nearest(user, priv, obj, limit=5, is_user=True):
     cut = head(out[min(limit, len(out)) - 1]) if limit else None
     out = [o for o in out if cut is None or head(o) <= cut]  # the rest can't make the first limit
     for o in out:
-        b = brings(o["role"], obj)
-        o.update(extra=b["extra"], also=b["also"])
+        o["extra"] = extra_of(o["role"], obj)
     out.sort(key=lambda o: (o["cost"], o["people"], o["rule1"], o["extra"], len(o["path"]), o["role"], o["to"]))
-    return out[:limit]
+    out = out[:limit]
+    for o in out:  # the levels only for the ones shown: a big role reaches 100k objects
+        o["also"] = brings(o["role"], obj)["also"]
+    return out
 
 
 def basic_priv(kind):
@@ -4592,13 +4646,13 @@ def suggest(privs, obj, user=None, limit=5, is_user=True):
     revs = [reverse(obj, pv) for pv in privs]
     rs = [r for r in revs[0] if all(r in x for x in revs) and r not in have and r not in loop
           and role_kind(r) == "functional" and suggestable(r)]
-    out = []
-    for r in rs:
-        b = brings(r, obj)
-        v = data_view(r, obj, False) if is_data(kinds.get(obj, "")) else None
-        out.append(dict(role=r, path=revs[0][r] + [obj], holders=len(ups(r)[1]), extra=b["extra"], also=b["also"],
-                        unmasked=[c["column"] for c in (v["columns"] if v else []) if c["sensitive"] and c["state"] == "clear"]))
-    return sorted(out, key=lambda e: (e["extra"], len(e["path"]), e["role"]))[:limit]
+    out = sorted((dict(role=r, path=revs[0][r] + [obj], holders=len(ups(r)[1]), extra=extra_of(r, obj)) for r in rs),
+                 key=lambda e: (e["extra"], len(e["path"]), e["role"]))[:limit]
+    for e in out:  # the levels and the data view only for the ones shown
+        v = data_view(e["role"], obj, False) if is_data(kinds.get(obj, "")) else None
+        e.update(also=brings(e["role"], obj)["also"],
+                 unmasked=[c["column"] for c in (v["columns"] if v else []) if c["sensitive"] and c["state"] == "clear"])
+    return out
 
 
 # ---------- screen 4: access graph ----------

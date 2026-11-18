@@ -864,6 +864,13 @@ def test_usage_changes():  # screens 13, 14
     assert u["available"] and u["days"] == 90 and u["periods"] == [30, 90, 180] and u["source"] == "demo values"
     assert u["rows"][0]["suggest"] == "drop" and u["counts"]["changes"] == len(u["changes"]) > 0
     assert u["sql"].startswith("REVOKE ") and js("/api/usage?user=ENGINEER_01&days=30")["sql"]  # the trim, from access.py
+    one = js("/api/usage?user=ENGINEER_01&limit=1&u_offset=1")  # one page; the filter, search and CSV (limit=0) on the server
+    assert len(one["rows"]) == 1 and one["offset"] == 1 and one["rows_total"] == u["counts"]["objects"] and "changes" not in one["rows"][0]
+    drop = js("/api/usage?user=ENGINEER_01&f=drop&limit=0")
+    assert drop["rows_total"] == u["counts"]["drop"] == len(drop["rows"]) and all(r["suggest"] == "drop" for r in drop["rows"])
+    q = u["rows"][0]["object"].split(".")[-1].lower()
+    assert all(q in r["object"].lower() for r in js(f"/api/usage?user=ENGINEER_01&q={q}")["rows"])
+    assert " on " in u["trim_text"] and not u["changes_capped"]
     assert len(js("/api/usage?user=ENGINEER_01&days=180")["weeks"]) == 26
     assert js(f"/api/usage?role={a.FUNC}ANALYST")["who"]["kind"] == "functional"
     get("/api/usage?days=7", 400)

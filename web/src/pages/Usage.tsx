@@ -1,14 +1,14 @@
 // Screen 13, Granted vs used: what a person or role was granted next to what they used (ACCESS_HISTORY), weekly
 // queries, last use and a suggestion. The unused grants go to the change plan (simulated on What if, never run).
-import { useMemo, useState } from "react";
-import { useApi } from "../api/client";
+import { get, useApi } from "../api/client";
 import type { ListItem, UsagePage, UsageRow } from "../api/types";
-import { AccessPill, Card, CodeOutput, EmptyState, FilterChips, ListToolbar, Tabs } from "../components";
+import { AccessPill, Card, CodeOutput, EmptyState, FilterChips, ListToolbar, Pager, Tabs } from "../components";
 import { download } from "../components/table";
-import { useApp, useOpen } from "../ctx";
+import { apiParams, useApp, useOpen } from "../ctx";
 import { addTo, changeText, inPlan, plan, planTexts, useSaved } from "./changeplan";
 import { Load, Pick, PickFirst } from "./common";
-import { bars, trimText, usageCsv, usageRows, type UsageFilter } from "./history";
+import { bars, usageCsv, type UsageFilter } from "./history";
+import { PAGE } from "./paged";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 /** The trim's SQL as the server writes it (What if's text), with the reason. */
@@ -24,7 +24,8 @@ export function UsagePageView() {
   const mine = c.view === "mine";
   const role = c.params.role ?? "";
   const user = c.params.user ?? (role ? "" : c.meta.default_user ?? "");
-  const s = useApi<UsagePage>(role || user ? "usage" : null, { view: c.view, days: c.params.days, ...(role ? { role } : { user }) });
+  const s = useApi<UsagePage>(role || user ? "usage" : null, { view: c.view, days: c.params.days, f: c.params.f, q: c.params.q,
+    u_offset: c.params.u_offset, limit: c.params.limit, ...(role ? { role } : { user }) });
   const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null });
   return (
     <>
@@ -67,10 +68,10 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
   const c = useApp();
   const o = useOpen(d.refs);
   const n = d.counts!, w = d.who;
-  const [f, setF] = useState<UsageFilter>("all");
+  const f = d.f as UsageFilter, q = c.params.q ?? "", size = Number(c.params.limit) || PAGE;
   const show = c.params.show === "trim" ? "trim" : "table";
-  const [q, setQ] = useState("");
-  const rows = usageRows(d.rows, f, q);
+  const rows = d.rows;  // one page; the server filters (f), searches (q) and pages (u_offset, limit)
+  const csv = async () => download(`${w.name}_granted_vs_used.csv`, usageCsv((await get<UsagePage>("usage", { ...apiParams(c), limit: "0", u_offset: "" })).rows));
   const list = useSaved(plan);
   const added = inPlan(list, d.changes);
   return (
@@ -84,23 +85,25 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
         {period}
       </div>
       <Tabs active={show} onChange={(k) => c.set({ show: k === "table" ? null : k })} tabs={[
-        { key: "table", label: "Granted vs used", count: d.rows.length },
+        { key: "table", label: "Granted vs used", count: n.objects },
         { key: "trim", label: "Trim to what is used", count: n.changes },
       ]} />
       {show === "table" && (
         <Card>
-          <ListToolbar search={q} onSearch={setQ} onCsv={() => download(`${w.name}_granted_vs_used.csv`, usageCsv(rows))}>
-            <FilterChips label="Show" value={f} onPick={(k) => setF(k as UsageFilter)} items={[
-              { key: "all", label: "All", count: d.rows.length }, { key: "drop", label: "Not used", count: n.drop },
+          <ListToolbar search={q} onSearch={(v) => c.set({ q: v || null, u_offset: null })} onCsv={csv}>
+            <FilterChips label="Show" value={f} onPick={(k) => c.set({ f: k === "all" ? null : k, u_offset: null })} items={[
+              { key: "all", label: "All", count: n.objects }, { key: "drop", label: "Not used", count: n.drop },
               { key: "trim", label: "Partly used", count: n.trim }, { key: "keep", label: "Keep", count: n.keep },
-              { key: "sensitive", label: "Sensitive", count: d.rows.filter((r) => r.sensitive).length }]} />
+              { key: "sensitive", label: "Sensitive", count: n.sensitive }]} />
           </ListToolbar>
-          {!rows.length ? <EmptyState title="Nothing here">{d.rows.length ? "Change the filter or clear the search." : "No tables or views reached."}</EmptyState> : (
+          {!rows.length ? <EmptyState title="Nothing here">{n.objects ? "Change the filter or clear the search." : "No tables or views reached."}</EmptyState> : (
             <div className="ae-olist" role="table">
               <div className="ae-urow ae-orow-h" role="row"><span>Object</span><span>Granted</span><span>Actually used</span><span>Queries per week</span><span>Last used</span><span>Suggestion</span></div>
               {rows.map((r) => <Row key={r.object} r={r} weeks={d.weeks} open={o.open} />)}
             </div>
           )}
+          {d.rows_total > size && <Pager at={Math.floor(d.offset / size)} size={size} total={d.rows_total} sizes={[25, 50, 100, 250]}
+            onPage={(k) => c.set({ u_offset: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), u_offset: null })} />}
           {n.changes > 0 && <Trim d={d} added={added} />}
           <p className="ae-muted ae-foot">Usage {d.source === "demo values" ? "values are demo values; in Snowflake they come" : "comes"} from SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
             (query metadata, Enterprise edition), refreshed with each snapshot. {w.kind === "user" ? "" : "For a role: used by any of its people, through any of their roles."}</p>
@@ -108,7 +111,8 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
       )}
       {show === "trim" && (
         <Card title="Trim to what is used" sub="Revokes of the grants not used in this period, where they are granted: everyone else holding that role loses them too. Simulate before you change anything.">
-          {!d.changes.length ? <EmptyState title="Nothing to trim">Every grant was used in the last {d.days} days{d.rows.some((r) => r.suggest === "trim") ? " (ownership is transferred, not revoked)" : ""}.</EmptyState> : <>
+          {d.changes_capped ? <EmptyState title={`${plural(n.changes, "revoke")}: too many to list here`}>The CSV of Granted vs used has every unused privilege, object by object.</EmptyState>
+            : !d.changes.length ? <EmptyState title="Nothing to trim">Every grant was used in the last {d.days} days{n.trim ? " (ownership is transferred, not revoked)" : ""}.</EmptyState> : <>
             <ul className="ae-plain">{d.changes.map((ch) => <li key={changeText(ch)} className="ae-mono">{changeText(ch)}</li>)}</ul>
             <div className="ae-actions">
               <button type="button" className="ae-btn ae-btn-primary" disabled={added} onClick={() => plan.set(addTo(plan.get(), d.changes))}>{added ? "In the change plan ✓" : "Add to change plan"}</button>
@@ -148,10 +152,10 @@ function Trim({ d, added }: { d: UsagePage; added: boolean }) {
     <div className="ae-trim">
       <div>
         <div className="ae-trim-t">Trim to what is used: {plural(d.counts!.changes, "grant")}</div>
-        <div className="ae-muted">{trimText(d.rows)}</div>
+        <div className="ae-muted">{d.trim_text}</div>
       </div>
       <div className="ae-actions">
-        <button type="button" className="ae-btn ae-btn-primary" disabled={added} onClick={() => plan.set(addTo(plan.get(), d.changes))}>{added ? "In the change plan ✓" : "Add to change plan"}</button>
+        {!d.changes_capped && <button type="button" className="ae-btn ae-btn-primary" disabled={added} onClick={() => plan.set(addTo(plan.get(), d.changes))}>{added ? "In the change plan ✓" : "Add to change plan"}</button>}
         <button type="button" className="ae-btn" onClick={() => c.set({ show: "trim" })}>See the revokes</button>
       </div>
     </div>

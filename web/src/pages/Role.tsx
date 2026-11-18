@@ -4,6 +4,7 @@ import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
 import { Banner, Card, DataTable, Graph, KpiRow, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog } from "./common";
+import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 type RW = RolePage["readonly_writes"][number];
@@ -11,14 +12,15 @@ const CELL: Record<HoldCell, string> = { direct: "direct", inherited: "inherited
 
 /** What the role holds, one tab per object type with its count. */
 function Holds({ d }: { d: RolePage }) {
-  const [tab, setTab] = useState(d.holds.types[0]?.type ?? "");
-  const t = d.holds.types.find((x) => x.type === tab) ?? d.holds.types[0];
+  const c = useApp();
+  const t = d.holds.types.find((x) => x.type === c.params.htype) ?? d.holds.types[0];
   if (!t) return null;
   type HR = (typeof t.rows)[number];
   return (
     <>
-      <Tabs active={t.type} onChange={setTab} tabs={d.holds.types.map((x) => ({ key: x.type, label: x.type.toLowerCase(), count: x.rows.length }))} />
-      <DataTable key={t.type} csv={`${d.role.name}_${t.type}.csv`} rows={t.rows}
+      <Tabs active={t.type} onChange={(k) => c.set({ htype: k, h_offset: null })} tabs={d.holds.types.map((x) => ({ key: x.type, label: x.type.toLowerCase(), count: x.count }))} />
+      <PagedTable key={t.type} path="role" at="h_offset" total={t.count} offset={t.offset} csv={`${d.role.name}_${t.type}.csv`} rows={t.rows}
+        pick={(x: RolePage) => x.holds.types.find((y) => y.type === t.type)?.rows ?? []}
         columns={[col("o", "Object", (r: HR) => r.object, { wrap: "nowrap" }),
           ...t.privs.map((p) => col(p, p, (r: HR) => CELL[r.cells[p]] ?? "",
             { wrap: "nowrap", render: (r: HR) => <span className={`ae-cell ae-cell-${r.cells[p]}`}>{r.cells[p] === "lacks" ? "—" : r.cells[p] ?? ""}</span> }))]} />
@@ -120,7 +122,7 @@ export function RolePageView() {
             { key: "privs", label: "Privileges", count: d.tabs.find((t) => t.key === "all")?.count ?? 0 },
             { key: "held", label: "Held by", count: d.held_by.total },
             ...(d.holds.types.length ? [{ key: "holds", label: "What it holds", count: d.holds.count }] : []),
-            ...(d.can_read?.length ? [{ key: "sees", label: "What it sees", count: d.can_read.length }] : []),
+            ...(d.can_read?.total ? [{ key: "sees", label: "What it sees", count: d.can_read.total }] : []),
           ]} />
           {part === "privs" && <Card title="Effective privileges and roles held" sub="Split by what they allow">
             <PrivilegeTabs rows={[]} roles={d.roles} account={d.account} refs={d.refs} tabs={d.tabs} theme={c.theme}
@@ -146,14 +148,15 @@ export function RolePageView() {
               <Controls><Sel label="Show who lacks" value={d.filters.lacks} onPick={(v) => c.set({ lacks: v })}
                 options={[["", "(any)"], ...d.filters.gaps.map((x): [string, string] => [x, x])]} /></Controls>
               <Holds d={d} />
-              {d.holds.other.length > 0 && (
-                <details><summary>Account and other privileges ({d.holds.other.length})</summary><DataTable csv={`${d.role.name}_other.csv`} rows={d.holds.other}
+              {d.holds.other_total > 0 && (
+                <details><summary>Account and other privileges ({d.holds.other_total})</summary><PagedTable path="role" at="o_offset" total={d.holds.other_total}
+                  offset={d.holds.other_offset} pick={(x: RolePage) => x.holds.other} csv={`${d.role.name}_other.csv`} rows={d.holds.other}
                   columns={[col("p", "Privilege", (r: RolePage["holds"]["other"][number]) => r.privilege), col("t", "On", (r: RolePage["holds"]["other"][number]) => r.type),
                     col("o", "Object", (r: RolePage["holds"]["other"][number]) => r.object, { wrap: "wrap" })]} /></details>
               )}
             </Card>
           )}
-          {part === "sees" && <DataViews views={d.can_read} />}
+          {part === "sees" && <DataViews s={d.can_read} path="role" />}
         </>
       )}</Load>}
     </>

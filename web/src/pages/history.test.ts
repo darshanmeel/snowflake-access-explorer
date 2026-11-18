@@ -1,29 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { redirect } from "../App";
-import type { ChangeEvent, CheckPage, UsageRow, WhoPage } from "../api/types";
-import { answerOf, bars, keep, question, recheck, trimText, usageRows, watchId, type Watch } from "./history";
+import type { ChangeEvent, CheckPage, WhoPage } from "../api/types";
+import { answerOf, bars, keep, question, recheck, watchId, type Watch } from "./history";
 
 const ev = (kind: ChangeEvent["kind"], more: Partial<ChangeEvent> = {}): ChangeEvent => ({
   id: kind, kind, text: "", impact: "", by: null, sensitive: false, findings: [], link: { page: "object", params: {} },
   subjects: [], people: [], objects: [], ...more,
-});
-const row = (object: string, more: Partial<UsageRow> = {}): UsageRow => ({
-  object, type: "TABLE", database: "DB", schema: "S", sensitive: false, level: "change", used: "read", privileges: ["INSERT", "SELECT"],
-  unused: [], weeks: [0, 2, 4], reads: 6, writes: 0, last: "2026-11-02", people: ["U"], holder: "T_R", suggest: "keep", text: "Keep", changes: [], ...more,
 });
 
 describe("granted vs used", () => {
   it("draws weekly bars, empty weeks low", () => {
     expect(bars([0, 2, 4], 32)).toEqual([3, 16, 32]);
     expect(bars([0, 0])).toEqual([3, 3]);
-  });
-  it("filters rows and says what the trim takes", () => {
-    const rows = [row("DB.S.A", { suggest: "drop", sensitive: true, changes: [{ op: "revoke_priv", role: "T_R", privilege: "SELECT", object: "DB.S.A" }] }),
-      row("DB.S.B", { suggest: "trim", changes: [{ op: "revoke_priv", role: "T_W", privilege: "INSERT", object: "DB.S.B" }] }), row("DB.S.C")];
-    expect(usageRows(rows, "drop").map((r) => r.object)).toEqual(["DB.S.A"]);
-    expect(usageRows(rows, "sensitive").map((r) => r.object)).toEqual(["DB.S.A"]);
-    expect(usageRows(rows, "all")).toHaveLength(3);
-    expect(trimText(rows)).toBe("SELECT on A · INSERT on B");
   });
 });
 

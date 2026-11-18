@@ -3,9 +3,10 @@
 import { useMemo } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, SeeCard, SeePage, SensitiveReach } from "../api/types";
-import { Card, DataTable, EmptyState, FilterChips, IdentityCard, Tabs } from "../components";
-import { useApp, useOpen } from "../ctx";
+import { Card, DataTable, EmptyState, FilterChips, IdentityCard, Pager, Tabs } from "../components";
+import { apiParams, useApp, useOpen } from "../ctx";
 import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, StateTag, Usage } from "./common";
+import { PAGE } from "./paged";
 import { seeSentence } from "./screens";
 
 /** What the picker of screens 7 and 9 searches: people and roles (My access: the roles of your slice). */
@@ -16,7 +17,7 @@ export function SeePageView() {
   const mine = c.view === "mine";
   const role = mine ? "" : c.params.role ?? "";
   const user = c.params.user ?? (role ? "" : c.meta.default_user ?? "");
-  const s = useApi<SeePage>(role || user ? "see" : null, { view: c.view, ...(role ? { role } : { user }) });
+  const s = useApi<SeePage>(role || user ? "see" : null, { ...apiParams(c), ...(role ? { role } : { user }) });  // its tables page (v_offset, c_offset)
   const id = role || user;
   return (
     <>
@@ -48,7 +49,7 @@ function Body({ d }: { d: SeePage }) {
       </div>
       <Tabs active={tab} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
         { key: "detail", label: "What they see · tables" },
-        { key: "cards", label: "Column by column", count: d.cards.length },
+        { key: "cards", label: "Column by column", count: d.counts?.objects ?? 0 },
       ]} />
       {tab === "detail" && <Old d={d} />}
       {tab === "cards" && <Cards d={d} />}
@@ -64,11 +65,11 @@ function Old({ d }: { d: SeePage }) {
   return (
     <>
       <Tabs active={part} onChange={(k) => c.set({ part: k === "sees" ? null : k })} tabs={[
-        { key: "sees", label: user ? "What they see" : "What it sees", count: d.can_read?.length ?? 0 },
+        { key: "sees", label: user ? "What they see" : "What it sees", count: d.can_read?.total ?? 0 },
         ...(user && d.sensitive?.known ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }] : []),
         { key: "usage", label: "Role usage", count: d.usage?.roles.length ?? d.role_usage?.holders ?? 0 },
       ]} />
-      {part === "sees" && (d.can_read?.length ? <DataViews views={d.can_read} title={user ? "What they see when they read" : "What it sees"} />
+      {part === "sees" && (d.can_read?.total ? <DataViews s={d.can_read} path="see" title={user ? "What they see when they read" : "What it sees"} />
         : <EmptyState title={d.known ? "No protected object" : "Not known here"}>{d.known ? "Nothing they read has a tag, a masking policy or a row policy." : "Policies need the shared snapshot."}</EmptyState>)}
       {part === "sens" && d.sensitive && (
         <Card title="Sensitive data they can see" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
@@ -101,7 +102,8 @@ function Cards({ d }: { d: SeePage }) {
   const c = useApp();
   const o = useOpen(d.refs);
   const only = c.params.all !== "1";
-  const cards = d.cards.filter((x) => !only || x.sensitive);
+  const cards = d.cards;  // one page of the filter (all=1: every protected object), c_offset / limit
+  const size = Number(c.params.limit) || PAGE;
   const n = d.counts;
   const s = n && seeSentence(n);
   const user = d.who.kind === "user";
@@ -110,13 +112,15 @@ function Cards({ d }: { d: SeePage }) {
       <div className="ae-headrow">
         {s ? <p className="ae-answer">When <span className="ae-mono">{d.who.name}</span> {user ? "queries, they see" : "is the role in use, it sees"} <b>{s.rows}</b> and{" "}
           <b className={n.clear ? "ae-sens-word" : undefined}>{s.cols}</b>. {s.fix}</p> : <p className="ae-muted">Policies are not known here: they need the shared snapshot.</p>}
-        <FilterChips label="Show" value={only ? "sens" : "all"} onPick={(k) => c.set({ all: k === "all" ? "1" : null })}
-          items={[{ key: "sens", label: "Only sensitive", count: d.cards.filter((x) => x.sensitive).length }, { key: "all", label: "All protected objects", count: d.cards.length }]} />
+        <FilterChips label="Show" value={only ? "sens" : "all"} onPick={(k) => c.set({ all: k === "all" ? "1" : null, c_offset: null })}
+          items={[{ key: "sens", label: "Only sensitive", count: n?.sensitive ?? 0 }, { key: "all", label: "All protected objects", count: n?.objects ?? 0 }]} />
       </div>
       <div className="ae-whogrid">
         <div className="ae-seecards">
           {!cards.length && <EmptyState title="Nothing here">No {only ? "sensitive" : "protected"} object they can read.</EmptyState>}
           {cards.map((x) => <SeeObj key={x.object} x={x} open={o.open} rule={() => c.nav("rules", { rule: "6" })} />)}
+          {d.cards_total > size && <Pager at={Math.floor(d.cards_offset / size)} size={size} total={d.cards_total} sizes={[25, 50, 100, 250]}
+            onPage={(k) => c.set({ c_offset: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), c_offset: null })} />}
         </div>
         <aside className="ae-whoside">
           {d.usage ? <UseBars d={d} /> : <RoleUse d={d} />}
