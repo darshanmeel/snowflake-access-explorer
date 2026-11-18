@@ -2432,7 +2432,9 @@ def changes_page(p, view):
     gained = [u for u in d["sens_gained"] if not sub or (u == a.node_name(sub) if mine else u in seen)]
     text = (f"Since the snapshot of {before}: {plural(n['all'], 'change')}"
             + (f", {plural(d['high'], 'new high finding')}" if d["high"] and not out["subject"] else "")
-            + (f", {len(gained)} {'person' if len(gained) == 1 else 'people'} gained sensitive access" if gained else "") + ".")
+            + (f", {len(gained)} {'person' if len(gained) == 1 else 'people'} gained sensitive access" if gained else "") + "."
+            + (f" Big changes name only their first {a.EVENT_NAMES} people and objects, so some about {a.node_name(sub)} "
+               "may be missing here." if sub and any(e.get("capped") for e in d["events"]) else ""))
     f = p.get("f") if p.get("f") in ("gain", "lose", "risk", "sensitive") else "all"
     shown = [e for e in ev if f == "all" or (e["kind"] == f if f in ("gain", "lose") else e["sensitive"] if f == "sensitive"
                                               else any(not x["fixed"] for x in e["findings"]))]
@@ -3215,8 +3217,8 @@ def compared(d):
     """What changed of new data set d against the previous snapshot, made while the one it replaced is still kept
     built with its rule findings (a.built), so its first open answers at once. A failure only leaves it to that open."""
     prev = None if a.INSIDE else cache.prev(KEY)
-    if not prev:
-        return
+    if not prev or not any(k[0] == shared_key(prev[0]) for k in a.built):  # a same-run refresh keeps an older one:
+        return  # building that again would hold every page behind LOCK, so its first open compares
     try:
         with LOCK:
             a.build(d, shared_key(d))

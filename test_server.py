@@ -1163,6 +1163,12 @@ def test_changes_kept():
         cache.MEM[server.KEY] = (d, time.time())
         a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
         server.built(d)
+        a.diff = boom
+        server.compared(d)  # the previous snapshot is not built (a same-run refresh kept an older one): left to the page
+        assert not cache.file(server.KEY).with_suffix(".diff.pkl").exists()
+        a.diff = old[4]
+        server.built(a.fake_previous())  # a refresh: the replaced data set is still built
+        server.built(d)
         server.compared(d)
         assert cache.file(server.KEY).with_suffix(".diff.pkl").is_file()
         a.memo.clear(), a.built.clear(), server.ANSWERS.clear()  # a restart
@@ -1170,11 +1176,12 @@ def test_changes_kept():
         got = js("/api/changes")
         assert got["events"] == want["events"] and got["text"] == want["text"] and got["counts"] == want["counts"]
         a.diff = old[4]
-        big = dict(people=[f"U{i:03}" for i in range(50)], objects=[], subjects=[f"U{i:03}" for i in range(50)])
+        big = dict(people=[f"U{i:03}" for i in range(50)], objects=[], subjects=[f"U{i:03}" for i in range(50)], capped=True)
         a.memo[("diff", cache.run_of(a.fake_previous()))]["events"].append(dict(got["events"][0], text="big", **big))
         server.ANSWERS.clear()
         one = {e["text"]: e for e in js("/api/changes?subject=U040")["events"]}["big"]
         assert one["people"] == one["subjects"] == big["people"][:server.NAMES] + ["U040"]
+        assert "Big changes name only" in js("/api/changes?subject=U040")["text"] and "Big" not in js("/api/changes")["text"]
         assert len({e["text"]: e for e in js("/api/changes")["events"]}["big"]["people"]) == server.NAMES
     finally:
         cache.DIR, cache.HOURS, server.MODE, cache.prev, a.diff = old

@@ -7,7 +7,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   infrastructure as code; manual grants get removed by reconciliation.
 - The app writes nothing to Snowflake. Shared view: reads the `TBL_ACCESS_` tables and may CALL `SP_ACCESS_SNAPSHOT`
   (owner's rights). My-access view: read-only queries as the logged-in user. Locally the only thing written is
-  `.cache/` (git-ignored, `cache.py`: one file per account + source plus the previous one as `<key>.prev.pkl` for What changed, one per user for My access, `CACHE_HOURS`=24, 0 = memory
+  `.cache/` (git-ignored, `cache.py`: one file per account + source plus the previous one as `<key>.prev.pkl` for What changed and the comparison as `<key>.diff.pkl` (made by the refresh while the replaced data is still built, `server.compared`), one per user for My access, `CACHE_HOURS`=24, 0 = memory
   only), plus the SQL copy `.cache/access.duckdb` (`cache.sql_copy`: the `TBL_ACCESS_` tables, same columns as
   `sql/1_setup.sql`, one schema per cache key, the read before as `TBL_ACCESS_*_PREV`; always on, `DUCKDB=1` also fake
   data; skipped with a note without duckdb, which is in both requirements files); in memory 24 h per process. Inside Snowflake (SiS) memory only, no disk. Data needs no real time: the UI shows

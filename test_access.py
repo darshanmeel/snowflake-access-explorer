@@ -1146,6 +1146,8 @@ def test_fast():
                 cnt = a.grant_count(n, user, only, lim)  # before grants(): counted from the walk, no rows built
                 fast = {(r["privilege"], r["type"], r["object"]): r for r in a.grants(n, user, only, lim)}
                 assert set(slow) == set(fast) and cnt == len(fast) == a.grant_count(n, user, only, lim), (n, lim)
+                rs = a.grants(n, user, only, lim)  # server.user_rows sorts by type only: it keeps this order
+                assert rs == sorted(rs, key=lambda r: (r["object"], r["privilege"], r["type"])), n
                 assert all(fast[k]["paths"] == ps and fast[k]["count"] == len(ps) for k, ps in slow.items()), (n, lim)
                 slow = a.group((p[-1], p) for p in a.walk(n, user, only, lim) if len(p) > 1)
                 fast = {r["role"]: r for r in a.reach(n, user, only, lim)}

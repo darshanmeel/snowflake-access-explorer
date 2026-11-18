@@ -6156,7 +6156,7 @@ def diff(prev, kept=None, key=None, pairs=True):
                                link=dict(page="object", params=dict(name=target)) if target in objs_of else
                                dict(page="access", params=dict(role=target)),
                                subjects=sorted(set(x["subjects"]) | {uid(u, True) for u in x["users"] + ppl} | set(objs)),
-                               people=ppl, objects=objs))
+                               people=ppl, objects=objs, capped=len(x["people"]) > EVENT_NAMES or len(x["objects"]) > EVENT_NAMES))
     for u in sorted(set(now["status"]) | set(old["status"])):
         was, st = old["status"].get(u), now["status"].get(u)
         if was == st:
