@@ -1,10 +1,9 @@
 // Screen 2: who has access to a table (or any object), or to the admin roles (preset=admin). The old Object page
 // (graph, by path / by user or role, users × privileges) is the default tab; the new list by level is next to it.
 import { Fragment, useEffect, useState } from "react";
-import { useApi } from "../api/client";
+import { download as saveCsv, useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
-import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, toCsv, useCsv } from "../components";
-import { download } from "../components/table";
+import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
@@ -25,7 +24,9 @@ const ago = (x: WhoPerson) => x.login.split(" · ").pop();
 export function ObjectPageView() {
   const c = useApp();
   const admin = c.params.preset === "admin";
-  const s = useApi<WhoPage>("who", { view: c.view, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }) });
+  // a big object sends the first people matching the search (wq), plus the person picked (as, sel)
+  const s = useApi<WhoPage>("who", { view: c.view, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }),
+    q: c.params.wq, as: c.params.as, sel: c.params.sel });
   const id = s.data?.object.id ?? c.params.name ?? "";
   const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
   const type = c.params.type || undefined; // narrows the Object search only
@@ -51,8 +52,7 @@ function Who({ d }: { d: WhoPage }) {
   const o = d.object, admin = o.preset === "admin";
   useEffect(() => { if (o.id) remember({ page: "object", id: o.id, label: o.id }); }, [o.id]);
   const show = c.params.show === "who" || ((c.params.show === "history" || c.params.show === "activity") && !admin) ? c.params.show : "detail";
-  const save = () => download(`${o.id ?? "admin_roles"}_who.csv`, toCsv(["User", "Status", "Last login", "Access", "Privileges", "Path", "Ways"],
-    d.people.map((x) => [x.name, x.status, x.login, TITLE[x.level], x.privileges.join(" "), x.path.join(" > "), String(x.ways)])));
+  const save = () => saveCsv("who.csv", { view: c.view, ...(admin ? { preset: "admin" } : { name: o.id }) }, `${o.id ?? "admin_roles"}_who.csv`);
   return (
     <>
       <div className="ae-objhead">
@@ -137,7 +137,11 @@ function List({ d }: { d: WhoPage }) {
   const n = d.counts;
   const roles = c.params.by === "roles";
   const same = c.params.same ? c.params.same === "1" : d.object.type === "WAREHOUSE";
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(c.params.wq ?? "");
+  useEffect(() => { // the server searches every person; a moment after the last key
+    const t = setTimeout(() => { if (q !== (c.params.wq ?? "")) c.set({ wq: q || null }); }, 300);
+    return () => clearTimeout(t);
+  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
   const hit = (name: string) => !q || name.toLowerCase().includes(q.toLowerCase());
   const rows: WhoEntry[] = roles ? d.roles : d.people;
   const sel = rows.find((x) => x.name === c.params.sel) ?? rows[0];
@@ -158,6 +162,8 @@ function List({ d }: { d: WhoPage }) {
             {n.dormant > 0 && <span className="ae-muted">{n.dormant} dormant or never logged in</span>}
           </div>
         </>}
+        {(d.shown.people > d.people.length || d.shown.roles > d.roles.length || d.shown.groups > d.groups.length) &&
+          <p className="ae-muted">First {roles ? d.roles.length : same ? d.groups.length : d.people.length} of {roles ? d.shown.roles : same ? d.shown.groups : d.shown.people}, the most access first: search to find the rest.</p>}
         <ListToolbar search={q} onSearch={setQ}>
           {!roles && <Toggle label="Group people with the same path" on={same} onPick={(v) => c.set({ same: v ? "1" : "0" })} />}
         </ListToolbar>
@@ -165,7 +171,8 @@ function List({ d }: { d: WhoPage }) {
           : !roles && same ? (
             <div className="ae-wholist">
               {d.groups.filter((g) => g.names.some(hit)).map((g) => {
-                const x = d.people.find((p) => p.name === g.names[0])!;
+                const x = d.people.find((p) => p.name === g.names[0]);
+                if (!x) return null;
                 return (
                   <button type="button" key={g.names.join()} className={`ae-whorow${sel && g.names.includes(sel.name) ? " on" : ""}`} onClick={() => pick(g.names[0])}>
                     <span className="ae-avatar ae-avatar-s" aria-hidden>{g.names.length > 1 ? g.names.length : ini(g.names[0])}</span>
@@ -292,7 +299,6 @@ export function ObjectDetail() {
       </Controls>
       <Load s={s}>{(d) => {
         const o = d.object, k = d.kpis;
-        const gs = tab === "all" ? d.grantees : d.grantees.filter((g) => g.tabs.includes(tab as never));
         return (
           <>
             <Card title={o.id} sub={`${o.type.toLowerCase()}${o.sensitive ? " · sensitive" : ""}`}>
@@ -307,12 +313,13 @@ export function ObjectDetail() {
               {k.deployers.length > 0 && <p>Deployed by: <Chips items={k.deployers.map((r) => ({ id: r, kind: "user" }))} /></p>}
               {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
             </Card>
-            {d.admin_paths.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${new Set(d.admin_paths.map((p) => p[0])).size} user(s)`} lines={d.admin_paths.map((p, i) => <span key={i} className="ae-fd-path"><PathCell path={p} refs={d.refs} /><WhatIfButton ch={[{ op: "revoke_role_from_user", role: p[1], user: p[0].replace(/ \(user\)$/, "") }]} /></span>)}>
-              <p className="ae-muted">An admin role inherits every role, so these users reach this object without a path drawn below.</p>
+            {d.admin_paths.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_paths.map((p, i) => <span key={i} className="ae-fd-path"><PathCell path={p} refs={d.refs} /><WhatIfButton ch={[{ op: "revoke_role_from_user", role: p[1], user: p[0].replace(/ \(user\)$/, "") }]} /></span>)}>
+              <p className="ae-muted">An admin role inherits every role, so these users reach this object without a path drawn below.
+                {d.admin_total > d.admin_paths.length && <> First {d.admin_paths.length} of {d.admin_total} paths: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button>.</>}</p>
             </Banner>}
             <GraphCard g={d.graph} refs={d.refs} />
             <Tabs active={part} onChange={setPart} tabs={[
-              { key: "who", label: "Who has access", count: d.grantees.length },
+              { key: "who", label: "Who has access", count: d.grantees.total },
               { key: "users", label: "Users × privileges", count: d.matrix.total },
               ...(d.sees ? [{ key: "sees", label: "What each role sees", count: d.sees.rows.length }] : []),
               ...(d.sensitivity ? [{ key: "sens", label: "Sensitivity", count: d.sensitivity.columns.length, tone: o.sensitive ? "warn" as const : null }] : []),
@@ -362,7 +369,8 @@ export function ObjectDetail() {
             {part === "who" && (
               <Card title="Who has access" sub="Users that come in through the same chain are one row" right={
                 <div className="seg">{d.tabs.map((t) => <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>{t.label} {t.count}</button>)}</div>}>
-                <GroupedGrantees key={tab} rows={gs} kinds={d.refs.kinds} onOpen={op.open} csv={`${o.name}_grantees_${tab}.csv`} />
+                <GroupedGrantees key={tab} params={{ ...apiParams(c), name: o.id, tab }} total={d.tabs.find((t) => t.key === tab)?.count ?? 0}
+                  kinds={d.refs.kinds} onOpen={op.open} csv={`${o.name}_grantees_${tab}.csv`} />
               </Card>
             )}
           </>

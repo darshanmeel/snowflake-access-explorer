@@ -32,28 +32,31 @@ function revokeText(r: HeldRow) {
   return r.only_via.length ? `only via ${r.only_via.join(", ")}` : "keeps it other ways";
 }
 
-/** Who gets the role: a graph from the holders to the role (Users / Roles / All), the table under it. */
+/** Who gets the role: a graph from the holders to the role (Users / Roles / All; the first of each kind on a big
+ * account), the table under it a page at a time from GET held. */
 function HeldBy({ d }: { d: RolePage }) {
   const c = useApp();
   const o = useOpen(d.refs);
-  const users = d.held_by.rows.filter((r) => r.kind === "user");
-  const [tab, setTab] = useState(users.length ? "users" : "all");
-  const rows = tab === "users" ? users : tab === "roles" ? d.held_by.rows.filter((r) => r.kind !== "user") : d.held_by.rows;
+  const h = d.held_by;
+  const [tab, setTab] = useState(h.users ? "users" : "all");
+  const rows = tab === "users" ? h.rows.filter((r) => r.kind === "user") : tab === "roles" ? h.rows.filter((r) => r.kind !== "user") : h.rows;
+  const n = tab === "users" ? h.users : tab === "roles" ? h.roles : h.total;
   const g = useMemo(() => pathGraph(rows.map((r) => ({ path: r.path, cls: "inherit" as const })),
     { kinds: d.refs.kinds, objectLabel: "This role", title: "Held by" }), [rows, d.refs.kinds]);
   return (
     <>
       <Tabs active={tab} onChange={setTab} tabs={[
-        { key: "users", label: "Users", count: users.length },
-        { key: "roles", label: "Roles", count: d.held_by.rows.length - users.length },
-        { key: "all", label: "All", count: d.held_by.rows.length },
+        { key: "users", label: "Users", count: h.users },
+        { key: "roles", label: "Roles", count: h.roles },
+        { key: "all", label: "All", count: h.total },
       ]} />
       {d.usage.holders > 0 && (
         <p className="ae-muted">{d.usage.used} of {d.usage.holders} users who hold it used it in the query history
           {d.usage.unused.length > 0 && <> · not used by {d.usage.unused.slice(0, 8).join(", ")}{d.usage.unused.length > 8 ? ` +${d.usage.unused.length - 8}` : ""}</>}</p>
       )}
       {rows.length > 0 && <Graph graph={g} theme={c.theme} onNodeClick={o.node} maxHeight={420} />}
-      <DataTable csv={`${d.role.name}_held_by_${tab}.csv`} rows={rows} rowTone={(r: HeldRow) => (r.kind === "admin" ? "bad" : r.loses_it ? "warn" : null)}
+      {n > rows.length && <p className="ae-muted">The diagram draws the first {rows.length} of {n}, the shortest chains; the table has them all.</p>}
+      <DataTable csv={`${d.role.name}_held_by_${tab}.csv`} rows={[]} server={{ path: "held", params: { ...apiParams(c), name: d.role.name, tab } }} rowTone={(r: HeldRow) => (r.kind === "admin" ? "bad" : r.loses_it ? "warn" : null)}
         columns={[
           col("g", "Grantee", (r: HeldRow) => r.grantee, { wrap: "nowrap", render: (r: HeldRow) => <NameLink id={r.id} refs={d.refs} label={r.grantee} /> }),
           col("k", "Kind", (r: HeldRow) => r.kind_label, { wrap: "nowrap" }),
@@ -114,20 +117,22 @@ export function RolePageView() {
           )}
           <GraphCard g={d.graph} refs={d.refs} />
           <Tabs active={part} onChange={setPart} tabs={[
-            { key: "privs", label: "Privileges", count: d.privileges.length },
-            { key: "held", label: "Held by", count: d.held_by.rows.length },
+            { key: "privs", label: "Privileges", count: d.tabs.find((t) => t.key === "all")?.count ?? 0 },
+            { key: "held", label: "Held by", count: d.held_by.total },
             ...(d.holds.types.length ? [{ key: "holds", label: "What it holds", count: d.holds.count }] : []),
             ...(d.can_read?.length ? [{ key: "sees", label: "What it sees", count: d.can_read.length }] : []),
           ]} />
           {part === "privs" && <Card title="Effective privileges and roles held" sub="Split by what they allow">
-            <PrivilegeTabs rows={d.privileges} roles={d.roles} account={d.account} refs={d.refs} tabs={d.tabs} theme={c.theme}
+            <PrivilegeTabs rows={[]} roles={d.roles} account={d.account} refs={d.refs} tabs={d.tabs} theme={c.theme}
+              server={{ ...apiParams(c), name: d.role.name, of: "role" }}
               csvName={`${d.role.name}_privileges`} onNodeClick={o.node} onOpen={o.open} />
           </Card>}
           {part === "held" && <Card title="Held by" sub="Every user and role that gets this role, through which chain, and what a revoke would take away">
             <HeldBy d={d} />
             {d.filters.cuts.length > 0 && (
               <Controls><Sel label="If revoked from" value={d.filters.cut} onPick={(v) => c.set({ cut: v })}
-                options={[["", "(pick a grantee)"], ...d.filters.cuts.map((x): [string, string] => [x, x])]} /></Controls>
+                options={[["", "(pick a grantee)"], ...d.filters.cuts.map((x): [string, string] => [x, x])]} />
+                {d.filters.cuts_total > d.filters.cuts.length && <span className="ae-muted">First {d.filters.cuts.length} of {d.filters.cuts_total} direct holders</span>}</Controls>
             )}
             {d.held_by.revoke && (
               <Banner tone="warn" title={`Revoking from ${d.held_by.revoke.grantee} loses ${d.held_by.revoke.lost} privileges for ${d.held_by.revoke.users} users`}>

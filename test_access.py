@@ -1883,7 +1883,7 @@ def test_graph_see_compare():  # screens 4, 7, 9: access graph, what they see, c
     assert [lab for lab, _ in g["lanes"]][0] == "People" and g["lanes"][-1] == ("Table", [o])
     st = next(s for s, us in g["stacks"].items() if "ANALYST_01" in us)
     assert set(g["stacks"][st]) == {"ANALYST_01", "ANALYST_02"} and (st, "GRP_ANALYSTS") in cls
-    assert g["risky"][("OPS_01", "SYSADMIN")] == "admin" and g["people"][o] and g["leads"]["GRP_ANALYSTS"] == [o]
+    assert g["risky"][("OPS_01", "SYSADMIN")] == "admin" and g["people"][o] and g["leads"]["GRP_ANALYSTS"] == {o}
     lane = {n: i for i, (_, ns) in enumerate(g["lanes"]) for n in ns}
     assert lane["GRP_ANALYSTS"] == 1 and lane[F + "ANALYST"] == 1  # shortest step: ENGINEER_01 holds it directly
     assert not a.access_graph("object", o, same=False)["stacks"]

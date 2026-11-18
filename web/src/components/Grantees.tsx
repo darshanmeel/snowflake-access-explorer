@@ -1,15 +1,20 @@
 // Who can reach an object, grouped: users who come in through the same chain are one row ("via GRP_X · 14 users (11
 // active, 1 dormant) · SELECT · depth 10") with the chain drawn once; expanding shows them as status chips, problem
-// statuses first. Roles keep a row each. "By user" is the flat list.
-import { useMemo, useState } from "react";
-import type { GranteeRow, PrivClass, UserStatus } from "../api/types";
-import { DataTable, type Column } from "./DataTable";
+// statuses first. Roles keep a row each. "By user" is the flat list. Both come a page at a time from GET grantees
+// (server.grantee_groups groups them as groupGrantees does).
+import { useState } from "react";
+import { useApi } from "../api/client";
+import type { GranteeRow, Paged, PrivClass, UserStatus } from "../api/types";
+import { DataTable, Pager, type Column } from "./DataTable";
 import { Tabs } from "./parts";
 import { PathText } from "./PathText";
 
+type Person = Pick<GranteeRow, "grantee" | "id" | "status">;
+
 export interface GranteeGroup {
-  key: string; entry: string; chain: string[]; users: GranteeRow[]; role: GranteeRow | null;
+  key: string; entry: string; chain: string[]; users: Person[]; role: GranteeRow | null;
   privileges: string[]; cls: PrivClass; depth: number; status: Partial<Record<UserStatus, number>>;
+  count?: number; // users in the group; users then lists the first of them (server.MAX_CHIPS)
 }
 
 const RANK: Record<string, number> = { use: 0, read: 1, manage: 2, write: 3, own: 4, admin: 5 };
@@ -48,7 +53,7 @@ function statusText(st: GranteeGroup["status"]) {
 
 function Group({ g, kinds, onOpen }: { g: GranteeGroup; kinds: Record<string, string>; onOpen?: (id: string) => void }) {
   const [on, setOn] = useState(false);
-  const n = g.users.length;
+  const n = g.count ?? g.users.length;
   const users = [...g.users].sort((a, b) => BAD.indexOf(a.status ?? "active") - BAD.indexOf(b.status ?? "active") || a.grantee.localeCompare(b.grantee));
   const bad = (g.status.disabled ?? 0) + (g.status.dormant ?? 0);
   return (
@@ -71,15 +76,23 @@ function Group({ g, kinds, onOpen }: { g: GranteeGroup; kinds: Record<string, st
               <StatusDot s={u.status} />{u.grantee}
             </button>
           ))}
+          {n > users.length && <span className="ae-muted">and {n - users.length} more: see By user or role</span>}
         </div>
       )}
     </div>
   );
 }
 
-export function GroupedGrantees({ rows, kinds = {}, onOpen, csv }: { rows: GranteeRow[]; kinds?: Record<string, string>; onOpen?: (id: string) => void; csv: string }) {
+const GROUPS = 50; // groups per page
+
+/** params: the Object page's (name, priv, active, users) and the tab; rows and groups come from GET grantees. */
+export function GroupedGrantees({ params, total, kinds = {}, onOpen, csv }: {
+  params: Record<string, string | undefined | null>; total: number; kinds?: Record<string, string>; onOpen?: (id: string) => void; csv: string;
+}) {
   const [view, setView] = useState("groups");
-  const groups = useMemo(() => groupGrantees(rows), [rows]);
+  const [at, setAt] = useState(0);
+  const gs = useApi<Paged<GranteeGroup> & { users: number; roles: number }>(view === "groups" ? "grantees" : null,
+    { ...params, by: "groups", offset: String(at * GROUPS), limit: String(GROUPS) });
   const cols: Column<GranteeRow>[] = [
     { key: "g", label: "Grantee", get: (r) => r.grantee, wrap: "nowrap",
       render: (r) => <button className={`ae-link ae-k-${kinds[r.id] ?? r.kind}`} onClick={() => onOpen?.(r.id)}>{r.grantee}</button> },
@@ -90,16 +103,19 @@ export function GroupedGrantees({ rows, kinds = {}, onOpen, csv }: { rows: Grant
     { key: "n", label: "Paths", get: (r) => r.count, num: true },
     { key: "path", label: "Shortest path", get: (r) => r.path.join(" > "), wrap: "nowrap", render: (r) => <PathText path={r.path} kinds={kinds} onOpen={onOpen} /> },
   ];
-  const nUsers = rows.filter(isUser).length;
+  const d = gs.data;
+  const nRoles = d ? d.rows.filter((g) => g.role).length : 0;
   return (
     <div className="ae-grantees">
-      <Tabs active={view} onChange={setView} tabs={[{ key: "groups", label: "By path", count: groups.length }, { key: "flat", label: "By user or role", count: rows.length }]} />
+      <Tabs active={view} onChange={setView} tabs={[{ key: "groups", label: "By path", count: d?.total }, { key: "flat", label: "By user or role", count: total }]} />
       {view === "groups"
-        ? <>
-            <p className="ae-muted">{nUsers} users in {groups.filter((g) => !g.role).length} groups by the chain they come through; {groups.filter((g) => g.role).length} roles.</p>
-            {groups.map((g) => <Group key={g.key} g={g} kinds={kinds} onOpen={onOpen} />)}
+        ? !d ? <p className="ae-muted" role={gs.error ? "alert" : undefined}>{gs.error ? gs.error.message : "Loading…"}</p> : <>
+            <p className="ae-muted">{d.users} users and {d.roles} roles in {d.total} groups by the chain they come through{nRoles ? "; every role is its own group" : ""}.</p>
+            {d.rows.map((g) => <Group key={g.key} g={g} kinds={kinds} onOpen={onOpen} />)}
+            {d.total > GROUPS && <Pager at={at} size={GROUPS} total={d.total} onPage={setAt} />}
           </>
-        : <DataTable columns={cols} rows={rows} csv={csv} sort={{ key: "d" }} rowTone={(r) => (r.kind === "admin" ? "bad" : null)} />}
+        : <DataTable columns={cols} rows={[]} csv={csv} sort={{ key: "d" }} rowTone={(r) => (r.kind === "admin" ? "bad" : null)}
+            server={{ path: "grantees", params: { ...params, by: "rows" } }} />}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 // Screen 4: Access graph. Start from a table, a role or a person; columns by step, line colour by what the line ends
 // up granting, same-path people stacked, built-ins folded; a click on a box traces everything through it.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
-import type { Graph as G, GraphNode, ListItem, MapPage } from "../api/types";
+import type { Graph as G, GraphNode, ListItem, MapNode, MapPage } from "../api/types";
 import { Card, EmptyState, Graph, LEVEL_WORD, Tabs, Toggle } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { GraphCard, Load, Pick } from "./common";
@@ -20,24 +20,25 @@ export function GraphPageView() {
   const mine = c.view === "mine";
   const mode = c.params.table ? "object" : c.params.role ? "role" : "user";
   const name = c.params.table ?? c.params.role ?? c.params.user ?? "";
-  const s = useApi<MapPage>("map", { ...apiParams(c), show: null, sel: null, risky: null }); // a click or a tab: no new request
+  const tab = c.params.show === "trace" ? "trace" : "diagram";
+  // only the Trace tab draws the access graph; a click or the risky toggle: no new request
+  const s = useApi<MapPage>(tab === "trace" ? "map" : null, { ...apiParams(c), show: null, sel: null, risky: null });
   const what = mode === "object" ? "objects" : mode === "role" ? "roles" : "users";
   const objs = useApi<{ items: ListItem[] }>(mode === "object" || mine ? null : "list", { what: "objects", type: "TABLE", view: c.view, limit: "1" });
   const roles = useApi<{ items: ListItem[] }>(mode === "role" ? null : "list", { what: "roles", view: c.view, limit: "1" });
-  const shown = s.data?.name ?? name;
+  const shown = s.data?.name ?? (name || (mode === "user" ? c.meta.default_user ?? "" : ""));
   const first = (m: string) => (m === "object" ? objs.data?.items[0]?.id : m === "role" ? roles.data?.items[0]?.id : c.meta.default_user);
   const pick = (m: string) => {
     if (m === mode) return;
     const id = first(m);
     if (id) c.set(startOf(m === "user" ? "user" : m === "object" ? "object" : "functional", id));
   };
-  const tab = c.params.show === "trace" ? "trace" : "diagram";
   return (
     <>
       <div className="ae-headrow">
         <div>
           <h2 className="ae-h1">Access graph</h2>
-          {s.data && <p className="ae-muted ae-graph-sub">{s.data.graph.header}</p>}
+          {tab === "trace" && s.data && <p className="ae-muted ae-graph-sub">{s.data.graph.header}</p>}
         </div>
         <div className="ae-seg2" role="group" aria-label="Start from">
           {MODES.map(([m, label]) => (
@@ -66,16 +67,20 @@ export function GraphPageView() {
 /** The diagram the person, role or object page draws (kept: the default tab). */
 function OldDiagram({ mode, name }: { mode: string; name: string }) {
   const c = useApp();
-  const g = useApi<G>(name ? "graph" : null, { of: mode, name, view: c.view, ...(c.params.builtin ? { builtin: c.params.builtin } : {}) });
+  const g = useApi<G>("graph", { of: mode, name: name || null, view: c.view, ...(c.params.builtin ? { builtin: c.params.builtin } : {}) });
   return <Load s={g}>{(x) => (x ? <GraphCard g={x} /> : <EmptyState title="Nothing to draw" />)}</Load>;
 }
 
 function Trace({ d }: { d: MapPage }) {
   const c = useApp();
-  const sel = c.params.sel && d.detail[c.params.sel] ? c.params.sel : null;
+  const [picked, setPicked] = useState<GraphNode | null>(null); // a box drawn from an opened box: not in d.graph.nodes
+  const node = d.graph.nodes.find((n) => n.id === c.params.sel) ?? (picked && picked.id === c.params.sel ? picked : null);
+  const more = useApi<{ detail: Record<string, MapNode> }>(node && !d.detail[node.id] ? "map" : null,
+    { ...apiParams(c), show: null, sel: null, risky: null, node: node?.id }); // its detail comes when it is picked
+  const x = node ? d.detail[node.id] ?? more.data?.detail[node.id] ?? null : null;
+  const sel = node && x ? node.id : null;
   const risky = c.params.risky === "1";
   const hi = useMemo(() => (risky ? riskIds(d.risky, d.risky_nodes) : undefined), [risky, d]);
-  const node = d.graph.nodes.find((n) => n.id === sel) ?? null;
   return (
     <>
       <div className="ae-toolbar">
@@ -88,12 +93,15 @@ function Trace({ d }: { d: MapPage }) {
         <Card title="Click a box to trace everything through it" right={sel && <button type="button" className="ae-btn" onClick={() => c.set({ sel: null })}>Clear trace</button>}>
           {d.graph.nodes.length > 1 ? (
             <Graph graph={d.graph} theme={c.theme} focus={sel} hi={hi} flow maxHeight={760} minZoom={0.6}
-              onNodeClick={(n) => c.set({ sel: n.id === sel ? null : n.id })} />
+              onNodeClick={(n) => { setPicked(n); c.set({ sel: n.id === c.params.sel ? null : n.id }); }} />
           ) : <EmptyState title="Nobody reaches it">No role or person has a grant on it.</EmptyState>}
         </Card>
         <div className="ae-whoside">
           <Card title={node ? node.label : "Details"}>
-            {node ? <Detail d={d} n={node} /> : <p className="ae-muted">Click any box in the graph to see who comes through it and what it leads to.</p>}
+            {node && x ? <Detail d={d} n={node} x={x} />
+              : node && more.error ? <p className="ae-muted" role="alert">{more.error.message}</p>
+              : node ? <p className="ae-muted">Loading…</p>
+              : <p className="ae-muted">Click any box in the graph to see who comes through it and what it leads to.</p>}
           </Card>
           <Card title="How to read it">
             <ul className="ae-gkey">
@@ -112,9 +120,8 @@ function Trace({ d }: { d: MapPage }) {
   );
 }
 
-function Detail({ d, n }: { d: MapPage; n: GraphNode }) {
+function Detail({ d, n, x }: { d: MapPage; n: GraphNode; x: MapNode }) {
   const c = useApp();
-  const x = d.detail[n.id];
   const stack = n.marks.includes("stack");
   const fold = n.kind === "fold" || n.group != null;
   const fake = n.id === "Every object (admin)" || n.id === "ACCOUNT"; // drawn boxes, not roles or objects
