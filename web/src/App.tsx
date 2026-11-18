@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
-import { Banner, Card, Combo, CsvOn, LoadLog, Root, SqlCtx, type ThemeName } from "./components";
+import { Banner, Card, Combo, CsvOn, LoadLog, Root, SqlCtx, Waiting, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -402,7 +402,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           )}
           <LoadLog active={!!busy || m.loading || loadingShared || bgOpen} poll={poll} />
           {m.error && <ErrorBox e={m.error} />}
-          {!meta && !m.error && <p className="ae-muted">Loading…</p>}
+          {!meta && !m.error && <Waiting />}
           {needMine && (
             <Card title="My access">
               <p>{mineText(meta.cache_hours)}</p>

@@ -1139,6 +1139,21 @@ def test_kept_rules():
         a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
 
 
+def test_built_ready():
+    """A load does the first page's work too (rule 17, what each fix breaks, sensitive objects), with load-log lines,
+    so the first page after "Ready" does not sit on Loading."""
+    lines = []
+    a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+    try:
+        with a.progress(lines.append):
+            server.built(a.fake())
+        assert {"rows", "ro", "breaks", "sens"} <= a.memo.keys()
+        assert any(x.startswith("Working out what each fix changes") for x in lines), lines
+        assert any(x.startswith("Preparing the pages") for x in lines), lines
+    finally:
+        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+
+
 def test_changes_kept():
     """A refresh compares the new data with the previous snapshot (compared): What changed answers from that, after a
     restart too (.cache/<key>.diff.pkl), with the page it gives without it; an event sends its first NAMES ids."""

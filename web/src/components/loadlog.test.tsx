@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import type { Progress } from "../api/types";
-import { LoadLog } from ".";
+import { LoadLog, Waiting } from ".";
 
 afterEach(() => { vi.useRealTimers(); });
 
@@ -35,5 +35,17 @@ describe("LoadLog", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(poll).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("log")).toBeNull();
+  });
+});
+
+describe("Waiting", () => {
+  it("counts the seconds and, after 10, says the page is still working", async () => {
+    vi.useFakeTimers();
+    render(<Waiting />);
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByRole("status").textContent).toBe("Loading… 4 s");
+    await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+    expect(screen.getByRole("status").textContent).toContain("12 s · still working");
   });
 });

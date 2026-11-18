@@ -195,8 +195,15 @@ def built(d):
         a.say(f"Role graph: {len(a.roles):,} roles, {len(a.users):,} users, {len(a.objects):,} objects")
         if a.roles and not ("rows" in a.memo or kept_rules("shared", shared_key(d), False)):
             with a.step("Checking the rules"):
-                a.cached("rows", a.rule_rows)
-            kept_rules("shared", shared_key(d), False, save=True)
+                rows = a.cached("rows", a.rule_rows)
+            if rows:  # what session() would work out on the first page, unseen: here it shows in the load log
+                with a.step("Working out what each fix changes"):
+                    ro = a.cached("ro", a.readonly_writes) if a.HIERARCHY_ON else []
+                    a.cached("breaks", lambda: breaks(rows, ro))
+            with a.step("Saving the rule results"):
+                kept_rules("shared", shared_key(d), False, save=True)
+        with a.step("Preparing the pages"):
+            a.cached("sens", a.sensitive)
 
 
 def load_shared(ask=False):

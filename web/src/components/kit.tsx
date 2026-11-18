@@ -1,6 +1,6 @@
 // Redesign building blocks: access ladder pill, path chips, finding chip, sensitive cell, filter chips, list toolbar,
 // code output (SQL / Terraform / ticket), identity card, empty state. Colours only from --ae-* variables.
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";
 import { useCsv } from "./table";
 
@@ -232,5 +232,15 @@ export function IdentityCard({ name, tag, line, roles }: {
         </div>
       )}
     </div>
+  );
+}
+
+/** "Loading…" with its seconds, and why once it takes a while: on a big account a page's first open builds its lookups. */
+export function Waiting() {
+  const [s, setS] = useState(0);
+  useEffect(() => { const t = window.setInterval(() => setS((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+  return (
+    <p className="ae-muted" role="status"><span className="ae-spin" aria-hidden />Loading…{s >= 3 && ` ${s} s`}
+      {s >= 10 && " · still working: on a big account the first open of a page works out its lookups, which can take a minute. It opens by itself."}</p>
   );
 }

@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
 import type { Banner as B, DataView, ListItem, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
-import { Banner, Card, Combo, copyText, DataTable, FindingList, Graph, PathText, type Column } from "../components";
+import { Banner, Card, Combo, copyText, DataTable, FindingList, Graph, PathText, Waiting, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -13,7 +13,7 @@ export function col<R>(key: string, label: string, get: Column<R>["get"], more: 
 /** Loading / error frame around a page's answer. */
 export function Load<T>({ s, children }: { s: State<T>; children: (d: T) => ReactNode }) {
   if (s.error) return <ErrorBox e={s.error} />;
-  if (!s.data) return <p className="ae-muted">Loading…</p>;
+  if (!s.data) return <Waiting />;
   return <div className={s.loading ? "ae-fade" : undefined}>{children(s.data)}</div>;
 }
 
