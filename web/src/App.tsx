@@ -1,6 +1,7 @@
 // App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
 // Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
 import { Banner, Card, Combo, CsvOn, LoadLog, Root, SqlCtx, Waiting, type ThemeName } from "./components";
@@ -265,6 +266,14 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const [loc, go] = useLoc();
   useEffect(() => { onUrl?.(url(loc)); }, [loc]);
   const [theme, flip] = useTheme();
+  // Save as PDF (or Ctrl+P): the browser's print, in the light theme, the open page and tab only (app.css @media print)
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    const on = () => flushSync(() => setPrinting(true)), off = () => setPrinting(false);
+    window.addEventListener("beforeprint", on);
+    window.addEventListener("afterprint", off);
+    return () => { window.removeEventListener("beforeprint", on); window.removeEventListener("afterprint", off); };
+  }, []);
   const [busy, setBusy] = useState("");
   const [sql, setSql] = useState<string | null>(null);  // the "SQL behind this page" panel: the card it was opened from
   const [notice, setNotice] = useState<{ tone: "info" | "bad"; title: string; text: string } | null>(null);
@@ -353,7 +362,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const lock = loadingShared || (!!busy && !meta?.loaded) ? ({ inert: "", "aria-busy": true } as Record<string, unknown>) : {};
   const hasData = !!meta?.loaded;
   return (
-    <Root theme={theme}>
+    <Root theme={printing ? "light" : theme}>
       <SqlCtx.Provider value={hasData ? setSql : null}>
       <CsvOn.Provider value={meta?.csv !== false}>
       <div className="app">
@@ -379,8 +388,9 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           <span className="top-right">
             {meta && <DataTime meta={meta} reload={reload} busy={!!busy || !!bg} />}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
-            {hasData && <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner; right-click works too">{"</>"} on any card: its SQL</span>}
-            {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (or right-click the page)">{"</>"} SQL</button>}
+            {hasData && <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner">{"</>"} on any card: its SQL</span>}
+            {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself">{"</>"} SQL</button>}
+            {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
             <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
             <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
           </span>
@@ -390,9 +400,9 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
         <div className="top-lock" {...lock}>
         {meta ? <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? {})} /> : <aside className="side" />}
         </div>
-        {/* right-click the page: the SQL behind it (Shift + right-click keeps the browser's menu) */}
-        <main className="main" onContextMenu={(e) => { if (e.shiftKey || !hasData) return; e.preventDefault();
-          setSql((e.target as HTMLElement).closest(".ae-card")?.querySelector("h3")?.textContent ?? ""); }}>
+        <main className="main">
+          {meta && <p className="ae-print-head">Access explorer · {LABEL[loc.page]}{["user", "role", "name", "a", "obj"].map((k) => loc.params[k]).filter(Boolean).map((v) => ` · ${v}`).join("")}
+            {" · "}{view === "mine" ? "My access" : "Shared snapshot"}{meta.run ? ` · data ${meta.run.when}` : ""} · printed {new Date().toISOString().slice(0, 16).replace("T", " ")}</p>}
           {sql !== null && hasData && <SqlPanel page={loc.page} hint={sql} params={{ ...(PERSON.has(loc.page) && !["user", "role", "name", "a"].some((k) => loc.params[k]) ? { user: meta?.default_user ?? undefined } : {}), ...loc.params, view }} onClose={() => setSql(null)} />}
           {notice && (
             <Banner tone={notice.tone} title={notice.title} lines={[notice.text]}>

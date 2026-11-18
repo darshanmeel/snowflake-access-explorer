@@ -2201,6 +2201,19 @@ def test_with_sql():  # Compare / Request / Granted vs used SQL comes from acces
     assert u["sql"] and u["sql"] == a.what_if(u["changes"])["sql"]  # the trim reads as What if writes it
 
 
+def test_describe_not_ddl():
+    """ACCESS_HISTORY logs the object of a DESCRIBE as modified by DDL: the app counts it as a look (READ), so it is
+    no DDL change and no rule 24 finding."""
+    d = a.fake()
+    ddl = next(r for r in d["ACTIVITY"] if r["ACTION"] == "DDL")
+    d["ACTIVITY"].append(dict(ddl, ACTION="DDL", QUERY_TYPE="DESCRIBE", USER_NAME="ANALYST_01"))
+    a.build(d)
+    looks = [r for r in d["ACTIVITY"] if r["QUERY_TYPE"] == "DESCRIBE"]
+    assert looks and all(r["ACTION"] == "READ" for r in looks)
+    assert not any(c[0] == "24" and "DESCRIBE" in str(c) for c in a.checks())
+    assert "LIKE 'DESCRIBE%'" in a.ACT_BASE
+
+
 def test_tag_settings():
     """QUERY_TAG and STREAMLIT_APP come from the environment; a quote in them cannot end the SQL strings."""
     env = dict(os.environ, QUERY_TAG="it's", STREAMLIT_APP="ST_OTHER")

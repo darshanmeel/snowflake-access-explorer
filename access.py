@@ -1648,6 +1648,8 @@ def tidy(d):
                         r[c] = str(r[c])
                 if t == "ACTIVITY":
                     r["HOURS"] = hours(r["HOURS"])
+                    if r["ACTION"] == "DDL" and str(r["QUERY_TYPE"] or "").upper().startswith(LOOKS):
+                        r["ACTION"] = "READ"  # ACCESS_HISTORY names the object of a DESCRIBE as "modified by DDL": it changes nothing
             if isinstance(r, dict) and usable(t, r):
                 keep.append(r)
             else:
@@ -5467,6 +5469,8 @@ def plain(title, about, sets, body):
 
 
 APP_OF = "COALESCE(TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING, REGEXP_SUBSTR(Q.QUERY_TAG, 'streamlitName: ?([^,]+)', 1, 1, 'e'))"
+LOOKS = ("DESCRIBE", "SHOW")  # statement types that only look at an object, though ACCESS_HISTORY may log them as DDL
+
 ACT_FILTER = {  # inside X's own WHERE: H. / Q. columns (USER_NAME is in both), not X.
     "object": ("OBJECT_NAME", "H.OBJECT_NAME = $OBJECT_NAME"), "user": ("USER_NAME", "H.USER_NAME = $USER_NAME"),
     "role": ("ROLE_NAME", "Q.ROLE_NAME = $ROLE_NAME"), "app": ("APP_NAME", f"{APP_OF} = $APP_NAME"),
@@ -5484,8 +5488,11 @@ H AS (   -- each object a query read (READ), changed (WRITE) or created, altered
     SELECT A.QUERY_ID, A.USER_NAME, A.T, A.L, O.VALUE:"objectName"::STRING, 'WRITE' FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O
     UNION ALL
     SELECT QUERY_ID, USER_NAME, T, L, OBJECT_MODIFIED_BY_DDL:"objectName"::STRING, 'DDL' FROM A WHERE OBJECT_MODIFIED_BY_DDL IS NOT NULL),
-X AS (   -- with the role, statement type, Streamlit app (query tag) and client of each query
-    SELECT H.*, Q.ROLE_NAME, Q.QUERY_TYPE, {app_of} AS APP,
+X AS (   -- with the role, statement type, Streamlit app (query tag) and client of each query; a DESCRIBE or SHOW
+          -- that ACCESS_HISTORY logs as DDL only looks at the object: READ
+    SELECT H.QUERY_ID, H.USER_NAME, H.T, H.L, H.OBJECT_NAME,
+           IFF(H.ACTION = 'DDL' AND (Q.QUERY_TYPE LIKE 'DESCRIBE%' OR Q.QUERY_TYPE LIKE 'SHOW%'), 'READ', H.ACTION) AS ACTION,
+           Q.ROLE_NAME, Q.QUERY_TYPE, {app_of} AS APP,
            REGEXP_REPLACE(S.CLIENT_APPLICATION_ID, ' [0-9][0-9.]*$', '') AS CLIENT
     FROM H JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY Q ON Q.QUERY_ID = H.QUERY_ID AND Q.START_TIME >= ($FROM_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ
       AND Q.START_TIME < DATEADD(DAY, 1, ($TO_DAY || ' 00:00:00 +00:00')::TIMESTAMP_TZ)

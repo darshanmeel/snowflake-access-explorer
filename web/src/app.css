@@ -1,6 +1,18 @@
 /* App frame and screen layouts; component styles live in components/styles.css. */
 html, body { margin: 0; }
 body { background: #F6F7F9; }
+.ae-print-head { display: none; }
+@media print {  /* Save as PDF: the open page and tab only, light, A4 landscape */
+  @page { size: A4 landscape; margin: 12mm; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .top, .side, .top-lock, .ae-loadlog, .main .ae-btn, .main .ae-pager { display: none !important; }
+  .app { display: block; min-height: 0; }
+  .main { max-width: none; padding: 0; }
+  .ae-tab:not(.on) { display: none; }
+  .ae-print-head { display: block; margin: 0 0 10px; font-size: 11px; color: var(--ae-muted); }
+  .ae-card, tr, .ae-ds { break-inside: avoid; }
+  .ae-scroll { overflow: visible !important; }
+}
 .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100vh; }
 .top { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 8px 16px; background: var(--ae-panel); border-bottom: 1px solid var(--ae-line); position: sticky; top: 0; z-index: 20; }
 .top-logo { all: unset; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; font-weight: 700; font-size: 15px; color: var(--ae-ink); padding: 6px 4px; border-radius: 6px; }

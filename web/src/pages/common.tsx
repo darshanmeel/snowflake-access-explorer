@@ -118,7 +118,7 @@ export function SqlBox({ title, sql }: { title?: string; sql: string }) {
   );
 }
 
-/** The SQL behind a page (top bar "SQL", or a right-click on the page): every query, commented, with the SET lines
+/** The SQL behind a page (top bar "SQL", or a card's </> mark): every query, commented, with the SET lines
  * filled in for what the page shows, to run in Snowflake with your own role. */
 export function SqlPanel({ page, params, onClose, hint = "" }: { page: string; params: Record<string, string | undefined>; onClose: () => void; hint?: string }) {
   const s = useApi<{ page: string; queries: { title: string; sql: string }[] }>("sql", { ...params, page });
