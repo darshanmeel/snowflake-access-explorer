@@ -374,13 +374,13 @@ function DepthCard({ k }: { k: HomeCards }) {
 function ObjUseCard({ u }: { u: HomeCards["objuse"] }) {
   const c = useApp();
   return (
-    <Card title={<>Object activity {u.ok && <b className="ae-hc-n">{u.unused.toLocaleString()}</b>}</>} sub={u.ok ? `objects not used in ${u.days} days` : undefined}
+    <Card title={<>Object activity {u.ok && <b className="ae-hc-n">{u.unused.toLocaleString()}</b>}</>} sub={u.ok ? `objects not used in ${u.days} days${u.unused_new ? `, ${u.unused_new.toLocaleString()} of them new or changed` : ""}` : undefined}
       right={<button type="button" className="ae-btn" onClick={() => c.nav("objuse", {})}>Open</button>}>
       {u.notes.map((n) => <p key={n} className="ae-muted">Not read: {n}</p>)}
       <AgeBars types={u.types} onPick={(t) => c.nav("objuse", { type: t })} />
       {u.ok && <ul className="ae-hc-facts">
-        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "read_only" })}>{u.read_only.toLocaleString()} tables read, never written</button></li>
-        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "write_only" })}>{u.write_only.toLocaleString()} tables written, never read</button></li>
+        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "read_only" })}>{plural(u.read_only, "table")} read, never written</button></li>
+        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "write_only" })}>{plural(u.write_only, "table")} written, never read</button></li>
       </ul>}
       {u.nodata.length > 0 && <p className="ae-muted">No activity data for {u.nodata.map((t) => t.toLowerCase()).join(", ")}.</p>}
     </Card>

@@ -1107,7 +1107,7 @@ export interface HomeCards {
   biggest: { schemas: { name: string; n: number }[]; databases: { name: string; n: number }[]; n_schemas: number; n_databases: number }; // by object count
   activity: { ok: boolean; reason: string | null; users: number; daily: { day: string; queries: number }[] };
   /** Object activity (server.objuse_page) at 90 days: last use per type, tables read not written and the reverse */
-  objuse: { ok: boolean; notes: string[]; new: number; days: number; unused: number; types: { type: string; buckets: Record<UseBucket, number> }[]; nodata: string[]; read_only: number; write_only: number };
+  objuse: { ok: boolean; notes: string[]; new: number; days: number; unused: number; unused_new: number; types: { type: string; buckets: Record<UseBucket, number> }[]; nodata: string[]; read_only: number; write_only: number };
   /** counts null: not compared yet (Changes compares on open), or reason: no earlier snapshot kept */
   changes: { counts: { all: number; gain: number; lose: number; risk: number; sensitive: number } | null; high: number; before: string | null; reason: string | null } | null;
 }
@@ -1399,6 +1399,7 @@ export interface ObjUseRow {
   bucket: UseBucket;
   pattern: UsePattern | null; // tables only: views and external tables are never written
   new: boolean; // DDL on it in the activity window
+  history: number; // days of use its type has (warehouses 30, apps 60); 0: none readable
   sensitive: boolean;
 }
 
@@ -1420,6 +1421,7 @@ export interface ObjUsePage {
   tabs: Record<"unused" | "read_only" | "write_only" | "all", number>;
   patterns: Record<UsePattern, number>;
   new: number;
+  unused_new: number; // of tabs.unused: new or changed in the activity window
   rows: ObjUseRow[];
   total: number;
   offset: number;

@@ -1678,7 +1678,8 @@ def home_cards():
             activity=dict(ok=ok, reason=reason, users=len({x["USER_NAME"] for x in a.acts}),
                           daily=[dict(day=d, queries=days[d]) for d in sorted(days)[-DAYS:]]),
             objuse=dict(ok=a.use_state()[0], notes=use["notes"], new=use["new"], days=90,
-                        unused=sum(b["180"] + b["none"] for b in use["types"].values()),  # not used in 90 days
+                        unused=sum(b["180"] + b["none"] for b in use["types"].values()),  # not used in 90 days (history 90+ only)
+                        unused_new=sum(r[6] and r[8] >= 90 and (r[4] is None or r[4] > 90) for r in use["rows"]),
                         types=[dict(type=t, buckets=b) for t, b in use["types"].items() if b["nodata"] < sum(b.values())][:TOP_TYPES],
                         nodata=sorted(t for t, b in use["types"].items() if b["nodata"] == sum(b.values())),
                         read_only=use["patterns"][90]["read_only"], write_only=use["patterns"][90]["write_only"]))
@@ -2668,8 +2669,9 @@ TRIM_NAMES = 20  # objects named in the trim's one-line summary
 
 OBJUSE_TABS = ("unused", "read_only", "write_only", "all")
 BUCKET_WORD = {"30": "last 30 days", "90": "31-90 days ago", "180": "91-180 days ago", "none": "not used", "nodata": "no activity data"}
+NO_OLDER = "not used in its {} days of history"  # bucket nodata of a warehouse or app with history: older use unknown
 NEVER = 10 ** 6  # days_since of an object never used: sorts as the oldest
-# row tuple of a.object_activity(): (object, type, last read, last write, days since, bucket, new, use per window)
+# row tuple of a.object_activity(): (object, type, last read, last write, days since, bucket, new, use per window, history days)
 OBJUSE_SORT = {"object": lambda r: r[0], "type": lambda r: (r[1], r[0]), "last_read": lambda r: r[2], "last_write": lambda r: r[3],
                "days": lambda r: NEVER if r[4] is None else r[4], "bucket": lambda r: a.BUCKETS.index(r[5])}
 OBJUSE_USE = {"read_q": 0, "write_q": 1, "readers": 2, "writers": 3}  # sort keys read from the window's use
@@ -2678,19 +2680,22 @@ OBJUSE_USE = {"read_q": 0, "write_q": 1, "readers": 2, "writers": 3}  # sort key
 def objuse_rows(p, view):
     """Object activity: (days, everything a.object_activity() has, the rows in scope=, counts in scope, the rows of
     tab= / type= / q=, sorted by sort= / dir=). unused: not used in the last days (never used included), "no
-    activity data" left out; read_only / write_only: tables read and not written in the window, or the reverse."""
+    activity data" and a window longer than the type's history (warehouses, apps) left out; read_only / write_only:
+    tables read and not written in the window, or the reverse."""
     days = int(p["days"]) if str(p.get("days", "")).isdigit() else 0 if p.get("days") else 90
     if days not in a.PERIODS:
         raise ApiError(400, "bad_param", "days must be 30, 90 or 180")
     x, i = a.object_activity(), a.PERIODS.index(days)
     sc = p.get("scope", "").strip()
     rows = [r for r in x["rows"] if not sc or r[0] == sc or r[0].startswith(sc + ".")] if sc else x["rows"]
-    pat = lambda r: a.pattern(r[7][i]) if r[5] != "nodata" and a.writable(r[1]) else None  # noqa: E731
-    unused = lambda r: r[5] != "nodata" and (r[4] is None or r[4] > days)  # noqa: E731
-    types, tabs, pats = {}, dict.fromkeys(OBJUSE_TABS, 0), dict(read_only=0, write_only=0, both=0, none=0)
+    pat = lambda r: a.pattern(r[7][i]) if r[8] and a.writable(r[1]) else None  # noqa: E731
+    unused = lambda r: r[8] >= days and (r[4] is None or r[4] > days)  # noqa: E731
+    types, tabs, pats, fresh = {}, dict.fromkeys(OBJUSE_TABS, 0), dict(read_only=0, write_only=0, both=0, none=0), 0
     for r in rows:
         types.setdefault(r[1], dict.fromkeys(a.BUCKETS, 0))[r[5]] += 1
-        tabs["unused"] += unused(r)
+        u = unused(r)
+        tabs["unused"] += u
+        fresh += u and r[6]
         pt = pat(r)
         if pt:
             pats[pt] += 1
@@ -2703,7 +2708,8 @@ def objuse_rows(p, view):
     u = OBJUSE_USE.get(by)
     key = (lambda r: r[7][i][u]) if u is not None else OBJUSE_SORT.get(by, OBJUSE_SORT["object"])
     desc = p.get("dir") == "-1" if p.get("dir") else by not in ("object", "type")
-    return dict(days=days, i=i, x=x, types=types, tabs=tabs, patterns=pats, tab=tab, rows=sorted(out, key=key, reverse=desc), pat=pat)
+    return dict(days=days, i=i, x=x, types=types, tabs=tabs, patterns=pats, unused_new=fresh, tab=tab,
+                rows=sorted(out, key=key, reverse=desc), pat=pat)
 
 
 def objuse_row(r, i, pat):
@@ -2711,24 +2717,24 @@ def objuse_row(r, i, pat):
     rq, wq, rs, ws = r[7][i]
     return dict(object=r[0], type=r[1], database=db, schema=sc, last_read=r[2] or None, last_write=r[3] or None,
                 days_since=r[4], readers=rs, writers=ws, read_q=rq, write_q=wq, bucket=r[5], pattern=pat(r), new=r[6],
-                sensitive=r[0] in S["sens"])
+                history=r[8], sensitive=r[0] in S["sens"])
 
 
 def objuse_page(p, view):
     """Object activity: every table, view, warehouse and Streamlit app by last use (ACCESS_HISTORY, QUERY_HISTORY),
     counts per type and age, read but never written and the reverse, one table page (offset=, limit=)."""
+    if view == "mine":
+        return dict(view=view, available=False, reason="My access reads no ACCESS_HISTORY: open Object activity on the shared data.",
+                    enable=ENABLE_USE, notes=[], rows=[], total=0)
     c = objuse_rows(p, view)
     ok, why = a.use_state()
-    mine = view == "mine"
-    if mine:
-        ok, why = False, "My access reads no ACCESS_HISTORY: open Object activity on the shared data."
-    off, lim, page = paged(p, [] if mine else c["rows"])
+    off, lim, page = paged(p, c["rows"])
     return dict(view=view, available=ok, reason=why, enable=ENABLE_USE, notes=c["x"]["notes"], days=c["days"],
                 periods=list(a.PERIODS), tab=c["tab"], type=p.get("type", ""), scope=p.get("scope", ""),
                 base_read=c["x"]["base_read"], history=dict(data=a.USE_DAYS, warehouse=a.DAYS_USAGE, app=a.ACTIVITY_DAYS),
                 types=[dict(type=k, buckets=v, total=sum(v.values())) for k, v in sorted(c["types"].items(), key=lambda t: -sum(t[1].values()))],
-                tabs=c["tabs"], patterns=c["patterns"], new=c["x"]["new"], rows=[objuse_row(r, c["i"], c["pat"]) for r in page],
-                total=0 if mine else len(c["rows"]), offset=off, limit=lim,
+                tabs=c["tabs"], patterns=c["patterns"], new=c["x"]["new"], unused_new=c["unused_new"],
+                rows=[objuse_row(r, c["i"], c["pat"]) for r in page], total=len(c["rows"]), offset=off, limit=lim,
                 source=(a.run.get("SOURCES") or {}).get("object_use") or ("demo values" if MODE == "fake" else None))
 
 
@@ -2740,7 +2746,9 @@ def objuse_csv(p, view):
     for r in c["rows"]:
         x = objuse_row(r, c["i"], c["pat"])
         out.append([x["object"], x["type"], x["last_read"] or "", x["last_write"] or "", "" if x["days_since"] is None else x["days_since"],
-                    x["read_q"], x["write_q"], x["readers"], x["writers"], BUCKET_WORD[x["bucket"]], x["pattern"] or "", "yes" if x["new"] else ""])
+                    x["read_q"], x["write_q"], x["readers"], x["writers"],
+                    NO_OLDER.format(x["history"]) if x["bucket"] == "nodata" and x["history"] else BUCKET_WORD[x["bucket"]],
+                    x["pattern"] or "", "yes" if x["new"] else ""])
     return f"object_activity_{c['tab']}_{c['days']}d.csv", csv_text(cols, out)
 
 

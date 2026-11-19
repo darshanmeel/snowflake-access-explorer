@@ -1102,6 +1102,7 @@ def test_objuse():  # Object activity: counts per type and age, the tabs, server
     d = js("/api/objuse", ["available", "days", "periods", "tab", "types", "tabs", "patterns", "new", "rows", "total", "notes", "refs"])
     assert d["available"] and d["tab"] == "unused" and d["days"] == 90 and d["tabs"] == dict(unused=30, read_only=5, write_only=1, all=48)
     assert d["total"] == 30 and all(r["bucket"] in ("180", "none") for r in d["rows"]) and d["rows"][0]["days_since"] is None  # never used first
+    assert d["unused_new"] == sum(r["new"] for r in d["rows"]) and all(r["history"] == 180 for r in d["rows"])
     t = {x["type"]: x["buckets"] for x in d["types"]}
     assert t["TABLE"]["180"] == 2 and t["DYNAMIC TABLE"]["90"] == 1 and t["PROCEDURE"]["nodata"] == 3
     ro = js("/api/objuse?tab=read_only&limit=0")
@@ -1121,6 +1122,9 @@ def test_objuse():  # Object activity: counts per type and age, the tabs, server
     assert csv[0].startswith("Object,Type,Last read") and len(csv) == 3 and "written" not in csv[1]
     h = js("/api/home")["cards"]["objuse"]
     assert h["ok"] and h["read_only"] == 5 and h["write_only"] == 1 and "PROCEDURE" in h["nodata"] and h["unused"] == d["tabs"]["unused"]
+    assert h["unused_new"] == d["unused_new"]
+    wh = {r["object"]: r for r in js("/api/objuse?tab=all&type=WAREHOUSE&days=180")["rows"]}
+    assert wh["WH_SALES_XS"]["history"] == 30 and wh["WH_SALES_XS"]["read_q"] > 0
     assert {x["type"] for x in h["types"]} >= {"TABLE", "VIEW", "WAREHOUSE"}
     m = server.objuse_page({}, "mine")
     assert m["available"] is False and "shared" in m["reason"] and not m["rows"]

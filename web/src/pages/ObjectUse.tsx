@@ -3,12 +3,11 @@
 // table pages, sorts and searches on the server.
 import { useApi } from "../api/client";
 import type { ObjUsePage, ObjUseRow } from "../api/types";
-import { AGE, AgeBars, Card, DataTable, EmptyState, FilterChips, Tabs } from "../components";
+import { AgeBars, Card, DataTable, EmptyState, FilterChips, Tabs } from "../components";
 import { useApp } from "../ctx";
 import { col, Controls, Load, Pick, Sel } from "./common";
 
 const TABS = ["unused", "read_only", "write_only", "all"] as const;
-const AGE_WORD = Object.fromEntries(AGE.map((a) => [a.key, a.label]));
 const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? "" : "s"}`;
 
 export function ObjectUsePageView() {
@@ -37,7 +36,7 @@ function Body({ d }: { d: ObjUsePage }) {
   return (
     <>
       <p className="ae-answer">
-        <b>{plural(d.tabs.unused, "object")}</b> not used in the last {d.days} days
+        <b>{plural(d.tabs.unused, "object")}</b> not used in the last {d.days} days{d.unused_new > 0 && <> ({d.unused_new.toLocaleString()} of them new or changed)</>}
         {d.tabs.read_only + d.tabs.write_only > 0 && <> · tables <b>read, never written</b>: {d.tabs.read_only.toLocaleString()} · <b>written, never read</b>: {d.tabs.write_only.toLocaleString()}</>}
         {d.new > 0 && <> · {plural(d.new, "object")} created or changed in the activity window</>}.
       </p>
@@ -66,6 +65,7 @@ function Body({ d }: { d: ObjUsePage }) {
         <p className="ae-muted ae-foot">
           Tables and views: ACCESS_HISTORY over {d.history.data} days, reads through a view count as reads{d.base_read ? "" : " (this snapshot has direct reads only)"}.
           {" "}Warehouses: queries run, QUERY_HISTORY over {d.history.warehouse} days. Streamlit apps: queries for their viewers over {d.history.app} days.
+          {" "}A warehouse or app not used in its history counts as no activity data, and is left out of a longer window: older use is unknown.
           {" "}Procedures, functions and tasks have no use in the snapshot: "no activity data", never "not used".
           {d.source === "demo values" && " These are demo values."}
         </p>
@@ -82,7 +82,7 @@ const SUB: Record<(typeof TABS)[number], string> = {
   unused: "Never used first, then the longest unused. A new or changed object is marked: it may simply be new.",
   read_only: "Read in the window, no inserts, updates or merges: a reference or a finished load. Views are never written, so they are left out.",
   write_only: "Loaded in the window but nobody read it: a load nobody needs, or one read only later.",
-  all: "Every table, view, warehouse and Streamlit app.",
+  all: "Every object; procedures, functions and tasks have no activity data.",
 };
 const SORT: Record<(typeof TABS)[number], { key: string; dir: 1 | -1 }> = {
   unused: { key: "days", dir: -1 }, read_only: { key: "read_q", dir: -1 }, write_only: { key: "write_q", dir: -1 }, all: { key: "object", dir: 1 },
@@ -102,8 +102,7 @@ function Table({ d }: { d: ObjUsePage }) {
     col<ObjUseRow>("type", "Type", (r) => r.type.toLowerCase()),
     col<ObjUseRow>("last_read", "Last read", (r) => day(r.last_read), { help: "Warehouses: last query run; apps: last opened" }),
     col<ObjUseRow>("last_write", "Last written", (r) => day(r.last_write)),
-    col<ObjUseRow>("days", "Days since used", (r) => r.days_since ?? "never", { num: true }),
-    col<ObjUseRow>("bucket", "Last used", (r) => AGE_WORD[r.bucket] ?? r.bucket),
+    col<ObjUseRow>("days", "Days since used", (r) => r.days_since ?? (r.bucket !== "nodata" ? "never" : r.history ? `none in ${r.history}` : "no data"), { num: true }),
     col<ObjUseRow>("read_q", "Read queries", (r) => r.read_q, { num: true, help: `In the last ${d.days} days; warehouses: queries run` }),
     col<ObjUseRow>("write_q", "Write queries", (r) => r.write_q, { num: true }),
     col<ObjUseRow>("readers", "Readers", (r) => r.readers, { num: true, help: "Distinct users in the window" }),

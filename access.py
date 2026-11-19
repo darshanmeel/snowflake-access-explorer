@@ -6273,93 +6273,107 @@ def bucket(d):
 def object_activity():
     """Object activity page and Home card, once per data set, one pass over obj_use, acts and used: per table / view
     (any flavour), warehouse, Streamlit app and procedure / function / task (as "no activity data") a row tuple
-    (object, type, last_read, last_write, days_since, bucket, new, use), use = per PERIODS window
-    (read queries, write queries, readers, writers). BASE counts as read (read through a view); a warehouse's use is
-    its queries (QUERY_HISTORY, DAYS_USAGE days), an app's the queries it ran for its viewers (ACTIVITY_DAYS days).
-    new: DDL on it in ACTIVITY_DAYS, so a fresh object does not pass for a dead one. Also counts per type and bucket,
-    per window and pattern (tables only: a view is never written), and notes for what is not readable."""
+    (object, type, last_read, last_write, days_since, bucket, new, use, history), use = per PERIODS window
+    (read queries, write queries, readers, writers), history = days of use the type has (0: none readable).
+    BASE counts as read (read through a view); a warehouse's use is its queries (QUERY_HISTORY, DAYS_USAGE days), an
+    app's the queries it ran for its viewers (ACTIVITY_DAYS days): not used in that history is "nodata" (older use
+    unknown), not "none". Windows count by LAST_USED days, like days_since and the bucket, so a row never contradicts
+    itself. new: DDL on it in ACTIVITY_DAYS, so a fresh object does not pass for a dead one. Also counts per type and
+    bucket, per window and pattern (tables only: a view is never written), and notes for what is not readable."""
     def make():
-        today, w0 = day(ref_time()), monday(ref_time())
+        today, w0, nw = day(ref_time()), monday(ref_time()), len(PERIODS)
         objs = {o: k for o, k in kinds.items() if is_data(k) or k in ("WAREHOUSE", "STREAMLIT") or k in NO_USE}
         ok_use, why_use = use_state()
         ok_act, why_act = act_state()
         ok_wh = (run.get("SOURCES") or {}).get("usage") != "UNAVAILABLE"
-        nw = weeks_of(max(PERIODS))
-        acc, weeks = {}, {}  # object -> [read, write], each None or [newest week index, last used, queries per week, user -> newest week]
+        win = lambda age: next((i for i, p in enumerate(PERIODS) if age <= p), nw)  # noqa: E731  first window holding a use that old
+        acc, weeks = {o: [None, None] for o in objs}, {}  # object -> [read, write], each None or [newest week, last used, queries per window, user -> first window]
 
-        def put(o, w, u, n, last, q):
-            r = acc.get(o)
-            if r is None:
-                r = acc[o] = [None, None]
-            s = r[w]
-            if s is None:
-                s = r[w] = [10 ** 9, "", [0] * nw, {}]
-            if n <= s[0]:
-                last = str(last)[:16]
-                s[1] = max(s[1], last) if n == s[0] else last
-                s[0] = n
-            if 0 <= n < nw:
-                s[2][n] += q
-                if s[3].get(u, nw) > n:
-                    s[3][u] = n
+        def week(wk):  # (weeks back, window of every use in that week, or None when the week straddles a window's cut)
+            m = monday(wk)
+            a0, a1 = (today - m).days, (today - m).days - 6  # oldest and newest age a use in that week can have
+            i, j = win(a0), win(max(a1, 0))
+            return (w0 - m).days // 7, i if i == j else None
+
+        def put(o, w, u, n, lu, c, q):
+            r = acc[o]
+            if r[w] is None:
+                r[w] = [10 ** 9, None, [0] * nw, {}]
+            s, lu = r[w], str(lu)[:16]
+            if n < s[0] or n == s[0] and lu and (s[1] is None or lu > s[1]):
+                s[0], s[1] = n, lu
+            if c < nw:
+                s[2][c] += q
+                if s[3].get(u, nw) > c:
+                    s[3][u] = c
         for u, xs in obj_use.items():
             for x in xs:  # put() inlined: this loop runs once per user, object, week and action (millions on a big account)
-                o, wk = x["OBJECT_NAME"], x["WEEK"]
-                if o not in objs:
-                    continue
-                n = weeks.get(wk)
-                if n is None:
-                    n = weeks[wk] = (w0 - monday(wk)).days // 7
-                r = acc.get(o)
+                r = acc.get(x["OBJECT_NAME"])
                 if r is None:
-                    r = acc[o] = [None, None]
+                    continue
+                wk = x["WEEK"]
+                k = weeks.get(wk)
+                if k is None:
+                    k = weeks[wk] = week(wk)
+                n, c, lu = k[0], k[1], x["LAST_USED"]
+                if c is None:
+                    c = win((today - day(lu or wk)).days)
                 w = x["ACTION"] == "WRITE"
                 s = r[w]
                 if s is None:
-                    s = r[w] = [10 ** 9, "", [0] * nw, {}]
-                if n <= s[0]:
-                    last = str(x["LAST_USED"] or wk)[:16]
-                    s[1] = max(s[1], last) if n == s[0] else last
-                    s[0] = n
-                if 0 <= n < nw:
-                    s[2][n] += x["QUERIES"] or 0
+                    s = r[w] = [10 ** 9, None, [0] * nw, {}]
+                if n < s[0] or n == s[0] and lu and (s[1] is None or lu > s[1]):
+                    s[0], s[1] = n, lu
+                if c < nw:
+                    s[2][c] += x["QUERIES"] or 0
                     m = s[3]
-                    if m.get(u, nw) > n:
-                        m[u] = n
+                    if m.get(u, nw) > c:
+                        m[u] = c
         for u, xs in used.items():
-            for x in xs:  # the usage read covers DAYS_USAGE days: inside every window
+            for x in xs:
                 if x["KIND"] == "WAREHOUSE" and x["NAME"] in objs and x["LAST_USED"]:
-                    put(x["NAME"], 0, u, 0, x["LAST_USED"], int(x["QUERIES"] or 0))
+                    t = day(x["LAST_USED"])
+                    put(x["NAME"], 0, u, (w0 - monday(t)).days // 7, x["LAST_USED"], win((today - t).days), int(x["QUERIES"] or 0))
         new = set()
         for x in acts:
             if x["ACTION"] == "DDL":
                 new.add(x["OBJECT_NAME"])
             if x.get("APP") in objs:
-                put(x["APP"], 0, x["USER_NAME"], (w0 - monday(x["DAY"])).days // 7, x["LAST_USED"] or x["DAY"], int(x["QUERIES"] or 0))
-        rows, types, idle = [], {}, 0
+                t = day(x["DAY"])
+                put(x["APP"], 0, x["USER_NAME"], (w0 - monday(t)).days // 7, x["LAST_USED"] or x["DAY"], win((today - t).days), int(x["QUERIES"] or 0))
+        rows, idle = [], 0
         pats = {p: dict(read_only=0, write_only=0, both=0, none=0) for p in PERIODS}
-        cuts = [weeks_of(p) for p in PERIODS]
-        win = lambda s, c: (sum(s[2][:c]), sum(v < c for v in s[3].values())) if s else (0, 0)  # noqa: E731
-        none = (NO_USE_ROW,) * len(PERIODS)
+
+        def cum(s):  # (queries, distinct users) per window, each window holding the shorter ones
+            if not s:
+                return ((0, 0),) * nw
+            n = [0] * (nw + 1)
+            for v in s[3].values():
+                n[v] += 1
+            return tuple(zip(itertools.accumulate(s[2]), itertools.accumulate(n[:nw])))
+        none = (NO_USE_ROW,) * nw
+        last = lambda s: str(s[1] or w0 - timedelta(weeks=s[0]))[:16] if s else ""  # noqa: E731
+        hist = {"WAREHOUSE": DAYS_USAGE if ok_wh else 0, "STREAMLIT": ACTIVITY_DAYS if ok_act else 0} | dict.fromkeys(NO_USE, 0)
+        per = {k: (hist.get(k, USE_DAYS if ok_use else 0), writable(k), dict.fromkeys(BUCKETS, 0)) for k in set(objs.values())}
         for o, k in objs.items():
-            ok = ok_wh if k == "WAREHOUSE" else ok_act if k == "STREAMLIT" else ok_use and k not in NO_USE
-            t = types.get(k) or types.setdefault(k, dict.fromkeys(BUCKETS, 0))
-            r = acc.get(o)
-            if r is None:  # most objects of a big account: no use at all
-                b = "none" if ok else "nodata"
-                rows.append((o, k, "", "", None, b, o in new, none))
+            h, wr, t = per[k]
+            r = acc[o]
+            if r == [None, None]:  # most objects of a big account: no use at all
+                b = "none" if h >= USE_DAYS else "nodata"
+                rows.append((o, k, "", "", None, b, o in new, none, h))
                 t[b] += 1
-                idle += ok and writable(k)
+                idle += h > 0 and wr
                 continue
-            lr, lw = r[0][1] if r[0] else "", r[1][1] if r[1] else ""
+            lr, lw = last(r[0]), last(r[1])
             d = (today - day(max(lr, lw))).days
-            b = bucket(d) if ok else "nodata"
-            use = tuple((rq, wq, rs, ws) for (rq, rs), (wq, ws) in ((win(r[0], c), win(r[1], c)) for c in cuts))
-            rows.append((o, k, lr, lw, d, b, o in new, use))
+            b = bucket(d) if h else "nodata"
+            use = tuple((rq, wq, rs, ws) for (rq, rs), (wq, ws) in zip(cum(r[0]), cum(r[1])))
+            rows.append((o, k, lr, lw, d, b, o in new, use, h))
             t[b] += 1
-            if ok and writable(k):
+            if h and wr:
                 for p, s in zip(PERIODS, use):
                     pats[p][pattern(s)] += 1
+        types = {k: v[2] for k, v in per.items()}
         for p in PERIODS:
             pats[p]["none"] += idle
         notes = [x for x in (None if ok_use else why_use, None if ok_act else why_act,
@@ -6367,6 +6381,7 @@ def object_activity():
         return dict(rows=rows, types=dict(sorted(types.items(), key=lambda t: -sum(t[1].values()))), patterns=pats,
                     new=len(new & set(objs)), notes=notes, base_read=base_read())
     return cached("object_activity", make)
+
 
 
 def writable(k):

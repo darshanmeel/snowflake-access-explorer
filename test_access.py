@@ -2128,8 +2128,8 @@ def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), w
 
 def test_object_activity():  # every object by last use: age buckets, read / write patterns, new, no-data types
     x = a.object_activity()
-    r = {o: dict(type=k, last_read=lr, last_write=lw, days=d, bucket=b, new=n, use=dict(zip(a.PERIODS, u)))
-         for o, k, lr, lw, d, b, n, u in x["rows"]}
+    r = {o: dict(type=k, last_read=lr, last_write=lw, days=d, bucket=b, new=n, use=dict(zip(a.PERIODS, u)), history=h)
+         for o, k, lr, lw, d, b, n, u, h in x["rows"]}
     pat = lambda o, days: a.pattern(r[o]["use"][days])  # noqa: E731
     assert {v["bucket"] for v in r.values()} == set(a.BUCKETS)  # the demo has every bucket
     assert pat("SALES.CORE.TBL_CUSTOMER", 90) == "both" and r["SALES.CORE.TBL_CUSTOMER"]["new"]  # altered in the window
@@ -2141,6 +2141,7 @@ def test_object_activity():  # every object by last use: age buckets, read / wri
     assert r["HR.PAYROLL.TBL_PAY_01"]["days"] is None and not r["HR.PAYROLL.TBL_PAY_01"]["new"]
     assert {r[o]["bucket"] for o in r if r[o]["type"] in a.NO_USE} == {"nodata"}  # procedures, functions, tasks: no data
     assert r["WH_SALES_XS"]["bucket"] == "30" and r["WH_SALES_XS"]["use"][30][2] == 2  # warehouses: QUERY_HISTORY
+    assert (r["WH_SALES_XS"]["history"], r["SALES.MART.ST_CUSTOMER_LOOKUP"]["history"], r["HR.PAYROLL.TBL_PAY_01"]["history"]) == (30, 60, 180)
     assert r["SALES.MART.ST_CUSTOMER_LOOKUP"]["bucket"] == "30" and r["SALES.MART.ST_CUSTOMER_LOOKUP"]["use"][30][2] == 1
     assert x["patterns"][90] == dict(read_only=5, write_only=1, both=1, none=29) and x["new"] == 1 and not x["notes"]
     assert sum(sum(b.values()) for b in x["types"].values()) == len(x["rows"]) and "STREAM" not in x["types"]
@@ -2150,9 +2151,22 @@ def test_object_activity():  # every object by last use: age buckets, read / wri
     d["GRANT"].append(dict(GRANTEE_ROLE="PUBLIC", PRIVILEGE="SELECT", GRANTED_ON="VIEW", IS_FUTURE=False,
                            OBJECT_NAME="SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"))
     a.build(d)
-    y = {o: (b, u) for o, _, _, _, _, b, _, u in a.object_activity()["rows"]}
+    y = {o: (b, u) for o, _, _, _, _, b, _, u, _ in a.object_activity()["rows"]}
     assert y["HR.PAYROLL.TBL_PAY_01"] == ("30", ((4, 0, 1, 0),) * 3) and a.pattern(y["HR.PAYROLL.TBL_PAY_01"][1][0]) == "read_only"
     assert "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY" not in y
+    snap = a.day(a.ref_time())  # windows count days like days_since: a read 29 days back is in the 30-day window, 31 is not
+    assert snap.weekday() == 0
+    for back, b, n30 in ((29, "30", 1), (31, "90", 0), (89, "90", 0), (92, "180", 0)):
+        lu = snap - a.timedelta(days=back)
+        d = a.fake()
+        d["OBJECT_USE"] = [dict(USER_NAME="REPORT_01", OBJECT_NAME="HR.PAYROLL.TBL_PAY_01", WEEK=str(a.monday(lu)), ACTION="READ",
+                                QUERIES=3, LAST_USED=f"{lu} 10:00")]
+        d["USAGE"] = [u for u in d["USAGE"] if u["NAME"] != "WH_FINANCE_XS"]  # a warehouse idle over its 30 days of history
+        a.build(d)
+        w = {x[0]: x for x in a.object_activity()["rows"]}
+        p = w["HR.PAYROLL.TBL_PAY_01"]
+        assert (p[4], p[5], p[7][0][2], a.pattern(p[7][1])) == (back, b, n30, "read_only" if back <= 90 else "none"), back
+        assert w["WH_FINANCE_XS"][4:6] == (None, "nodata") and w["WH_FINANCE_XS"][8] == 30  # older use unknown: not "not used"
     a.build(dict(a.fake(), OBJECT_USE=None))  # ACCESS_HISTORY not read: "no data", never "not used"; the note says why
     z = a.object_activity()
     assert z["types"]["TABLE"]["nodata"] == sum(z["types"]["TABLE"].values()) and z["notes"]
