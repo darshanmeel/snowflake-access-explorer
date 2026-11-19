@@ -785,9 +785,7 @@ def inventory_note(steps, bad, added):
     """(source, note) of the inventory: steps read (inventory_sql), bad: "step: error" of the failed ones, added:
     inventory_rows of the others."""
     ok = {"SHOW" if s.startswith("SHOW") else "ACCOUNT_USAGE" for n, _, s in steps if not any(b.startswith(n + ":") for b in bad)}
-    note = [f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])] * bool(bad)
-    lone = sum(1 for who, _, _ in added if not who)
-    note += [f"{lone} object{'s' * (lone != 1)} without an owner role, listed with no holder"] * bool(lone)
+    note = [f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])] * bool(bad)  # only failures: a note means incomplete
     return " + ".join(sorted(ok)) or "UNAVAILABLE", "; ".join(note) or None
 
 def objects(session, run_id, mode):

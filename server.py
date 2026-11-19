@@ -622,6 +622,8 @@ def note_info(k, source, view):
                          ("Future grants partly read", "Future grants of the databases in the error are missing.",
                           "MANAGE GRANTS, or ownership of those schemas."),
         "streams": ("Streams unread", "The stream rule (22) can't run.", f"{IP}."),
+        "objects": ("Object list partly read", "Objects of the kinds in the error show only where a grant names them.",
+                    f"{IP}; for SHOW kinds (Streamlit apps, notebooks, ...) MONITOR or USAGE on them."),
         "activity": ("No client in Activity", "SESSIONS is not readable: the Activity tabs show no client and rule 25 "
                      "can't run.", f"{IP}.") if source == "ACCOUNT_USAGE" else
                     ("No table activity", "The Activity tabs and rules 24-28 can't run: ACCESS_HISTORY is not readable "

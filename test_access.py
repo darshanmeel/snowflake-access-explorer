@@ -740,7 +740,7 @@ def test_inventory():
     assert max(own.values()) == 1, [o for o, n in own.items() if n > 1]  # no duplicates with the real grants
     assert any("ACCOUNT_USAGE.TABLES" in c for c in calls) and "SHOW STREAMLITS IN ACCOUNT" in calls
     src, notes = s["run"]["SOURCES"]["objects"], s["run"]["NOTES"]["objects"]
-    assert src == "ACCOUNT_USAGE + SHOW" and "DATABASES: " in notes and "2 objects without an owner role" in notes, notes
+    assert src == "ACCOUNT_USAGE + SHOW" and "DATABASES: " in notes and "owner role" not in notes, notes  # only failures
     a.build(s)
     try:
         for o, k, r in (("SALES.PIPELINE.ST_ORDER_BOARD", "STREAMLIT", "PIPELINE"), ("SALES.PIPELINE.NB_CHURN", "NOTEBOOK", "PIPELINE"),

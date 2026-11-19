@@ -1069,9 +1069,7 @@ def inventory_note(steps, bad, added):
     """(source, note) of the inventory: steps read (inventory_sql), bad: "step: error" of the failed ones, added:
     inventory_rows of the others."""
     ok = {"SHOW" if s.startswith("SHOW") else "ACCOUNT_USAGE" for n, _, s in steps if not any(b.startswith(n + ":") for b in bad)}
-    note = [f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])] * bool(bad)
-    lone = sum(1 for who, _, _ in added if not who)
-    note += [f"{lone} object{'s' * (lone != 1)} without an owner role, listed with no holder"] * bool(lone)
+    note = [f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])] * bool(bad)  # only failures: a note means incomplete
     return " + ".join(sorted(ok)) or "UNAVAILABLE", "; ".join(note) or None
 
 
@@ -1499,6 +1497,8 @@ def live(query, old=None, old_use=None):
     d["GRANT"] += [dict(GRANTEE_ROLE=who, PRIVILEGE="OWNERSHIP", GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False,
                         GRANT_OPTION=False, GRANTED_BY=None) for who, k, o in added]
     note("objects", *inventory_note(steps, bad, added))
+    if lone := sum(1 for who, _, _ in added if not who):  # an app owns them, or the read named no owner: listed, no holder
+        say(f"Object inventory: {lone:,} objects without an owner role, listed with no holder")
     say(f"done in {took(t0)}")
     return d | {"run": dict(RUN_ID="direct", FINISHED_AT=now, SOURCES=src, NOTES=notes)}
 

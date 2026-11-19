@@ -479,7 +479,7 @@ def test_objects():
 
     session.sql = sql
     src, note = ns["objects"](session, "run-9", "AUTO")
-    assert src == "ACCOUNT_USAGE + SHOW" and "TABLES: Object does not exist" in note and "1 object without an owner role" in note, note
+    assert src == "ACCOUNT_USAGE + SHOW" and "TABLES: Object does not exist" in note and "owner role" not in note, note  # only failures
     got = sorted(((r["GRANTEE_ROLE"], r["GRANTED_ON"], r["OBJECT_NAME"]) for r in query(
         con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-9' AND GRANTEE_ROLE IS DISTINCT FROM 'R_USE' "
              "AND GRANTEE_ROLE IS DISTINCT FROM 'R_OWN'")), key=str)
