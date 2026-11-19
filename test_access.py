@@ -2098,6 +2098,8 @@ def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), w
     assert rows["SALES.CORE.TBL_CUSTOMER"]["suggest"] == "keep" and g["rows"][0]["suggest"] == "drop"
     assert g["counts"]["changes"] == len(g["changes"]) == 4 and g["counts"]["write_unused"] == 1
     assert {r["object"]: r["used"] for r in a.granted_used("ENGINEER_01", True, 180)["rows"]}["HR.PEOPLE.TBL_EMPLOYEE"] == "read"
+    rp = {r["object"]: r for r in a.granted_used("REPORT_01")["rows"]}["SALES.CORE.TBL_CUSTOMER"]  # read through a view
+    assert a.base_read() and rp["through"] and rp["suggest"] == "keep" and not rp["unused"]
     a.what_if(g["changes"])  # the trim simulates
     r = a.granted_used(F + "ANALYST", False, 30)
     assert r["people"] == 3 and {x["used"] for x in r["rows"]} == {"read"}

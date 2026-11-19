@@ -438,7 +438,8 @@ def fake():
 
 
 def fake_use(end):
-    """Demo ACCESS_HISTORY, per user, object, week and READ / WRITE: some grants never used (Granted vs used: Trim),
+    """Demo ACCESS_HISTORY, per user, object, week and READ / WRITE / BASE: some grants never used (Granted vs used: Trim),
+    REPORT_01 reads SALES.CORE.TBL_CUSTOMER only through SALES.MART.VW_CUSTOMER (BASE),
     ENGINEER_01 read HR.PEOPLE.TBL_EMPLOYEE only 20+ weeks ago, ANALYST_02 (dormant) nothing since July."""
     w0 = monday(end)
     rd, wr = "READ", "WRITE"
@@ -448,7 +449,8 @@ def fake_use(end):
             ("ANALYST_01", "SALES.CORE.TBL_CUSTOMER", rd, range(26)), ("ANALYST_01", "SALES.MART.VW_CUSTOMER", rd, range(26)),
             ("ANALYST_02", "SALES.MART.VW_CUSTOMER", rd, range(17, 26)),
             ("FIN_01", "FINANCE.REPORT.TBL_REVENUE", rd, range(26)), ("FIN_01", "FINANCE.REPORT.VW_REVENUE_MONTHLY", rd, range(0, 26, 3)),
-            ("REPORT_01", "SALES.MART.VW_CUSTOMER", rd, range(26)), ("REPORT_01", "FINANCE.REPORT.TBL_REVENUE", rd, range(0, 12)),
+            ("REPORT_01", "SALES.MART.VW_CUSTOMER", rd, range(26)), ("REPORT_01", "SALES.CORE.TBL_CUSTOMER", "BASE", range(26)),
+            ("REPORT_01", "FINANCE.REPORT.TBL_REVENUE", rd, range(0, 12)),
             ("SVC_DEPLOY", "SALES.CORE.TBL_CUSTOMER", wr, range(26)), ("SVC_DEPLOY", "SALES.CLEAN.TBL_ORDER", wr, range(26)),
             ("SVC_DEPLOY", "SALES.RAW.TBL_ORDER_RAW", rd, range(26)), ("HR_01", "HR.PAYROLL.TBL_PAY_00", rd, range(26)),
             ("HR_01", "HR.PAYROLL.VW_PAY_MONTH", rd, range(0, 26, 4))]
@@ -456,7 +458,7 @@ def fake_use(end):
     for u, o, act, weeks in plan:
         for i in weeks:
             wk = w0 - timedelta(weeks=i)
-            n = 1 + (i * 5 + len(o) + len(u)) % (9 if act == rd else 4)
+            n = 1 + (i * 5 + len(o) + len(u)) % (4 if act == wr else 9)
             last = datetime.combine(wk, datetime.min.time()) + timedelta(days=min(4, (day(end) - wk).days), hours=6)
             out.append(dict(USER_NAME=u, OBJECT_NAME=o, WEEK=wk.isoformat(), ACTION=act, QUERIES=n,
                             LAST_USED=last.strftime("%Y-%m-%d %H:%M")))
@@ -1372,21 +1374,28 @@ def live(query, old=None, old_use=None):
 
 def use_sql(since):
     """Object usage from ACCESS_HISTORY (query metadata, never table data), aggregated in Snowflake per user, object,
-    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). since: first
+    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified) /
+    BASE (tables read only through a view, or by an owner's-rights procedure or task). since: first
     Monday read ('YYYY-MM-DD'), cut at the session's midnight like the weeks, so a week read again replaces a whole
     week; ACCESS_HISTORY is scanned once. The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
     return f"""WITH A AS (
-            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, BASE_OBJECTS_ACCESSED, OBJECTS_MODIFIED
             FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::TIMESTAMP_LTZ),
         H AS (
             SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
             FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
             UNION ALL
+            SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING, 'BASE'
+            FROM A, LATERAL FLATTEN(A.BASE_OBJECTS_ACCESSED) O
+            UNION ALL
             SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING, 'WRITE'
-            FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O)
+            FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O),
+        B AS (  -- a base object the query also read directly is a READ, not a BASE
+            SELECT * FROM H
+            QUALIFY ACTION <> 'BASE' OR COUNT_IF(ACTION = 'READ') OVER (PARTITION BY QUERY_ID, OBJECT_NAME) = 0)
         SELECT USER_NAME, OBJECT_NAME, DATEADD(DAY, 1 - DAYOFWEEKISO(T), T::DATE) AS WEEK, ACTION,
                COUNT(DISTINCT QUERY_ID) AS QUERIES, MAX(T) AS LAST_USED
-        FROM H WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
+        FROM B WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
 
 
 def activity_sql(since, client=True):
@@ -1448,7 +1457,8 @@ def history_sql(use_since, act_since, client=True):
     def own(sql):
         return sql.replace(f"FROM {AU}.ACCESS_HISTORY WHERE", "FROM A0 WHERE")
     return f"""WITH A0 AS (
-            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME, DIRECT_OBJECTS_ACCESSED, BASE_OBJECTS_ACCESSED, OBJECTS_MODIFIED,
+                   OBJECT_MODIFIED_BY_DDL
             FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= LEAST('{use_since}'::TIMESTAMP_LTZ,
                 '{act_since} 00:00:00 +00:00'::TIMESTAMP_TZ::TIMESTAMP_LTZ))
         SELECT 'USE' AS PART, USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED, NULL AS DAY, NULL AS ROLE_NAME,
@@ -5966,7 +5976,7 @@ ORDER BY 1, 3, 4;""")]
         out.insert(0, plain(f"Objects used by {user or role}", ["Tables and views read or changed per ISO week (ACCESS_HISTORY; "
                                                               "Enterprise edition), the 'used' side of Granted vs used."],
                             {"USER_NAME": user or None, "ROLE_NAME": role or None, "DAYS": USE_DAYS}, q.replace(
-                                "FROM H WHERE OBJECT_NAME IS NOT NULL", "FROM H WHERE OBJECT_NAME IS NOT NULL AND USER_NAME = $USER_NAME") + ";"
+                                "FROM B WHERE OBJECT_NAME IS NOT NULL", "FROM B WHERE OBJECT_NAME IS NOT NULL AND USER_NAME = $USER_NAME") + ";"
                             if user else "-- A role's use is the use of the users who hold it: run this per user (4_role_holders.sql lists them).\n"
                             + q + ";"))
     if page in ("sensitive", "flow", "review") or (page == "home" and not out):
@@ -6168,21 +6178,28 @@ def weeks_of(days):
 
 
 def used_on(names, days):
-    """Object usage of these users in the last days: {object: dict(read, write (queries), weeks (queries per week,
-    oldest first), last, users)}. Whole ISO weeks, counted back from the snapshot's week."""
+    """Object usage of these users in the last days: {object: dict(read, write, base (queries; base: read only through
+    a view or a procedure), weeks (queries per week, oldest first), last, users)}. Whole ISO weeks, counted back from
+    the snapshot's week."""
     n, w0, out = weeks_of(days), monday(ref_time()), {}
     for u in names:
         for x in obj_use.get(u, []):
             i = (w0 - monday(x["WEEK"])).days // 7
             if not 0 <= i < n:
                 continue
-            o = out.setdefault(x["OBJECT_NAME"], dict(read=0, write=0, weeks=[0] * n, last=None, users=set()))
+            o = out.setdefault(x["OBJECT_NAME"], dict(read=0, write=0, base=0, weeks=[0] * n, last=None, users=set()))
             q = int(x["QUERIES"] or 0)
-            o["write" if x["ACTION"] == "WRITE" else "read"] += q
+            o[{"WRITE": "write", "BASE": "base"}.get(x["ACTION"], "read")] += q
             o["weeks"][n - 1 - i] += q
             o["last"] = max(filter(None, (o["last"], when(x["LAST_USED"]))), default=None)
             o["users"].add(u)
     return out
+
+
+def base_read():
+    """Whether the object use read has BASE rows (tables read through a view or procedure); a snapshot made before
+    that read has none, so its use is direct only."""
+    return cached("base_read", lambda: any(x["ACTION"] == "BASE" for v in obj_use.values() for x in v))
 
 
 def granted_used(name, user=True, days=90):
@@ -6201,11 +6218,14 @@ def granted_used(name, user=True, days=90):
         u = use.get(x["object"])
         # a role's people may write through another role: used "change" only where this grant lets them
         used = ("change" if u["write"] and LEVELS.index(x["level"]) >= LEVELS.index("change") else "read") if u else None
+        through = bool(u) and not (u["read"] or u["write"])  # read only through a view or procedure: never trimmed
         unused = [p for p in x["privileges"] if level_of(p, x["type"]) and (
             used is None or p == "OWNERSHIP" or (p in WRITE_PRIVS and used == "read"))]
         cut = [p for p in unused if p != "OWNERSHIP"]
         if not who:  # an orphan role: no one to have used it, so no use says it can go (rule 13 covers it)
             kind, text, unused, cut = "none", "Nobody holds it", [], []
+        elif through:
+            kind, text, unused, cut = "keep", "Keep · used through a view or procedure", [], []
         elif used is None:
             kind, text = "drop", f"Remove all · not used in {days} days"
         elif cut:
@@ -6218,7 +6238,7 @@ def granted_used(name, user=True, days=90):
                         sensitive=x["object"] in sens, level=x["level"], used=used, privileges=x["privileges"],
                         unused=unused, weeks=u["weeks"] if u else [0] * n, reads=u["read"] if u else 0,
                         writes=u["write"] if u else 0, last=str(u["last"])[:16] if u and u["last"] else None,
-                        people=sorted(u["users"]) if u else [], holder=x["holder"], suggest=kind, text=text,
+                        people=sorted(u["users"]) if u else [], holder=x["holder"], suggest=kind, text=text, through=through,
                         changes=[dict(op="revoke_priv", role=h, privilege=p, object=x["object"])
                                  for p in cut for h in sorted(hold.get((x["object"], p), ()))]))
     out.sort(key=lambda r: (("drop", "trim", "keep", "none").index(r["suggest"]), not r["sensitive"], r["object"]))
@@ -6229,7 +6249,7 @@ def granted_used(name, user=True, days=90):
                   write_unused=sum(r["used"] == "read" and any(p in WRITE_PRIVS for p in r["unused"]) for r in out),
                   changes=len(changes))
     return dict(days=days, weeks=[(w0 - timedelta(weeks=n - 1 - i)).isoformat() for i in range(n)], rows=out,
-                counts=counts, changes=changes, people=len(who),
+                counts=counts, changes=changes, people=len(who), base_read=base_read(),
                 sql="\n".join(s["sql"] for s in changes_of(changes)[1] if s["sql"]))  # as What if writes it
 
 

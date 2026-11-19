@@ -2641,7 +2641,7 @@ def usage_page(p, view):
                source=(a.run.get("SOURCES") or {}).get("object_use") or ("demo values" if MODE == "fake" else None))
     if not ok:
         return out | dict(rows=[], rows_total=0, offset=0, f="all", weeks=[], counts=None, changes=[], sql="", people=0,
-                          trim_text="", changes_capped=False)
+                          trim_text="", changes_capped=False, base_read=False)
     g = a.cached(("granted_used", name, user, days), lambda: a.granted_used(name, user, days))
     f = p.get("f") if p.get("f") in ("drop", "trim", "keep", "sensitive") else "all"
     q = p.get("q", "").strip().lower()
@@ -2652,7 +2652,7 @@ def usage_page(p, view):
     cut = [r for r in g["rows"] if r["changes"]]
     text = " · ".join(f"{', '.join(dict.fromkeys(c['privilege'] for c in r['changes']))} on {r['object'].split('.')[-1]}"
                       for r in cut[:TRIM_NAMES]) + (f" · and {len(cut) - TRIM_NAMES} more objects" if len(cut) > TRIM_NAMES else "")
-    return out | dict(days=g["days"], weeks=g["weeks"], people=g["people"], f=f, offset=off, rows_total=len(rows),
+    return out | dict(days=g["days"], weeks=g["weeks"], people=g["people"], base_read=g["base_read"], f=f, offset=off, rows_total=len(rows),
                       rows=[{k: v for k, v in r.items() if k not in ("changes", "people")} for r in rows[w]],
                       counts=g["counts"] | dict(sensitive=sum(r["sensitive"] for r in g["rows"])), trim_text=text,
                       changes=[] if big else g["changes"], sql="" if big else g["sql"], changes_capped=big)

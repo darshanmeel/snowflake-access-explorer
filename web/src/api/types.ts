@@ -1351,6 +1351,7 @@ export interface UsageRow {
   holder: string;
   suggest: "keep" | "trim" | "drop" | "none"; // none: nobody holds the role
   text: string;
+  through: boolean; // read only through a view or procedure: kept
 }
 export interface UsagePage {
   view: View;
@@ -1372,6 +1373,7 @@ export interface UsagePage {
   trim_text: string; // what the trim takes away, object by object
   sql: string; // the trim as What if writes it
   people: number;
+  base_read: boolean; // false: the snapshot has direct use only (no reads through views or procedures)
   refs: Refs;
 }
 

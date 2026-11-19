@@ -87,6 +87,7 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
           {n.write_unused > 0 && <>, and <b>never used write access</b> on {plural(n.write_unused, "object")}</>}.
           {n.changes > 0 ? <> <span className="ae-ok-word">{plural(n.changes, "grant")} could go</span> without changing their work.</> : " Every grant is in use."}
         </p>}
+        {n.objects > 0 && !d.base_read && <p className="ae-muted">Direct use only: this snapshot has no reads through views or procedures, so a table used only that way shows as not used. The next snapshot run reads them.</p>}
         {period}
       </div>
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "table" ? null : k })} tabs={[

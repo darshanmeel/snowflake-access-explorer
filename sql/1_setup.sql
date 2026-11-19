@@ -691,21 +691,28 @@ def streams(session, run_id):
 
 def use_sql(since):
     """Object usage from ACCESS_HISTORY (query metadata, never table data), aggregated in Snowflake per user, object,
-    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified). since: first
+    ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified) /
+    BASE (tables read only through a view, or by an owner's-rights procedure or task). since: first
     Monday read ('YYYY-MM-DD'), cut at the session's midnight like the weeks, so a week read again replaces a whole
     week; ACCESS_HISTORY is scanned once. The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
     return f"""WITH A AS (
-            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DIRECT_OBJECTS_ACCESSED, BASE_OBJECTS_ACCESSED, OBJECTS_MODIFIED
             FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= '{since}'::TIMESTAMP_LTZ),
         H AS (
             SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING AS OBJECT_NAME, 'READ' AS ACTION
             FROM A, LATERAL FLATTEN(A.DIRECT_OBJECTS_ACCESSED) O
             UNION ALL
+            SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING, 'BASE'
+            FROM A, LATERAL FLATTEN(A.BASE_OBJECTS_ACCESSED) O
+            UNION ALL
             SELECT A.USER_NAME, A.QUERY_ID, A.T, O.VALUE:"objectName"::STRING, 'WRITE'
-            FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O)
+            FROM A, LATERAL FLATTEN(A.OBJECTS_MODIFIED) O),
+        B AS (  -- a base object the query also read directly is a READ, not a BASE
+            SELECT * FROM H
+            QUALIFY ACTION <> 'BASE' OR COUNT_IF(ACTION = 'READ') OVER (PARTITION BY QUERY_ID, OBJECT_NAME) = 0)
         SELECT USER_NAME, OBJECT_NAME, DATEADD(DAY, 1 - DAYOFWEEKISO(T), T::DATE) AS WEEK, ACTION,
                COUNT(DISTINCT QUERY_ID) AS QUERIES, MAX(T) AS LAST_USED
-        FROM H WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
+        FROM B WHERE OBJECT_NAME IS NOT NULL GROUP BY 1, 2, 3, 4"""
 
 
 def object_use(session, run_id, why, plan=False):
@@ -820,7 +827,8 @@ def history_sql(use_since, act_since, client=True):
     def own(sql):
         return sql.replace(f"FROM {AU}.ACCESS_HISTORY WHERE", "FROM A0 WHERE")
     return f"""WITH A0 AS (
-            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME, DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
+            SELECT QUERY_ID, USER_NAME, QUERY_START_TIME, DIRECT_OBJECTS_ACCESSED, BASE_OBJECTS_ACCESSED, OBJECTS_MODIFIED,
+                   OBJECT_MODIFIED_BY_DDL
             FROM {AU}.ACCESS_HISTORY WHERE QUERY_START_TIME >= LEAST('{use_since}'::TIMESTAMP_LTZ,
                 '{act_since} 00:00:00 +00:00'::TIMESTAMP_TZ::TIMESTAMP_LTZ))
         SELECT 'USE' AS PART, USER_NAME, OBJECT_NAME, WEEK, ACTION, QUERIES, LAST_USED, NULL AS DAY, NULL AS ROLE_NAME,

@@ -14,7 +14,7 @@ const grow = (user: string, roles: string[]): GridRow => ({
 });
 const use = (object: string): UsageRow => ({
   object, type: "TABLE", database: "DB", schema: "S", sensitive: false, level: "change", used: null, privileges: ["SELECT"],
-  unused: ["SELECT"], weeks: [], reads: 0, writes: 0, last: null, holder: "T_R", suggest: "drop", text: "",
+  unused: ["SELECT"], weeks: [], reads: 0, writes: 0, last: null, holder: "T_R", suggest: "drop", text: "", through: false,
 });
 const obj = (object: string, type: string, schema: string | null) => ({ object, type, database: "DB", schema } as AccessObject);
 
