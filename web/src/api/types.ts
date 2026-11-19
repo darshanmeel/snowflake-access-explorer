@@ -1095,10 +1095,13 @@ export interface HomePage {
 /** Home's area cards (server.home_cards): first NAMES names, counts per part. */
 export interface HomeCards {
   admins: { total: number; service: number; by_role: { role: string; people: number }[]; account_only: number; names: { user: string; role: string; login: string }[] }; // riskiest first
-  stale: { total: number; by_status: Record<string, number>; names: string[] };
+  stale: { total: number; by_status: Record<string, number>; of_status: Record<string, number>; names: string[] }; // of_status: all users per status
   people: { by_status: Record<string, number>; service: number };
   roles: Record<string, number>; // per role kind
   objects: { by_type: { type: string; n: number }[] };
+  /** depth -> how many, each at its deepest chain (a.depth_counts) */
+  depth: Record<"users" | "objects" | "schemas" | "databases", Record<string, number>>;
+  biggest: { schemas: { name: string; n: number }[]; databases: { name: string; n: number }[]; n_schemas: number; n_databases: number }; // by object count
   activity: { ok: boolean; reason: string | null; users: number; daily: { day: string; queries: number }[] };
   /** counts null: not compared yet (Changes compares on open), or reason: no earlier snapshot kept */
   changes: { counts: { all: number; gain: number; lose: number; risk: number; sensitive: number } | null; high: number; before: string | null; reason: string | null } | null;

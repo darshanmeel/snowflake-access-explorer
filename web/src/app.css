@@ -838,8 +838,11 @@ div.ae-tile { cursor: default; }
 
 /* Home: one card per area */
 .ae-hcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; align-items: start; margin-top: 14px; }
-.ae-hcards > .ae-card:first-child { grid-column: span 2; }
-@media (max-width: 700px) { .ae-hcards > .ae-card:first-child { grid-column: auto; } }
+.ae-hcards > .ae-card:first-child { grid-column: 1 / -1; } /* Findings by area */
+.ae-hcards > .ae-card:first-child .ae-areas { margin-top: 0; border-top: 0; padding-top: 0; }
+.ae-hcards > .ae-card:last-child { grid-column: span 2; } /* Risks */
+@media (max-width: 700px) { .ae-hcards > .ae-card:last-child { grid-column: auto; } }
+.ae-hcards .ae-seg2 { margin-bottom: 8px; }
 .ae-hc-n { margin-left: 6px; font-variant-numeric: tabular-nums; }
 .ae-hc-n.ae-tone-bad { color: var(--ae-bad_ink); } .ae-hc-n.ae-tone-warn { color: var(--ae-warn_ink); }
 .ae-hc-facts { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }

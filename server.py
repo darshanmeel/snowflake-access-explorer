@@ -1640,15 +1640,21 @@ TOP_TYPES = 6  # object types Home names; the rest are one Other
 DAYS = 60  # days of activity Home draws
 
 
+TOP_BIG = 6  # Home's Biggest schemas card: bars per switch
+
+
 def home_cards():
-    """Home's area cards once per data set: admin holders by admin role, stale people by status, users by status and
-    type, roles by kind, objects by type, daily queries and What changed counts when that diff is already made (Home
+    """Home's area cards once per data set: admin holders by admin role, stale people by status (of all with that
+    status), users by status and type, roles by kind, objects by type, chain depth, biggest schemas, daily queries and What changed counts when that diff is already made (Home
     never compares)."""
     def make():
         adm, stale = admin_list(), [x["user"] for x in stale_list()]
         by_role = Counter(r for x in adm for r in x["roles"])
         types = Counter(a.kinds.get(o) or "OTHER" for o in a.objects).most_common()
         ok, reason = a.act_state()
+        status = dict(Counter(a.status(u) for u in a.users))
+        inside = [a.split_name(o) for o in a.objects if a.kinds[o] not in ("SCHEMA", "DATABASE") and not a.kinds[o].startswith("FUTURE")]
+        sc, db = Counter(f"{b}.{s}" for b, s, _ in inside if s), Counter(b for b, _, _ in inside if b)
         days = {}
         for x in a.acts:
             d = str(a.day(x["DAY"]))
@@ -1660,11 +1666,15 @@ def home_cards():
                         names=[dict(user=x["user"], role=(x["roles"] or ["account privilege"])[0],
                                     login=x["status"] if x["status"] in ("disabled", "never") else str(x["last_login"])[:10])
                                for x in adm[:NAMES]]),
-            stale=dict(total=len(stale), by_status=dict(Counter(a.status(u) for u in stale)), names=stale[:NAMES]),
-            people=dict(by_status=dict(Counter(a.status(u) for u in a.users)), service=sum(map(a.is_service, a.users))),
+            stale=dict(total=len(stale), by_status=dict(Counter(a.status(u) for u in stale)), of_status=status, names=stale[:NAMES]),
+            people=dict(by_status=status, service=sum(map(a.is_service, a.users))),
             roles=dict(Counter(a.role_kind(r) for r in a.roles)),
             objects=dict(by_type=[dict(type=t, n=n) for t, n in types[:TOP_TYPES]]
                          + ([dict(type="Other", n=sum(n for _, n in types[TOP_TYPES:]))] if types[TOP_TYPES:] else [])),
+            depth=a.depth_counts(),
+            biggest=dict(schemas=[dict(name=n, n=k) for n, k in sc.most_common(TOP_BIG)],
+                         databases=[dict(name=n, n=k) for n, k in db.most_common(TOP_BIG)], n_schemas=len(set(sc) | {o for o in a.objects if a.kinds[o] == "SCHEMA"}),
+                         n_databases=len(set(db) | {o for o in a.objects if a.kinds[o] == "DATABASE"})),
             activity=dict(ok=ok, reason=reason, users=len({x["USER_NAME"] for x in a.acts}),
                           daily=[dict(day=d, queries=days[d]) for d in sorted(days)[-DAYS:]]))
     out = a.cached("home_cards", make)

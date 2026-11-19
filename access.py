@@ -2206,6 +2206,33 @@ def depth(chain, user):
     return len(chain) - (1 if user else 0)
 
 
+def depth_counts():
+    """Home's chain depth: {"users" | "objects" | "schemas" | "databases": {depth: how many}}, each at its deepest:
+    the longest shortest chain from a role granted to a user to a role holding a grant (on it, or inside it). One
+    below() per role granted to users, as rule 14 (built-ins are not in granted; HIERARCHY=0: empty)."""
+    def make():
+        deep, top = {}, {}  # grant holder -> deepest depth reaching it; role granted to a user -> its deepest grant
+        for r in users_of if HIERARCHY_ON else ():
+            for x, p in below(r).items():
+                if granted.get(x):
+                    deep[x] = max(deep.get(x, 0), len(p))
+                    top[r] = max(top.get(r, 0), len(p))
+        obj, sc, db = {}, {}, {}
+        for x, d in deep.items():
+            for _, k, o in granted[x]:
+                if not k.startswith("FUTURE") and k != "ACCOUNT":
+                    obj[o] = max(obj.get(o, 0), d)
+        for o, d in obj.items():
+            b, s, _ = split_name(o)
+            for m, n in ((db, b), (sc, s and f"{b}.{s}")):
+                if n:
+                    m[n] = max(m.get(n, 0), d)
+        us = (max((top[r] for r in roles_of.get(u, []) if r in top), default=0) for u in users)
+        return {k: dict(sorted(Counter(d for d in v if d).items()))
+                for k, v in dict(users=us, objects=obj.values(), schemas=sc.values(), databases=db.values()).items()}
+    return cached("depth_counts", make)
+
+
 def chains(paths, up_paths=False):
     """Every depth of every node with its first chain: {node: {depth: chain}}. Down paths start at the selected
     user/role; up paths are grantee -> ... -> holder (no object), depth counted from the holder (= 1)."""
