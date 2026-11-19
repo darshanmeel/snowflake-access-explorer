@@ -279,6 +279,25 @@ function Detail({ id }: { id: string }) {
   );
 }
 
+const unuser = (u: string) => u.replace(/ \(user\)$/, "");
+
+/** One admin role in the banner: its users counted, the first 3 named; the paths open on demand. */
+function AdminRoleLine({ g, refs }: { g: ObjectPage["admin_roles"][number]; refs: ObjectPage["refs"] }) {
+  const rest = g.users - g.first.length;
+  return (
+    <span className="ae-adm-role">
+      <span className="ae-pchip ae-pchip-admin">{g.role}</span>
+      <span>{plural(g.users, "user")}</span>
+      <span className="ae-adm-users">{g.first.map((u) => <NameLink key={u} id={u} refs={refs} label={unuser(u)} />)}</span>
+      <details>
+        <summary className="ae-link">{rest > 0 ? `+${rest} more · ` : ""}Show {plural(g.total, "path")}</summary>
+        {g.paths.map((p, i) => <span key={i} className="ae-fd-path"><PathCell path={p} refs={refs} /><WhatIfButton ch={[{ op: "revoke_role_from_user", role: p[1], user: unuser(p[0]) }]} /></span>)}
+        {g.total > g.paths.length && <p className="ae-muted">First {g.paths.length} of {g.total} paths.</p>}
+      </details>
+    </span>
+  );
+}
+
 /** Admin preset: the Rule checks "Admin holders" table (admin roles and account privileges). */
 function AdminDetail() {
   const c = useApp();
@@ -320,9 +339,9 @@ export function ObjectDetail() {
               {k.deployers.length > 0 && <p>Deployed by: <Chips items={k.deployers.map((r) => ({ id: r, kind: "user" }))} /></p>}
               {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
             </Card>
-            {d.admin_paths.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_paths.map((p, i) => <span key={i} className="ae-fd-path"><PathCell path={p} refs={d.refs} /><WhatIfButton ch={[{ op: "revoke_role_from_user", role: p[1], user: p[0].replace(/ \(user\)$/, "") }]} /></span>)}>
+            {d.admin_roles.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_roles.map((g) => <AdminRoleLine key={g.role} g={g} refs={d.refs} />)}>
               <p className="ae-muted">These users reach this object through the roles granted to an admin role; those links are not drawn below.
-                {d.admin_total > d.admin_paths.length && <> First {d.admin_paths.length} of {d.admin_total} paths: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button>.</>}</p>
+                {d.admin_roles.some((g) => g.total > g.paths.length) && <> Long lists are cut: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button> has every path.</>}</p>
             </Banner>}
             <CutBanner capped={d.capped} />
             <GraphCard g={d.graph} refs={d.refs} />

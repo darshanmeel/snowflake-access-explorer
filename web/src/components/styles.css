@@ -220,6 +220,11 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--ae-muted); border: 1px solid var(--ae-line); border-radius: 4px; padding: 0 4px; margin-left: 4px; vertical-align: 1px; }
 
 /* what if */
+.ae-adm-role { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ae-adm-role summary { cursor: pointer; }
+.ae-adm-role details { flex-basis: 100%; }
+.ae-adm-users { display: flex; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.ae-adm-users > * { min-width: 0; overflow-wrap: anywhere; }
 .ae-fd-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
 .ae-wi-user { padding: 4px 0 8px 20px; }
 .ae-wi-user h4 { margin: 8px 0 4px; font-size: 13px; }
