@@ -453,7 +453,9 @@ def fake_use(end):
             ("REPORT_01", "FINANCE.REPORT.TBL_REVENUE", rd, range(0, 12)),
             ("SVC_DEPLOY", "SALES.CORE.TBL_CUSTOMER", wr, range(26)), ("SVC_DEPLOY", "SALES.CLEAN.TBL_ORDER", wr, range(26)),
             ("SVC_DEPLOY", "SALES.RAW.TBL_ORDER_RAW", rd, range(26)), ("HR_01", "HR.PAYROLL.TBL_PAY_00", rd, range(26)),
-            ("HR_01", "HR.PAYROLL.VW_PAY_MONTH", rd, range(0, 26, 4))]
+            ("HR_01", "HR.PAYROLL.VW_PAY_MONTH", rd, range(0, 26, 4)),
+            ("DW_BI_01", "SALES.PIPELINE.DT_CUSTOMER_DAILY", rd, range(6, 12)),  # Object activity: last used 31-90 days ago
+            ("DW_DEV_01", "SALES.PIPELINE.TBL_CUSTOMER_CHANGES", wr, range(15, 20))]  # 91-180 days ago, written only
     out = []
     for u, o, act, weeks in plan:
         for i in weeks:
@@ -6255,6 +6257,126 @@ def granted_used(name, user=True, days=90):
     return dict(days=days, weeks=[(w0 - timedelta(weeks=n - 1 - i)).isoformat() for i in range(n)], rows=out,
                 counts=counts, changes=changes, people=len(who), base_read=base_read(),
                 sql="\n".join(s["sql"] for s in changes_of(changes)[1] if s["sql"]))  # as What if writes it
+
+
+# ---------- object activity (every object: last read and write) ----------
+
+BUCKETS = ("30", "90", "180", "none", "nodata")  # last use: within 30 days, 31-90, 91-USE_DAYS, not in its history, no data
+NO_USE = ("PROCEDURE", "FUNCTION", "TASK")  # no use of these in the snapshot: "no activity data", never "not used"
+NO_USE_ROW = (0, 0, 0, 0)
+
+
+def bucket(d):
+    return "none" if d is None else "30" if d <= 30 else "90" if d <= 90 else "180" if d <= USE_DAYS else "none"
+
+
+def object_activity():
+    """Object activity page and Home card, once per data set, one pass over obj_use, acts and used: per table / view
+    (any flavour), warehouse, Streamlit app and procedure / function / task (as "no activity data") a row tuple
+    (object, type, last_read, last_write, days_since, bucket, new, use), use = per PERIODS window
+    (read queries, write queries, readers, writers). BASE counts as read (read through a view); a warehouse's use is
+    its queries (QUERY_HISTORY, DAYS_USAGE days), an app's the queries it ran for its viewers (ACTIVITY_DAYS days).
+    new: DDL on it in ACTIVITY_DAYS, so a fresh object does not pass for a dead one. Also counts per type and bucket,
+    per window and pattern (tables only: a view is never written), and notes for what is not readable."""
+    def make():
+        today, w0 = day(ref_time()), monday(ref_time())
+        objs = {o: k for o, k in kinds.items() if is_data(k) or k in ("WAREHOUSE", "STREAMLIT") or k in NO_USE}
+        ok_use, why_use = use_state()
+        ok_act, why_act = act_state()
+        ok_wh = (run.get("SOURCES") or {}).get("usage") != "UNAVAILABLE"
+        nw = weeks_of(max(PERIODS))
+        acc, weeks = {}, {}  # object -> [read, write], each None or [newest week index, last used, queries per week, user -> newest week]
+
+        def put(o, w, u, n, last, q):
+            r = acc.get(o)
+            if r is None:
+                r = acc[o] = [None, None]
+            s = r[w]
+            if s is None:
+                s = r[w] = [10 ** 9, "", [0] * nw, {}]
+            if n <= s[0]:
+                last = str(last)[:16]
+                s[1] = max(s[1], last) if n == s[0] else last
+                s[0] = n
+            if 0 <= n < nw:
+                s[2][n] += q
+                if s[3].get(u, nw) > n:
+                    s[3][u] = n
+        for u, xs in obj_use.items():
+            for x in xs:  # put() inlined: this loop runs once per user, object, week and action (millions on a big account)
+                o, wk = x["OBJECT_NAME"], x["WEEK"]
+                if o not in objs:
+                    continue
+                n = weeks.get(wk)
+                if n is None:
+                    n = weeks[wk] = (w0 - monday(wk)).days // 7
+                r = acc.get(o)
+                if r is None:
+                    r = acc[o] = [None, None]
+                w = x["ACTION"] == "WRITE"
+                s = r[w]
+                if s is None:
+                    s = r[w] = [10 ** 9, "", [0] * nw, {}]
+                if n <= s[0]:
+                    last = str(x["LAST_USED"] or wk)[:16]
+                    s[1] = max(s[1], last) if n == s[0] else last
+                    s[0] = n
+                if 0 <= n < nw:
+                    s[2][n] += x["QUERIES"] or 0
+                    m = s[3]
+                    if m.get(u, nw) > n:
+                        m[u] = n
+        for u, xs in used.items():
+            for x in xs:  # the usage read covers DAYS_USAGE days: inside every window
+                if x["KIND"] == "WAREHOUSE" and x["NAME"] in objs and x["LAST_USED"]:
+                    put(x["NAME"], 0, u, 0, x["LAST_USED"], int(x["QUERIES"] or 0))
+        new = set()
+        for x in acts:
+            if x["ACTION"] == "DDL":
+                new.add(x["OBJECT_NAME"])
+            if x.get("APP") in objs:
+                put(x["APP"], 0, x["USER_NAME"], (w0 - monday(x["DAY"])).days // 7, x["LAST_USED"] or x["DAY"], int(x["QUERIES"] or 0))
+        rows, types, idle = [], {}, 0
+        pats = {p: dict(read_only=0, write_only=0, both=0, none=0) for p in PERIODS}
+        cuts = [weeks_of(p) for p in PERIODS]
+        win = lambda s, c: (sum(s[2][:c]), sum(v < c for v in s[3].values())) if s else (0, 0)  # noqa: E731
+        none = (NO_USE_ROW,) * len(PERIODS)
+        for o, k in objs.items():
+            ok = ok_wh if k == "WAREHOUSE" else ok_act if k == "STREAMLIT" else ok_use and k not in NO_USE
+            t = types.get(k) or types.setdefault(k, dict.fromkeys(BUCKETS, 0))
+            r = acc.get(o)
+            if r is None:  # most objects of a big account: no use at all
+                b = "none" if ok else "nodata"
+                rows.append((o, k, "", "", None, b, o in new, none))
+                t[b] += 1
+                idle += ok and writable(k)
+                continue
+            lr, lw = r[0][1] if r[0] else "", r[1][1] if r[1] else ""
+            d = (today - day(max(lr, lw))).days
+            b = bucket(d) if ok else "nodata"
+            use = tuple((rq, wq, rs, ws) for (rq, rs), (wq, ws) in ((win(r[0], c), win(r[1], c)) for c in cuts))
+            rows.append((o, k, lr, lw, d, b, o in new, use))
+            t[b] += 1
+            if ok and writable(k):
+                for p, s in zip(PERIODS, use):
+                    pats[p][pattern(s)] += 1
+        for p in PERIODS:
+            pats[p]["none"] += idle
+        notes = [x for x in (None if ok_use else why_use, None if ok_act else why_act,
+                             None if ok_wh else (run.get("NOTES") or {}).get("usage") or "Query history is not readable.") if x]
+        return dict(rows=rows, types=dict(sorted(types.items(), key=lambda t: -sum(t[1].values()))), patterns=pats,
+                    new=len(new & set(objs)), notes=notes, base_read=base_read())
+    return cached("object_activity", make)
+
+
+def writable(k):
+    """A table kind DML writes: views and external tables never are (no read / write pattern)."""
+    return is_data(k) and "VIEW" not in k and "EXTERNAL" not in k
+
+
+def pattern(s):
+    """read_only | write_only | both | none of one window's (read queries, write queries, readers, writers)."""
+    return ("both" if s[1] else "read_only") if s[0] else "write_only" if s[1] else "none"
 
 
 # ---------- what changed (two snapshots) ----------

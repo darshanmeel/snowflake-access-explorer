@@ -2126,6 +2126,39 @@ def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), w
     assert a.use_state()[0] is False
 
 
+def test_object_activity():  # every object by last use: age buckets, read / write patterns, new, no-data types
+    x = a.object_activity()
+    r = {o: dict(type=k, last_read=lr, last_write=lw, days=d, bucket=b, new=n, use=dict(zip(a.PERIODS, u)))
+         for o, k, lr, lw, d, b, n, u in x["rows"]}
+    pat = lambda o, days: a.pattern(r[o]["use"][days])  # noqa: E731
+    assert {v["bucket"] for v in r.values()} == set(a.BUCKETS)  # the demo has every bucket
+    assert pat("SALES.CORE.TBL_CUSTOMER", 90) == "both" and r["SALES.CORE.TBL_CUSTOMER"]["new"]  # altered in the window
+    assert pat("SALES.RAW.TBL_ORDER_RAW", 90) == "read_only" and pat("SALES.CLEAN.TBL_ORDER", 90) == "write_only"
+    ch = r["SALES.PIPELINE.TBL_CUSTOMER_CHANGES"]
+    assert ch["bucket"] == "180" and pat("SALES.PIPELINE.TBL_CUSTOMER_CHANGES", 90) == "none" == pat("SALES.PIPELINE.TBL_CUSTOMER_CHANGES", 30)
+    assert pat("SALES.PIPELINE.TBL_CUSTOMER_CHANGES", 180) == "write_only" and ch["last_read"] == "" and ch["days"] > 90
+    assert r["SALES.PIPELINE.DT_CUSTOMER_DAILY"]["bucket"] == "90" and r["HR.PAYROLL.TBL_PAY_01"]["bucket"] == "none"
+    assert r["HR.PAYROLL.TBL_PAY_01"]["days"] is None and not r["HR.PAYROLL.TBL_PAY_01"]["new"]
+    assert {r[o]["bucket"] for o in r if r[o]["type"] in a.NO_USE} == {"nodata"}  # procedures, functions, tasks: no data
+    assert r["WH_SALES_XS"]["bucket"] == "30" and r["WH_SALES_XS"]["use"][30][2] == 2  # warehouses: QUERY_HISTORY
+    assert r["SALES.MART.ST_CUSTOMER_LOOKUP"]["bucket"] == "30" and r["SALES.MART.ST_CUSTOMER_LOOKUP"]["use"][30][2] == 1
+    assert x["patterns"][90] == dict(read_only=5, write_only=1, both=1, none=29) and x["new"] == 1 and not x["notes"]
+    assert sum(sum(b.values()) for b in x["types"].values()) == len(x["rows"]) and "STREAM" not in x["types"]
+    d = a.fake()  # only a BASE read (through a view) on a table: read, not unused; a built-in is never listed
+    d["OBJECT_USE"] = [dict(USER_NAME="REPORT_01", OBJECT_NAME="HR.PAYROLL.TBL_PAY_01", WEEK="2026-10-26", ACTION="BASE",
+                            QUERIES=4, LAST_USED="2026-10-28 10:00")]
+    d["GRANT"].append(dict(GRANTEE_ROLE="PUBLIC", PRIVILEGE="SELECT", GRANTED_ON="VIEW", IS_FUTURE=False,
+                           OBJECT_NAME="SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"))
+    a.build(d)
+    y = {o: (b, u) for o, _, _, _, _, b, _, u in a.object_activity()["rows"]}
+    assert y["HR.PAYROLL.TBL_PAY_01"] == ("30", ((4, 0, 1, 0),) * 3) and a.pattern(y["HR.PAYROLL.TBL_PAY_01"][1][0]) == "read_only"
+    assert "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY" not in y
+    a.build(dict(a.fake(), OBJECT_USE=None))  # ACCESS_HISTORY not read: "no data", never "not used"; the note says why
+    z = a.object_activity()
+    assert z["types"]["TABLE"]["nodata"] == sum(z["types"]["TABLE"].values()) and z["notes"]
+    assert z["types"]["WAREHOUSE"]["30"] == 2 and z["patterns"][90] == dict(read_only=0, write_only=0, both=0, none=0)
+
+
 def test_diff_kept():  # What changed made at refresh time, from the replaced data set still kept built, equals a.diff
     prev, now = a.fake_previous(), a.fake()
     a.build(now)

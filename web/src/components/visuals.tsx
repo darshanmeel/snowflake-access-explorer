@@ -163,3 +163,38 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
     </figure>
   );
 }
+
+/** Last use per object type (Object activity, Home): one stacked bar per type, all as wide as the largest type's
+ * total, so a big type reads big and a small one still shows its parts. The real numbers are in the legend and tips. */
+export const AGE: { key: string; label: string; cls: string }[] = [
+  { key: "30", label: "Used in 30 days", cls: "keep" }, { key: "90", label: "31–90 days ago", cls: "lvl-use" },
+  { key: "180", label: "91–180 days ago", cls: "medium" }, { key: "none", label: "Not used", cls: "high" },
+  { key: "nodata", label: "No activity data", cls: "lvl-names" }];
+
+export function AgeBars({ types, onPick }: { types: { type: string; buckets: Record<string, number> }[]; onPick?: (type: string) => void }) {
+  if (!types.length) return <p className="ae-muted">No objects.</p>;
+  const sum = (b: Record<string, number>) => AGE.reduce((n, a) => n + (b[a.key] ?? 0), 0);
+  const max = Math.max(1, ...types.map((t) => sum(t.buckets)));
+  const total = Object.fromEntries(AGE.map((a) => [a.key, types.reduce((n, t) => n + (t.buckets[a.key] ?? 0), 0)]));
+  return (
+    <div className="ae-hbars">
+      {types.map((t) => {
+        const n = sum(t.buckets), label = t.type.toLowerCase();
+        return (
+          <div key={t.type} className="ae-hbar">
+            {onPick ? <button type="button" className="ae-link ae-area-name" title={`Only ${label}`} onClick={() => onPick(t.type)}>{label}</button>
+              : <span className="ae-area-name" title={label}>{label}</span>}
+            <span className="ae-area-track" role="img" style={{ width: `${(100 * n) / max}%` }}
+              aria-label={`${label}: ${AGE.filter((a) => t.buckets[a.key]).map((a) => `${a.label} ${t.buckets[a.key]}`).join(", ")}`}>
+              {AGE.map((a) => (t.buckets[a.key] ?? 0) > 0 && <span key={a.key} className={`ae-bar-${a.cls}`} style={{ flex: t.buckets[a.key] }} title={`${a.label}: ${t.buckets[a.key].toLocaleString()}`} />)}
+            </span>
+            <b className="ae-area-n">{n.toLocaleString()}</b>
+          </div>
+        );
+      })}
+      <div className="ae-bar-legend">
+        {AGE.filter((a) => total[a.key]).map((a) => <span key={a.key}><span className={`ae-dot2 ae-bar-${a.cls}`} />{a.label} <b>{total[a.key].toLocaleString()}</b></span>)}
+      </div>
+    </div>
+  );
+}

@@ -1098,6 +1098,35 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
     assert {r["area"] for r in js("/api/meta")["rules"] if 24 <= int(r["num"]) <= 28} == {"Activity"}
 
 
+def test_objuse():  # Object activity: counts per type and age, the tabs, server paging, filters, CSV, Home's card
+    d = js("/api/objuse", ["available", "days", "periods", "tab", "types", "tabs", "patterns", "new", "rows", "total", "notes", "refs"])
+    assert d["available"] and d["tab"] == "unused" and d["days"] == 90 and d["tabs"] == dict(unused=30, read_only=5, write_only=1, all=48)
+    assert d["total"] == 30 and all(r["bucket"] in ("180", "none") for r in d["rows"]) and d["rows"][0]["days_since"] is None  # never used first
+    t = {x["type"]: x["buckets"] for x in d["types"]}
+    assert t["TABLE"]["180"] == 2 and t["DYNAMIC TABLE"]["90"] == 1 and t["PROCEDURE"]["nodata"] == 3
+    ro = js("/api/objuse?tab=read_only&limit=0")
+    assert ro["rows"] == [] and ro["total"] == 5  # limit=0: the counts only
+    ro = js("/api/objuse?tab=read_only")["rows"]
+    assert all(r["pattern"] == "read_only" and r["read_q"] and not r["write_q"] for r in ro) and ro[0]["read_q"] >= ro[-1]["read_q"]
+    wo = js("/api/objuse?tab=write_only&days=180")["rows"]
+    assert {r["object"] for r in wo} == {"SALES.CLEAN.TBL_ORDER", "SALES.PIPELINE.TBL_CUSTOMER_CHANGES"}
+    one = js("/api/objuse?tab=all&limit=2&offset=2&sort=object&dir=1")
+    assert one["total"] == 48 and len(one["rows"]) == 2 and one["offset"] == 2
+    assert [r["object"] for r in one["rows"]] == sorted(r["object"] for r in js("/api/objuse?tab=all&limit=100&sort=object")["rows"])[2:4]
+    sc = js("/api/objuse?tab=all&scope=SALES.PIPELINE&type=TABLE&q=changes")
+    assert [r["object"] for r in sc["rows"]] == ["SALES.PIPELINE.TBL_CUSTOMER_CHANGES"] and sc["tabs"]["all"] < 48
+    assert any(r["new"] for r in js("/api/objuse?tab=all&q=core.tbl_customer")["rows"])
+    get("/api/objuse?days=7", 400)
+    csv = get("/api/objuse.csv?tab=write_only&days=180").text.splitlines()
+    assert csv[0].startswith("Object,Type,Last read") and len(csv) == 3 and "written" not in csv[1]
+    h = js("/api/home")["cards"]["objuse"]
+    assert h["ok"] and h["read_only"] == 5 and h["write_only"] == 1 and "PROCEDURE" in h["nodata"] and h["unused"] == d["tabs"]["unused"]
+    assert {x["type"] for x in h["types"]} >= {"TABLE", "VIEW", "WAREHOUSE"}
+    m = server.objuse_page({}, "mine")
+    assert m["available"] is False and "shared" in m["reason"] and not m["rows"]
+    assert {p["key"]: p["group"] for p in js("/api/meta")["pages"]}["objuse"] == "risk"
+
+
 def test_sql_page():  # "SQL behind this page": commented, read-only, full names, the page's own name in the SET lines
     import re as _re
     cases = [("access", "user=ENGINEER_01", "SET USER_NAME = 'ENGINEER_01';"), ("access", "role=F_ANALYST", "SET ROLE_NAME = 'F_ANALYST';"),

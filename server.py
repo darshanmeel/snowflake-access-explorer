@@ -36,13 +36,13 @@ DIST = pathlib.Path(__file__).with_name("web") / "dist"
 PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
          "graph": "Access graph", "see": "What they see", "compare": "Compare", "request": "Request access",
          "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
-         "flow": "Sensitive data flow", "usage": "Granted vs used", "changes": "What changed",
+         "flow": "Sensitive data flow", "usage": "Granted vs used", "objuse": "Object activity", "changes": "What changed",
          "user": "User paths", "role": "Role paths"}
 GROUP = {"home": "home", "access": "access", "object": "access", "see": "access", "user": "access", "role": "access",
          "check": "ask", "compare": "ask", "request": "ask", "graph": "ask", "whatif": "ask",
-         "rules": "risk", "sensitive": "risk", "flow": "risk", "usage": "risk",
+         "rules": "risk", "sensitive": "risk", "flow": "risk", "usage": "risk", "objuse": "risk",
          "review": "govern", "changes": "govern"}  # side nav groups
-SHARED_ONLY = {"review", "flow", "changes"}
+SHARED_ONLY = {"review", "flow", "changes", "objuse"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
 KNOWN = {"user", "functional", "technical", "group", "admin", "object"}
@@ -1655,7 +1655,7 @@ def home_cards():
         status = dict(Counter(a.status(u) for u in a.users))
         inside = [a.split_name(o) for o in a.objects if a.kinds[o] not in ("SCHEMA", "DATABASE") and not a.kinds[o].startswith("FUTURE")]
         sc, db = Counter(f"{b}.{s}" for b, s, _ in inside if s), Counter(b for b, _, _ in inside if b)
-        days = {}
+        days, use = {}, a.object_activity()
         for x in a.acts:
             d = str(a.day(x["DAY"]))
             days[d] = days.get(d, 0) + int(x["QUERIES"] or 0)
@@ -1676,7 +1676,12 @@ def home_cards():
                          databases=[dict(name=n, n=k) for n, k in db.most_common(TOP_BIG)], n_schemas=len(set(sc) | {o for o in a.objects if a.kinds[o] == "SCHEMA"}),
                          n_databases=len(set(db) | {o for o in a.objects if a.kinds[o] == "DATABASE"})),
             activity=dict(ok=ok, reason=reason, users=len({x["USER_NAME"] for x in a.acts}),
-                          daily=[dict(day=d, queries=days[d]) for d in sorted(days)[-DAYS:]]))
+                          daily=[dict(day=d, queries=days[d]) for d in sorted(days)[-DAYS:]]),
+            objuse=dict(ok=a.use_state()[0], notes=use["notes"], new=use["new"], days=90,
+                        unused=sum(b["180"] + b["none"] for b in use["types"].values()),  # not used in 90 days
+                        types=[dict(type=t, buckets=b) for t, b in use["types"].items() if b["nodata"] < sum(b.values())][:TOP_TYPES],
+                        nodata=sorted(t for t, b in use["types"].items() if b["nodata"] == sum(b.values())),
+                        read_only=use["patterns"][90]["read_only"], write_only=use["patterns"][90]["write_only"]))
     out = a.cached("home_cards", make)
     d = next((v for k, v in reversed(a.memo.items()) if isinstance(k, tuple) and k[0] == "diff"), None)  # the newest
     if d:
@@ -2660,6 +2665,83 @@ def usage_page(p, view):
 
 TRIM_MAX = 1000  # revokes Granted vs used lists and hands to the change plan; more: the CSV has every unused privilege
 TRIM_NAMES = 20  # objects named in the trim's one-line summary
+
+OBJUSE_TABS = ("unused", "read_only", "write_only", "all")
+BUCKET_WORD = {"30": "last 30 days", "90": "31-90 days ago", "180": "91-180 days ago", "none": "not used", "nodata": "no activity data"}
+NEVER = 10 ** 6  # days_since of an object never used: sorts as the oldest
+# row tuple of a.object_activity(): (object, type, last read, last write, days since, bucket, new, use per window)
+OBJUSE_SORT = {"object": lambda r: r[0], "type": lambda r: (r[1], r[0]), "last_read": lambda r: r[2], "last_write": lambda r: r[3],
+               "days": lambda r: NEVER if r[4] is None else r[4], "bucket": lambda r: a.BUCKETS.index(r[5])}
+OBJUSE_USE = {"read_q": 0, "write_q": 1, "readers": 2, "writers": 3}  # sort keys read from the window's use
+
+
+def objuse_rows(p, view):
+    """Object activity: (days, everything a.object_activity() has, the rows in scope=, counts in scope, the rows of
+    tab= / type= / q=, sorted by sort= / dir=). unused: not used in the last days (never used included), "no
+    activity data" left out; read_only / write_only: tables read and not written in the window, or the reverse."""
+    days = int(p["days"]) if str(p.get("days", "")).isdigit() else 0 if p.get("days") else 90
+    if days not in a.PERIODS:
+        raise ApiError(400, "bad_param", "days must be 30, 90 or 180")
+    x, i = a.object_activity(), a.PERIODS.index(days)
+    sc = p.get("scope", "").strip()
+    rows = [r for r in x["rows"] if not sc or r[0] == sc or r[0].startswith(sc + ".")] if sc else x["rows"]
+    pat = lambda r: a.pattern(r[7][i]) if r[5] != "nodata" and a.writable(r[1]) else None  # noqa: E731
+    unused = lambda r: r[5] != "nodata" and (r[4] is None or r[4] > days)  # noqa: E731
+    types, tabs, pats = {}, dict.fromkeys(OBJUSE_TABS, 0), dict(read_only=0, write_only=0, both=0, none=0)
+    for r in rows:
+        types.setdefault(r[1], dict.fromkeys(a.BUCKETS, 0))[r[5]] += 1
+        tabs["unused"] += unused(r)
+        pt = pat(r)
+        if pt:
+            pats[pt] += 1
+    tabs.update(read_only=pats["read_only"], write_only=pats["write_only"], all=len(rows))
+    tab = p.get("tab") if p.get("tab") in OBJUSE_TABS else "unused"
+    t, words = p.get("type", ""), p.get("q", "").lower().split()
+    keep = unused if tab == "unused" else (lambda r: True) if tab == "all" else (lambda r: pat(r) == tab)
+    out = [r for r in rows if keep(r) and (not t or r[1] == t) and all(w in r[0].lower() for w in words)]
+    by = p.get("sort") or {"unused": "days", "read_only": "read_q", "write_only": "write_q"}.get(tab, "object")
+    u = OBJUSE_USE.get(by)
+    key = (lambda r: r[7][i][u]) if u is not None else OBJUSE_SORT.get(by, OBJUSE_SORT["object"])
+    desc = p.get("dir") == "-1" if p.get("dir") else by not in ("object", "type")
+    return dict(days=days, i=i, x=x, types=types, tabs=tabs, patterns=pats, tab=tab, rows=sorted(out, key=key, reverse=desc), pat=pat)
+
+
+def objuse_row(r, i, pat):
+    db, sc, _ = a.split_name(r[0], r[1])
+    rq, wq, rs, ws = r[7][i]
+    return dict(object=r[0], type=r[1], database=db, schema=sc, last_read=r[2] or None, last_write=r[3] or None,
+                days_since=r[4], readers=rs, writers=ws, read_q=rq, write_q=wq, bucket=r[5], pattern=pat(r), new=r[6],
+                sensitive=r[0] in S["sens"])
+
+
+def objuse_page(p, view):
+    """Object activity: every table, view, warehouse and Streamlit app by last use (ACCESS_HISTORY, QUERY_HISTORY),
+    counts per type and age, read but never written and the reverse, one table page (offset=, limit=)."""
+    c = objuse_rows(p, view)
+    ok, why = a.use_state()
+    mine = view == "mine"
+    if mine:
+        ok, why = False, "My access reads no ACCESS_HISTORY: open Object activity on the shared data."
+    off, lim, page = paged(p, [] if mine else c["rows"])
+    return dict(view=view, available=ok, reason=why, enable=ENABLE_USE, notes=c["x"]["notes"], days=c["days"],
+                periods=list(a.PERIODS), tab=c["tab"], type=p.get("type", ""), scope=p.get("scope", ""),
+                base_read=c["x"]["base_read"], history=dict(data=a.USE_DAYS, warehouse=a.DAYS_USAGE, app=a.ACTIVITY_DAYS),
+                types=[dict(type=k, buckets=v, total=sum(v.values())) for k, v in sorted(c["types"].items(), key=lambda t: -sum(t[1].values()))],
+                tabs=c["tabs"], patterns=c["patterns"], new=c["x"]["new"], rows=[objuse_row(r, c["i"], c["pat"]) for r in page],
+                total=0 if mine else len(c["rows"]), offset=off, limit=lim,
+                source=(a.run.get("SOURCES") or {}).get("object_use") or ("demo values" if MODE == "fake" else None))
+
+
+def objuse_csv(p, view):
+    c = objuse_rows(p, view)
+    cols = ["Object", "Type", "Last read", "Last written", "Days since used", "Read queries", "Write queries", "Readers",
+            "Writers", "Last used", "Pattern", "New or changed"]
+    out = []
+    for r in c["rows"]:
+        x = objuse_row(r, c["i"], c["pat"])
+        out.append([x["object"], x["type"], x["last_read"] or "", x["last_write"] or "", "" if x["days_since"] is None else x["days_since"],
+                    x["read_q"], x["write_q"], x["readers"], x["writers"], BUCKET_WORD[x["bucket"]], x["pattern"] or "", "yes" if x["new"] else ""])
+    return f"object_activity_{c['tab']}_{c['days']}d.csv", csv_text(cols, out)
 
 
 NAMES = 20  # people, objects and subjects sent per What changed event
@@ -3788,12 +3870,12 @@ def mkrefs(out):
 ROUTES = {"home": home_page, "access": access_page, "user": user_page, "privs": privs_page, "held": held_page, "grantees": grantees_page, "role": role_page, "object": object_page, "check": check_page, "sensitive": sensitive_page,
           "rules": rules_page, "review": review_page, "find": find_page, "list": list_page, "graph": graph_page,
           "whatif": whatif_page, "who": who_page, "request": request_page, "map": map_page, "see": see_page,
-          "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "changes": changes_page,
+          "compare": compare_page, "grid": grid_page, "flow": flow_page, "usage": usage_page, "objuse": objuse_page, "changes": changes_page,
           "activity": activity_page, "sql": sql_page, "finding": finding_page}
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
-             "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "finding"}
+             "whatif", "map", "see", "compare", "grid", "flow", "usage", "objuse", "changes", "activity", "finding"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv, "privs": privs_csv, "access": access_csv,
-       "held": held_csv, "grantees": grantees_csv, "who": who_csv, "flow": flow_csv}
+       "held": held_csv, "grantees": grantees_csv, "who": who_csv, "flow": flow_csv, "objuse": objuse_csv}
 
 
 def data_key(view, sid):
@@ -3979,7 +4061,7 @@ def make_app():
         return h
 
     for n in ("home", "access", "user", "privs", "held", "grantees", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
-              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "sql", "finding"):
+              "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "objuse", "changes", "activity", "sql", "finding"):
         app.get(f"/api/{n}")(route(n))
         app.post(f"/api/{n}")(post_route(n))
 

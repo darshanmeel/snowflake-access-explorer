@@ -21,20 +21,21 @@ import { RolePageView } from "./pages/Role";
 import { RulesPageView } from "./pages/Rules";
 import { SeePageView } from "./pages/See";
 import { SensitivePageView } from "./pages/Sensitive";
+import { ObjectUsePageView } from "./pages/ObjectUse";
 import { UsagePageView } from "./pages/Usage";
 import { WhatIfPageView } from "./pages/Whatif";
 import { UserPage } from "./pages/User";
 
 // server.SHARED_ONLY: pages about everyone, not in My access (home is in both)
-const SHARED_ONLY: Page[] = ["review", "flow", "changes"];
+const SHARED_ONLY: Page[] = ["review", "flow", "changes", "objuse"];
 /** The page to show after switching to the shared view or My access. */
 export const viewPage = (page: Page, mine: boolean): Page => (mine && SHARED_ONLY.includes(page) ? "access" : page);
-const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif", "usage", "changes"];
+const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif", "usage", "objuse", "changes"];
 const LABEL: Record<Page, string> = {
   home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "Object", check: "Can they?", graph: "Access graph",
   see: "What they see", compare: "Compare", request: "Request access",
   sensitive: "Sensitive data", flow: "Sensitive data flow", rules: "Risks & fixes", review: "Review & sign-off", whatif: "What if",
-  usage: "Granted vs used", changes: "What changed",
+  usage: "Granted vs used", objuse: "Object activity", changes: "What changed",
 };
 
 /** Old links to the new screens (docs/redesign-notes.md). No page: Home; an unknown page: Home. */
@@ -375,7 +376,7 @@ const VIEWS: Record<Page, () => JSX.Element> = {
   home: HomePageView, access: AccessPageView, user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView,
   graph: GraphPageView, see: SeePageView, compare: ComparePageView, request: RequestPageView,
   sensitive: SensitivePageView, flow: FlowPageView, rules: RulesPageView, review: ReviewPageView, whatif: WhatIfPageView,
-  usage: UsagePageView, changes: ChangesPageView,
+  usage: UsagePageView, objuse: ObjectUsePageView, changes: ChangesPageView,
 };
 
 /** onUrl: the Streamlit wrapper mirrors the page's URL params into the browser address bar. */

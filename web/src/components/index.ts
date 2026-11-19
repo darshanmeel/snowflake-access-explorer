@@ -18,5 +18,5 @@ export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind,
 export { tabGraph, tabPaths } from "./tabgraph";
 export { cellText, CsvOn, filterRows, sortRows, toCsv, useCsv } from "./table";
 export { AccessPill, CodeOutput, copyText, EmptyState, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, MaskDots, MiniBar, NameList, PathChips, SensitiveCell, StackBar, Toggle, Waiting, type Art, type BarPart, type FilterItem, type NameItem } from "./kit";
-export { CutPath, DayStack, GrantLink, Overlap } from "./visuals";
+export { AGE, AgeBars, CutPath, DayStack, GrantLink, Overlap } from "./visuals";
 export { expiryOf, newRoleOf, sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";
