@@ -4837,6 +4837,39 @@ def usage_gaps(name, obj, user=True, kind=None):
     return [(t, c) for t, c in containers(obj, kind) if name not in usage_reach(t, c)[i]]
 
 
+INSIDE_NEEDS = {"read": ("SELECT",), "dml": ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"), "ddl": ("OWNERSHIP",)}
+
+
+def inside_access(name, user, scope, mode, rows=None):
+    """Can they? on a database or schema: every table and view in it (is_data) with what name holds, and whether that
+    is enough to read (SELECT), read and change data (DML) or own it (DDL: OWNERSHIP, what ALTER and DROP need), with
+    USAGE on its database and schema (else blocked). OWNERSHIP or an admin role's real links give everything. rows:
+    grants(name, user) when the caller has them. dict(rows [dict(object, type, ok, has, missing, blocked)], cannot
+    first, then by name; create: the CREATE privileges held on the schema itself, for new objects)."""
+    k = kinds[scope]
+    db, sc, _ = split_name(scope, k)
+    held = {}
+    for r in rows if rows is not None else grants(name, user):
+        held.setdefault(r["object"], set()).add(r["privilege"])
+    adm = set().union(set(), *(admin_objects(x) for x in held_admin(name, user)))
+    out = []
+    for o in objects:
+        if not is_data(kinds[o]):
+            continue
+        d, s, _ = split_name(o, kinds[o])
+        if d != db or (k == "SCHEMA" and s != sc):
+            continue
+        h = held.get(o, set())
+        full = "OWNERSHIP" in h or o in adm
+        want = [p for p in INSIDE_NEEDS[mode] if p in valid_privs(kinds[o])] or ["OWNERSHIP"]
+        miss = [] if full else [p for p in want if p not in h]
+        gaps = [] if miss or o in adm else usage_gaps(name, o, user, kinds[o])
+        out.append(dict(object=o, type=kinds[o], ok=not miss and not gaps, has=sorted(h) + (["admin role"] if o in adm else []),
+                        missing=miss, blocked=gap_word(gaps)))
+    out.sort(key=lambda x: (x["ok"], x["object"]))
+    return dict(rows=out, create=sorted(p for p in held.get(scope, ()) if p.startswith("CREATE")) if k == "SCHEMA" else [])
+
+
 def gap_text(gaps):
     """"no USAGE on schema D.S" (TF_CAN's BLOCKED says the same), None when nothing is missing."""
     return ", ".join(f"no USAGE on {t.lower()} {c}" for t, c in gaps) or None

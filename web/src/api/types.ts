@@ -659,6 +659,14 @@ export interface Nearest {
 /** Who Can they? / Request access asks about: a user or a role (separate namespaces; id as in a.uid). */
 export interface Subject { kind: NodeKind; name: string; id: string; user: boolean; people: number | null; database: string | null }
 
+/** Can they? on a database or schema: read (SELECT), dml (SELECT + INSERT/UPDATE/DELETE/TRUNCATE), ddl (OWNERSHIP). */
+export interface Inside {
+  mode: "read" | "dml" | "ddl"; show: "all" | "can" | "cannot";
+  total: number; can: number; cannot: number; blocked: number; matched: number; offset: number; limit: number;
+  create: string[]; // CREATE privileges on the schema itself: new objects
+  rows: { object: string; type: string; ok: boolean; has: string[]; missing: string[]; blocked: string | null }[];
+}
+
 export interface CheckPage {
   verdict: "yes" | "partly" | "no" | "blocked"; // blocked: the privilege is held, USAGE on its database or schema is not
   subject: Subject;
@@ -666,6 +674,8 @@ export interface CheckPage {
   roles_count: number;
   ask_priv: string;
   held: { privilege: string; held: boolean }[];
+  usage: { type: "DATABASE" | "SCHEMA"; name: string; held: boolean }[]; // USAGE Snowflake checks before the privilege
+  inside: Inside | null; // a database or schema: the tables and views in it
   lanes: { path: Path; privileges: string[] }[];
   lanes_total: number;
   cut: string[];

@@ -245,6 +245,19 @@ def test_big_lanes():
     assert len(get(f"/api/privs.csv?name={r}&of=role&tab=all").text.strip().splitlines()) == pv["total"] + 1
 
 
+def test_check_inside():  # Can they? on a database or schema: each table and view inside, read / DML / DDL; USAGE chips
+    t = js("/api/check?name=HR_01&obj=SALES.CORE.TBL_CUSTOMER")
+    assert t["inside"] is None and [(u["type"], u["held"]) for u in t["usage"]] == [("DATABASE", False), ("SCHEMA", False)]
+    d = js("/api/check?name=HR_01&obj=SALES")["inside"]  # no reach into SALES: every object cannot
+    assert d["mode"] == "read" and d["total"] == d["cannot"] > 1 and d["can"] == 0 and all(not r["ok"] for r in d["rows"])
+    e = js("/api/check?name=ENGINEER_01&obj=SALES.CORE&inside=dml&show_in=can")["inside"]
+    assert e["can"] >= 1 and all(r["ok"] and not r["missing"] for r in e["rows"]) and "CREATE TABLE" in e["create"]
+    o = js("/api/check?name=ENGINEER_01&obj=SALES.CORE&inside=ddl")["inside"]
+    assert o["can"] < e["can"] or all(r["missing"] == ["OWNERSHIP"] for r in o["rows"] if not r["ok"])  # DDL needs ownership
+    q = js("/api/check?name=HR_01&obj=SALES&in_q=zz_no_such")["inside"]
+    assert q["matched"] == 0 and q["rows"] == [] and q["total"] == d["total"]
+
+
 def test_check():
     d = js("/api/check", ["answer", "paths", "graph", "privileges", "refs", "options", "nearest"])
     assert d["answer"]["yes"] and d["paths"]

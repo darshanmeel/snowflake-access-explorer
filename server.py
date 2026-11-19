@@ -2413,7 +2413,10 @@ def check_page(p, view):
                        "; ".join(f"{x['column']}: {x['reason']}" for x in cols) or "no masking applies")]
     partly = bool(layers) and (layers[1]["result"] == "No rows" or not layers[2]["ok"])
     verdict = "blocked" if gaps else "partly" if ans["yes"] and partly else "yes" if ans["yes"] else "no"
+    miss = set(a.usage_gaps(u, o, user, k)) if o not in {x for q in a.held_admin(u, user) for x in a.admin_objects(q)} else set()
     return dict(
+        usage=[dict(type=t, name=c, held=(t, c) not in miss) for t, c in a.containers(o, k)],  # Snowflake checks these first
+        inside=inside_page(p, u, user, o, mine_rows) if k in ("DATABASE", "SCHEMA") else None,
         verdict=verdict, layers=layers, roles_count=len(set(a.best_paths(u, user)) - (set() if user else {u})), ask_priv=ask,
         held=[dict(privilege=x, held=x in has) for x in opts], lanes=ls[:20], lanes_total=len(ls), cut=cut,
         cuts=[] if mine or not ps else [dict(iac=x["iac"], sql=x["sql"], people=x["people"], lost=x["lost"],
@@ -2428,6 +2431,23 @@ def check_page(p, view):
         blocked=[dict(type=t, name=c) for t, c in gaps], unblock=dict(iac=r["unblock"][0], sql=r["unblock"][1]) if gaps else None,
         warehouses=dict(names=whs[:MAX_WH], total=len(whs), admin=bool(wa)),
         graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None, capped=sorted(a.capped))
+
+
+INSIDE_PAGE = 100  # Can they? on a database or schema: objects per page
+
+
+def inside_page(p, u, user, o, rows):
+    """Can they? on a database or schema: the tables and views in it for mode= read | dml | ddl, filtered by show_in=
+    all | can | cannot and in_q=, paged (offset=), with the counts."""
+    mode = p.get("inside") if p.get("inside") in a.INSIDE_NEEDS else "read"
+    x = a.inside_access(u, user, o, mode, rows)
+    rs, want = x["rows"], p.get("show_in") if p.get("show_in") in ("can", "cannot") else "all"
+    can = sum(r["ok"] for r in rs)
+    words = p.get("in_q", "").upper().split()
+    pick = [r for r in rs if (want == "all" or r["ok"] == (want == "can")) and all(w in r["object"] for w in words)]
+    off = int(p["offset"]) if p.get("offset", "").isdigit() else 0
+    return dict(mode=mode, show=want, total=len(rs), can=can, cannot=len(rs) - can, blocked=sum(bool(r["blocked"]) for r in rs),
+                matched=len(pick), rows=pick[off:off + INSIDE_PAGE], offset=off, limit=INSIDE_PAGE, create=x["create"])
 
 
 def request_page(p, view):

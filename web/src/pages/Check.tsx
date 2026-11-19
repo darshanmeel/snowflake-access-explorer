@@ -2,10 +2,10 @@
 // "Answer & diagram" (the old page: banner, combined diagram, paths, ownership, where to cut, ways to remove, what they
 // see) is the default; Routes & where to cut (one lane per route, cut points with side effects), Nearest ways in (No)
 // and Rows & columns (grant, rows, columns; Partly) follow. The subject is a person (name=) or a role (role=).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApi } from "../api/client";
-import type { CheckPage, ListItem, Path, Refs } from "../api/types";
-import { Banner, Card, CodeOutput, DataTable, EmptyState, MiniBar, NameList, Tabs } from "../components";
+import type { CheckPage, Inside, ListItem, Path, Refs } from "../api/types";
+import { Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, NameList, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine, warehouseNote } from "./verdict";
 import { col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
@@ -65,14 +65,55 @@ function Body({ d }: { d: CheckPage }) {
               <span aria-hidden>{p.held ? "✓" : "✕"}</span>{p.privilege}<span className="ae-sr">{p.held ? " held" : " not held"}</span>
             </li>
           ))}
+          {d.usage.map((u) => (
+            <li key={u.name} className={u.held ? "on" : ""} title={`Snowflake checks USAGE on the ${u.type.toLowerCase()} first`}>
+              <span aria-hidden>{u.held ? "✓" : "✕"}</span>USAGE on {u.type.toLowerCase()}<span className="ae-sr">{u.held ? " held" : " not held"}</span>
+            </li>
+          ))}
         </ul>
       </section>
+      {d.inside && <InsideCard d={d} x={d.inside} />}
       <Tabs nav active={at} onChange={(k) => c.set({ show: k === "answer" ? null : k })} tabs={tabs} />
       {at === "answer" && <Answer d={d} />}
       {at === "routes" && <Routes d={d} />}
       {at === "nearest" && <NearestWays d={d} />}
       {at === "layers" && <Layers d={d} />}
     </>
+  );
+}
+
+const MODES: [string, string][] = [["read", "Read tables"], ["dml", "Read and change data (DML)"], ["ddl", "Own: DDL (ALTER, DROP)"]];
+
+type Row = Inside["rows"][number];
+
+/** A database or schema: what they can and cannot do on each table and view inside, for read, DML or DDL. */
+function InsideCard({ d, x }: { d: CheckPage; x: Inside }) {
+  const c = useApp();
+  const [q, setQ] = useState(c.params.in_q ?? "");
+  useEffect(() => { const t = setTimeout(() => { if (q !== (c.params.in_q ?? "")) c.set({ in_q: q || null, offset: null }); }, 300); return () => clearTimeout(t); }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const word = MODES.find(([k]) => k === x.mode)?.[1].toLowerCase() ?? "";
+  return (
+    <Card title={`Inside ${d.object}`} sub={`${x.can} of ${x.total} tables and views: they can ${word}${x.blocked ? ` · ${x.blocked} blocked by a missing USAGE` : ""}`
+      + (d.type === "SCHEMA" ? ` · new objects: ${x.create.length ? x.create.join(", ") : "no CREATE on the schema"}` : "")}>
+      <div className="ae-row">
+        <FilterChips label="What to check" value={x.mode} onPick={(v) => c.set({ inside: v === "read" ? null : v, offset: null })}
+          items={MODES.map(([key, label]) => ({ key, label }))} />
+        <FilterChips label="Show" value={x.show} onPick={(v) => c.set({ show_in: v === "all" ? null : v, offset: null })}
+          items={[{ key: "all", label: "All", count: x.total }, { key: "can", label: "Can", count: x.can }, { key: "cannot", label: "Cannot", count: x.cannot }]} />
+        <input className="ae-input" placeholder="Filter objects" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter objects" />
+      </div>
+      {!x.rows.length ? <EmptyState title={x.total ? "Nothing matches" : "No tables or views inside"}>{x.total ? "Change the filter." : ""}</EmptyState> : (
+        <DataTable csv={`${d.object}_${x.mode}.csv`} rows={x.rows} columns={[
+          col("o", "Object", (r: Row) => r.object, { wrap: "nowrap", render: (r: Row) => (
+            <button type="button" className="ae-link ae-mono" onClick={() => c.set({ obj: r.object, priv: null })}>{r.object}</button>) }),
+          col("t", "Type", (r: Row) => r.type.toLowerCase()),
+          col("a", "Answer", (r: Row) => (r.ok ? "Can" : r.blocked ? `Blocked: ${r.blocked}` : "Cannot"), { render: (r: Row) => (
+            <span className={r.ok ? "ae-ok-word" : "ae-bad"}>{r.ok ? "✓ Can" : r.blocked ? `⊘ Blocked: ${r.blocked}` : "✕ Cannot"}</span>) }),
+          col("h", "Holds", (r: Row) => r.has.join(", ") || "—", { wrap: "wrap" }),
+          col("m", "Missing", (r: Row) => r.missing.join(", ") || "—", { wrap: "wrap" })]} />
+      )}
+      {x.matched > x.limit && <Pager at={x.offset / x.limit} size={x.limit} total={x.matched} onPage={(n) => c.set({ offset: n ? String(n * x.limit) : null })} />}
+    </Card>
   );
 }
 
