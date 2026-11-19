@@ -2589,7 +2589,7 @@ def activity_page(p, view):
     kind = a.kinds.get(name) if what == "object" else None
     what = {"STREAMLIT": "app", "DATABASE": "scope", "SCHEMA": "scope"}.get(kind, what)  # an app: the queries it ran
     # for its viewers; a database or schema: every object in it
-    who = p.get("as") if what in ("object", "app") else None  # the object page's "Access for": one user's use
+    who = p.get("as") if what in ("object", "app", "scope") else None  # the object page's "Access for": one user's use
     ok, why = a.act_state()
     if view == "mine" and not ok:
         why = "My access reads no ACCESS_HISTORY: open Activity on the shared data."

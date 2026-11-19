@@ -1094,6 +1094,7 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
     assert one["user"] == "ENGINEER_01" and {b["key"] for b in one["by"]["user"]} == {"ENGINEER_01"}
     assert [f["num"] for f in one["findings"]] == ["24"] and sum(one["daily"]) < sum(o["daily"])
     assert not js("/api/activity?name=SALES.CORE.TBL_CUSTOMER&as=HR_01")["rows"]  # granted or not: no use
+    assert not js("/api/activity?name=SALES.CORE&as=HR_01")["rows"]  # a schema: only that person's use too
     assert {r["area"] for r in js("/api/meta")["rules"] if 24 <= int(r["num"]) <= 28} == {"Activity"}
 
 
