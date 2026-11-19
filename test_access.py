@@ -340,6 +340,7 @@ def test_readonly():
     d = next(x for x in a.rule_rows() if x["num"] == "17" and x["grantee"] == F + "REPORTING_RO")["detail"]
     assert d.startswith("mostly read: 4 of 5 objects read-only; ") and f"via {T}SALES_RAW_WRITE (inherited)" in d
     assert d.endswith("heuristic: both")
+    assert sum(x["num"] == "17" for x in a.rule_rows()) == len({x["role"] for x in a.readonly_writes()})  # one per role
     writers = {x for x, pv, p in a.who_can("SHARED.LOGGING.TBL_LOGGING") if pv == "INSERT" and a.from_user(p)}
     assert {"ANALYST_01", "ENGINEER_01"} <= writers
 

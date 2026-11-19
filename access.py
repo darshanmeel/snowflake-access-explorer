@@ -6901,21 +6901,27 @@ def rules_users():
 
 
 def rule17(only=None):
-    """Rule 17: read-only roles that can write. An inherited write on a role flagged by its name only, that is not
-    mostly read either, gets a review hint instead of SQL (the name may just be a team name)."""
-    out = []
+    """Rule 17: read-only roles that can write, one finding per role: every object it writes counted, the first named,
+    the shortest path drawn. An inherited write on a role flagged by its name only, that is not mostly read either,
+    gets a review hint instead of SQL (the name may just be a team name)."""
+    by = {}
     for x in cached("ro", readonly_writes) if only is None else readonly_writes(only=only):
-        r, p = x["role"], x["path"]
+        by.setdefault(x["role"], []).append(x)
+    out = []
+    for r, xs in by.items():
+        x = min(xs, key=lambda y: (len(y["path"]), y["object"]))
+        p = x["path"]
         mostly = f"mostly read: {x['read_only']} of {x['objects']} objects read-only; " if x["how"] != "name" else ""
         src = f"via {x['holder']} (inherited)" if x["inherited"] else "direct"
+        more = f" and {plural(len(xs) - 1, 'more object')}" if len(xs) > 1 else ""
         edges = [holder_edge(r, pv, x["object"]) if q[-1] == r else role_edge(r, q[1]) for pv, q in x["via"].items()]
         kw = {}
         if x["how"] == "name" and x["inherited"] and (not x["objects"] or x["read_only"] / x["objects"] < READ_SHARE):
             kw = dict(fix=(f"Check what {r} is for; if it is read-only, remove the write role it inherits in the "
                            "infrastructure-as-code repo", ""), edge=(x["holder"], x["object"], x["privileges"][0]))
             edges = []
-        out.append(find("17", r, f"{mostly}{', '.join(x['privileges'])} on {x['object']} {src}; heuristic: {x['how']}",
-                        p, edges, **kw))
+        out.append(find("17", r, f"{mostly}{', '.join(sorted({pv for y in xs for pv in y['privileges']}))} on "
+                                 f"{x['object']}{more} {src}; heuristic: {x['how']}", p, edges, **kw))
     return out
 
 
