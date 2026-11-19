@@ -28,12 +28,11 @@ export interface GraphProps {
   focus?: string | null; // a picked box: everything not on a path through it fades (as on hover)
   hi?: Set<string>; // node and edge ids drawn red (risky paths)
   flow?: boolean; // line width grows with edge.count (people flowing through it)
-  down?: boolean; // lanes top to bottom, no lane headers: a few paths in a narrow column
 }
 
 const SEV = ["Critical", "High", "Medium", "Low"] as const;
 
-type NData = { n: GraphNode; t: Tokens; lines: string[]; subs: string[]; selected: boolean; dim: boolean; red: boolean; down: boolean };
+type NData = { n: GraphNode; t: Tokens; lines: string[]; subs: string[]; selected: boolean; dim: boolean; red: boolean };
 type EData = { e: GraphEdge; t: Tokens; pts?: Pt[]; at?: Pt; dim: boolean; hot: boolean; red: boolean; flow: boolean };
 type Tip = { text: string; x: number; y: number };
 
@@ -56,7 +55,7 @@ export function startView(lay: { width: number; height: number; lanes: unknown[]
   return { view: { x, y, zoom }, height };
 }
 
-export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8, focus = null, hi, flow = false, down = false }: GraphProps) {
+export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8, focus = null, hi, flow = false }: GraphProps) {
   const t = TOKENS[theme];
   const [open, setOpen] = useState<Map<string, string>>(new Map()); // opened box -> its label (for the chips)
   const [got, setGot] = useState<Record<string, GraphGroup>>({}); // lazy boxes fetched: graph.src + group=<box>
@@ -69,9 +68,9 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   const [laid, setLaid] = useState<{ g: G; lay: Layout } | null>(null);
   useEffect(() => {
     let live = true;
-    layout(shown, down).then((l) => live && setLaid({ g: shown, lay: l }));
+    layout(shown).then((l) => live && setLaid({ g: shown, lay: l }));
     return () => { live = false; };
-  }, [shown, down]);
+  }, [shown]);
   const lay = laid?.lay ?? null;
   const busy = !laid || laid.g !== shown || !!fetching; // a layout or a box's members on the way: the old drawing stays
 
@@ -90,7 +89,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   const lit = hover ?? (focus && shown.nodes.some((n) => n.id === focus) ? focus : null);
   const hot = useMemo(() => (lit ? related(shown, lit) : null), [shown, lit]);
   const byId = useMemo(() => new Map(shown.nodes.map((n) => [n.id, n])), [shown]);
-  const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot, focus, hi, flow, down), [shown, lay, t, hot, focus, hi, flow, down]);
+  const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot, focus, hi, flow), [shown, lay, t, hot, focus, hi, flow]);
 
   // the panel is as tall as the drawing; a resize keeps the reader's pan and zoom once they moved it
   const sel = useMemo(() => { // the picked box, else the start of the walk (the one box of the first lane)
@@ -226,7 +225,7 @@ function mergeLegend(g: G): G["legend"] {
 }
 
 function toFlow(g: G, lay: Layout | null, t: Tokens, hot: Set<string> | null, focus: string | null, hi: Set<string> | undefined,
-  flow: boolean, down = false): { nodes: Node[]; edges: Edge[] } {
+  flow: boolean): { nodes: Node[]; edges: Edge[] } {
   if (!lay) return { nodes: [], edges: [] };
   const nodes: Node[] = lay.lanes.map((l) => ({
     id: `lane:${l.index}:label`, type: "lane", position: { x: l.x, y: 0 }, data: { label: l.label, w: l.w, t },
@@ -238,7 +237,7 @@ function toFlow(g: G, lay: Layout | null, t: Tokens, hot: Set<string> | null, fo
     nodes.push({
       id: n.id, type: "ae", position: { x: p.x, y: p.y }, width: p.w, height: p.h,
       ariaLabel: `${n.name === n.label ? n.label : n.name}, ${KIND_LABEL[n.kind] ?? n.kind}${n.action || g.groups[n.id] ? ": Enter opens it" : ""}`,
-      data: { n, t, lines: nodeSize(n).lines, subs: nodeSize(n).subs, selected: (focus ?? g.selected) === n.id, dim: !!hot && !hot.has(n.id), red: !!hi?.has(n.id), down } satisfies NData,
+      data: { n, t, lines: nodeSize(n).lines, subs: nodeSize(n).subs, selected: (focus ?? g.selected) === n.id, dim: !!hot && !hot.has(n.id), red: !!hi?.has(n.id) } satisfies NData,
     });
   }
   const edges: Edge[] = g.edges.filter((e) => lay.nodes.has(e.source) && lay.nodes.has(e.target)).map((e) => ({
@@ -254,7 +253,7 @@ function LaneLabel({ data }: NodeProps) {
 }
 
 function AeNode({ data }: NodeProps) {
-  const { n, t, lines, subs, selected, dim, red, down } = data as NData;
+  const { n, t, lines, subs, selected, dim, red } = data as NData;
   const bad = n.kind === "admin" || n.marks.includes("bad");
   const s = kindStyle(t, bad ? "admin" : n.kind);
   const group = isBox(n) || n.marks.includes("stack");
@@ -270,7 +269,7 @@ function AeNode({ data }: NodeProps) {
   return (
     <div className={`ae-node ae-node-${n.kind}${group ? " ae-node-box" : ""}`} style={style}>
       {dbRole && <DbRoleShape s={s} />}
-      <Handle type="target" position={down ? Position.Top : Position.Left} className="ae-handle" />
+      <Handle type="target" position={Position.Left} className="ae-handle" />
       <div className="ae-node-label" style={{ textDecoration: n.marks.includes("disabled") ? "line-through" : undefined }}>
         {n.marks.includes("sensitive") && <Lock color={t.bad_ink} />}
         {lines.map((l, i) => <div key={i}>{l}</div>)}
@@ -281,7 +280,7 @@ function AeNode({ data }: NodeProps) {
         const worst = SEV.find((v) => n.rules.some((r) => r.severity === v)) ?? "Low";
         return <span className={`ae-node-rules ae-sevpill ae-sev-${worst}`}>{worst} · {n.rules.length}</span>;
       })()}
-      <Handle type="source" position={down ? Position.Bottom : Position.Right} className="ae-handle" />
+      <Handle type="source" position={Position.Right} className="ae-handle" />
     </div>
   );
 }

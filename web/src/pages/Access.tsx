@@ -10,7 +10,6 @@ import { RolePageView } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick, PickFirst, unread } from "./common";
 import { ladderParts, recent, remember } from "./Home";
-import { HowGraph } from "./Object";
 import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
 
@@ -243,7 +242,6 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
   const [copied, setCopied] = useState(false);
   return (
     <div className="ae-how" role="row">
-      <HowGraph who={user ? { name: who } : { role: who }} obj={x.object} level={x.level ?? ""} />
       <div className="ae-muted">Shortest path</div>
       <div className="ae-how-path">
         <span className="ae-pchip" title={who}>{mid(who)}</span>
