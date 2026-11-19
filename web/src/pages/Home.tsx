@@ -352,11 +352,15 @@ const DEPTH: { key: keyof HomeCards["depth"]; label: string }[] = [
 function DepthCard({ k }: { k: HomeCards }) {
   const c = useApp();
   const [on, setOn] = useState<keyof HomeCards["depth"]>("users");
-  const rows = Object.entries(k.depth[on]).map(([d, n]) => ({ key: d, label: `Depth ${d}`, n, cls: "low" }));
-  const ds = rows.map((r) => Number(r.key));
+  const got = k.depth[on];
+  const ds = Object.keys(got).map(Number);
+  const lo = Math.min(...ds), hi = Math.max(...ds);
+  // Every depth from shortest to deepest, so a depth with none shows as 0, not as a missing row.
+  const rows = ds.length ? Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
+    .map((d) => ({ key: String(d), label: `Depth ${d}`, n: got[d] ?? 0, cls: "low" })) : [];
   return (
-    <Card title={<>Chain depth {ds.length > 0 && <span className="ae-muted ae-hc-unit">shortest {Math.min(...ds)} · deepest {Math.max(...ds)}</span>}</>}
-      sub="Roles from the role granted to a user to the grant holder, holder included; each counted at its deepest."
+    <Card title={<>Chain depth {ds.length > 0 && <span className="ae-muted ae-hc-unit">shortest {lo} · deepest {hi}</span>}</>}
+      sub="Roles from the role granted to a user to the grant holder, holder included; each counted at its deepest. Users include service users."
       right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { rule: "14" })}>Deep chains</button>}>
       <FilterChips label="Count" value={on} onPick={(v) => setOn(v as typeof on)} items={DEPTH} />
       <HBars rows={rows} />
