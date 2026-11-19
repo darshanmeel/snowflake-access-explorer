@@ -618,7 +618,7 @@ export interface ObjectPage {
     owner_note: string;
     longest: number;
   };
-  admin_paths: Path[]; // the first MAX_ADMIN_PATHS
+  admin_roles: { role: string; users: number; first: string[]; paths: Path[]; total: number }[]; // per admin role, strongest first; paths: the first MAX_ADMIN_PATHS
   admin_users: number;
   admin_total: number;
   sensitivity: Sensitivity | null;

@@ -20,7 +20,7 @@ USER = {"view", "user", "filters", "banners", "findings", "findings_total", "kpi
         "roles", "multi", "can_read", "sensitive", "granted", "usage", "capped", "refs"}
 ROLE = {"view", "role", "filters", "kpis", "scope_kpis", "banners", "findings", "readonly_writes", "account", "graph", "held_by",
         "holds", "tabs", "roles", "can_read", "capped", "refs"}
-OBJECT = {"view", "object", "filters", "kpis", "admin_paths", "sensitivity", "matrix", "graph", "sees", "tabs", "grantees",
+OBJECT = {"view", "object", "filters", "kpis", "admin_roles", "admin_users", "admin_total", "sensitivity", "matrix", "graph", "sees", "tabs", "grantees",
           "capped", "refs"}
 GRAPH = {"title", "header", "level", "note", "full", "selected", "lanes", "nodes", "edges", "groups", "legend"}
 NODE = {"id", "name", "label", "sub", "kind", "raw_kind", "type", "db", "schema", "lane", "depth", "badge", "tip", "marks",
@@ -176,6 +176,10 @@ def test_object():
     m = d["matrix"]
     assert m["total"] == len(m["rows"]) and js(f"/api/object?name={t}&limit=1&m_offset=1")["matrix"]["rows"] == m["rows"][1:2]
     assert all(bool(r["admin_paths"]) == bool(r["admin"]) for r in m["rows"])
+    g = d["admin_roles"]
+    assert g and sum(x["total"] for x in g) == d["admin_total"] and all(x["paths"][0][-1] == x["role"] for x in g)
+    assert [x["role"] for x in g] == sorted((x["role"] for x in g), key=lambda r: (server.ADMIN_ORDER + [r]).index(r))
+    assert all(len(x["first"]) == min(3, x["users"]) and len(x["paths"]) <= server.MAX_ADMIN_PATHS for x in g)
     graph_ok(d["graph"])
     assert d["tabs"][-1]["key"] == "all"
     js(f"/api/object?name={t}&priv=SELECT&users=1&active=1", OBJECT)

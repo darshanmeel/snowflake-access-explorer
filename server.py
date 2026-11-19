@@ -2073,7 +2073,22 @@ def grantees_csv(p, view):
     return f"{c['o'].split('.')[-1]}_grantees_{p.get('tab', 'all')}.csv", csv_text(cols, out)
 
 
-MAX_ADMIN_PATHS = 20  # Object page banner: admin paths listed (the counts cover every admin user)
+MAX_ADMIN_PATHS = 20  # Object page banner: admin paths listed per admin role (the counts cover every admin user)
+ADMIN_ORDER = ["ACCOUNTADMIN", "ORGADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN"]
+
+
+def admin_roles(adm):
+    """Admin paths grouped by the admin role they end at, strongest first: users and paths counted, the first 3 users
+    and MAX_ADMIN_PATHS paths sent."""
+    by = {}
+    for q in adm:
+        by.setdefault(q[-1], []).append(q)
+    rank = lambda r: (ADMIN_ORDER.index(r) if r in ADMIN_ORDER else len(ADMIN_ORDER), r)
+    out = []
+    for r, qs in sorted(by.items(), key=lambda x: rank(x[0])):
+        us = list(dict.fromkeys(q[0] for q in qs))
+        out.append(dict(role=r, users=len(us), first=us[:3], paths=qs[:MAX_ADMIN_PATHS], total=len(qs)))
+    return out
 
 
 def object_page(p, view):
@@ -2127,7 +2142,7 @@ def object_page(p, view):
         kpis=dict(people=len(s["people"]), disabled=len(s["disabled"]), service=len(s["service"]), admin=len(s["admin"]),
                   read=n_cls["read"], write=n_cls["write"], own=n_cls["own"], roles=s["roles"], direct=s["direct"],
                   owners=s["owners"], deployers=s["deployers"], owner_note=s["owner_note"], longest=s["longest"]),
-        admin_paths=adm[:MAX_ADMIN_PATHS], admin_users=len({q[0] for q in adm}), admin_total=len(adm),
+        admin_roles=admin_roles(adm), admin_users=len({q[0] for q in adm}), admin_total=len(adm),
         sensitivity=sensitivity(o) if shared else None,
         matrix=dict(privs=list(m[0]["privs"]) if m else [], sensitive_cols=scols, row_policy=bool(rpol), rows=rows,
                     total=len(m), offset=mw[1]),
