@@ -1097,7 +1097,8 @@ export interface HomePage {
 
 /** Home's area cards (server.home_cards): first NAMES names, counts per part. */
 export interface HomeCards {
-  admins: { total: number; service: number; by_role: { role: string; people: number }[]; account_only: number; names: { user: string; role: string; login: string }[] }; // riskiest first
+  admins: { total: number; service: number; by_role: { role: string; people: number }[]; account_only: number; names: { user: string; role: string; login: string }[];
+    service_names?: { user: string; role: string; login: string }[] }; // riskiest first; service_names: service users only
   stale: { total: number; by_status: Record<string, number>; of_status: Record<string, number>; names: string[] }; // of_status: all users per status
   people: { by_status: Record<string, number>; service: number };
   roles: Record<string, number>; // per role kind
