@@ -300,7 +300,8 @@ def test_findings():
 
 
 def test_streams():
-    """SP_ACCESS_SNAPSHOT's streams step: SHOW STREAMS rows -> TBL_ACCESS_STREAM; an error -> UNAVAILABLE."""
+    """SP_ACCESS_SNAPSHOT's streams step: ACCOUNT_USAGE.STREAMS rows (or SHOW STREAMS when it is not readable) ->
+    TBL_ACCESS_STREAM; both refused -> UNAVAILABLE."""
     con = load(a.fake(), build=False)
     body = re.search(r"PROCEDURE &DB\.&SCHEMA\.SP_ACCESS_SNAPSHOT.*?\$\$(.*?)\$\$", SETUP, re.S).group(1)
     ns = {}
@@ -309,17 +310,24 @@ def test_streams():
     show = [dict(database_name="D", schema_name="S", name='"ST 1"', table_name='D.S."T"', source_type="Table")]
     sql = session.sql
 
+    au = [dict(STREAM="D.S.ST 2", TABLE_NAME="D.S.T2", SOURCE_TYPE="View")]
+
     def fake_sql(text, params=None):
-        if not text.startswith("SHOW STREAMS"):
+        got = show if text.startswith("SHOW STREAMS") else au if "ACCOUNT_USAGE.STREAMS" in text else None
+        if got is None and not text.startswith("SHOW STREAMS") and "ACCOUNT_USAGE.STREAMS" not in text:
             return sql(text, params)
-        return SimpleNamespace(collect=lambda **k: [SimpleNamespace(as_dict=lambda r=r: r) for r in show])
+        return SimpleNamespace(collect=lambda **k: [SimpleNamespace(as_dict=lambda r=r: r) for r in got])
 
     session.sql = fake_sql
-    assert ns["streams"](session, "run-9") == ("SHOW", None)
+    assert ns["streams"](session, "run-7", "ACCOUNT_USAGE") == ("ACCOUNT_USAGE", None)  # one query, not SHOW
+    got = con.execute("SELECT * FROM TBL_ACCESS_STREAM WHERE RUN_ID = 'run-7'").fetchall()
+    assert got == [("run-7", "D.S.ST 2", "D.S.T2", "View")]
+    au = None  # not iterable: ACCOUNT_USAGE refused -> SHOW
+    assert ns["streams"](session, "run-9", "ACCOUNT_USAGE") == ("SHOW", None)
     got = con.execute("SELECT * FROM TBL_ACCESS_STREAM WHERE RUN_ID = 'run-9'").fetchall()
     assert got == [("run-9", "D.S.ST 1", "D.S.T", "Table")]
-    show = None  # not iterable: the SHOW fails
-    assert ns["streams"](session, "run-8")[0] == "UNAVAILABLE"
+    show = None  # both refused
+    assert ns["streams"](session, "run-8", "ACCOUNT_USAGE")[0] == "UNAVAILABLE"
 
 
 def test_object_use():

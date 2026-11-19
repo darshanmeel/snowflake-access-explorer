@@ -483,6 +483,8 @@ def fake_snowflake(d, au):
         if s in ("SHOW STREAMLITS IN ACCOUNT", "SHOW NOTEBOOKS IN ACCOUNT"):
             return [dict(zip(("database_name", "schema_name", "name"), g["OBJECT_NAME"].split(".")), owner=g["GRANTEE_ROLE"],
                          owner_role_type="ROLE") for g in d["GRANT"] if apps(g) and s.split()[1].startswith(g["GRANTED_ON"])]
+        if "ACCOUNT_USAGE.STREAMS " in s + " " and au:
+            return [dict(STREAM=x["STREAM_NAME"], TABLE_NAME=x["SOURCE_NAME"], SOURCE_TYPE=x["SOURCE_TYPE"]) for x in d["STREAM"]]
         if s == "SHOW STREAMS IN ACCOUNT":
             return [dict(zip(("database_name", "schema_name", "name"), x["STREAM_NAME"].split(".")),
                          table_name=x["SOURCE_NAME"], source_type=x["SOURCE_TYPE"]) for x in d["STREAM"]]

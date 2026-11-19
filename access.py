@@ -982,6 +982,10 @@ ACT_COLS = ("DAY", "USER_NAME", "ROLE_NAME", "CLIENT", "OBJECT_NAME", "ACTION", 
 TAG_FALLBACK_MAX = 300  # tables/views read per object (SHOW_THREADS at a time) when the ACCOUNT_USAGE views are not readable
 
 
+STREAMS_SQL = f"""SELECT STREAM_CATALOG || '.' || STREAM_SCHEMA || '.' || STREAM_NAME AS STREAM, TABLE_NAME, SOURCE_TYPE
+    FROM {AU}.STREAMS WHERE DELETED IS NULL"""
+
+
 def inventory_sql():
     """The object inventory: every object the account lists, also those with no grant row (a Streamlit app or notebook
     GRANTS_TO_ROLES does not list). (step, kind, sql), one read per source, so a refused one loses only its own kind;
@@ -1468,11 +1472,19 @@ def live(query, old=None, old_use=None):
         d["ACTIVITY"] = []
         note("activity", "SKIPPED" if why == SKIP_ACTIVITY else "UNAVAILABLE", line(e))
 
-    try:  # streams: no ACCOUNT_USAGE view; only the streams this role can see
-        d["STREAM"] = [dict(STREAM_NAME=f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}",
-                            SOURCE_NAME=clean(x.get("table_name")), SOURCE_TYPE=blank(x.get("source_type")))
-                       for x in say("SHOW STREAMS IN ACCOUNT…") or rows("SHOW STREAMS IN ACCOUNT")]
-        note("streams", "SHOW", None)
+    try:  # streams: ACCOUNT_USAGE.STREAMS when ACCOUNT_USAGE is read (one query), else SHOW (what this role can see)
+        try:
+            if src.get("grants") != "ACCOUNT_USAGE":
+                raise LookupError("ACCOUNT_USAGE not read")
+            d["STREAM"] = [dict(STREAM_NAME=x["STREAM"], SOURCE_NAME=clean(x.get("TABLE_NAME")), SOURCE_TYPE=blank(x.get("SOURCE_TYPE")))
+                           for x in say("ACCOUNT_USAGE.STREAMS…") or rows(STREAMS_SQL)]
+            how = "ACCOUNT_USAGE"
+        except Exception:
+            d["STREAM"] = [dict(STREAM_NAME=f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}",
+                                SOURCE_NAME=clean(x.get("table_name")), SOURCE_TYPE=blank(x.get("source_type")))
+                           for x in say("SHOW STREAMS IN ACCOUNT…") or rows("SHOW STREAMS IN ACCOUNT")]
+            how = "SHOW"
+        note("streams", how, None)
     except Exception as e:
         note("streams", "UNAVAILABLE", line(e))
 

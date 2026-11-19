@@ -679,18 +679,27 @@ def policies(session, run_id, mode):
         return "UNAVAILABLE", "; ".join(filter(None, [why, first_line(e)]))
 
 
-def streams(session, run_id):
-    """Streams and the table they read: no ACCOUNT_USAGE view, so always SHOW STREAMS IN ACCOUNT (only the streams the
-    owner's role can see). An error: UNAVAILABLE, the run stays OK (rule 22 then finds nothing).
-    to verify: columns database_name, schema_name, name, table_name (fully qualified, may be quoted), source_type."""
+def streams(session, run_id, mode):
+    """Streams and the table they read: ACCOUNT_USAGE.STREAMS (one query), else SHOW STREAMS IN ACCOUNT (only the
+    streams the owner's role can see). An error: UNAVAILABLE, the run stays OK (rule 22 then finds nothing)."""
     try:
-        data = [[run_id, f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}", clean(x.get("table_name") or ""),
-                 blank(x.get("source_type"))] for x in rows(session, "SHOW STREAMS IN ACCOUNT")]
+        try:
+            if mode == "SHOW":
+                raise LookupError("ACCOUNT_USAGE not read")
+            got, src = [dict(x, name=x["stream"]) for x in rows(session, STREAMS_SQL)], "ACCOUNT_USAGE"
+        except Exception:
+            got, src = [dict(x, name=f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}")
+                        for x in rows(session, "SHOW STREAMS IN ACCOUNT")], "SHOW"
+        data = [[run_id, x["name"], clean(x.get("table_name") or ""), blank(x.get("source_type"))] for x in got]
         save(session, STREAM, ["RUN_ID", "STREAM_NAME", "SOURCE_NAME", "SOURCE_TYPE"], data)
-        return "SHOW", None
+        return src, None
     except Exception as e:
         session.sql(f"DELETE FROM {STREAM} WHERE RUN_ID = '{run_id}'").collect(**TIMED)
         return "UNAVAILABLE", first_line(e)
+
+
+STREAMS_SQL = f"""SELECT STREAM_CATALOG || '.' || STREAM_SCHEMA || '.' || STREAM_NAME AS STREAM, TABLE_NAME, SOURCE_TYPE
+    FROM {AU}.STREAMS WHERE DELETED IS NULL"""
 
 
 def inventory_sql():
@@ -1032,7 +1041,7 @@ def run(session, p_source):
         step = "policies"
         keep("policies", *policies(session, run_id, mode))
         step = "streams"
-        keep("streams", *streams(session, run_id))
+        keep("streams", *streams(session, run_id, mode))
         step = "objects"
         keep("objects", *objects(session, run_id, mode))
         step = "usage"
