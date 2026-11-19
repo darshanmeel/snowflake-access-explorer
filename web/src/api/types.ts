@@ -22,7 +22,7 @@ export type TabKey =
   | "execute" | "read" | "write" | "own" | "manage" | "all";
 
 export type UserStatus = "active" | "dormant" | "never" | "disabled";
-export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "flow" | "rules" | "review" | "whatif" | "usage" | "changes";
+export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "flow" | "rules" | "review" | "whatif" | "usage" | "objuse" | "changes";
 
 /** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
 export type Path = string[];
@@ -1106,6 +1106,8 @@ export interface HomeCards {
   depth: Record<"users" | "objects" | "schemas" | "databases", Record<string, number>>;
   biggest: { schemas: { name: string; n: number }[]; databases: { name: string; n: number }[]; n_schemas: number; n_databases: number }; // by object count
   activity: { ok: boolean; reason: string | null; users: number; daily: { day: string; queries: number }[] };
+  /** Object activity (server.objuse_page) at 90 days: last use per type, tables read not written and the reverse */
+  objuse: { ok: boolean; notes: string[]; new: number; days: number; unused: number; unused_new: number; types: { type: string; buckets: Record<UseBucket, number> }[]; nodata: string[]; read_only: number; write_only: number };
   /** counts null: not compared yet (Changes compares on open), or reason: no earlier snapshot kept */
   changes: { counts: { all: number; gain: number; lose: number; risk: number; sensitive: number } | null; high: number; before: string | null; reason: string | null } | null;
 }
@@ -1374,6 +1376,57 @@ export interface UsagePage {
   sql: string; // the trim as What if writes it
   people: number;
   base_read: boolean; // false: the snapshot has direct use only (no reads through views or procedures)
+  refs: Refs;
+}
+
+/** Last use (a.BUCKETS): within 30 days, 31-90, 91-180, not used in the history read, no activity data for the type. */
+export type UseBucket = "30" | "90" | "180" | "none" | "nodata";
+export type UsePattern = "read_only" | "write_only" | "both" | "none";
+
+/** One object on Object activity (/api/objuse), its use in the window (days). */
+export interface ObjUseRow {
+  object: string;
+  type: string;
+  database: string;
+  schema: string;
+  last_read: string | null;
+  last_write: string | null;
+  days_since: number | null; // null: never used in the history read
+  readers: number;
+  writers: number;
+  read_q: number; // warehouses: queries run; apps: queries for their viewers
+  write_q: number;
+  bucket: UseBucket;
+  pattern: UsePattern | null; // tables only: views and external tables are never written
+  new: boolean; // DDL on it in the activity window
+  history: number; // days of use its type has (warehouses 30, apps 60); 0: none readable
+  sensitive: boolean;
+}
+
+/** Object activity (/api/objuse): counts in scope, one page of the tab's rows. */
+export interface ObjUsePage {
+  view: View;
+  available: boolean;
+  reason: string | null;
+  enable: string;
+  notes: string[];
+  days: number;
+  periods: number[];
+  tab: "unused" | "read_only" | "write_only" | "all";
+  type: string;
+  scope: string;
+  base_read: boolean;
+  history: { data: number; warehouse: number; app: number }; // days each source covers
+  types: { type: string; buckets: Record<UseBucket, number>; total: number }[];
+  tabs: Record<"unused" | "read_only" | "write_only" | "all", number>;
+  patterns: Record<UsePattern, number>;
+  new: number;
+  unused_new: number; // of tabs.unused: new or changed in the activity window
+  rows: ObjUseRow[];
+  total: number;
+  offset: number;
+  limit: number;
+  source: string | null;
   refs: Refs;
 }
 

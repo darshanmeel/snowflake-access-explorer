@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
-import { Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
+import { AgeBars, Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
@@ -54,7 +54,7 @@ const SHORT: [Page, string, ((w: Who) => Short | null)?][] = [
   ["graph", "Access graph", (w) => ({ page: "graph", label: `Graph of ${w.name}`, params: { [w.kind === "user" ? "user" : w.kind === "object" ? "table" : "role"]: w.kind === "user" ? w.name : w.id } })],
   ["compare", "Compare two people", (w) => (w.kind === "object" ? null : { page: "compare", label: `Compare ${w.name} with …`, params: { a: w.id } })],
   ["request", "Request access"], ["rules", "Risks & fixes"], ["whatif", "What if a role goes?"], ["sensitive", "Sensitive data"],
-  ["flow", "Sensitive data flow"], ["usage", "Granted vs used"], ["changes", "What changed"]];
+  ["flow", "Sensitive data flow"], ["usage", "Granted vs used"], ["objuse", "Object activity"], ["changes", "What changed"]];
 
 /** The shortcuts to the pages in the nav (My access has no flow or changes), filled in with who (the first search hit
  * or the default user) where the question is about someone. */
@@ -278,6 +278,8 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
         {k.activity.ok ? <DayBars days={k.activity.daily} /> : <p className="ae-muted">Not read: {k.activity.reason}</p>}
         {d.per_rule && k.activity.ok && <p className="ae-muted">{["24", "25", "26", "27", "28"].map((n) => `rule ${n}: ${(d.per_rule![n] ?? 0).toLocaleString()}`).join(" · ")}</p>}
       </Card>
+      <ObjUseCard u={k.objuse} />
+
       {k.changes && (k.changes.counts ? (
         <Card title={<>What changed <b className="ae-hc-n">{k.changes.counts.all.toLocaleString()}</b></>} sub={`since ${k.changes.before}`}
           right={<button type="button" className="ae-btn" onClick={() => c.nav("changes", {})}>Open</button>}>
@@ -364,6 +366,23 @@ function DepthCard({ k }: { k: HomeCards }) {
       right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { rule: "14" })}>Deep chains</button>}>
       <FilterChips label="Count" value={on} onPick={(v) => setOn(v as typeof on)} items={DEPTH} />
       <HBars rows={rows} />
+    </Card>
+  );
+}
+
+/** Object activity at 90 days: last use per type, tables read but never written and the reverse. */
+function ObjUseCard({ u }: { u: HomeCards["objuse"] }) {
+  const c = useApp();
+  return (
+    <Card title={<>Object activity {u.ok && <b className="ae-hc-n">{u.unused.toLocaleString()}</b>}</>} sub={u.ok ? `objects not used in ${u.days} days${u.unused_new ? `, ${u.unused_new.toLocaleString()} of them new or changed` : ""}` : undefined}
+      right={<button type="button" className="ae-btn" onClick={() => c.nav("objuse", {})}>Open</button>}>
+      {u.notes.map((n) => <p key={n} className="ae-muted">Not read: {n}</p>)}
+      <AgeBars types={u.types} onPick={(t) => c.nav("objuse", { type: t })} />
+      {u.ok && <ul className="ae-hc-facts">
+        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "read_only" })}>{plural(u.read_only, "table")} read, never written</button></li>
+        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "write_only" })}>{plural(u.write_only, "table")} written, never read</button></li>
+      </ul>}
+      {u.nodata.length > 0 && <p className="ae-muted">No activity data for {u.nodata.map((t) => t.toLowerCase()).join(", ")}.</p>}
     </Card>
   );
 }
