@@ -402,8 +402,9 @@ def au_grants(sql, plain):
     return [dict(zip([c[0] for c in cur.description], x)) for x in cur.fetchall()]
 
 
-def fake_snowflake(d, au):
-    """query(sql) answering live()'s SHOW commands from data set d; ACCOUNT_USAGE readable when au (canned rows).
+def fake_snowflake(d, au, info=False):
+    """query(sql) answering live()'s SHOW commands from data set d; ACCOUNT_USAGE readable when au (canned rows),
+    INFORMATION_SCHEMA DATABASES / SCHEMATA / TABLES views when info (every other INFORMATION_SCHEMA read refused).
     Database roles (DB.ROLE in d) only show up in SHOW DATABASE ROLES, never in SHOW ROLES. As on a real account, the
     grant reads list no Streamlit app or notebook ownership: only SHOW STREAMLITS / NOTEBOOKS (the object inventory) do;
     ACCOUNT_USAGE.TABLES lists the tables and views, all granted already."""
@@ -415,14 +416,30 @@ def fake_snowflake(d, au):
     dbs = sorted({g["OBJECT_NAME"].split(".")[0] for g in plain if g["GRANTED_ON"] not in ("ROLE", "ACCOUNT", "WAREHOUSE")})
     name = lambda sql: sql.split('"')[1]  # noqa: E731  the first quoted name
     qname = lambda sql: ".".join(sql.split('"')[1::2])  # noqa: E731  "DB"."ROLE" -> DB.ROLE
+    schemas = {x: sorted({o.split(".")[1] for o in a_objects(plain) if o.startswith(x + ".")}) for x in dbs}
+    tables = [dict(zip(("DATABASE_NAME", "SCHEMA_NAME", "NAME"), g["OBJECT_NAME"].split(".")), OWNER=g["GRANTEE_ROLE"],
+                   OWNER_ROLE_TYPE="DATABASE_ROLE" if "." in g["GRANTEE_ROLE"] else "ROLE", KIND=g["GRANTED_ON"])
+              for g in plain if g["PRIVILEGE"] == "OWNERSHIP" and g["GRANTED_ON"] in ("TABLE", "VIEW")]
     calls = []
 
     def query(sql):
         calls.append(sql)
         s = " ".join(sql.split())
-        if "ACCOUNT_USAGE" in s or "INFORMATION_SCHEMA" in s:
-            if not au or "INFORMATION_SCHEMA" in s:
+        if ".INFORMATION_SCHEMA." in s:  # one database's views; the table functions (tags, policies, history) refused
+            view = re.search(r"\.INFORMATION_SCHEMA\.(\w+)", s)[1]
+            if not info or "TABLE(" in s or view not in ("DATABASES", "SCHEMATA", "TABLES"):
                 raise RuntimeError("Object does not exist or not authorized.")
+            if view == "DATABASES":
+                return [dict(DATABASE_NAME=None, SCHEMA_NAME=None, NAME=x, OWNER=None, OWNER_ROLE_TYPE=None, TYPE="STANDARD")
+                        for x in dbs] + [dict(NAME="SNOWFLAKE", TYPE="IMPORTED DATABASE")]
+            if view == "SCHEMATA":
+                return [dict(DATABASE_NAME=name(s), SCHEMA_NAME=None, NAME=x, OWNER=None) for x in schemas.get(name(s), [])]
+            return [dict(x, OWNER_ROLE_TYPE=None) for x in tables if x["DATABASE_NAME"] == name(s)]
+        if "ACCOUNT_USAGE" in s:
+            if not au:
+                raise RuntimeError("Object does not exist or not authorized.")
+            if "ACCOUNT_USAGE.DATABASES D" in s:  # the schema list for SHOW FUTURE GRANTS
+                return [dict(DB=x, SC=c) for x in dbs for c in schemas[x] or [None]]
             if "LIMIT 1" in s:
                 return [{"1": 1}]
             if "'USE' AS PART" in s:  # history_sql: object use and activity in one read, the other part's columns NULL
@@ -433,9 +450,7 @@ def fake_snowflake(d, au):
             if "ACCOUNT_USAGE.GRANTS_TO_ROLES " in s + " ":
                 return au_grants(s, plain)
             if "ACCOUNT_USAGE.TABLES " in s + " ":  # the object inventory: owner and kind of each table and view
-                return [dict(zip(("DATABASE_NAME", "SCHEMA_NAME", "NAME"), g["OBJECT_NAME"].split(".")), OWNER=g["GRANTEE_ROLE"],
-                             OWNER_ROLE_TYPE="DATABASE_ROLE" if "." in g["GRANTEE_ROLE"] else "ROLE", KIND=g["GRANTED_ON"])
-                        for g in plain if g["PRIVILEGE"] == "OWNERSHIP" and g["GRANTED_ON"] in ("TABLE", "VIEW")]
+                return [dict(x) for x in tables]
             me = re.search(r"(?:GRANTEE_NAME|AND NAME) = '([^']*)'", s)  # mine(): one user's rows
             if me and "ACCOUNT_USAGE.GRANTS_TO_USERS " in s + " ":
                 return [{"ROLE": x["ROLE_NAME"]} for x in d["USER_ROLE"] if x["USER_NAME"] == me[1]]
@@ -598,9 +613,16 @@ def test_live():
     d = a.fake()
     a.build(d)
     want = (sorted(a.role_grants), sorted(a.user_grants), sorted(a.privs), a.users[:], dict(a.profile))
-    for au in (False, True):
-        query, calls = fake_snowflake(d, au)
+    for au, info in ((False, False), (False, True), (True, False)):  # SHOW, INFORMATION_SCHEMA, ACCOUNT_USAGE
+        query, calls = fake_snowflake(d, au, info)
         s = a.live(query)
+        level = "ACCOUNT_USAGE" if au else "INFORMATION_SCHEMA" if info else "SHOW"
+        src = s["run"]["SOURCES"]
+        assert src["schemas"] == level and any(c.startswith("SHOW SCHEMAS IN DATABASE") for c in calls) == (level == "SHOW")
+        assert (level in src["objects"].split(" + ")) and any(".INFORMATION_SCHEMA.TABLES" in c for c in calls) == info, src
+        assert ("TABLES: INFORMATION_SCHEMA (" in (s["run"]["NOTES"].get("objects") or "")) == info  # why the lower level
+        if level != "ACCOUNT_USAGE":  # the schema list says why it is not from ACCOUNT_USAGE
+            assert "ACCOUNT_USAGE.DATABASES / SCHEMATA" in s["run"]["NOTES"]["schemas"]
         assert not [c for c in calls if re.match(r"\s*(INSERT|CREATE|UPDATE|DELETE|MERGE|DROP|ALTER|GRANT|CALL)", c, re.I)]
         src = s["run"]["SOURCES"]
         assert src["grants"] == src["users"] == ("ACCOUNT_USAGE" if au else "SHOW") and src["future_grants"] == "SHOW"
@@ -698,7 +720,8 @@ def test_live_inside():
     s = a.live(query)
     src, notes = s["run"]["SOURCES"], s["run"]["NOTES"]
     assert src["grants"] == src["users"] == src["tags"] == src["policies"] == "ACCOUNT_USAGE"
-    assert src["future_grants"] == src["streams"] == "UNAVAILABLE" and "SHOW DATABASES" in notes["future_grants"]
+    assert src["future_grants"] == src["streams"] == "UNAVAILABLE" and "SHOW FUTURE GRANTS" in notes["future_grants"]
+    assert src["schemas"] == "ACCOUNT_USAGE" and not [c for c in calls if c.startswith("SHOW SCHEMAS")]  # no SHOW needed
     assert "streams" in notes and not s["STREAM"] and not [g for g in s["GRANT"] if g["IS_FUTURE"]]
     a.build(s)
     assert (sorted(a.role_grants), sorted(a.user_grants), a.users) == want  # every role link and user still there
