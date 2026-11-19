@@ -38,7 +38,9 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
   }, [q, open, min]);
   const close = (keep = clear ? q : value) => { setOpen(false); setActive(-1); typed.current = false; setQ(keep); };
   const pick = (x: T) => { typed.current = false; setOpen(false); setActive(-1); setItems([]); setQ(clear ? "" : keyOf(x)); onPick(x); };
-  const shown = open ? items : [];
+  const now = typed.current ? q.trim() : "";
+  const shown = open && got.current === now ? items : []; // only the answer for the text in the box: never a list left from an earlier key
+  const none = open && typed.current && now.length >= Math.max(min, 1) && got.current === now && !items.length;
   const opt = (i: number) => `${id}-o${i}`;
   return (
     <span className={`ae-combo${className ? ` ${className}` : ""}`}>
@@ -60,6 +62,7 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
             close(clear ? "" : value);
           }
         }} />
+      {none && <span className="ae-combo-list ae-muted" role="status">No match for “{now}”</span>}
       {shown.length > 0 && (
         <span className="ae-combo-list" role="listbox" id={`${id}-l`} aria-label={label}>
           {shown.map((x, i) => (
