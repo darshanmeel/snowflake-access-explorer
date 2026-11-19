@@ -1912,10 +1912,13 @@ def object_levels(keys, start, user=False):
 
 def ladder_counts(objs):
     """Counts of data objects at each step or higher (read counts change and own too): one number per idea. usage:
-    USAGE grants on databases and schemas (hidden by default, "can see names")."""
+    USAGE grants on databases and schemas (hidden by default, "can see names"). future: future-grant placeholders,
+    not in the steps."""
     data = [x for x in objs if x["category"] == "data" and x["level"]]
+    future = sum(x["type"].startswith("FUTURE") for x in data)  # placeholders, not objects: counted on their own
+    data = [x for x in data if not x["type"].startswith("FUTURE")]
     at = lambda s: sum(LEVELS.index(x["level"]) >= LEVELS.index(s) for x in data)
-    return dict(read=at("read"), change=at("change"), own=at("own"), admin=at("admin"),
+    return dict(read=at("read"), change=at("change"), own=at("own"), admin=at("admin"), future=future,
                 usage=sum(pv == "USAGE" and x["type"] in ("DATABASE", "SCHEMA") for x in objs for pv in x["privileges"]),
                 runnable=sum(x["category"] == "runnable" for x in objs),
                 account=sum(x["category"] == "account" for x in objs))
@@ -1934,7 +1937,7 @@ def reach_counts(name, user=False):
     top = {}
     for h in hs:
         for pv, k, o in granted.get(h, []):
-            if category(pv, k) == "data" and level_of(pv, k):
+            if category(pv, k) == "data" and level_of(pv, k) and not k.startswith("FUTURE"):
                 lv = "admin" if h in tainted else level_of(pv, k)
                 if o not in top or LEVELS.index(lv) > LEVELS.index(top[o]):
                     top[o] = lv
@@ -3356,8 +3359,9 @@ def protection(cols, k):
 
 def catalog():
     """Screen 8: sensitive_rank() rows with protection (status, columns [dict(column, masked, policies)], unmasked),
-    labels (tag=value), groups (pii / confidential from the tag values) and readers (users who can read it, any
-    path). Most exposed first: status, then unmasked columns, then readers. Once per data set."""
+    labels (tag=value), groups (pii / confidential from the tag values), readers (users who can read it, any
+    path) and clear (those of them who see a sensitive value in clear, clear_readers). Most exposed first: status,
+    then unmasked columns, then who sees clear, then readers. Once per data set."""
     def make():
         out = []
         for r in sensitive_rank():
@@ -3366,10 +3370,28 @@ def catalog():
             labs = list(dict.fromkeys(tag_label(t, v) for _, t, v, _ in r["tags"]))
             out.append(r | dict(status=protection(r["cols"], r["masked"][0]), columns=cols,
                                 unmasked=sum(not c["masked"] for c in cols), labels=labs, readers=len(r["users"]),
+                                clear=clear_readers(r["users"], r["cols"], ps),
                                 groups=[g for g, rx in (("pii", PII_TAGS), ("confidential", CONF_TAGS))
                                         if any(rx.search(x) for x in labs)]))
-        return sorted(out, key=lambda r: (PROTECTION.index(r["status"]), -r["unmasked"], -r["readers"], r["object"]))
+        return sorted(out, key=lambda r: (PROTECTION.index(r["status"]), -r["unmasked"], -(r["clear"] or 0), -r["readers"],
+                                          r["object"]))
     return cached("catalog", make)
+
+
+def clear_readers(users, cols, ps):
+    """How many of users (readers of an object with sensitive columns cols, masking policies ps {column: [policy]})
+    see a sensitive value in clear: every reader when a column has no masking or the object is tagged whole, else
+    those holding a role a policy shows the value to (clear_for, from the policy text). None: a policy text gives no
+    answer."""
+    if not cols or any(c not in ps for c in cols):
+        return len(users)
+    roles = set()
+    for c in cols:
+        for p in ps[c]:
+            if p["clear"] is None:
+                return None
+            roles |= set(p["clear"][0])
+    return len(set().union(*(ups(r)[1] for r in roles)).intersection(users))
 
 
 ADMIN_BOX = "Admin roles"  # flow: a user holding an admin role reaches every object through it
@@ -5947,7 +5969,9 @@ def granted_used(name, user=True, days=90):
         unused = [p for p in x["privileges"] if level_of(p, x["type"]) and (
             used is None or p == "OWNERSHIP" or (p in WRITE_PRIVS and used == "read"))]
         cut = [p for p in unused if p != "OWNERSHIP"]
-        if used is None:
+        if not who:  # an orphan role: no one to have used it, so no use says it can go (rule 13 covers it)
+            kind, text, unused, cut = "none", "Nobody holds it", [], []
+        elif used is None:
             kind, text = "drop", f"Remove all · not used in {days} days"
         elif cut:
             kind, text = "trim", f"Remove {', '.join(cut)} · never used" + " · ownership unused" * ("OWNERSHIP" in unused)
@@ -5962,7 +5986,7 @@ def granted_used(name, user=True, days=90):
                         people=sorted(u["users"]) if u else [], holder=x["holder"], suggest=kind, text=text,
                         changes=[dict(op="revoke_priv", role=h, privilege=p, object=x["object"])
                                  for p in cut for h in sorted(hold.get((x["object"], p), ()))]))
-    out.sort(key=lambda r: (("drop", "trim", "keep").index(r["suggest"]), not r["sensitive"], r["object"]))
+    out.sort(key=lambda r: (("drop", "trim", "keep", "none").index(r["suggest"]), not r["sensitive"], r["object"]))
     w0 = monday(ref_time())
     changes = [c for r in out for c in r["changes"]]
     counts = dict(objects=len(out), used=sum(bool(r["used"]) for r in out), drop=sum(r["suggest"] == "drop" for r in out),

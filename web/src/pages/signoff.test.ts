@@ -9,7 +9,7 @@ const row = (user: string, more: Partial<GridRow> = {}): GridRow => ({
 });
 const cat = (object: string, more: Partial<CatalogRow>): CatalogRow => ({
   object, name: object.split(".").pop()!, ns: "DB.S", type: "TABLE", labels: [], groups: [], status: "protected", masked: [1, 1],
-  columns: [], unmasked: 0, row_policies: [], readers: 3, admin: 0, ...more,
+  columns: [], unmasked: 0, row_policies: [], readers: 3, clear: 3, admin: 0, ...more,
 });
 
 describe("review grid and sign-off", () => {

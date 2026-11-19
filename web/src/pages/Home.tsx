@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
-import { Banner, Card, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
+import { Banner, Card, EmptyState, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
@@ -32,11 +32,12 @@ export function remember(r: Recent) {
 /** "can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER" -> who (a user, or a role such as F_MARKETING: Can they? takes a
  * name that is no user as the role), what, verb. */
 export function parseQuestion(q: string): { who: string; what: string; priv: string } | null {
-  const m = q.trim().match(/^can\s+(\S+)\s+(read|select|change|write|insert|update|delete|own)\s+(\S+?)\??$/i);
+  const m = q.trim().match(/^can\s+(\S+)\s+(read|select|change|write|insert|update|delete|own|use|usage|operate|monitor)\s+(\S+?)\??$/i);
   if (!m) return null;
   const v = m[2].toLowerCase();
-  const priv = v === "own" ? "OWNERSHIP" : v === "read" || v === "select" ? "SELECT" : v === "change" || v === "write" ? "INSERT" : v.toUpperCase();
-  return { who: m[1].toUpperCase(), what: m[3].toUpperCase(), priv };
+  const priv = v === "own" ? "OWNERSHIP" : v === "read" || v === "select" ? "SELECT" : v === "change" || v === "write" ? "INSERT"
+    : v === "use" ? "USAGE" : v.toUpperCase();
+  return { who: m[1], what: m[3], priv }; // as typed: the server matches names ignoring case
 }
 
 /** Screens whose name matches the search (2+ letters), so "graph" or "used" open them from Home. */
@@ -142,6 +143,9 @@ export function HomePageView() {
             ) : null;
           })}
         </div>
+      )}
+      {!ask && q.trim().length >= 2 && hits.q === q && !items.length && !screens.length && (
+        <EmptyState title={`No match for “${q.trim()}”`}>No person, role, object or screen has that in its name.</EmptyState>
       )}
       <div className="ae-shortcuts">
         <span className="ae-muted">Try:</span>

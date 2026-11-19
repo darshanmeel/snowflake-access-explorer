@@ -62,6 +62,7 @@ export function SensitivePageView() {
               { label: "Disabled readers", value: k.disabled, tone: k.disabled ? "warn" : null },
               { label: "Unmasked columns", value: polOff ? "unknown" : k.unmasked, tone: k.unmasked && !polOff ? "bad" : null },
             ]} />
+            {d.filters.people && <p className="ae-muted">The tiles count every reader; People only filters the tables.</p>}
             <PolicyNote />
             {k.stale_total > 0 && <Banner tone="warn" title={`Disabled or dormant users still hold access: ${k.stale_total.toLocaleString()}`}>
               <NameList items={k.stale} total={k.stale_total} onOpen={(u) => c.nav("access", { user: u })} onMore={() => c.nav("rules", { rule: "7" })} /></Banner>}
@@ -88,6 +89,7 @@ export function SensitivePageView() {
                   col("rp", "Row policy", (r: O) => r.row_policies.join(", "), { wrap: "wrap" }),
                   col("p", "Who can read", readersOf, { num: true, help: "People who can read it: active, dormant or disabled, service users, through an admin role",
                     render: (r: O) => <MiniBar of={most} parts={readerParts(r.readers)} /> }),
+                  col("cl", "Sees clear", (r: O) => r.clear ?? "unknown", { num: true, help: "Readers who see a sensitive value unmasked: all of them when a column has no masking, else those a masking policy shows it to" }),
                   col("ro", "Roles", (r: O) => r.roles.join(", ") + (r.roles_total > r.roles.length ? ` +${r.roles_total - r.roles.length} more` : ""), { wrap: "truncate" }),
                 ]} />
               <div className="ae-bar-legend ae-mt">{readerParts({ active: 0, dormant: 0, service: 0, admin: 0 }).map((p) => <span key={p.key}><span className={`ae-dot2 ae-bar-${p.cls}`} />{p.label}</span>)}
@@ -99,7 +101,7 @@ export function SensitivePageView() {
                 columns={[
                   col("u", "User", (r: R) => r.user, { render: (r: R) => <NameLink id={r.user} refs={d.refs} /> }),
                   col("t", "Type", (r: R) => r.type), col("s", "Status", (r: R) => r.status), col("l", "Last login", (r: R) => r.last_login_text),
-                  col("ob", "Objects", (r: R) => r.objects, { num: true }),
+                  col("ob", "Objects", (r: R) => r.objects ?? "every object (admin role)", { num: true }),
                   col("ro", "Via roles", (r: R) => r.roles.join(", "), { wrap: "truncate" }),
                   pathCol<R>(d.refs),
                 ]} />

@@ -75,6 +75,8 @@ body { background: #F6F7F9; }
 .ae-pagehead p { margin: 2px 0 0; }
 .ae-controls { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; margin: 8px 0 14px; }
 .ae-field { display: grid; gap: 3px; font-size: 12px; color: var(--ae-muted); }
+.ae-pick-all { display: flex; gap: 8px; align-items: flex-end; }
+.ae-pick-all > .ae-link { padding-bottom: 7px; white-space: nowrap; }
 .ae-field.ae-check { display: flex; gap: 6px; align-items: center; color: var(--ae-ink); font-size: 13px; padding-bottom: 6px; }
 .ae-fade { opacity: .55; transition: opacity .15s; }
 .ae-code { background: var(--ae-sunk); border: 1px solid var(--ae-line); border-radius: 6px; padding: 8px 10px; font-family: var(--ae-mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }

@@ -1,5 +1,6 @@
 """server.py on the fake data: every endpoint answers 200 with the keys of web/API.md. Run: python test_server.py"""
 import importlib
+from collections import Counter
 import json
 import os
 import re
@@ -225,7 +226,7 @@ def test_big_lanes():
 
 
 def test_check():
-    d = js("/api/check", ["answer", "paths", "graph", "privileges", "refs", "options", "ask"])
+    d = js("/api/check", ["answer", "paths", "graph", "privileges", "refs", "options", "nearest"])
     assert d["answer"]["yes"] and d["paths"]
     graph_ok(d["graph"])
     no = js("/api/check?name=ANALYST_01&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=DELETE")
@@ -335,7 +336,7 @@ def test_sensitive_rules_review():
     assert js(f"/api/review?db={db}&hideusage=0")["kpis"]["hidden_usage"] == 0
     cv = get(f"/api/review.csv?db={db}")
     assert "access_review_" in cv.headers["content-disposition"] and "Keep/Revoke" in cv.text
-    n = js(f"/api/review?db={db}&part=all")["total"]
+    n = js(f"/api/review?db={db}&part=all&hideusage=0")["total"]
     assert len(cv.text.strip().splitlines()) == n + 6  # every row, after 4 head lines, a blank one and the columns
     get("/api/review?db=NOPE", 404)
 
@@ -795,7 +796,7 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     assert sum(x["read"] for x in h) == js("/api/access?user=ENGINEER_01&filter=read")["total"]
     assert js("/api/access?user=ENGINEER_01&hq=zzz")["heat"] == [] and d["heat_total"] == len(h)
     assert all(len(r["kids"]) <= server.KIDS and r["kids_total"] >= len(r["kids"]) for r in d["why"])
-    assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (6, 5, 2, 3, 5, 8), n
+    assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (5, 5, 2, 3, 5, 8), n  # the future grant on SALES.CORE is not an object
     powers = {(x["privileges"][0], x["object"]) for x in d["powers"]}
     assert powers == {("EXECUTE TASK", "ACCOUNT"), ("VIEW LINEAGE", "ACCOUNT"), ("CREATE TABLE", "SALES.CORE")}, powers
     log = next(x for x in d["objects"] if x["object"] == "SHARED.LOGGING.TBL_LOGGING")
@@ -806,12 +807,12 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     assert len(data) == len(set(data))  # each object once
     assert d["why"][0]["note"] == "default" and d["who"]["secondary_all"]
     r = js(f"/api/access?role={a.FUNC}ENGINEER")
-    assert r["who"]["held_by"]["users"] >= 1 and r["counts"]["read"] == 6
+    assert r["who"]["held_by"]["users"] >= 1 and r["counts"]["read"] == 5
     get("/api/access?user=NOPE", 404)
     h = js("/api/home", ["me", "risks", "protection", "counts"])
     assert h["me"] is None and h["risks"]["High"] > 0 and h["protection"]["unmasked"] == 3  # shared: nobody until picked
     hm = js("/api/home?view=mine")
-    assert hm["risks"] is None and hm["me"]["counts"]["read"] == 6 and hm["cards"] is None
+    assert hm["risks"] is None and hm["me"]["counts"]["read"] == 5 and hm["cards"] is None
     k = h["cards"]  # one card per area, counts that add up to what the other pages show
     side = js("/api/meta")["people"]
     assert k["admins"]["total"] == side["admins"] > 0 and k["stale"]["total"] == side["stale"] > 0
@@ -1440,7 +1441,7 @@ def test_csv_formula():
     import server
     t = server.csv_text(["o", "n"], [["=HYPERLINK(1)", "-3"], ["@x", 5], ["T", "+1.5"]])
     assert t.splitlines()[1:] == ["'=HYPERLINK(1),-3", "'@x,5", "T,+1.5"], t
-    assert get("/api/rules.csv?grantee=%3D1%2B1").text.splitlines()[0] == "Rule checks,'=1+1"  # a head row from the link
+    assert get("/api/rules.csv?area=%3D1%2B1").text.splitlines()[0] == "Rule checks,'=1+1"  # a head row from the link
 
 
 
@@ -1594,6 +1595,70 @@ def test_not_read_and_caps():  # a source not read is "not read", never none; a 
     js("/api/changes")
     assert js("/api/home")["cards"]["changes"]["counts"]
     assert js("/api/activity?user=ADMIN_01")["admin"]
+
+
+def test_correct_answers():
+    """Answers that read as safe or as a gap when they are not."""
+    # admin subjects on Access: never a bare zero, the admin roles named, an admin role's own account powers listed
+    adm = js("/api/access?user=ADMIN_01")
+    assert adm["admin_roles"] == ["SECURITYADMIN", "SYSADMIN"]
+    r = js("/api/access?role=SYSADMIN")
+    assert "SYSADMIN" in r["admin_roles"] and r["counts"]["read"] == 0
+    assert all(o["category"] == "account" for o in server.access_all("SYSADMIN", False, False)["objs"])
+    assert js("/api/access?user=ANALYST_01")["admin_roles"] == []
+    # future grants are not objects in the counts
+    e = js("/api/access?user=ENGINEER_01")
+    fut = [o for o in server.access_all("ENGINEER_01", True, False)["objs"] if o["label"] and o["category"] == "data"]
+    assert fut and e["counts"]["future"] == len(fut) and all("<" not in h["schema"] for h in e["heat"])
+    assert e["counts"]["read"] == sum(o["category"] == "data" and o["level"] and not o["label"]
+                                      for o in server.access_all("ENGINEER_01", True, False)["objs"])
+    assert not any(o["label"] for o in js("/api/access?user=ENGINEER_01&filter=read&limit=500")["objects"])
+    # Request agrees with Can they? for an admin holder
+    q = js("/api/request?name=ADMIN_01&obj=SALES.CORE.TBL_CUSTOMER")
+    ch = js("/api/check?name=ADMIN_01&obj=SALES.CORE.TBL_CUSTOMER")
+    assert ch["answer"]["how"] == "admin" and q["has"] and q["via_admin"] == ["SECURITYADMIN", "SYSADMIN"] and not q["suggestions"]
+    assert not js("/api/request?name=ANALYST_01&obj=SALES.CORE.TBL_CUSTOMER")["via_admin"]
+    # Can they? No: one list of ways in (Nearest), no second disagreeing one
+    no = js("/api/check?name=MARKETING_01&obj=SALES.CORE.TBL_CUSTOMER&priv=INSERT")
+    assert no["verdict"] == "no" and "ask" not in no and "closest" not in no
+    # typed names in any case
+    lo = js("/api/check?name=engineer_01&obj=sales.core.tbl_customer")
+    assert lo["user"] == "ENGINEER_01" and lo["object"] == "SALES.CORE.TBL_CUSTOMER"
+    assert js(f"/api/check?name={a.FUNC.lower()}marketing&obj=sales.core.tbl_customer")["subject"]["user"] is False
+    # Granted vs used: an orphan role suggests no revoke; nobody holds it
+    u = js(f"/api/usage?role={a.FUNC}LEGACY_REPORTING")  # rule 13 on the fake data
+    assert u["people"] == 0 and u["counts"]["changes"] == 0 and not u["changes"] and all(x["suggest"] == "none" for x in u["rows"])
+    # Risks CSV: the screen's filters, the worst severity by default, a few paths per finding
+    scr = js("/api/rules")
+    rows = lambda t: [x for x in t.strip().splitlines()[4:] if x][1:]
+    t = get("/api/rules.csv").text
+    assert len(rows(t)) == scr["total"] and scr["filters"]["sev"] in t.splitlines()[0]
+    hi = js("/api/rules?sev=High&q=analyst")
+    assert len(rows(get("/api/rules.csv?sev=High&q=analyst").text)) == hi["total"] < js("/api/rules?sev=High")["total"]
+    assert "Path count" in t.splitlines()[4]
+    # Review: Hide USAGE rows hides them, tiles follow the search, the database with sensitive data first
+    on, off = js("/api/review?db=*&part=all&limit=1000"), js("/api/review?db=*&part=all&hideusage=0&limit=1000")
+    assert on["kpis"]["hidden_usage"] > 0 and on["total"] == off["total"] - on["kpis"]["hidden_usage"]
+    assert not any(r["type"] in ("DATABASE", "SCHEMA") for r in on["rows"] if not r["admin"])
+    assert on["kpis"]["rows"] == on["counts"]["all"] and on["kpis"]["csv_rows"] == off["kpis"]["rows"]
+    s1 = js("/api/review?db=*&part=all&q=analyst_01")
+    assert s1["kpis"]["rows"] == s1["counts"]["all"] < on["kpis"]["rows"] and s1["kpis"]["users"] <= 2
+    d = js("/api/review")
+    sens = Counter(a.split_name(o)[0] for o in server.S["sens"])
+    assert sens[d["filters"]["db"]] == max(sens.values()) and d["part"] == "sens" and d["note"] is None
+    plain = next(x for x in sorted({a.split_name(o)[0] for o in a.objects} - {""}) if not sens[x])
+    p = js(f"/api/review?db={plain}&part=sens")
+    assert p["part"] == "all" and plain in p["note"]
+    # Sensitive data: who sees clear next to who can read; an admin-only reader has no object count
+    sp = js("/api/sensitive?show=catalog")
+    cat = {x["object"]: x for x in sp["catalog"]}
+    v = cat["SALES.MART.VW_CUSTOMER"]
+    assert v["status"] == "protected" and v["clear"] < v["readers"]
+    assert all(x["clear"] == x["readers"] for x in sp["catalog"] if x["unmasked"] or x["status"] == "whole")
+    assert all(o["clear"] == cat[o["object"]]["clear"] for o in sp["objects"])
+    via = [x for x in js("/api/sensitive?limit=0")["readers"] if x["via_admin"]]
+    assert via and all(x["objects"] is None for x in via)
+    assert js("/api/sensitive?people=1")["kpis"] == js("/api/sensitive")["kpis"]
 
 
 if __name__ == "__main__":

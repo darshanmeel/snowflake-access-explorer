@@ -65,7 +65,7 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
           <div className="ae-muted">Object</div>
           <div className="ae-req-obj">
             <button type="button" className="ae-link ae-mono" onClick={() => o.open(d.object)}>{d.object}</button>
-            <span className="ae-muted">{d.type.toLowerCase()} · {forRole ? "role " : ""}{now ? `${d.user} can ${now === "can use" ? "use" : now} it today` : `${d.user} has no access today`}</span>
+            <span className="ae-muted">{d.type.toLowerCase()} · {forRole ? "role " : ""}{d.via_admin?.length ? `${d.user} reaches it through admin role ${d.via_admin.join(", ")} today` : now ? `${d.user} can ${now === "can use" ? "use" : now} it today` : `${d.user} has no access today`}</span>
           </div>
         </div>
         <div>
@@ -75,7 +75,7 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
           <div className="ae-muted ae-mt">{d.privileges.join(", ")}</div>
         </div>
         {d.has ? (
-          <EmptyState title={`${d.user} already has ${d.privileges.join(", ")} on it`}>
+          <EmptyState title={d.via_admin?.length ? `${d.user} already reaches it through admin role ${d.via_admin.join(", ")}` : `${d.user} already has ${d.privileges.join(", ")} on it`}>
             <button type="button" className="ae-link" onClick={() => c.nav("check", { ...subjectLink(d.subject), obj: d.object })}>See how on Can they?</button>
           </EmptyState>
         ) : choices.length ? (

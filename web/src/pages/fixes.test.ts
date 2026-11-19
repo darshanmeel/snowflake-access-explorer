@@ -7,7 +7,7 @@ import { catalogCsv, catalogOf, gridRows, hits } from "./signoff";
 
 const cat = (object: string, more: Partial<CatalogRow> = {}): CatalogRow => ({
   object, name: object.split(".").pop()!, ns: "DB.S", type: "TABLE", labels: [], groups: [], status: "protected", masked: [1, 1],
-  columns: [], unmasked: 0, row_policies: [], readers: 3, admin: 0, ...more,
+  columns: [], unmasked: 0, row_policies: [], readers: 3, clear: 3, admin: 0, ...more,
 });
 const grow = (user: string, roles: string[]): GridRow => ({
   user, type: "PERSON", status: "active", days: 1, last_login: "", admin: [], roles, suggest: null, cells: {},
@@ -29,6 +29,7 @@ describe("list toolbar search and CSV", () => {
     expect(catalogOf(rows, "all", "email").map((r) => r.object)).toEqual(["DB.S.CUST"]);
     expect(catalogOf(rows, "all", "pii=").map((r) => r.object)).toEqual(["DB.S.LOG"]);
     expect(catalogCsv(rows).split("\n")[0]).toContain("Columns not masked");
+    expect(catalogCsv([cat("DB.S.X", { readers: 5, clear: null })]).split("\n")[1]).toMatch(/,5,unknown\r?$/); // can read vs sees clear
     expect(gridRows([grow("ANN", ["F_A"]), grow("BOB", ["F_B"])], true, false, "f_b").map((r) => r.user)).toEqual(["BOB"]);
     expect(usageCsv([use("DB.S.A")]).split("\n")[1]).toContain("not used");
   });

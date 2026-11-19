@@ -29,7 +29,7 @@ export function RulesPageView() {
   return (
     <>
       <Head title="Risks & fixes" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
-        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", apiParams(c), "findings.csv")}>Download CSV</button>} />
+        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString()} rows)` : ""}</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
         const chips = scope.length > 0 && (

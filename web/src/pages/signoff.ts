@@ -43,9 +43,9 @@ export const catalogOf = (rows: CatalogRow[], f: CatFilter, q = "") =>
     && hits(q, r.object, ...r.labels, ...r.columns.map((c) => c.column)));
 
 /** The catalog as CSV: one row per object. */
-export const catalogCsv = (rows: CatalogRow[]) => toCsv(["Object", "Type", "Status", "Tags", "Columns not masked", "Columns masked", "Row policies", "Readers"],
+export const catalogCsv = (rows: CatalogRow[]) => toCsv(["Object", "Type", "Status", "Tags", "Columns not masked", "Columns masked", "Row policies", "Readers", "Sees clear"],
   rows.map((r) => [r.object, r.type, r.status, r.labels.join(" "), r.columns.filter((c) => !c.masked).map((c) => c.column).join(" "),
-    r.columns.filter((c) => c.masked).map((c) => c.column).join(" "), r.row_policies.join(" "), String(r.readers)]));
+    r.columns.filter((c) => c.masked).map((c) => c.column).join(" "), r.row_policies.join(" "), String(r.readers), r.clear == null ? "unknown" : String(r.clear)]));
 
 export function catalogSentence(rows: CatalogRow[]): string {
   const open = rows.filter((r) => r.unmasked > 0);

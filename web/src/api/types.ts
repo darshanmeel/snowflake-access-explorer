@@ -689,8 +689,6 @@ export interface CheckPage {
   paths_total?: number; // every path (paths lists the first MAX_PATHS)
   owner: Path[];
   choke: string[];
-  closest: Path | null;
-  ask: { role: string; privileges: number; path: Path }[];
   options: { iac: string; sql: string; affects: number; users: string[]; edges: number }[];
   use_role: string | null;
   warehouse: string | null;
@@ -711,6 +709,7 @@ export interface RequestPage {
   privileges: string[];
   level: string | null; // the user's step on the object today
   has: boolean;
+  via_admin?: string[]; // has only through these admin roles (they inherit every role)
   asked: { role: string; kind: NodeKind; to: string | null; rule1: boolean; people: number; broad: boolean; change: CompareChange } | null; // picked on Can they?
   suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[]; people: number; broad: boolean; change: CompareChange }[];
   approver: string | null;
@@ -748,6 +747,7 @@ export interface SensitivePage {
     row_policies: string[];
     readers: { active: number; dormant: number; service: number; admin: number }; // each reader once
     columns: { column: string; masked: boolean; policies: string[] }[];
+    clear: number | null; // readers who see a sensitive value in clear (null: a policy text gives no answer)
     roles: string[]; // the first ROLES_SHOWN (limit=0: all)
     roles_total: number;
   }[]; // one page: objects_offset, limit= rows (limit=0: all)
@@ -758,7 +758,7 @@ export interface SensitivePage {
     type: string;
     status: UserStatus;
     last_login_text: string;
-    objects: number; // sensitive objects read
+    objects: number | null; // sensitive objects read (null: every one, through an admin role)
     roles: string[];
     path: Path | null;
     via_admin: boolean;
@@ -860,7 +860,6 @@ export interface ReviewRow {
   granted: string[];
   path: Path;
   admin: boolean;
-  hidden: boolean;
 }
 
 export interface ReviewPage {
@@ -882,15 +881,17 @@ export interface ReviewPage {
     admin_rows: number;
     hidden_usage: number;
     sensitive: number;
-  };
+    csv_rows: number; // rows the CSV has: every row of the scope, no search or hiding
+  }; // over the rows the tabs hold: after q and Hide USAGE rows
   counts: { sens: number; all: number }; // rows per tab, after q
   part: "sens" | "all";
+  note: string | null; // the Sensitive objects tab asked but empty: why All is shown
   total: number; // rows of the tab shown
   offset: number;
   limit: number;
   sort: string;
   dir: 1 | -1;
-  csv_max: number; // rows one CSV holds at most (kpis.rows is what it would have)
+  csv_max: number; // rows one CSV holds at most (kpis.csv_rows is what it would have)
   rows: ReviewRow[]; // one page: offset .. offset + limit
   refs: Refs;
 }
@@ -1026,7 +1027,7 @@ export interface AccessObject {
   label: string | null; // "Future tables · SALES.CORE"
 }
 
-export interface LadderCounts { read: number; change: number; own: number; admin: number; usage: number; runnable: number; account: number; sensitive?: number; schemas?: number }
+export interface LadderCounts { read: number; change: number; own: number; admin: number; future?: number; usage: number; runnable: number; account: number; sensitive?: number; schemas?: number }
 
 export interface Who {
   kind: NodeKind;
@@ -1062,6 +1063,7 @@ export interface AccessPage {
   why_more: number; // a role's holders past the HOLDERS listed
   deepest: number;
   roles: number;
+  admin_roles?: string[]; // admin roles held (a role: itself too); what they reach is not in the counts
   refs: Refs;
 }
 
@@ -1253,7 +1255,8 @@ export interface CatalogRow {
   columns: { column: string; masked: boolean; policies: string[] }[];
   unmasked: number;
   row_policies: string[];
-  readers: number;
+  readers: number; // users who can read it, disabled and service users included
+  clear: number | null; // of them, who see a sensitive value in clear (null: a policy text gives no answer)
   admin: number;
 }
 
@@ -1326,7 +1329,7 @@ export interface UsageRow {
   writes: number;
   last: string | null;
   holder: string;
-  suggest: "keep" | "trim" | "drop";
+  suggest: "keep" | "trim" | "drop" | "none"; // none: nobody holds the role
   text: string;
 }
 export interface UsagePage {

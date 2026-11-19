@@ -66,6 +66,7 @@ function Body({ d }: { d: AccessPage }) {
   const heat = sq2 ? hs.data ?? d : d;
   useEffect(() => setPage(0), [lvl, sq, usage, group, sort, cell]);
   const w = d.who, n = d.counts, user = w.kind === "user";
+  const adm = d.admin_roles ?? [], adminRole = !user && adm.includes(w.name); // admin role links are dropped: zero would read as safe
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
   const show = c.params.show === "summary" || c.params.show === "history" || c.params.show === "activity" ? c.params.show : "detail"; // the diagram first
   // the list is filtered, sorted and paged on the server: a big user has 100k+ objects
@@ -94,12 +95,18 @@ function Body({ d }: { d: AccessPage }) {
         <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
         <button type="button" className="ae-btn" title="Every grant next to the query history: up to a minute for a big person or role" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
       </div>
-      <p className="ae-answer">
+      {adminRole ? <p className="ae-answer">
+        <span className="ae-mono">{w.name}</span> <b className="ae-bad">is an admin role: it can do everything below it, not listed here.</b>
+        {" "}Only its own account powers are listed. <button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button>
+      </p> : <p className="ae-answer">
         <span className="ae-mono">{w.name}</span> can <b>read data in {plural(n.read, "object")}</b> across {plural(n.schemas, "schema")}.
         {" "}{user ? "They" : "It"} can <b>change {n.change}</b> of them and <b>own {n.own}</b>.
         {n.sensitive > 0 && <> <span className="ae-sens-word">{n.sensitive} hold sensitive columns</span> seen unmasked.</>}
         {n.admin > 0 && <> <b className="ae-bad">{n.admin} through an admin role.</b></>}
-      </p>
+        {(n.future ?? 0) > 0 && <> Plus {plural(n.future ?? 0, "future grant")} (every new object in those schemas).</>}
+        {adm.length > 0 && <> <b className="ae-bad">Holds {adm.join(", ")}: can also do everything below {adm.length > 1 ? "them" : "it"}, not counted here.</b>
+          {" "}<button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button></>}
+      </p>}
       <div className="ae-ladder">
         <div className="ae-ladder-bar">
           <div className="ae-ladder-h"><b>{n.read}</b> objects with data <span className="ae-muted">· click a part to list them</span></div>

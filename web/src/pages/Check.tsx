@@ -154,22 +154,25 @@ function Routes({ d }: { d: CheckPage }) {
 }
 
 /** The nearest ways in, asked for when the tab opens (near=1): the slow part of a No on a big account. */
-function NearestWays({ d }: { d: CheckPage }) {
+function NearestWays({ d, first }: { d: CheckPage; first?: boolean }) {
   const c = useApp();
   const asked = subjectIn(c.params);
   const s = useApi<CheckPage>(d.nearest ? null : "check", { ...apiParams(c), ...(asked.role ? { role: d.user } : { name: d.user }), obj: d.object, near: "1" });
-  if (d.nearest) return <NearestList d={d} />;
-  return <Load s={s} wait="Looking for the closest roles that lead there">{(x) => <NearestList d={x} />}</Load>;
+  if (d.nearest) return <NearestList d={d} first={first} />;
+  return <Load s={s} wait="Looking for the closest roles that lead there">{(x) => <NearestList d={x} first={first} />}</Load>;
 }
 
-function NearestList({ d }: { d: CheckPage }) {
+/** first: the best way only, under the verdict (Answer tab), the rest on Nearest ways in. */
+function NearestList({ d, first }: { d: CheckPage; first?: boolean }) {
   const c = useApp();
+  const ways = first ? (d.nearest ?? []).slice(0, 1) : d.nearest ?? [];
+  const more = (d.nearest?.length ?? 0) - ways.length;
   if (d.view === "mine") return <EmptyState title="Not worked out in My access" art="wait">The nearest ways in need everyone's grants: open the shared snapshot.</EmptyState>;
   if (!d.nearest?.length) return <EmptyState title="No way in to suggest" art="search">No role that can be suggested reaches {d.ask_priv} on {d.object} (admin and build roles are never suggested).</EmptyState>;
   return (
-    <Card title="Nearest ways in" sub={`For ${d.ask_priv}. The dashed red link is what is missing. Fewest missing links first, then the fewest people who would get it too.`}>
+    <Card title={first ? "Nearest way in" : "Nearest ways in"} sub={`For ${d.ask_priv}. The dashed red link is what is missing. Fewest missing links first, then the fewest people who would get it too.`}>
       <div className="ae-near">
-        {d.nearest.map((n, i) => (
+        {ways.map((n, i) => (
           <div key={i} className={`ae-near-row${n.broad || n.rule1 ? " warn" : ""}`}>
             <Lane path={n.path} grant={d.ask_priv} refs={d.refs} missing={n.missing} user={d.subject.user} />
             <div className="ae-near-foot">
@@ -189,6 +192,7 @@ function NearestList({ d }: { d: CheckPage }) {
           </div>
         ))}
       </div>
+      {more > 0 && <button type="button" className="ae-link" onClick={() => c.set({ show: "nearest" })}>{more} more on Nearest ways in</button>}
     </Card>
   );
 }
@@ -262,18 +266,7 @@ function Answer({ d }: { d: CheckPage }) {
           {d.cuts.length ? `${d.cuts.length} place${d.cuts.length === 1 ? "" : "s"} to cut, each with its side effects and the text to apply.` : "each route needs its own cut."}
         </p>
       )}
-      {!a.yes && d.closest && (
-        <Card title={`Closest the ${d.subject.user ? "user" : "role"} gets`} sub="The nearest chain that stops short">
-          <PathCell path={d.closest} refs={d.refs} />
-        </Card>
-      )}
-      {!a.yes && d.ask.length > 0 && (
-        <Card title="Roles to ask for" sub="Roles that would give this access">
-          <DataTable csv="check_ask.csv" rows={d.ask}
-            columns={[col("r", "Role", (r: CheckPage["ask"][number]) => r.role, { render: (r: CheckPage["ask"][number]) => <NameLink id={r.role} refs={d.refs} /> }),
-              col("n", "Privileges", (r: CheckPage["ask"][number]) => r.privileges, { num: true }), pathCol<CheckPage["ask"][number]>(d.refs)]} />
-        </Card>
-      )}
+      {!a.yes && d.view !== "mine" && <NearestWays d={d} first />}
       {d.options.length > 0 && !d.lanes_total && <Card title="Ways to remove this access" sub="Text to copy into your infrastructure as code. This app never runs it."><RemoveOptions d={d} /></Card>}
       {d.read && (
         <Card title="What they see" sub={d.read.summary}>

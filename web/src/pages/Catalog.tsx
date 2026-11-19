@@ -38,7 +38,7 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
       {!off && <StackBar label="Tagged objects by protection: click a part to list them" on={st} onPick={(k) => setSt(st === k ? null : k)}
         parts={(Object.keys(STATUS) as CatalogRow["status"][]).map((k) => ({ key: k, label: STATUS[k][0], value: by(k), cls: BAR[k] }))} />}
       <ListToolbar search={q} onSearch={setQ} onCsv={() => download("sensitive_catalog.csv", catalogCsv(shown))}>
-        <FilterChips label="Filter" value={f} onPick={(k) => setF(k as CatFilter)} items={([["all", "All"], ["open", "Not protected"], ["pii", "PII / identifiers"], ["confidential", "Confidential"]] as const)
+        <FilterChips label="Filter" value={f} onPick={(k) => setF(k as CatFilter)} items={([["all", "All"], ["open", "Has unmasked columns"], ["pii", "PII / identifiers"], ["confidential", "Confidential"]] as const)
           .map(([key, label]) => ({ key, label, count: catalogOf(rows, key, q).length }))} />
         <FilterChips label="Sort" value={sort} onPick={setSort} items={[{ key: "exposed", label: "Most exposed" }, { key: "readers", label: "Most readers" }, { key: "name", label: "Name" }]} />
         {st && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setSt(null)}>{STATUS[st as CatalogRow["status"]][0]} ×</button>}
@@ -56,8 +56,8 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
                     <span><span className={`ae-pst ${STATUS[r.status][1]}`}>{STATUS[r.status][0]}</span> <span className="ae-small">{protectionText(r)}</span></span>
                     {r.columns.length > 0 && <Cols cols={r.columns} />}</>}
                 </span>
-                <span className="ae-cat-who"><MiniBar of={most} text={<><b className="ae-cat-n">{r.readers}</b> <span className="ae-muted">people{r.admin ? ` · +${r.admin} admin` : ""}</span></>}
-                  parts={[{ key: "p", label: "People", value: r.readers, cls: r.status === "not" ? "high" : r.status === "partly" ? "medium" : "people" }, { key: "a", label: "Through an admin role", value: r.admin, cls: "admin" }]} /></span>
+                <span className="ae-cat-who"><MiniBar of={most} text={<><b className="ae-cat-n">{r.readers}</b> <span className="ae-muted">users{r.admin ? ` · +${r.admin} admin` : ""} · {r.clear ?? "?"} see clear</span></>}
+                  parts={[{ key: "p", label: "Users", value: r.readers, cls: r.status === "not" ? "high" : r.status === "partly" ? "medium" : "people" }, { key: "a", label: "Through an admin role", value: r.admin, cls: "admin" }]} /></span>
                 <span><button type="button" className="ae-btn" onClick={() => c.nav("object", { name: r.object, show: "who" })}>Who →</button></span>
               </div>
             ))}
@@ -68,7 +68,7 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
       <div className="ae-bar-legend">
         <span><span className="ae-colchip ae-colchip-bad">COL</span>column with no masking</span>
         <span><span className="ae-colchip ae-colchip-ok">COL</span>masked</span>
-        <span><span className="ae-dot2 ae-bar-high" />people: no column masked</span><span><span className="ae-dot2 ae-bar-medium" />partly masked</span><span><span className="ae-dot2 ae-bar-people" />all masked or whole object</span><span><span className="ae-dot2 ae-bar-admin" />through an admin role</span>
+        <span><span className="ae-dot2 ae-bar-high" />users: no column masked</span><span><span className="ae-dot2 ae-bar-medium" />partly masked</span><span><span className="ae-dot2 ae-bar-people" />all masked or whole object</span><span><span className="ae-dot2 ae-bar-admin" />through an admin role</span>
       </div>
     </>
   );

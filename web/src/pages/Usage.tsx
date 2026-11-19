@@ -17,7 +17,7 @@ const trimTexts = (d: UsagePage) => {
   const why = `not used in the last ${d.days} days (ACCESS_HISTORY)`;
   return { sql: `-- Reason: ${why}\n${t.sql}`, tf: `# Reason: ${why}\n${t.tf}`, ticket: t.ticket.replace("Reason: (fill in)", `Reason: ${why}`) };
 };
-const SUGGEST = { keep: "ae-sg-keep", trim: "ae-sg-trim", drop: "ae-sg-drop" } as const;
+const SUGGEST = { keep: "ae-sg-keep", trim: "ae-sg-trim", drop: "ae-sg-drop", none: "ae-sg-keep" } as const;
 
 export function UsagePageView() {
   const c = useApp();
@@ -77,11 +77,16 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
   return (
     <>
       <div className="ae-usehead">
-        <p className="ae-answer">
+        {w.kind !== "user" && d.people === 0 ? <p className="ae-answer">
+          No one holds <span className="ae-mono">{w.name}</span>: usage cannot say anything about its grants.
+          {" "}<button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "13" })}>See orphan roles (rule 13)</button>
+        </p> : !n.objects ? <p className="ae-answer">
+          No data grants to compare: <span className="ae-mono">{w.name}</span> reaches no tables or views (what admin roles reach is not listed).
+        </p> : <p className="ae-answer">
           In the last {d.days} days {w.kind === "user" ? "" : "people holding "}<span className="ae-mono">{w.name}</span> <b>used {n.used} of {n.objects}</b> tables and views they can reach
           {n.write_unused > 0 && <>, and <b>never used write access</b> on {plural(n.write_unused, "object")}</>}.
           {n.changes > 0 ? <> <span className="ae-ok-word">{plural(n.changes, "grant")} could go</span> without changing their work.</> : " Every grant is in use."}
-        </p>
+        </p>}
         {period}
       </div>
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "table" ? null : k })} tabs={[

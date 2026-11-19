@@ -47,7 +47,10 @@ describe("code output", () => {
 
 describe("home and links", () => {
   it("reads a typed question", () => {
-    expect(parseQuestion("can engineer_01 read sales.core.tbl_customer?")).toEqual({ who: "ENGINEER_01", what: "SALES.CORE.TBL_CUSTOMER", priv: "SELECT" });
+    expect(parseQuestion("can engineer_01 read sales.core.tbl_customer?")).toEqual({ who: "engineer_01", what: "sales.core.tbl_customer", priv: "SELECT" }); // the server matches case
+    expect(parseQuestion("can F_X use WH_ETL")?.priv).toBe("USAGE");
+    expect(parseQuestion("can F_X operate my.task")?.priv).toBe("OPERATE");
+    expect(parseQuestion("can F_X execute my.task")).toBeNull(); // EXECUTE TASK or USAGE depends on the object
     expect(parseQuestion("Can FIN_09 change HR.PEOPLE.TBL_EMPLOYEE")?.priv).toBe("INSERT");
     expect(parseQuestion("ENGINEER_01")).toBeNull();
   });

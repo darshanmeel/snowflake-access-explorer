@@ -11,14 +11,14 @@ const strongest = (cs: PrivClass[]): PrivClass => cs.reduce<PrivClass>((a, c) =>
 
 export function ReviewPageView() {
   const c = useApp();
-  const show = c.params.show === "grid" || c.params.columns === "privileges" ? "grid" : "old"; // the old review first
+  const show = c.params.show === "rows" || (c.params.part && c.params.show !== "grid") ? "old" : "grid"; // the sign-off grid first; part=: an old link to the rows
   if (c.view === "mine") return <><Head title="Access review" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
   return (
     <>
       <Head title="Review & sign-off" sub="Who can reach what, ready for sign-off. Decisions stay in this browser; nothing is written to Snowflake." />
-      <Tabs nav active={show} onChange={(k) => c.set(k === "grid" ? { show: "grid" } : { show: null, columns: null, object: null, scope: null })} tabs={[
-        { key: "old", label: "Access review" },
+      <Tabs nav active={show} onChange={(k) => c.set(k === "grid" ? { show: null, part: null } : { show: "rows", columns: null, object: null, scope: null })} tabs={[
         { key: "grid", label: "Review grid & sign-off" },
+        { key: "old", label: "Rows / CSV" },
       ]} />
       {show === "old" ? <OldReview /> : <ReviewGrid />}
     </>
@@ -41,16 +41,18 @@ function OldReview() {
     <>
       <Load s={s}>{(d) => {
         const f = d.filters, k = d.kpis;
-        const big = k.rows > d.csv_max;
+        const big = k.csv_rows > d.csv_max;
         const t = d.part;
         const opt = (xs: string[], all: string): [string, string][] => [["", all], ...xs.map((x): [string, string] => [x, x])];
         return (
           <>
             {csvOn && <div className="ae-row ae-right">{big && <span className="ae-muted">Too many rows for one file: pick one database or schema.</span>}
-              <button className="ae-btn" disabled={big} onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV ({k.rows.toLocaleString()} rows, with reviewer columns)</button></div>}
+              <button className="ae-btn" disabled={big} onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV ({k.csv_rows.toLocaleString()} rows, with reviewer columns)</button></div>}
             <Controls>
-              <Pick label="Database" value={f.db === "*" ? "" : f.db} what="databases" width={200} onPick={(v) => c.set({ db: v, schema: null, object: null })} />
-              {f.db !== "*" && <button type="button" className="ae-link" onClick={() => c.set({ db: "*", schema: null, object: null })}>All databases</button>}
+              <div className="ae-pick-all">
+                <Pick label="Database" value={f.db === "*" ? "" : f.db} what="databases" width={200} onPick={(v) => c.set({ db: v, schema: null, object: null })} />
+                {f.db !== "*" && <button type="button" className="ae-link" onClick={() => c.set({ db: "*", schema: null, object: null })}>All databases</button>}
+              </div>
               <Sel label="Schema" value={f.schema} onPick={(v) => c.set({ schema: v, object: null })} options={opt(f.schemas, "All schemas")} />
               <Sel label="Object" value={f.object} onPick={(v) => c.set({ object: v })} options={opt(f.objects, "All objects")} />
               <Tog label="Active users only" on={f.active} onPick={(v) => c.set({ active: v ? "1" : null })} />
@@ -63,6 +65,8 @@ function OldReview() {
               { label: "Admin rows", value: k.admin_rows, tone: k.admin_rows ? "bad" : null },
               { label: "Sensitive objects", value: k.sensitive, tone: k.sensitive ? "warn" : null },
             ]} />
+            <p className="ae-muted">{f.db === "*" ? "Every database." : `Database ${f.db} only.`}</p>
+            {d.note && <Banner tone="info" title={d.note} />}
             <Tabs active={t} onChange={(k) => { setTab(k); setPg((o) => ({ ...o, at: 0 })); }} tabs={[
               { key: "sens", label: "Sensitive objects", count: d.counts.sens, tone: "warn" },
               { key: "all", label: "All", count: d.counts.all },

@@ -1808,7 +1808,7 @@ def test_ladder():  # access ladder: highest level per object, counts at or abov
     assert a.category("USAGE", "DATABASE_ROLE") == "hold" and a.category("EXECUTE TASK", "ACCOUNT") == "account"
     o = a.access_objects(a.grants("ENGINEER_01", True), True)
     n = a.ladder_counts(o)
-    assert (n["read"], n["change"], n["own"], n["runnable"], n["account"], n["usage"]) == (6, 5, 2, 5, 3, 8), n  # runnable: the Streamlit app through the MART owner role
+    assert (n["read"], n["change"], n["own"], n["runnable"], n["account"], n["usage"]) == (5, 5, 2, 5, 3, 8) and n["future"] == 1, n  # the future grant is not an object; runnable: the Streamlit app through the MART owner role
     mart = next(x for x in o if x["object"] == "SALES.MART")
     assert mart["level"] == "own" and mart["privileges"][0] == "OWNERSHIP"  # its USAGE folds into the owned row
     cust = next(x for x in o if x["object"] == "SALES.CORE.TBL_CUSTOMER")

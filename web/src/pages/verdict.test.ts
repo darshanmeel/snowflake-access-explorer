@@ -100,7 +100,7 @@ describe("Request access text", () => {
     expect(pickSubject("F_X", ["U"], ["F_X"], "request")).toEqual({ for_role: "F_X", name: null, user: null });
     expect(subjectLink({ name: "F_X", user: false }, "request")).toEqual({ for_role: "F_X" });
     expect(subjectLink({ name: "U", user: true })).toEqual({ name: "U" });
-    expect(parseQuestion("can f_marketing read finance.report.tbl_revenue?")).toEqual({ who: "F_MARKETING", what: "FINANCE.REPORT.TBL_REVENUE", priv: "SELECT" });
+    expect(parseQuestion("can f_marketing read finance.report.tbl_revenue?")).toEqual({ who: "f_marketing", what: "finance.report.tbl_revenue", priv: "SELECT" });
     expect(verdictLine({ ...base, user: "F_X", verdict: "no", subject: { user: false } } as unknown as CheckPage)).toBe("Neither F_X nor any of its 11 roles leads to DB.S.T.");
     const t = newRoleOf("F_X", ["SELECT"], "TABLE", "D.S.T", {}, undefined, true);
     expect(t.sql).toContain("-- GRANT ROLE <NEW_ROLE> TO ROLE F_X;");
