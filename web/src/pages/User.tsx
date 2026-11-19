@@ -13,12 +13,13 @@ export function UserPage() {
   const name = c.params.name ?? c.meta.default_user ?? "";
   const s = useApi<UserPage>(name ? "user" : null, { ...apiParams(c), name });
   const o = useOpen(s.data?.refs);
-  const [part, setPart] = useState(c.params.part ?? "privs");
+  const pane = c.inside ? c.params.pane : undefined; // the Access page's Privileges tab ("privs") or Diagram tab ("diagram")
+  const [want, setPart] = useState(c.params.part ?? "privs");
   return (
     <>
-      <Head title={mine ? "My access" : "User"} sub="What this user can reach, and through which roles." />
+      {!pane && <Head title={mine ? "My access" : "User"} sub="What this user can reach, and through which roles." />}
       <Controls>
-        {!mine && <Pick label="User" value={name} what="users" onPick={(v) => c.nav("user", { name: v })} />}
+        {!mine && !pane && <Pick label="User" value={name} what="users" onPick={(v) => c.nav("user", { name: v })} />}
         <Sel label="Roles" value={c.params.roles ?? "all"} options={[["all", "All roles"], ["default", "Default role only"]]} onPick={(v) => c.set({ roles: v === "all" ? null : v })} />
         <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />
         <Tog label="Data only" on={c.params.dataonly !== "0"} help="Hide USAGE on databases and schemas outside the Usage tab"
@@ -32,6 +33,19 @@ export function UserPage() {
       <ScopeChips />
       {!name ? <PickFirst what="a user" /> : <Load s={s}>{(d) => {
         const u = d.user;
+        const privs = <Card title="Privileges" sub="Read, Write, Own or Usage from the grants, each tab with its diagram and table. Tab counts are grants; the table has one row per object.">
+          <PrivilegeTabs rows={[]} roles={d.roles} account={d.account} server={{ ...apiParams(c), name }}
+            refs={d.refs} tabs={d.tabs} theme={c.theme} csvName={`${u.name}_privileges`} onNodeClick={o.node} onOpen={o.open} />
+        </Card>;
+        if (pane === "privs") return <><Banners list={d.banners} />{privs}</>;
+        const parts = [
+          ...(pane ? [] : [{ key: "privs", label: "Privileges", count: d.kpis.privileges }]),
+          ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),
+          ...(d.can_read?.total ? [{ key: "sees", label: "What they see", count: d.can_read.total }] : []),
+          ...(d.sensitive?.known && d.sensitive.rows.length ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }] : []),
+          { key: "usage", label: "Role usage", count: d.usage.roles.length },
+        ];
+        const part = parts.some((t) => t.key === want) ? want : parts[0].key; // the Diagram tab has no Privileges part
         return (
           <>
             <Banners list={d.banners} />
@@ -56,17 +70,8 @@ export function UserPage() {
             <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.user.name} of="user" refs={d.refs} />
             <GraphCard g={d.graph} refs={d.refs} />
             <CutBanner capped={d.capped} />
-            <Tabs nav={c.inside ? 2 : 1} active={part} onChange={(t) => { setPart(t); c.set({ otype: null, full: null }); }} tabs={[
-              { key: "privs", label: "Privileges", count: d.kpis.privileges },
-              ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),
-              ...(d.can_read?.total ? [{ key: "sees", label: "What they see", count: d.can_read.total }] : []),
-              ...(d.sensitive?.known && d.sensitive.rows.length ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }] : []),
-              { key: "usage", label: "Role usage", count: d.usage.roles.length },
-            ]} />
-            {part === "privs" && <Card title="Privileges" sub="One row per object: Read, Write or Own from the grants. Each tab has its own diagram.">
-              <PrivilegeTabs rows={[]} roles={d.roles} account={d.account} server={{ ...apiParams(c), name }}
-                refs={d.refs} tabs={d.tabs} theme={c.theme} csvName={`${u.name}_privileges`} onNodeClick={o.node} onOpen={o.open} />
-            </Card>}
+            <Tabs nav={c.inside ? 2 : 1} active={part} onChange={(t) => { setPart(t); c.set({ otype: null, full: null }); }} tabs={parts} />
+            {part === "privs" && !pane && privs}
             {part === "multi" && (
               <Card title="Privileges reached more than one way" sub={`${d.multi.shown} of ${d.multi.total} paths`}>
                 <DataTable csv={`${u.name}_multi_paths.csv`} rows={d.multi.rows}

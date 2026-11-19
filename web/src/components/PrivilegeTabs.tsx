@@ -33,7 +33,7 @@ export interface PrivilegeTabsProps {
 export function PrivilegeTabs(p: PrivilegeTabsProps) {
   const { rows, roles = [], account, refs, theme = "light" } = p;
   const tabs = p.tabs ?? tabList(rows, roles, account);
-  const [own, setOwn] = useState<TabKey>(tabs[0]?.key ?? "all");
+  const [own, setOwn] = useState<TabKey>(tabs.some((t) => t.key === "all") ? "all" : tabs[0]?.key ?? "all"); // the full table first
   const want = p.active ?? own;
   const active = tabs.some((t) => t.key === want) ? want : tabs[0]?.key ?? "all";
   const pick = (k: string) => { setOwn(k as TabKey); p.onTab?.(k as TabKey); };

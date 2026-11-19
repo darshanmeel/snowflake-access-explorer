@@ -70,7 +70,8 @@ function Body({ d }: { d: AccessPage }) {
   const w = d.who, n = d.counts, user = w.kind === "user";
   const adm = d.admin_roles ?? [], adminRole = !user && adm.includes(w.name); // admin role links are dropped: zero would read as safe
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
-  const show = ["summary", "detail", "history", "activity"].includes(c.params.show ?? "") ? c.params.show! : "overview"; // the summary first, the long lists on their own tabs
+  const asked = ["summary", "privs", "detail", "history", "activity"].includes(c.params.show ?? "") ? c.params.show! : "overview"; // the summary first, the long lists on their own tabs
+  const show = asked === "privs" && !user ? "detail" : asked; // a role has no Privileges tab: picking one from a person's keeps show
   // the list is filtered, sorted and paged on the server: a big user has 100k+ objects
   const ask = { ...subjectOf(c), filter: lvl === "all" ? null : lvl, q: sq || null, usage: usage ? "1" : null, group: group === "none" ? null : group,
     sort: sort === "risk" ? null : sort, cell: cell?.schema, min: cell?.min, offset: page ? String(page * d.limit) : null };
@@ -100,11 +101,13 @@ function Body({ d }: { d: AccessPage }) {
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "overview" ? null : k })} tabs={[
         { key: "overview", label: "Overview" },
         { key: "summary", label: "Objects", count: d.data },
-        { key: "detail", label: user ? "Privileges & diagram" : "Diagram, held by & holds" },
+        ...(user ? [{ key: "privs", label: "Privileges" }, { key: "detail", label: "Diagram" }]
+          : [{ key: "detail", label: "Diagram, held by & holds" }]),
         { key: "activity", label: "Activity" },
         { key: "history", label: "History" },
       ]} />
-      {show === "detail" && <Detail name={w.name} user={user} />}
+      {show === "privs" && user && <Detail name={w.name} user pane="privs" />}
+      {show === "detail" && <Detail name={w.name} user={user} pane={user ? "diagram" : undefined} />}
       {show === "activity" && <ActivityTab what={user ? "user" : "role"} name={w.name} />}
       {show === "history" && <ChangeFeed subject={w.id} />}
       {show === "overview" && <>
@@ -265,10 +268,10 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
 
 /** The full User paths / Role paths page (role hierarchy diagram, privilege tabs with their diagrams, detail tables)
  * inside this screen, for the same subject. */
-function Detail({ name, user }: { name: string; user: boolean }) {
+function Detail({ name, user, pane }: { name: string; user: boolean; pane?: string }) {
   const c = useApp();
   const { user: _u, role: _r, show: _s, ...rest } = c.params;
-  const inner = { ...c, page: (user ? "user" : "role") as typeof c.page, params: { ...rest, name }, inside: true };
+  const inner = { ...c, page: (user ? "user" : "role") as typeof c.page, params: { ...rest, name, ...(pane ? { pane } : {}) }, inside: true };
   return (
     <div className="ae-embed">
       <AppCtx.Provider value={inner}>{user ? <UserPage /> : <RolePageView />}</AppCtx.Provider>
