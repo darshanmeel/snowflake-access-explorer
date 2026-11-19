@@ -16,6 +16,7 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
   const [q, setQ] = useState("");
   const shown = catalogOf(rows, f, q);
   const most = Math.max(1, ...rows.map((r) => r.readers + r.admin));
+  const off = c.meta.sources.policies === "UNAVAILABLE"; // not read: masked or not is unknown, never "Not protected"
   return (
     <>
       <div className="ae-headrow">
@@ -35,8 +36,9 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
                 <span><b className="ae-mono">{r.name}</b><span className="ae-muted ae-osub">{r.type.toLowerCase()} · {r.ns}</span></span>
                 <span className="ae-objtags0">{r.labels.map((t) => <span key={t} className="ae-otag ae-sens-tag">{t.split("=").pop()}</span>)}</span>
                 <span className="ae-cat-prot">
-                  <span><span className={`ae-pst ${STATUS[r.status][1]}`}>{STATUS[r.status][0]}</span> <span className="ae-small">{protectionText(r)}</span></span>
-                  {r.columns.length > 0 && <Cols cols={r.columns} />}
+                  {off && r.status !== "whole" ? <span><span className="ae-pst ae-pst-plain">Unknown</span> <span className="ae-small">policies not read</span></span> : <>
+                    <span><span className={`ae-pst ${STATUS[r.status][1]}`}>{STATUS[r.status][0]}</span> <span className="ae-small">{protectionText(r)}</span></span>
+                    {r.columns.length > 0 && <Cols cols={r.columns} />}</>}
                 </span>
                 <span className="ae-cat-who"><MiniBar of={most} text={<><b className="ae-cat-n">{r.readers}</b> <span className="ae-muted">people{r.admin ? ` · +${r.admin} admin` : ""}</span></>}
                   parts={[{ key: "p", label: "People", value: r.readers, cls: r.status === "not" ? "high" : r.status === "partly" ? "medium" : "people" }, { key: "a", label: "Through an admin role", value: r.admin, cls: "admin" }]} /></span>

@@ -3431,10 +3431,10 @@ def sens_flow(max_roles=None):
                 links=[dict(source=x, target=y, count=len(us)) for (x, y), us in sorted(f["links"].items())])
 
 
-def flow_follow(sel, max_roles=None):
+def flow_follow(sel, max_roles=None, cap=MAX_PATHS):
     """Screen 16, following one box sel (None or not a box: everyone): every user through it, then each user's own
     role and object links. dict(sel, lit [boxes at full strength] | None, width {"source>target": users on the link},
-    tone {"source>target": the group of most of them}, headline, users (sel's box, sorted, first MAX_PATHS), count)."""
+    tone {"source>target": the group of most of them}, headline, users (sel's box, sorted, first cap; None: all), count)."""
     f = flow_sets(max_roles)
     gof, rids = f["group_of"], {r for r, _, _ in f["roles"]}
     names = {g: w for g, w, _ in f["groups"]} | {n["id"]: n["label"] for n, _ in f["objects"]} | {r: r for r in rids}
@@ -3471,7 +3471,7 @@ def flow_follow(sel, max_roles=None):
             else f"{names[sel]}: reached by {who} through {lst(rs)}.")
     box = mine if mine is not None else every
     return dict(sel=sel, lit=None if sel is None else sorted({sel, *rs, *objs, *(gof[u] for u in every)}), width=width,
-                tone=tone, headline=head, users=sorted(box)[:MAX_PATHS], count=len(box))
+                tone=tone, headline=head, users=sorted(box)[:cap], count=len(box))
 
 
 GRID_MAX = int(os.environ.get("GRID_MAX", "60"))  # review grid: object columns drawn, most-reached first
@@ -3490,9 +3490,11 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
     user->...->holder->object; a user holding an admin role has "admin" in every column. hide_usage drops USAGE
     (objects left without a cell drop out). Rows: user, type, status, days, admin (admin roles held), roles (granted
     roles on the paths: what a revoke takes away), cells {column id: cell}; keep(user, roles) picks the rows, people
-    caps them (admins, highest access, most cells first; cells built for those only). Returns dict(columns, rows,
+    caps them (admins, highest access, most cells first; cells built for those only). People who reach only objects
+    past cap are rows too, last, with beyond (objects they reach that are not drawn). Returns dict(columns, rows,
     total (objects), users (every row's user, before keep), matched (rows keep picked))."""
     adm, has, roles = admin_users(), {}, {}  # has: user -> [(column, [(privilege, who_users entry)], kind, object)]
+    reached = Counter()  # user -> objects reached, drawn or not
     if obj:
         k, got = kinds.get(obj, ""), {}
         for (x, pv), e in who_users(obj).items():
@@ -3519,6 +3521,9 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
             if per[sig]:
                 reach[o] = len(per[sig])
         objs = sorted(reach, key=lambda o: (o not in s, -reach[o], o))
+        for sig, k in Counter(tuple(on.get(o, [])) for o in objs).items():
+            for x in per[sig]:
+                reached[x] += k
         total, objs = len(objs), objs[:cap]
         for o in objs:
             for x, rs in per[tuple(on.get(o, []))].items():
@@ -3536,6 +3541,7 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
         roles.setdefault(u, set()).update(*(firsts(u, r) for r in held))
     rank = {u: (True, -max(level(rs, k) for _, rs, k, _ in xs), -len(xs), u) for u, xs in has.items() if u not in adm}
     rank.update({u: (False, -top, -len(cols), u) for u in adm if cols})
+    rank.update({u: (True, 1, 0, u) for u in reached if u not in rank and u not in adm})
     shown = sorted((u for u in rank if not keep or keep(u, sorted(roles.get(u, set()) - {"PUBLIC"}))), key=rank.get)
     rows = []
     for u in shown[:people]:
@@ -3543,9 +3549,10 @@ def review_grid(scope="sensitive", db=None, obj=None, hide_usage=True, cap=GRID_
             ps = [up_rows(r)[(u, True)][1][::-1] for r in sorted(adm[u])]
             cs = {c["id"]: dict(level="admin", privileges=["ALL"], path=min(ps, key=len)) for c in cols}
         else:
-            cs = {c: grid_cell([(pv, e["path"] + [o]) for pv, e in rs], k) for c, rs, k, o in has[u]}
+            cs = {c: grid_cell([(pv, e["path"] + [o]) for pv, e in rs], k) for c, rs, k, o in has.get(u, [])}
         rows.append(dict(user=u, type=str((profile.get(u) or {}).get("TYPE") or "PERSON"), status=status(u),
-                         days=login_days(u), admin=adm.get(u, []), roles=sorted(roles.get(u, set()) - {"PUBLIC"}), cells=cs))
+                         days=login_days(u), admin=adm.get(u, []), roles=sorted(roles.get(u, set()) - {"PUBLIC"}), cells=cs,
+                         beyond=0 if obj else total - len(cols) if u in adm else reached[u] - len(cs)))
     return dict(columns=cols, rows=rows, total=total, users=list(rank), matched=len(shown))
 
 
@@ -6831,9 +6838,23 @@ WALKS = {"3", "5", "7", "10", "11", "14", "17", "18", "19", "20", "21", "22", "2
 ACTIVITY_RULES = {"24", "25", "26", "27", "28"}
 
 
+# the rules a source feeds: when it is UNAVAILABLE they find nothing (or only guesses), so they are not read, not passing
+RULE_SOURCES = {"activity": ACTIVITY_RULES, "streams": {"22"}, "future_grants": {"15"}, "users": {"7", "8", "12", "16"},
+                "tags": {"6", "7", "10", "11", "15", "22", "29"}, "policies": {"6"}}
+
+
 def skipped_rules():
-    """{rule: why it did not run}: HIERARCHY=0 (WALKS), ACTIVITY=0 (rules 24-28)."""
+    """{rule: why it did not run}: HIERARCHY=0 (WALKS), ACTIVITY=0 (rules 24-28), a source not read (RULE_SOURCES; grants or
+    user roles: every rule), rules 1 and 2 when no role of a big account matches the ROLE_PREFIXES."""
     out = {} if HIERARCHY_ON else dict.fromkeys(WALKS, SKIP_HIERARCHY)
-    if (run.get("SOURCES") or {}).get("activity") == "SKIPPED":
+    src = run.get("SOURCES") or {}
+    if src.get("activity") == "SKIPPED":
         out |= {n: out.get(n, SKIP_ACTIVITY) for n in ACTIVITY_RULES}
+    for k, v in src.items():
+        if v == "UNAVAILABLE" and (k in RULE_SOURCES or k in ("grants", "user_roles")):
+            out |= {n: out.get(n, f"not read ({k} unavailable)") for n in RULE_SOURCES.get(k, RULES)}
+    if src.get("activity") == "ACCOUNT_USAGE" and (run.get("NOTES") or {}).get("activity"):  # SESSIONS unread: no client
+        out.setdefault("25", "not read (SESSIONS unavailable)")
+    if not cached("prefix_hit", lambda: len(roles) <= 50 or any(role_kind(r) in ("functional", "technical") for r in roles)):
+        out |= {n: out.get(n, f"no role starts with {FUNC} / {TECH} (ROLE_PREFIXES)") for n in ("1", "2")}
     return dict(sorted(out.items(), key=lambda t: int(t[0])))

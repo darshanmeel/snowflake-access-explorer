@@ -247,10 +247,11 @@ def load_error(x):
                         if "000606" in str(x) else "")
 
 
-def fetched():
-    """When the shared data was read from its source: its oldest part, else the read itself (memory or local file)."""
+def fetched(ts=False):
+    """When the shared data was read from its source: its oldest part, else the read itself (memory or local file);
+    ts: as epoch seconds."""
     t = (cache.parts_read_at(KEY) or cache.MEM[KEY][1]) if KEY in cache.MEM else None
-    return datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M") if t else None
+    return t if ts else datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M") if t else None
 
 
 def mine_entry(sid):
@@ -650,7 +651,7 @@ def loop_notes():
 
 
 def snap_time(run):
-    """("2026-11-02 07:00 UTC · 13 h ago", older than 24 h)."""
+    """("2026-11-02 07:00 UTC · 13 h ago", older than 24 h, its epoch seconds or None: the page ages it itself)."""
     v = run.get("FINISHED_AT")
     if isinstance(v, datetime) and v.tzinfo:
         v = v.astimezone(timezone.utc)
@@ -659,9 +660,10 @@ def snap_time(run):
     except Exception:
         t = None
     if t is None:
-        return str(v), False
+        return str(v), False, None
     h = max(0, (datetime.now(timezone.utc).replace(tzinfo=None) - t).total_seconds() / 3600)
-    return f"{t:%Y-%m-%d %H:%M} UTC · " + (f"{h:.0f} h ago" if h < 48 else f"{h / 24:.0f} days ago"), h > 24
+    return (f"{t:%Y-%m-%d %H:%M} UTC · " + (f"{h:.0f} h ago" if h < 48 else f"{h / 24:.0f} days ago"), h > 24,
+            t.replace(tzinfo=timezone.utc).timestamp())
 
 
 def notes_of(run, view):
@@ -1637,8 +1639,20 @@ def home_cards():
             activity=dict(ok=ok, reason=reason, users=len({x["USER_NAME"] for x in a.acts}),
                           daily=[dict(day=d, queries=days[d]) for d in sorted(days)[-DAYS:]]))
     out = a.cached("home_cards", make)
-    d = next((v for k, v in a.memo.items() if isinstance(k, tuple) and k[0] == "diff"), None)
-    return out | dict(changes=dict(counts=a.event_counts(d["events"]), high=d["high"], before=d["runs"]["before"]) if d else None)
+    d = next((v for k, v in reversed(a.memo.items()) if isinstance(k, tuple) and k[0] == "diff"), None)  # the newest
+    if d:
+        return out | dict(changes=dict(counts=a.event_counts(d["events"]), high=d["high"], before=d["runs"]["before"], reason=None))
+    kept = MODE == "fake" or (not a.INSIDE and cache.local() and cache.file(KEY).with_suffix(".prev.pkl").is_file())
+    return out | dict(changes=dict(counts=None, high=0, before=None, reason=None if kept else no_prev()))
+
+
+def no_prev():
+    """Why What changed has no earlier snapshot to compare with."""
+    return ("Inside Snowflake the app keeps its data in memory only, so there is no earlier snapshot to compare with. "
+            "Use the local version, which keeps the previous snapshot in .cache/." if a.INSIDE else
+            "No earlier snapshot yet: the app keeps the previous one in .cache/ when a refresh (Read Snowflake again "
+            "or Rebuild snapshot) brings a new one. Refresh after the next snapshot run, then come back."
+            if cache.HOURS > 0 else "CACHE_HOURS=0 keeps nothing on disk, so there is no earlier snapshot.")
 
 
 def mask_text(name, o, user=False):
@@ -2292,7 +2306,7 @@ def check_page(p, view):
                                                     for e in x["edges"]]) for x in a.cut_points(u, held, o, user)],
         nearest=near, approver=a.approver(o), subject=subject_of(u, user),
         view=view, user=u, object=o, type=a.kinds[o], priv=pv, privileges=[ALL] + opts, answer=ans, status=r["status"],
-        dormant_days=d if sleep else None, admin_paths=admin, paths=r["paths"], owner=r["owner"], choke=r["choke"],
+        dormant_days=d if sleep else None, admin_paths=admin, paths=r["paths"], paths_total=r["count"], owner=r["owner"], choke=r["choke"],
         closest=r["closest"], ask=[] if mine else r["ask"],
         options=[] if mine else [dict(iac=x["iac"], sql=x["sql"], affects=x["affects"], users=x["users"], edges=len(x["edges"]))
                                  for x in r["options"]],
@@ -2475,8 +2489,8 @@ def activity_page(p, view):
                     reason=(a.run.get("NOTES") or {}).get("usage") or "Query history is not readable.",
                     warehouse=a.warehouse_use(name), source=src or "demo values")
     out = dict(view=view, what=what, kind=kind, name=name, user=who, days=a.ACTIVITY_DAYS, available=ok, reason=why,
-               work=dict(start=a.WORK_HOURS[0], end=a.WORK_HOURS[1]),
-               note=(a.run.get("NOTES") or {}).get("activity"))
+               work=dict(start=a.WORK_HOURS[0], end=a.WORK_HOURS[1]), note=(a.run.get("NOTES") or {}).get("activity"),
+               admin=bool(a.admin_users().get(name)) if what == "user" else what == "role" and name in a.ADMIN)
     if not ok:
         return out
     x = a.activity(name, what, who)
@@ -2555,12 +2569,7 @@ def changes_page(p, view):
     else:
         got = None if a.INSIDE else cache.prev(KEY)
         if not got:
-            return out | dict(reason=(
-                "Inside Snowflake the app keeps its data in memory only, so there is no earlier snapshot to compare with. "
-                "Use the local version, which keeps the previous snapshot in .cache/." if a.INSIDE else
-                "No earlier snapshot yet: the app keeps the previous one in .cache/ when a refresh (Read Snowflake again "
-                "or Rebuild snapshot) brings a new one. Refresh after the next snapshot run, then come back."
-                if cache.HOURS > 0 else "CACHE_HOURS=0 keeps nothing on disk, so there is no earlier snapshot."))
+            return out | dict(reason=no_prev())
         prev = got[0]
     d = diff_of(prev)
     ev = [e for e in d["events"] if not out["subject"] or out["subject"] in e["subjects"]]
@@ -2591,6 +2600,8 @@ def diff_of(prev):
     a refresh makes it (renew), and .cache/<key>.diff.pkl keeps it across restarts while both data sets, the
     settings, access.py and this file are the ones that made it."""
     def make():
+        for k in [k for k in ANSWERS if k[1] == "home"]:  # Home's What changed card gets this comparison
+            ANSWERS.pop(k, None)
         stamp = (shared_key(prev), shared_key(a.source["data"]), a.source.get("builtin"), a.rules_stamp(), SERVER_STAMP)
         f = cache.file(KEY).with_suffix(".diff.pkl") if MODE == "snowflake" and cache.local() else None
         got = cache.load(f) if f and f.is_file() else None
@@ -2876,7 +2887,11 @@ def rules_page(p, view):
     if group is None:  # a group's next page needs neither
         unknown = sorted(o for o in S["sens"] if any(a.row_terms(q) is None for q in a.policies_of(o)["rows"]))
         admins, st = admin_list(), stale_list()
-        out.update(rows_unknown=[] if who else unknown, admins_total=len(admins), stale_total=len(st), stale=st[:MAX_ADMINS], stale_split=dict(Counter(x["status"] for x in st)), admins=[
+        sq = p.get("sq", "").strip().lower()  # Dormant & disabled: a name search, one page at s_offset= (limit=0: all)
+        sm = [x for x in st if sq in x["user"].lower()]
+        w, s_off = window(p, "s_offset", len(sm))
+        out.update(rows_unknown=[] if who else unknown, admins_total=len(admins), stale_total=len(st), stale=sm[w], stale_matched=len(sm),
+                   stale_offset=s_off, stale_split=dict(Counter(x["status"] for x in st)), admins=[
             dict(user=x["user"], service=x["service"], roles=x["roles"], account=sorted(acct := {pv for pv, q in x["account"] if q[-1] != "PUBLIC"},
                                                                                    key=lambda pv: (pv not in a.ADMIN_LEVEL, pv)),
                  strong=sorted(acct & a.ADMIN_LEVEL), paths=x["paths"] + [q for _, q in x["account"] if q[-1] != "PUBLIC"], status=x["status"],
@@ -3134,6 +3149,21 @@ def flow_page(p, view):
     return dict(view=view, state="ok", **f, select=select, follow=a.flow_follow(sel))
 
 
+def flow_csv(p, view):
+    """Every person of the Flow page's selected box (sel= as flow_page), disabled and service users included."""
+    need(view != "mine" and S["sens"], "The flow needs the shared snapshot and sensitive data.")
+    sel = None if p.get("sel") == "none" else p.get("sel") or (
+        "risky" if any(g["id"] == "risky" for g in a.sens_flow()["groups"]) else None)
+    f, now = a.flow_follow(sel, cap=None), datetime.now()
+    pr = lambda u: a.profile.get(u) or {}
+    text = csv_text(["User", "Type", "Status", "Last login", "Roles"],
+                    [[u, str(pr(u).get("TYPE") or "PERSON"), a.status(u), str(pr(u).get("LAST_SUCCESS_LOGIN") or "")[:16],
+                      ", ".join(sorted(a.roles_of.get(u, [])))] for u in f["users"]],
+                    [["Sensitive data flow", f["sel"] or "everyone"], ["Run", a.run.get("RUN_ID"), str(a.run.get("FINISHED_AT"))[:16]],
+                     ["Generated", f"{now:%Y-%m-%d %H:%M}"]])
+    return f"sensitive_flow_people_{now:%Y-%m-%d}.csv", text
+
+
 def review_csv(p, view):
     if view == "mine":
         raise ApiError(400, "shared_only", "The access review is about everyone: use the shared snapshot.")
@@ -3155,22 +3185,25 @@ def find_page(p, view):
     names = [a.uid(u, True) for u in a.users] + a.roles + a.objects
     hits_ = a.search(p.get("q", ""), names)
     lim = int(p.get("limit", "20")) if p.get("limit", "20").isdigit() else 20
-    out = []
+    out, adm = [], {x["user"] for x in admin_list()}
     for n in hits_[:lim]:
         k = nk(n)
         name = a.node_name(n)
         out.append(dict(id=n, name=name, kind=k, kind_label=kind_label(name, a.node_kind(n)) if k != "object"
                         else (a.kinds.get(n) or "Object").capitalize(), type=a.kinds.get(n) if k == "object" else None,
-                        sensitive=n in S["sens"], page=page_of(k), answer=answer(n, k, name)))
-    return dict(items=out, total=len(hits_))
+                        sensitive=n in S["sens"], page=page_of(k), answer=answer(n, k, name),
+                        status=a.status(name) if k == "user" else None, admin=k == "user" and name in adm))
+    group = lambda k, n: k if k in ("user", "object") and a.kinds.get(n) != "WAREHOUSE" else "warehouse" if k == "object" else "role"
+    return dict(items=out, total=len(hits_), totals=dict(Counter(group(nk(n), n) for n in hits_)))  # Home.groupOf
 
 
 def answer(n, k, name):
-    """One-line answer of a search hit: "reads 6 · changes 5 · owns 2" for a person or role (reach only, fast), the
-    people with access for an object."""
+    """One-line answer of a search hit: "reads 6 · changes 5 · owns 2" for a person or role (reach only, fast), for an
+    object its people and admin holders as the Object page counts them (split_users)."""
     if k == "object":
-        us = set().union(*(a.ups(r)[1] for r, _, _ in a.on.get(n, [])))
-        return f"{len(us)} {'person has' if len(us) == 1 else 'people have'} access"
+        s = a.split_users(set().union(*(a.ups(r)[1] for r, _, _ in a.on.get(n, []))), a.admin_users())
+        n_ = len(s["people"])
+        return f"{n_} {'person' if n_ == 1 else 'people'} + {plural(len(s['admin']), 'admin holder')}"
     c = a.reach_counts(name, k == "user")
     return f"reads {c['read']} · changes {c['change']} · owns {c['own']}"
 
@@ -3274,8 +3307,8 @@ def side_people():
 
 def meta(p, sid):
     view = p.get("view", "shared")
-    base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), view=view, loaded=False, run=None, sources={}, notes=[],
-                mine=mine_state(sid), mine_available=mine_off() is None, cache_hours=cache.HOURS if cache.local() else 0,
+    base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), fetched_ts=fetched(True), view=view, loaded=False, run=None, sources={}, notes=[],
+                mine=mine_state(sid), mine_available=mine_off() is None, mine_note=mine_off(), cache_hours=cache.HOURS if cache.local() else 0,
                 sql_copy=sql_copy(view, sid), inside=a.INSIDE, csv=csv_on(), pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],
                 default_user=None, rule_counts={}, rule_sev={}, prefixes=dict(func=a.FUNC, tech=a.TECH), admin_roles=sorted(a.ADMIN),
@@ -3292,11 +3325,11 @@ def meta(p, sid):
     try:
         with session(view, sid, p.get("builtin") == "1") as d:
             run = a.run
-            when, old = snap_time(run) if view == "shared" else ("live", False)
+            when, old, at = snap_time(run) if view == "shared" else ("live", False, None)
             worst, hit, hit_rules, rule_counts = rule_badge()
             badge = {"rules": hit, "sensitive": len(S["sens"])}  # findings at the worst severity
             base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
-                                              when=when, old=old),
+                                              when=when, old=old, at=at),
                         sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view) + loop_notes(),
                         pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k],
                                     title=f"{plural(hit, worst.lower() + ' finding')} in {plural(hit_rules, 'rule')}" if k == "rules" and hit else None)
@@ -3487,7 +3520,7 @@ ROUTES = {"home": home_page, "access": access_page, "user": user_page, "privs": 
 WITH_REFS = {"request", "who", "access", "user", "role", "object", "check", "sensitive", "rules", "review",
              "whatif", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "finding"}
 CSV = {"rules": rules_csv, "review": review_csv, "whatif": whatif_csv, "privs": privs_csv, "access": access_csv,
-       "held": held_csv, "grantees": grantees_csv, "who": who_csv}
+       "held": held_csv, "grantees": grantees_csv, "who": who_csv, "flow": flow_csv}
 
 
 def data_key(view, sid):

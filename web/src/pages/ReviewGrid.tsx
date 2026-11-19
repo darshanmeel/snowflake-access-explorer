@@ -43,7 +43,7 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
   const scopes = [{ key: "sensitive", label: "Sensitive data", count: d.sensitive }, ...d.dbs.map((x) => ({ key: `db:${x}`, label: `Database ${x}` })), { key: "all", label: "Everything" }];
   const pick = (k: string) => c.set(k.startsWith("db:") ? { scope: "db", db: k.slice(3), columns: null, object: null } : { scope: k, db: null, columns: null, object: null });
   const isObj = d.scope === "object";
-  const what = isObj ? `privileges on ${d.object}` : d.scope === "sensitive" ? `the ${d.columns.length} sensitive objects` : d.scope === "db" ? `database ${d.db}` : "the account's objects";
+  const what = isObj ? `privileges on ${d.object}` : d.scope === "sensitive" ? `the ${d.total} sensitive objects` : d.scope === "db" ? `database ${d.db}` : "the account's objects";
   const tpl = `minmax(200px, 220px) repeat(${Math.max(d.columns.length, 1)}, minmax(84px, 1fr)) 190px`;
   const sign = () => {
     const when = `${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`;
@@ -55,6 +55,7 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
         <p className="ae-answer">
           <b>{d.counts.people} people</b> {isObj ? "hold" : "can reach"} {what}.{d.counts.admin > 0 && <> {d.counts.admin} {d.counts.admin === 1 ? "is an admin" : "are admins"}</>}
           {d.counts.stale > 0 && <> and <span className="ae-warn-word">{d.counts.stale} {d.counts.stale === 1 ? "is" : "are"} dormant or disabled</span></>}. Mark each person Keep or Revoke, then sign off.
+          {(d.total > d.columns.length || d.matched > d.rows.length) && <span className="ae-warn-word"> Partial: the grid draws {d.columns.length} of {d.total} objects and lists {d.rows.length} of {d.matched} people; pick a database or search for the rest.</span>}
         </p>
         <div className="ae-row">
           <button type="button" className="ae-btn" onClick={() => c.nav("sensitive", { show: "catalog" })}>Sensitive objects catalog</button>
@@ -96,6 +97,7 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
                     <span className="ae-rgrid-who">
                       <button type="button" className="ae-link ae-mono" onClick={() => c.nav("access", { user: r.user })}>{r.user}</button>
                       <span className={r.suggest ? "ae-warn-word" : "ae-muted"}>{r.type.includes("SERVICE") ? "Service" : "Person"} · {r.suggest ?? "active"} · {r.last_login}</span>
+                      {(r.beyond ?? 0) > 0 && <span className="ae-muted ae-small">+{r.beyond} objects not drawn</span>}
                     </span>
                     {d.columns.map((x) => {
                       const cl = r.cells[x.id];
@@ -118,7 +120,7 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
         )}
       </Card>
       <section className="ae-signbar">
-        <span><b>{done}</b> of {rows.length} decided</span>
+        <span><b>{done}</b> of {rows.length} decided{d.matched > d.rows.length ? ` · ${d.matched - d.rows.length} more people not listed` : ""}</span>
         <span><b>{revokes.length}</b> marked revoke</span>
         <span className="ae-signbar-act">
           <button type="button" className="ae-btn" disabled={!revokes.length} title="Adds the granted roles of each revoked person to the change plan (simulation only)"

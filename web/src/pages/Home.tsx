@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
-import { Card, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
+import { Banner, Card, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
 import { useApp } from "../ctx";
-import { Load } from "./common";
+import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
 
 const RECENT = "ae-recent";
@@ -68,7 +68,7 @@ export function HomePageView() {
   const c = useApp();
   const s = useApi<HomePage>("home", { view: c.view });
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<{ q: string; items: FindItem[] }>({ q: "", items: [] });
+  const [hits, setHits] = useState<{ q: string; items: FindItem[]; totals?: Record<string, number> }>({ q: "", items: [] });
   const items = hits.items;
   const box = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -79,7 +79,7 @@ export function HomePageView() {
   useEffect(() => {
     if (q.trim().length < 2 || parseQuestion(q)) { setHits({ q, items: [] }); return; }
     let live = true; // a slow answer for older text must not replace the newer one
-    const t = setTimeout(() => { get<{ items: FindItem[] }>("find", { q, view: c.view, limit: "24" }).then((r) => live && setHits({ q, items: r.items }), () => live && setHits({ q, items: [] })); }, 160);
+    const t = setTimeout(() => { get<{ items: FindItem[]; totals: Record<string, number> }>("find", { q, view: c.view, limit: "24" }).then((r) => live && setHits({ q, items: r.items, totals: r.totals }), () => live && setHits({ q, items: [] })); }, 160);
     return () => { live = false; clearTimeout(t); };
   }, [q, c.view]);
   const openItem = (i: FindItem) => openFound(i, c.nav);
@@ -98,7 +98,7 @@ export function HomePageView() {
       <div className="ae-bigsearch">
         <label className="ae-sr" htmlFor="ae-home-q">Search</label>
         <input id="ae-home-q" ref={box} type="search" className="ae-input" value={q} autoComplete="off"
-          placeholder="Find a person, role or table, or ask: can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER"
+          placeholder="Person, role, table, or: can X read Y"
           onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); if (e.key === "Escape") setQ(""); }} />
         {!q && <span className="ae-muted ae-kbd">Press / to search</span>}
       </div>
@@ -120,15 +120,18 @@ export function HomePageView() {
             </div>
           )}
           {GROUP.map(([g, label]) => {
-            const xs = items.filter((i) => groupOf(i) === g);
+            const xs = items.filter((i) => groupOf(i) === g), shown = xs.slice(0, 8), all = hits.totals?.[g] ?? xs.length;
             return xs.length ? (
               <div key={g}>
-                <h4>{label}</h4>
-                {xs.slice(0, 8).map((i) => (
+                <h4>{label}{all > shown.length && <span className="ae-muted"> · {shown.length} of {all.toLocaleString()}</span>}</h4>
+                {shown.map((i) => (
                   <button type="button" key={i.id} className="ae-suggest-row" onClick={() => openItem(i)}>
-                    <span className="ae-mono">{i.name}</span><span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}{i.answer ? ` · ${i.answer}` : ""}</span>
+                    <span className="ae-mono">{i.name}{i.admin && <span className="ae-tone-bad"> · admin</span>}{i.status && i.status !== "active" && <span className="ae-warn-word"> · {i.status === "never" ? "never logged in" : i.status}</span>}</span>
+                    <span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}{i.admin ? " · admin roles: reaches everything" : i.answer ? ` · ${i.answer}` : ""}</span>
                   </button>
                 ))}
+                {all > shown.length && <p className="ae-muted ae-suggest-more">{(all - shown.length).toLocaleString()} more {label.toLowerCase()}: type more of the name to narrow it.
+                  {g === "object" && <> <button type="button" className="ae-link" onClick={() => c.nav("object", {})}>Search them on Who has access</button></>}</p>}
               </div>
             ) : null;
           })}
@@ -137,7 +140,13 @@ export function HomePageView() {
       <div className="ae-shortcuts">
         <span className="ae-muted">Try:</span>
         {shortcuts(c.meta.pages.map((p) => p.key), who).map((x) => <button type="button" key={x.page} className="ae-link" onClick={() => c.nav(x.page, x.params)}>{x.label}</button>)}
+        <span className="ae-muted">or type “can NAME read TABLE”</span>
       </div>
+      {c.view === "shared" && c.meta.inside && <p className="ae-muted">These are the app owner's rights, not yours: inside Snowflake the app reads with its owner's role.</p>}
+      {c.meta.notes.length > 0 && (
+        <Banner tone="warn" title={`Incomplete: ${c.meta.notes.length} source${c.meta.notes.length === 1 ? "" : "s"} not fully read`}
+          lines={c.meta.notes.map((n) => `${n.title}: ${n.meaning}${n.fix ? ` Fix: ${n.fix}` : ""}`)} />
+      )}
       <Load s={s}>{(d) => (
         <>
           {d.me && (
@@ -170,10 +179,14 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
   const total = Object.values(risks).reduce((a, b) => a + b, 0);
   const ad = k.admins;
   const open = (u: string) => ({ key: u, label: u, open: () => c.nav("access", { user: u }) });
+  const off = (...keys: string[]) => keys.map((x) => unread(c.meta, x)).find(Boolean) ?? null; // its source not read
+  const grantsOff = off("grants", "user_roles"), usersOff = off("users"), tagsOff = off("tags"), polOff = off("policies");
+  const nr = (n: ReturnType<typeof off>, v: number) => (n ? <span className="ae-muted ae-hc-unit" title={`${n.title}: ${n.meaning}`}>not read</span> : v.toLocaleString());
+  const funcTech = (k.roles.functional ?? 0) + (k.roles.technical ?? 0);
   const who = (n: { people: number; roles: number }) => [n.people && plural(n.people, "person", "people"), n.roles && plural(n.roles, "role")].filter(Boolean).join(", ");
   return (
     <div className="ae-hcards">
-      <Card title={<>Risks <b className="ae-hc-n">{total.toLocaleString()}</b> <span className="ae-muted ae-hc-unit">findings</span></>}
+      <Card title={<>Risks <b className="ae-hc-n">{nr(grantsOff, total)}</b> {!grantsOff && <span className="ae-muted ae-hc-unit">findings</span>}</>}
         right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", {})}>Risks & fixes</button>}>
         {d.act_first && d.act_first.length > 0 && (
           <div className="ae-act" aria-label="Act first">
@@ -201,7 +214,7 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
         {d.rule_sev && <Areas ruleSev={d.rule_sev} />}
         {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
       </Card>
-      <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{ad.total.toLocaleString()}</b></>}
+      <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>}
         sub="An admin role, or an account privilege not given to everyone through PUBLIC."
         right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { part: "admins" })}>Open</button>}>
         <HBars rows={ad.by_role.map((r) => ({ key: r.role, label: r.role, n: r.people, cls: "high" }))
@@ -209,17 +222,18 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
         <p className="ae-muted">{ad.service.toLocaleString()} of them service users.</p>
         <NameList items={ad.names.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.total} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
       </Card>
-      <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{k.stale.total.toLocaleString()}</b></>}
+      <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{nr(usersOff ?? grantsOff, k.stale.total)}</b></>}
         sub="Still holding roles (rules 8 and 16); those reading sensitive data first."
         right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { part: "stale" })}>Open</button>}>
-        <StackBar parts={statusParts(k.stale.by_status)} />
+        {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <StackBar parts={statusParts(k.stale.by_status)} />}
         <NameList items={k.stale.names.map(open)} total={k.stale.total} max={TOP} onMore={() => c.nav("rules", { part: "stale" })} />
       </Card>
-      <Card title={<>Sensitive data <b className="ae-hc-n">{d.counts.sensitive.toLocaleString()}</b></>} sub="objects with a sensitive tag"
+      <Card title={<>Sensitive data <b className="ae-hc-n">{nr(tagsOff, d.counts.sensitive)}</b></>} sub={tagsOff ? `${tagsOff.title}: sensitivity unknown` : "objects with a sensitive tag"}
         right={<button type="button" className="ae-btn" onClick={() => c.nav("sensitive", {})}>Open</button>}>
-        <StackBar label="Sensitive columns" parts={[{ key: "u", label: "Not masked", value: prot.unmasked_columns, cls: "high" }, { key: "m", label: "Masked", value: prot.masked, cls: "low" }]} />
+        {polOff ? <p className="ae-muted">{polOff.title}: masked or not is unknown.</p>
+          : <StackBar label="Sensitive columns" parts={[{ key: "u", label: "Not masked", value: prot.unmasked_columns, cls: "high" }, { key: "m", label: "Masked", value: prot.masked, cls: "low" }]} />}
         <ul className="ae-hc-facts">
-          <li><button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "6" })}>{prot.unmasked_columns.toLocaleString()} columns not masked</button></li>
+          {!polOff && <li><button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "6" })}>{prot.unmasked_columns.toLocaleString()} columns not masked</button></li>}
           <li><button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "7" })}>{prot.dormant.toLocaleString()} dormant or disabled people read it</button></li>
           <li><button type="button" className="ae-link" onClick={() => c.nav("sensitive", { show: "rows" })} disabled={!prot.row_tables}>{prot.row_tables.toLocaleString()} tables with row policies</button></li>
           <li><button type="button" className="ae-link" onClick={() => c.nav("flow", {})}>Where it flows: people → roles → objects</button></li>
@@ -227,11 +241,13 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
       </Card>
       <Card title={<>People <b className="ae-hc-n">{d.counts.users.toLocaleString()}</b></>} sub={`${k.people.service.toLocaleString()} service users`}
         right={<button type="button" className="ae-btn" onClick={() => c.nav("access", {})}>Find one</button>}>
-        <StackBar parts={statusParts(k.people.by_status, true)} />
+        {usersOff ? <p className="ae-muted">{usersOff.title}: who is active, dormant or disabled is unknown.</p> : <StackBar parts={statusParts(k.people.by_status, true)} />}
       </Card>
       <Card title={<>Roles <b className="ae-hc-n">{d.counts.roles.toLocaleString()}</b></>}
         right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { rule: "13" })}>Orphan roles</button>}>
-        <HBars rows={Object.entries(k.roles).sort((x, y) => y[1] - x[1]).map(([kind, n]) => ({ key: kind, label: KIND_WORD[kind] ?? kind, n, cls: kind === "admin" ? "high" : "low" }))} />
+        {!funcTech && d.counts.roles > 50
+          ? <p className="ae-warn-word">No role starts with {c.meta.prefixes.func} / {c.meta.prefixes.tech}: set ROLE_PREFIXES to this account's naming. Rules 1 and 2 did not run.</p>
+          : <HBars rows={Object.entries(k.roles).sort((x, y) => y[1] - x[1]).map(([kind, n]) => ({ key: kind, label: KIND_WORD[kind] ?? kind, n, cls: kind === "admin" ? "high" : "low" }))} />}
       </Card>
       <Card title={<>Objects <b className="ae-hc-n">{d.counts.objects.toLocaleString()}</b></>}
         right={<button type="button" className="ae-btn" onClick={() => c.nav("object", {})}>Find one</button>}>
@@ -242,13 +258,18 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
         {k.activity.ok ? <DayBars days={k.activity.daily} /> : <p className="ae-muted">Not read: {k.activity.reason}</p>}
         {d.per_rule && k.activity.ok && <p className="ae-muted">{["24", "25", "26", "27", "28"].map((n) => `rule ${n}: ${(d.per_rule![n] ?? 0).toLocaleString()}`).join(" · ")}</p>}
       </Card>
-      {k.changes && (
+      {k.changes && (k.changes.counts ? (
         <Card title={<>What changed <b className="ae-hc-n">{k.changes.counts.all.toLocaleString()}</b></>} sub={`since ${k.changes.before}`}
           right={<button type="button" className="ae-btn" onClick={() => c.nav("changes", {})}>Open</button>}>
           <StackBar parts={[{ key: "gain", label: "Gained", value: k.changes.counts.gain, cls: "medium" }, { key: "lose", label: "Lost", value: k.changes.counts.lose, cls: "low" }]} />
           <p className="ae-muted">{k.changes.counts.risk.toLocaleString()} with a new finding · {k.changes.counts.sensitive.toLocaleString()} on sensitive data · {k.changes.high.toLocaleString()} new high findings</p>
         </Card>
-      )}
+      ) : (
+        <Card title="What changed" sub={k.changes.reason ? "No earlier read kept" : "Not compared yet"}
+          right={!k.changes.reason && <button type="button" className="ae-btn" onClick={() => c.nav("changes", {})}>Compare with the read before</button>}>
+          <p className="ae-muted">{k.changes.reason ?? "The read before is kept: comparing takes a moment, then What changed opens."}</p>
+        </Card>
+      ))}
     </div>
   );
 }

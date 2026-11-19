@@ -5,7 +5,7 @@ import type { ListItem, SensitiveReach, UserPage } from "../api/types";
 type MR = UserPage["multi"]["rows"][number];
 import { Banner, Card, DataTable, KpiRow, PrivilegeTabs, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, PickFirst, Sel, Tog, Usage, ScopeChips } from "./common";
+import { Banners, col, Controls, CutBanner, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, PickFirst, Sel, Tog, unread, Usage, ScopeChips } from "./common";
 
 export function UserPage() {
   const c = useApp();
@@ -48,13 +48,13 @@ export function UserPage() {
               { label: "Paths", value: d.kpis.paths, caption: `${d.kpis.multi} reached more than one way` },
               { label: "Roles", value: d.kpis.roles, caption: `${d.kpis.roles_direct} direct` },
               { label: "Deepest chain", value: d.kpis.deepest },
-              { label: "Sensitive objects", value: d.kpis.sensitive_known ? d.kpis.sensitive ?? 0 : "unknown", tone: d.kpis.sensitive ? "warn" : null },
+              { label: "Sensitive objects", value: d.kpis.sensitive_known && !unread(c.meta, "tags") ? d.kpis.sensitive ?? 0 : c.view === "mine" ? "unknown" : "not read", tone: d.kpis.sensitive ? "warn" : null },
               { label: "Admin roles", value: d.kpis.admin_roles, tone: d.kpis.admin_roles ? "bad" : null },
               { label: "Account privileges", value: d.kpis.account_privs, tone: d.kpis.account_privs ? "bad" : null },
             ]} />
             <Findings list={d.findings} total={d.findings_total} refs={d.refs} />
             <GraphCard g={d.graph} refs={d.refs} />
-            {d.capped.length > 0 && <Banner tone="warn" title="Some walks were cut" lines={[`Chains longer than the hop limit were stopped: ${d.capped.slice(0, 5).join(", ")}`]} />}
+            <CutBanner capped={d.capped} />
             <Tabs nav={c.inside ? 2 : 1} active={part} onChange={(t) => { setPart(t); c.set({ schema: null, otype: null, full: null }); }} tabs={[
               { key: "privs", label: "Privileges", count: d.kpis.privileges },
               ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),

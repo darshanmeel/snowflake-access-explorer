@@ -27,6 +27,11 @@ body { background: #F6F7F9; }
 .top-time { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--ae-muted); }
 .top-time-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ae-ok_ink); }
 .top-time.old .top-time-dot { background: var(--ae-warn_ink); }
+.top-time.old { color: var(--ae-warn_ink); }
+.top-time.stale { color: var(--ae-bad_ink); font-weight: 600; }
+.top-time.stale .top-time-dot { background: var(--ae-bad_ink); }
+.top-chip { display: inline-flex; gap: 6px; align-items: center; font-size: 11.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--ae-line, currentColor); background: none; white-space: nowrap; }
+.top-incomplete { color: var(--ae-warn_ink); border-color: var(--ae-warn_bd); background: var(--ae-warn_bg); cursor: pointer; font-weight: 600; }
 .top-demo { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--ae-warn_bg); color: var(--ae-warn_ink); border: 1px solid var(--ae-warn_bd); }
 .find { position: relative; flex: 1 1 260px; max-width: 460px; }
 .seg { display: inline-flex; border: 1px solid var(--ae-line); border-radius: 8px; overflow: hidden; }

@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useApi } from "../api/client";
 import type { SensitivePage } from "../api/types";
-import { Banner, Card, DataTable, KpiRow, MaskDots, MiniBar, NameList, Tabs, type BarPart } from "../components";
+import { Banner, Card, DataTable, EmptyState, KpiRow, MaskDots, MiniBar, NameList, Tabs, type BarPart } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { Catalog } from "./Catalog";
-import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog } from "./common";
+import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog, unread } from "./common";
 import { PagedTable } from "./paged";
 
 type O = SensitivePage["objects"][number];
@@ -37,6 +37,7 @@ export function SensitivePageView() {
   const c = useApp();
   const s = useApi<SensitivePage>("sensitive", apiParams(c));
   const [part, setPart] = useState(LINKED.includes(c.params.show ?? "") ? c.params.show! : c.params.part ?? "objects"); // the old tables first
+  const pol = unread(c.meta, "policies", true), polOff = c.meta.sources.policies === "UNAVAILABLE"; // off: masked is unknown
   return (
     <>
       <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them."
@@ -57,11 +58,12 @@ export function SensitivePageView() {
             </Controls>
             <KpiRow items={[
               { label: "Sensitive objects", value: k.objects, caption: `${k.columns} columns, ${k.whole} whole-object` },
-              { label: "People who can read", value: k.people, caption: `${k.service} service` },
+              { label: "People who can read", value: k.people, caption: `enabled persons; ${k.service} service` },
               { label: "Admin readers", value: k.admin, tone: k.admin ? "bad" : null },
               { label: "Disabled readers", value: k.disabled, tone: k.disabled ? "warn" : null },
-              { label: "Unmasked columns", value: k.unmasked, tone: k.unmasked ? "bad" : null },
+              { label: "Unmasked columns", value: polOff ? "unknown" : k.unmasked, tone: k.unmasked && !polOff ? "bad" : null },
             ]} />
+            <PolicyNote />
             {k.stale.length > 0 && <Banner tone="warn" title={`Disabled or dormant users still hold access: ${k.stale.length.toLocaleString()}`}>
               <NameList items={k.stale} onOpen={(u) => c.nav("access", { user: u })} onMore={() => c.nav("rules", { rule: "7" })} /></Banner>}
             <p className="ae-muted"><button type="button" className="ae-link" onClick={() => c.nav("compare", { scope: "sensitive" })}>Compare two people or roles on sensitive data →</button></p>
@@ -69,10 +71,10 @@ export function SensitivePageView() {
               { key: "objects", label: "Sensitive objects", count: d.objects_total },
               { key: "readers", label: "Who can read them", count: d.readers_total },
               { key: "catalog", label: "Catalog", count: d.catalog.length },
-              ...(d.row_total ? [{ key: "rows", label: "Row policies", count: d.row_total }] : []),
+              ...(d.row_total || pol ? [{ key: "rows", label: "Row policies", count: d.row_total }] : []),
             ]} />
             {part === "catalog" && <Catalog rows={d.catalog} />}
-            {part === "rows" && <RowTables d={d} />}
+            {part === "rows" && (d.row_total || !pol ? <RowTables d={d} /> : <EmptyState title="Not read">{pol.title}: tables with row policies are not known.</EmptyState>)}
             {part === "objects" && <Card title="Sensitive objects" scroll>
               <PagedTable path="sensitive" at="o_offset" total={d.objects_total} offset={d.objects_offset} pick={(x: SensitivePage) => x.objects}
                 csv="sensitive_objects.csv" rows={d.objects}
@@ -80,7 +82,7 @@ export function SensitivePageView() {
                   col("o", "Object", (r: O) => r.object, { render: (r: O) => <span className="ae-objcell"><NameLink id={r.object} refs={d.refs} /><span className="ae-muted ae-osub">{r.type.toLowerCase()}</span></span>, wrap: "wrap" }),
                   col("g", "Tags", (r: O) => r.tags.map((t) => t.label).join(", "), { render: (r: O) => <span className="ae-objtags0">{r.tags.map(tagChip)}</span>, wrap: "wrap" }),
                   col("c", "Columns masked", (r: O) => (r.cols.length ? `${r.masked[0]} of ${r.masked[1]}: ${r.cols.join(", ")}` : "whole object"), { help: "One dot per sensitive column: filled = masked, open red ring = read in the clear", wrap: "wrap",
-                    render: (r: O) => r.cols.length ? (
+                    render: (r: O) => polOff && r.cols.length ? <span className="ae-muted">unknown: policies not read</span> : r.cols.length ? (
                       <span className="ae-maskcell"><MaskDots columns={cols.get(r.object) ?? r.cols.map((x, i) => ({ column: x, masked: i < r.masked[0] }))} />
                         <span className={r.masked[0] < r.masked[1] ? "ae-bad" : "ae-muted"}>{r.masked[0]} of {r.masked[1]}</span>
                         <span className="ae-muted ae-maskcols">{r.cols.join(", ")}</span></span>) : <span className="ae-muted">whole object</span> }),
@@ -108,6 +110,15 @@ export function SensitivePageView() {
       }}</Load>
     </>
   );
+}
+
+/** A warning when the masking and row policies were not read, or only in part: masked / not masked is then unknown
+ * (Sensitive data, Catalog, Flow). */
+export function PolicyNote() {
+  const c = useApp();
+  const n = unread(c.meta, "policies", true);
+  return n && <Banner tone="warn" title={c.meta.sources.policies === "UNAVAILABLE" ? "Policies not read: masked and unmasked are unknown" : n.title}
+    lines={[n.meaning, ...(n.fix ? [`Fix: ${n.fix}`] : [])].filter(Boolean)} />;
 }
 
 /** Every table with a row access policy, sensitive or not: one page at t_offset=. */

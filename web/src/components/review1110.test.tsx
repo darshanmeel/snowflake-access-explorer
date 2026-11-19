@@ -16,7 +16,7 @@ import { sortRows, toCsv } from "./table";
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); clearCache(); });
 
 const ctx = (nav = vi.fn(), set = vi.fn()): Ctx =>
-  ({ page: "home", params: {}, view: "shared", meta: { pages: [], default_user: "" } as unknown as Meta, theme: "light", nav, set }) as Ctx;
+  ({ page: "home", params: {}, view: "shared", meta: { pages: [], default_user: "", notes: [], sources: {} } as unknown as Meta, theme: "light", nav, set }) as Ctx;
 
 describe("table helpers", () => {
   it("sorts with one collator, numbers in names in order", () => {

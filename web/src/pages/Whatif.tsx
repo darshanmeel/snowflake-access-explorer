@@ -104,7 +104,8 @@ function UserRow({ u, refs }: { u: WhatIfUser; refs: WhatIfPage["refs"] }) {
       </div>
       {on && (
         <div className="ae-wi-user">
-          {u.lost_rows.length > 0 && <><h4>Loses</h4><ObjRows rows={u.lost_rows} refs={refs} /></>}
+          {u.lost_rows.length > 0 && <><h4>Loses</h4><ObjRows rows={u.lost_rows} refs={refs} />
+            {u.lost_rows.length < u.objects && <p className="ae-muted">First {u.lost_rows.length} of {u.objects.toLocaleString()} objects: the CSV has all.</p>}</>}
           {u.kept_rows.length > 0 && <><h4>Keeps through another path</h4><ObjRows rows={u.kept_rows} refs={refs} kept /></>}
           {u.kept_roles.length > 0 && <><h4>Roles still reached</h4>{u.kept_roles.map((k) => <div key={k.role}><PathCell path={k.via} refs={refs} /></div>)}</>}
         </div>
@@ -144,7 +145,8 @@ function Result({ d }: { d: WhatIfPage }) {
         { key: "fix", label: "Text to apply" },
       ]} />
       {tab === "users" && (
-        <Card title="Who loses what" sub="People who lose the same thing are one row; the crossed-out link is the one the change removes. Open a row for the names.">
+        <Card title="Who loses what" sub={`People who lose the same thing are one row; the crossed-out link is the one the change removes. Open a row for the names.${
+          d.users.some((u) => u.lost_rows.length < u.objects) ? ` A person lists at most ${c.meta.limits.max_paths} objects: the CSV has all.` : ""}`}>
           <LoseKeep users={d.users} />
           <LossGroups users={d.users} changes={d.changes.map((x) => x.change)} refs={d.refs} />
           {d.users.length > 0 && (

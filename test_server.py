@@ -1048,7 +1048,7 @@ def test_review_fixes():  # search answers, row policy list, defaults that exist
     n = js(f"/api/access?user={server.DEMO_USER}")["counts"]  # shared Home has nobody until one is picked
     assert f[server.DEMO_USER]["answer"] == f"reads {n['read']} · changes {n['change']} · owns {n['own']}"
     wh = next(i for i in js("/api/find?q=WH_")["items"] if i["type"] == "WAREHOUSE")
-    assert wh["answer"].endswith("access") and wh["answer"][0].isdigit()
+    assert wh["answer"].endswith("admin holders") and wh["answer"][0].isdigit()  # as the Object page counts them
     s = js("/api/sensitive", ["row_list", "row_total", "row_offset"])  # Home sends only the count
     assert [r["object"] for r in s["row_list"]] == sorted(a.row_tables()) and s["row_total"] == js("/api/home")["protection"]["row_tables"]
     assert "row_list" not in js("/api/home")["protection"] and js("/api/sensitive?t_offset=1&limit=1")["row_list"][0]["object"] == sorted(a.row_tables())[1]
@@ -1461,6 +1461,55 @@ def test_progress():
         server.read_shared = old
         server.cache.drop(server.KEY)
     assert st == 200 and body["ok"] and drawn[-1] == "" and "step one" in drawn[0] and "step two" in drawn[-2], drawn
+
+
+def test_not_read_and_caps():  # a source not read is "not read", never none; a list cut at a limit says how many
+    m = js("/api/meta")
+    assert m["run"]["at"] and m["mine_note"] is None and "fetched_ts" in m
+    src, notes = a.run.get("SOURCES"), a.run.get("NOTES")
+    try:
+        a.run["SOURCES"] = {"activity": "UNAVAILABLE", "streams": "UNAVAILABLE"}
+        a.run["NOTES"] = {"activity": "ACCESS_HISTORY: not authorized", "streams": "SHOW STREAMS: not authorized"}
+        server.ANSWERS.clear()  # the answers kept for this data set came before the change
+        sk = a.skipped_rules()
+        assert set(sk) == a.ACTIVITY_RULES | {"22"} and all(v.startswith("not read") for v in sk.values()), sk
+        r = js("/api/rules")
+        assert r["skipped"] == sk
+        assert r["counts"]["Passing"] == sum(not r["per_rule"][n] and n not in sk for n in a.RULES)
+        assert js("/api/home")["skipped"] == sk
+    finally:
+        a.run["SOURCES"], a.run["NOTES"] = src, notes
+        server.ANSWERS.clear()
+    old = a.FUNC, a.TECH
+    try:  # a big account named another way: rules 1 and 2 did not run, they do not pass
+        a.FUNC, a.TECH = "QQF_", "QQT_"
+        a.memo.pop("prefix_hit", None)
+        assert len(a.roles) > 50 and {"1", "2"} <= set(a.skipped_rules()), a.skipped_rules()
+    finally:
+        a.FUNC, a.TECH = old
+        a.memo.pop("prefix_hit", None)
+    assert a.skipped_rules() == {}
+    f = js("/api/find?q=TBL_CUSTOMER&limit=24")  # the Object page's people and admin holders, totals per Home group
+    o = js("/api/object?name=SALES.CORE.TBL_CUSTOMER")["kpis"]
+    hit = next(i for i in f["items"] if i["id"] == "SALES.CORE.TBL_CUSTOMER")
+    assert hit["answer"] == f"{o['people']} people + {o['admin']} admin holders" and f["totals"] == {"object": f["total"]}, (hit, f["totals"])
+    u = next(i for i in js("/api/find?q=ADMIN_01")["items"] if i["name"] == "ADMIN_01")
+    assert u["admin"] and u["status"] == "active"
+    ch = js("/api/check?name=ENGINEER_01&obj=SALES.CORE.TBL_CUSTOMER")
+    assert ch["paths_total"] >= len(ch["paths"]) and "capped" in ch
+    r = js("/api/rules?part=stale&limit=2&s_offset=1")
+    assert r["stale_offset"] == 1 and len(r["stale"]) == 2 and r["stale_matched"] == r["stale_total"]
+    assert js("/api/rules?sq=zzz")["stale_matched"] == 0
+    assert len(js("/api/rules?limit=0")["stale"]) == r["stale_total"]  # the CSV: every one
+    t = get("/api/flow.csv?sel=none").text  # every person of the box, not the first MAX_PATHS
+    assert len(t.strip().splitlines()) - 5 == js("/api/flow?sel=none")["follow"]["count"], t[:300]
+    g, every = a.review_grid(cap=2), a.review_grid()  # people who reach only objects past the cap are rows too
+    assert len(g["columns"]) == 2 and g["total"] > 2 and set(g["users"]) == set(every["users"])
+    assert all(x["beyond"] >= 0 for x in g["rows"]) and sum(x["beyond"] for x in g["rows"]) > 0
+    assert js("/api/home")["cards"]["changes"]["reason"] is None  # fake: a read before is kept, Changes compares on open
+    js("/api/changes")
+    assert js("/api/home")["cards"]["changes"]["counts"]
+    assert js("/api/activity?user=ADMIN_01")["admin"]
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import type { CheckPage, ListItem, Path, Refs } from "../api/types";
 import { Banner, Card, CodeOutput, DataTable, EmptyState, KpiRow, NameList, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
-import { col, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
+import { col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
 export function CheckPageView() {
@@ -224,9 +224,11 @@ function Answer({ d }: { d: CheckPage }) {
   return (
     <>
       <Banner tone={a.yes ? (a.tone === "warn" ? "warn" : a.tone === "low" ? "info" : "bad") : "info"} title={a.title} lines={[a.text]} />
+      <CutBanner capped={d.capped} no={d.verdict === "no"} />
       <GraphCard g={d.graph} refs={d.refs} />
       {d.paths.length > 0 && (
-        <Card title="Paths" sub={`${d.paths.length} way(s) to ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}`}>
+        <Card title="Paths" sub={`${(d.paths_total ?? d.paths.length).toLocaleString()} way(s) to ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}${
+          (d.paths_total ?? 0) > d.paths.length ? `: first ${d.paths.length} listed` : ""}`}>
           <DataTable csv="check_paths.csv" rows={d.paths}
             columns={[...(d.priv === "*" ? [col("p", "Privilege", (r: CheckPage["paths"][number]) => r.privilege, { wrap: "nowrap" })] : []),
               col("d", "Depth", (r: CheckPage["paths"][number]) => r.depth, { num: true }),

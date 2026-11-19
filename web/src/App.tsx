@@ -326,7 +326,7 @@ export function DataInfo({ meta }: { meta: Meta }) {
     : meta.source === "direct" ? `Snowflake, read directly with ${meta.inside ? "the app owner's role" : "your role"} (SOURCE=direct)` : `the snapshot tables in ${meta.where} (SOURCE=objects)`;
   return (
     <details className="side-notes side-data">
-      <summary><span className="side-data-dot" />Data from {meta.run.when}</summary>
+      <summary><span className="side-data-dot" />Data source</summary>
       <ul>
         <li><b>Source</b><span>{from}{meta.fetched_at ? `, read ${meta.fetched_at}` : ""}.</span></li>
         <li><b>Kept</b><span>In memory{meta.cache_hours && meta.mode !== "fake" ? " and in .cache/ on this machine" : ""}, until ↻ reads again.</span></li>
@@ -345,13 +345,27 @@ export function DataInfo({ meta }: { meta: Meta }) {
   );
 }
 
+/** "13 h ago" / "17 days ago" of epoch seconds at, from now (ms). */
+export const ago = (at: number, now: number) => {
+  const h = Math.max(0, (now / 1000 - at) / 3600);
+  return h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`;
+};
+
+/** The data's age in the top bar, aged here every minute (a tab left open overnight still tells the truth): the dot
+ * green under 24 h, amber over, red over 7 days, said in words when stale; a .cache/ copy read over 24 h ago says so. */
 function DataTime({ meta, reload, busy }: { meta: Meta; reload: () => void; busy: boolean }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(t); }, []);
   if (!meta.run) return null;
   const what = meta.mode === "fake" ? "Data" : meta.source === "direct" ? "Read" : "Snapshot";
   const sq = meta.sql_copy?.on && meta.sql_copy.schema ? ` · SQL copy: ${meta.sql_copy.path} (schema ${meta.sql_copy.schema})` : "";
+  const at = meta.run.at, h = at ? (now / 1000 - at) / 3600 : meta.run.old ? 25 : 0;
+  const tone = meta.mode === "fake" ? "" : h > 24 * 7 ? " stale" : h > 24 ? " old" : "";
+  const when = at ? `${meta.run.when.split(" · ")[0]} · ${tone ? `Stale: ${ago(at, now).replace(" ago", " old")}` : ago(at, now)}` : meta.run.when;
+  const cached = meta.fetched_ts && now / 1000 - meta.fetched_ts > 24 * 3600 ? ` · read from cache ${meta.fetched_at}` : "";
   return (
-    <span className={`top-time${meta.mode !== "fake" && meta.run.old ? " old" : ""}`} title={meta.fetched_at || sq ? `${meta.fetched_at ? `Read ${meta.fetched_at}` : ""}${sq}` : undefined}>
-      <span className="top-time-dot" aria-hidden />{what} {meta.run.when}
+    <span className={`top-time${tone}`} title={meta.fetched_at || sq ? `${meta.fetched_at ? `Read ${meta.fetched_at}` : ""}${sq}` : undefined}>
+      <span className="top-time-dot" aria-hidden />{what} {when}{cached}
       <button type="button" className="side-reload" onClick={reload} disabled={busy} title={meta.mode === "fake" ? "Reload" : "Read Snowflake again"} aria-label="Read again">↻</button>
     </span>
   );
@@ -487,6 +501,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)}>Shared snapshot</button>
             {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} disabled={!!busy && !meta?.mine.loaded} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
           </div>
+          {meta?.mine_available === false && <span className="ae-muted top-chip" title={meta.mine_note ?? undefined}>My access: off{meta.inside ? " (owner's rights)" : ""}</span>}
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} disabled={!!busy} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
           {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
           {bg && (
@@ -497,6 +512,8 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           )}
           <span className="top-right">
             {meta && <DataTime meta={meta} reload={reload} busy={!!busy || !!bg} />}
+            {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => setShut(false)}
+              title={meta.notes.map((n) => `${n.title}: ${n.meaning}`).join("\n")}><span className="side-notes-dot" aria-hidden />Incomplete · {meta.notes.length}</button>}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
             {hasData && <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner">{"</>"} on any card: its SQL</span>}
             {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself">{"</>"} SQL</button>}

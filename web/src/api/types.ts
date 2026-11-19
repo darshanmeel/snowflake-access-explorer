@@ -146,6 +146,7 @@ export interface RunInfo {
   finished_at: string;
   when: string;
   old: boolean;
+  at?: number | null; // finished, epoch seconds: the top bar ages it itself
 }
 
 export interface Note {
@@ -201,6 +202,7 @@ export interface Meta {
   source: Source;
   where: string;
   fetched_at: string | null;
+  fetched_ts?: number | null; // when this server read it from Snowflake (a .cache/ copy keeps its time), epoch seconds
   view: View;
   loaded: boolean;
   run: RunInfo | null;
@@ -208,6 +210,7 @@ export interface Meta {
   notes: Note[];
   mine: MineState;
   mine_available: boolean; // false inside Snowflake (owner's rights)
+  mine_note?: string | null; // why My access is off here (server.mine_off), else null
   cache_hours: number; // hours a copy stays in .cache/ (0: memory only, as inside Snowflake)
   inside?: boolean; // Streamlit in Snowflake: reads run with the app owner's role
   csv?: boolean; // false: CSV=0 on the server, every CSV button hidden
@@ -260,6 +263,8 @@ export interface FindItem {
   sensitive: boolean;
   page: Page;
   answer: string;
+  status?: UserStatus | null; // users only
+  admin?: boolean; // a user holding an admin role
 }
 
 export interface ListItem {
@@ -679,6 +684,7 @@ export interface CheckPage {
   dormant_days: number | null;
   admin_paths: Path[];
   paths: { path: Path; depth: number; holder: string; how: string; privilege: string }[];
+  paths_total?: number; // every path (paths lists the first MAX_PATHS)
   owner: Path[];
   choke: string[];
   closest: Path | null;
@@ -822,8 +828,10 @@ export interface RulesPage {
   rows_unknown: string[]; // this and admins: not in a group= answer
   admins: AdminPerson[]; // the first 200
   admins_total: number;
-  stale: StalePerson[]; // the first 200: disabled, dormant or never logged in, still holding roles (rules 8 and 16)
+  stale: StalePerson[]; // one page (s_offset=, limit=, sq= a name): disabled, dormant or never logged in, still holding roles (rules 8 and 16)
   stale_total: number;
+  stale_matched: number; // the rows sq= keeps, before the page
+  stale_offset: number;
   stale_split: Record<string, number>; // all of them per status
   refs: Refs;
 }
@@ -1046,7 +1054,8 @@ export interface HomeCards {
   roles: Record<string, number>; // per role kind
   objects: { by_type: { type: string; n: number }[] };
   activity: { ok: boolean; reason: string | null; users: number; daily: { day: string; queries: number }[] };
-  changes: { counts: { all: number; gain: number; lose: number; risk: number; sensitive: number }; high: number; before: string } | null;
+  /** counts null: not compared yet (Changes compares on open), or reason: no earlier snapshot kept */
+  changes: { counts: { all: number; gain: number; lose: number; risk: number; sensitive: number } | null; high: number; before: string | null; reason: string | null } | null;
 }
 
 // ---------- who has access (screen 2) ----------
@@ -1222,6 +1231,7 @@ export interface GridRow {
   roles: string[]; // granted roles on the paths: what a revoke takes away
   suggest: string | null; // dormant / disabled / never: suggested revoke
   cells: Record<string, GridCell>;
+  beyond?: number; // objects they reach that the grid does not draw (past GRID_MAX)
 }
 export interface GridPage {
   view: View;
@@ -1364,6 +1374,7 @@ export interface ActivityPage {
   days?: number;
   work?: { start: number; end: number }; // business hours, local, Mon-Fri (WORK_HOURS); the tab shifts UTC to local
   available: boolean;
+  admin?: boolean; // the person or role holds an admin role (rule 26 looks at its use)
   reason: string | null;
   note: string | null; // read, but partly (no client)
   first?: string;

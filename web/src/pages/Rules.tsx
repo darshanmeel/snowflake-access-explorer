@@ -5,6 +5,7 @@ import { Banner, Card, DataTable, NameList, PathText, SEVERITIES, StackBar, Tabs
 import { apiParams, useApp, useOpen } from "../ctx";
 import { rulesOff, rulesQuery, useSaved } from "./changeplan";
 import { col, Head, Load, NameLink } from "./common";
+import { PagedTable } from "./paged";
 import { FindingFix, firstOf, GROUP_PAGE, GroupItems, RisksTab, RuleList, skipNote } from "./Risks";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -74,7 +75,7 @@ export function RulesPageView() {
             {tab === "stale" && (
               <Card title="Disabled, dormant or never logged in, still holding roles" scroll
                 sub={`Rules 8 and 16, each person once. People who can read sensitive data (rule 7) come first. Dormant: no login for ${c.meta.limits.dormant_days} days.`}>
-                <StaleTable rows={d.stale} total={d.stale_total} split={d.stale_split} />
+                <StaleTable d={d} />
               </Card>
             )}
             </>}
@@ -209,16 +210,19 @@ function Line({ f, refs, onOpen, view }: { f: FindingRow; refs: Refs; onOpen: (i
 
 /** Users with an admin role or an account privilege, with their shortest path (Rule checks, Admin holders preset). */
 /** Rule checks "Dormant & disabled": status split, then one row per person with what to look at first. */
-function StaleTable({ rows, total, split }: { rows: StalePerson[]; total: number; split: Record<string, number> }) {
+function StaleTable({ d }: { d: RulesPage }) {
   const c = useApp();
-  const n = (st: string) => split[st] ?? 0;
-  if (!total) return <p className="ae-muted">No disabled, dormant or never-logged-in person holds a role.</p>;
+  const n = (st: string) => d.stale_split[st] ?? 0;
+  const [q, setQ] = useState(c.params.sq ?? "");
+  useEffect(() => { const t = setTimeout(() => q !== (c.params.sq ?? "") && c.set({ sq: q || null, s_offset: null }), 300); return () => clearTimeout(t); }, [q]);
+  if (!d.stale_total) return <p className="ae-muted">No disabled, dormant or never-logged-in person holds a role.</p>;
   return (
     <>
       <StackBar parts={[{ key: "disabled", label: "Disabled", value: n("disabled"), cls: "high" }, { key: "dormant", label: "Dormant", value: n("dormant"), cls: "medium" },
         { key: "never", label: "Never logged in", value: n("never"), cls: "low" }]} />
-      {total > rows.length && <p className="ae-muted">First {rows.length} of {total.toLocaleString()} people. Every one: Findings, rules 8 and 16.</p>}
-      <DataTable csv="stale_people.csv" rows={rows} rowTone={(r: StalePerson) => (r.sensitive ? "bad" : null)} onRowClick={(r: StalePerson) => c.nav("access", { user: r.user })}
+      <div className="ae-row"><input type="search" className="ae-input" aria-label="Find a person" placeholder="Find a person" value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="ae-muted">{d.stale_matched < d.stale_total ? `${d.stale_matched.toLocaleString()} of ${d.stale_total.toLocaleString()} people match` : `${d.stale_total.toLocaleString()} people`}</span></div>
+      <PagedTable path="rules" at="s_offset" total={d.stale_matched} offset={d.stale_offset} pick={(x: RulesPage) => x.stale} csv="stale_people.csv" rows={d.stale} rowTone={(r: StalePerson) => (r.sensitive ? "bad" : null)} onRowClick={(r: StalePerson) => c.nav("access", { user: r.user })}
         columns={[
           col("u", "User", (r: StalePerson) => r.user, { wrap: "nowrap", render: (r: StalePerson) => <span className="ae-mono">{r.user}</span> }),
           col("s", "Status", (r: StalePerson) => r.status, { wrap: "nowrap" }),

@@ -5,7 +5,7 @@ import { useApi } from "../api/client";
 import type { ListItem, SeeCard, SeePage, SensitiveReach } from "../api/types";
 import { Card, DataTable, EmptyState, FilterChips, IdentityCard, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, StateTag, Usage } from "./common";
+import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, StateTag, unread, Usage } from "./common";
 import { PAGE } from "./paged";
 import { seeSentence } from "./screens";
 
@@ -62,15 +62,19 @@ function Old({ d }: { d: SeePage }) {
   const c = useApp();
   const user = d.who.kind === "user";
   const part = c.params.part ?? "sees";
+  const tagsOff = unread(c.meta, "tags");
   return (
     <>
       <Tabs active={part} onChange={(k) => c.set({ part: k === "sees" ? null : k })} tabs={[
         { key: "sees", label: user ? "What they see" : "What it sees", count: d.can_read?.total ?? 0 },
-        ...(user && d.sensitive?.known ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }] : []),
+        ...(user && d.sensitive?.known ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }]
+          : user && tagsOff ? [{ key: "sens", label: "Sensitive data they can see" }] : []),
         { key: "usage", label: "Role usage", count: d.usage?.roles.length ?? d.role_usage?.holders ?? 0 },
       ]} />
       {part === "sees" && (d.can_read?.total ? <DataViews s={d.can_read} path="see" title={user ? "What they see when they read" : "What it sees"} />
+        : tagsOff ? <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}. {tagsOff.meaning} {tagsOff.fix ? `Fix: ${tagsOff.fix}` : ""}</EmptyState>
         : <EmptyState title={d.known ? "No protected object" : "Not known here"}>{d.known ? "Nothing they read has a tag, a masking policy or a row policy." : "Policies need the shared snapshot."}</EmptyState>)}
+      {part === "sens" && !d.sensitive && tagsOff && <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}. {tagsOff.meaning}</EmptyState>}
       {part === "sens" && d.sensitive && (
         <Card title="Sensitive data they can see" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
           <DataTable csv="sensitive_reach.csv" rows={d.sensitive.rows}
@@ -107,6 +111,7 @@ function Cards({ d }: { d: SeePage }) {
   const n = d.counts;
   const s = n && seeSentence(n);
   const user = d.who.kind === "user";
+  const tagsOff = unread(c.meta, "tags");
   return (
     <>
       <div className="ae-headrow">
@@ -117,7 +122,8 @@ function Cards({ d }: { d: SeePage }) {
       </div>
       <div className="ae-whogrid">
         <div className="ae-seecards">
-          {!cards.length && <EmptyState title="Nothing here">No {only ? "sensitive" : "protected"} object they can read.</EmptyState>}
+          {!cards.length && (tagsOff && only ? <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}: which objects are sensitive is not known.</EmptyState>
+            : <EmptyState title="Nothing here">No {only ? "sensitive" : "protected"} object they can read.</EmptyState>)}
           {cards.map((x) => <SeeObj key={x.object} x={x} open={o.open} rule={() => c.nav("rules", { rule: "6" })} />)}
           {d.cards_total > size && <Pager at={Math.floor(d.cards_offset / size)} size={size} total={d.cards_total} sizes={[25, 50, 100, 250]}
             onPage={(k) => c.set({ c_offset: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), c_offset: null })} />}

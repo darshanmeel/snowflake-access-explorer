@@ -127,7 +127,7 @@ function Activity({ d: raw }: { d: ActivityPage }) {
     if (!raw.rows || !work.tz || Number.isNaN(Date.parse(raw.first ?? ""))) return raw;
     const rows = localize(raw.rows, work.tz, raw.first!, raw.days ?? 60);
     return { ...raw, rows, daily: rows.reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(raw.days ?? 60).fill(0) as number[]),
-      ddl: rows.filter((r) => r.action === "DDL") };
+      ddl: localize(raw.ddl ?? [], work.tz, raw.first!, raw.days ?? 60) };  // the server's list has every change, not only the rows sent
   }, [raw, work.tz]);
   // each section's SQL with the slider's business time filled in
   const secSql = useMemo(() => Object.fromEntries(Object.entries(raw.section_sql ?? {}).map(([k, v]) => [k, v.replace("SET TZ_HOURS = 0;", `SET TZ_HOURS = ${work.tz};`)])), [raw.section_sql, work.tz]);
@@ -139,7 +139,10 @@ function Activity({ d: raw }: { d: ActivityPage }) {
   if (!rows.length) return (
     <div className="ae-log">
       {d.what === "app" && d.app && <AppViewers d={d} />}
-      <Card><EmptyState title="No activity" art="clear">{d.user ? `${d.user} did not use` : "Nothing used"} {d.name} between {d.first} and {d.last}.
+      <Card><EmptyState title={d.note ? "Activity partly read" : "No table use"} art={d.note ? "wait" : "clear"}>{d.note && <>{d.note}. </>}
+        {d.what === "user" || d.what === "role" ? `${d.name} touched no table or view in ACCESS_HISTORY` : d.user ? `${d.user} did not use ${d.name}` : `Nothing used ${d.name}`} between {d.first} and {d.last}.
+        {(d.what === "user" || d.what === "role") && " Admin and other statements (GRANT, SHOW, CREATE USER, ...) are not recorded here."}
+        {d.admin && <> <button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "26" })}>Rule 26: admin role used on data</button>.</>}
         {d.kind && !["TABLE", "VIEW", "MATERIALIZED VIEW", "DYNAMIC TABLE", "EXTERNAL TABLE", "STREAMLIT", "DATABASE", "SCHEMA", "STAGE", "FUNCTION"].includes(d.kind)
           && ` Snowflake records table and view use in ACCESS_HISTORY; a ${d.kind.toLowerCase()} may not show up there. Who can use it is under Who has access.`}</EmptyState></Card>
     </div>
@@ -150,6 +153,8 @@ function Activity({ d: raw }: { d: ActivityPage }) {
     <SectionSql.Provider value={secSql}>
     <div className="ae-log">
       {d.note && <Banner title="Activity partly read" lines={[d.note]} />}
+      {rows.length < (d.total ?? 0) && <Banner tone="warn" title={`Detail uses the ${fmt(rows.length)} busiest of ${fmt(d.total!)} rows`}
+        lines={["Off-hours, who touched what, hours, the matrix, clients and the object detail count only these rows, so quiet use (often the odd-hours rows) may be missing. Moving the business time recounts the days from them too. The DDL list has every change."]} />}
       <div className="ae-log-bar-top">
         {d.what !== "user" && d.what !== "role" && <Pick label="Change object" value={d.name} width={320} what="objects" onPick={(v) => c.nav("object", { name: v, show: "activity" })} />}
         <label className="ae-log-slide ae-log-biz"><span className="ae-log-tl">Business time</span><b>{tzl(work)}</b>

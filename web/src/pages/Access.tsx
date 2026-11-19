@@ -8,7 +8,7 @@ import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
-import { Load, Pick, PickFirst } from "./common";
+import { Load, Pick, PickFirst, unread } from "./common";
 import { ladderParts, recent, remember } from "./Home";
 import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
@@ -71,7 +71,7 @@ function Body({ d }: { d: AccessPage }) {
   const lo = useOpen(list.refs);
   const shown = list.objects;
   const groups = group !== "none" ? [...new Set(shown.map((x) => groupKey(x, group)))] : [""];
-  const runs = d.runs;
+  const runs = d.runs, tagsOff = unread(c.meta, "tags");
   const powers = d.powers;
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
   const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
@@ -100,7 +100,7 @@ function Body({ d }: { d: AccessPage }) {
           <StackBar label="Access ladder: read only, read and change, owns" parts={ladderParts(n)} on={lvl}
             onPick={(k) => { setLvl(lvl === k ? "all" : k); c.set({ show: "summary" }); }} />
         </div>
-        <div className="ae-tile ae-tile-sens"><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{n.sensitive}</span></div>
+        <div className="ae-tile ae-tile-sens" title={tagsOff ? `${tagsOff.title}: sensitivity unknown` : undefined}><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{tagsOff ? "not read" : n.sensitive}</span></div>
         <button type="button" className="ae-tile" onClick={() => { c.set({ show: "summary" }); setTimeout(() => document.getElementById("runs")?.scrollIntoView(), 50); }}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
       </div>
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[

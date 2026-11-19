@@ -20,14 +20,18 @@ export const revokesOf = (rows: GridRow[], dec: Record<string, Decision>): WhatI
   rows.filter((r) => dec[r.user] === "revoke").flatMap((r) => r.roles.map((role): WhatIfChange => ({ op: "revoke_role_from_user", role, user: r.user })));
 
 /** The sign-off CSV: who reviewed, when, the scope, then one row per person with the decision and the access per column. */
-export function signoffCsv(d: Pick<GridPage, "columns" | "scope" | "db" | "object">, rows: GridRow[], dec: Record<string, Decision>, reviewer: string, when: string): string {
+export function signoffCsv(d: Pick<GridPage, "columns" | "scope" | "db" | "object"> & Partial<Pick<GridPage, "total" | "matched">>, rows: GridRow[],
+  dec: Record<string, Decision>, reviewer: string, when: string): string {
   const scope = d.scope === "object" ? `${d.object} (privileges)` : d.scope === "db" ? `database ${d.db}` : d.scope === "all" ? "everything" : "sensitive data";
   const head = ["Person", "Type", "Status", "Last login", "Decision", "Suggested", "Granted roles", ...d.columns.map((c) => (d.scope === "object" ? c.name : c.id))];
   const meta = [["Access review sign-off"], ["Scope", scope], ["Reviewer", reviewer], ["Signed at", when],
-    ["Decided", `${rows.filter((r) => dec[r.user]).length} of ${rows.length}`], []];
+    ["Decided", `${rows.filter((r) => dec[r.user]).length} of ${rows.length}`],
+    ...(d.scope !== "object" && (d.total ?? 0) > d.columns.length ? [["Objects drawn", `${d.columns.length} of ${d.total} (most reached first)`]] : []),
+    ...((d.matched ?? 0) > rows.length ? [["People listed", `${rows.length} of ${d.matched}: partial; the others are not in this file`]] : []), []];
+  const more = rows.some((r) => r.beyond); // a column of the objects past the drawn ones each person reaches
   const body = rows.map((r) => [r.user, r.type, r.status, r.last_login, dec[r.user] ?? "", r.suggest ? "revoke" : "", r.roles.join(" "),
-    ...d.columns.map((c) => { const x = r.cells[c.id]; return x ? `${x.level} (${x.privileges.join(" ")})` : ""; })]);
-  return toCsv(meta[0], [...meta.slice(1), head, ...body].map((r) => r.map(String)));
+    ...d.columns.map((c) => { const x = r.cells[c.id]; return x ? `${x.level} (${x.privileges.join(" ")})` : ""; }), ...(more ? [r.beyond ?? 0] : [])]);
+  return toCsv(meta[0], [...meta.slice(1), [...head, ...(more ? ["Objects not drawn"] : [])], ...body].map((r) => r.map(String)));
 }
 
 export type CatFilter = "all" | "open" | "pii" | "confidential";

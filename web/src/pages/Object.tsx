@@ -5,7 +5,7 @@ import { download as saveCsv, useApi } from "../api/client";
 import type { CheckPage, ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
 import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, Graph, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
-import { col, Controls, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
+import { col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { remember } from "./Home";
@@ -337,6 +337,7 @@ export function ObjectDetail() {
               <p className="ae-muted">An admin role inherits every role, so these users reach this object without a path drawn below.
                 {d.admin_total > d.admin_paths.length && <> First {d.admin_paths.length} of {d.admin_total} paths: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button>.</>}</p>
             </Banner>}
+            <CutBanner capped={d.capped} />
             <GraphCard g={d.graph} refs={d.refs} />
             <Tabs active={part} onChange={setPart} tabs={[
               { key: "who", label: "Who has access", count: d.grantees.total },

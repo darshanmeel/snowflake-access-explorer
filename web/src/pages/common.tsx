@@ -1,7 +1,7 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
 import { useEffect, useState, type ReactNode } from "react";
 import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
-import type { Banner as B, ListItem, Sees, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
+import type { Banner as B, ListItem, Meta, Note, Sees, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
 import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, Waiting, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { PagedTable } from "./paged";
@@ -38,6 +38,22 @@ export function ErrorBox({ e }: { e: ApiFail }) {
       </Banner>
     );
   return <Banner tone={e.status === 404 ? "warn" : "bad"} title={e.status === 404 ? "Not found" : "Something went wrong"} lines={[e.message]} />;
+}
+
+/** The note of a source that was not read (UNAVAILABLE), or with partly also one read only in part, else null: what
+ * it feeds is then unknown, never "none" or 0. */
+export function unread(m: Meta, key: string, partly = false): Note | null {
+  const n = m.notes.find((x) => x.key === key);
+  if (m.sources[key] === "UNAVAILABLE") return n ?? { key, title: `${key.replace(/_/g, " ")} not read`, meaning: "", fix: null, raw: "" };
+  return partly && n ? n : null;
+}
+
+/** Walks stopped at the hop limit (capped): a missing path may be one of them, so a No is not conclusive. */
+export function CutBanner({ capped, no }: { capped: string[]; no?: boolean }) {
+  const c = useApp();
+  if (!capped.length) return null;
+  return <Banner tone="warn" title={no ? "Not conclusive: some walks were cut" : "Some walks were cut"}
+    lines={[`Chains longer than ${c.meta.limits.max_hops} hops were stopped: ${capped.slice(0, 5).join(", ")}${capped.length > 5 ? ` and ${capped.length - 5} more` : ""}`]} />;
 }
 
 export function Banners({ list }: { list: B[] }) {
