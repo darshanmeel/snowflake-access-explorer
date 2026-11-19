@@ -358,8 +358,8 @@ def fake():
         pv += [(f"SNOWFLAKE.{r}", "USAGE" if k == "FUNCTION" else "SELECT", k,
                 f"SNOWFLAKE.{sc}.{'FN' if k == 'FUNCTION' else 'VW'}_{r}_{i:03}") for i in range(n)]
     pv += [("PUBLIC", "USAGE", "APPLICATION_ROLE", "SNOWFLAKE.PUBLIC"),
-           ("PUBLIC", "USAGE", "COMPUTE_POOL", "SYSTEM_COMPUTE_POOL_CPU"),
-           ("PUBLIC", "USAGE", "COMPUTE_POOL", "SYSTEM_COMPUTE_POOL_GPU"),
+           ("PUBLIC", "USAGE", "COMPUTE POOL", "SYSTEM_COMPUTE_POOL_CPU"),  # spelled as the snapshot stores it (spell)
+           ("PUBLIC", "USAGE", "COMPUTE POOL", "SYSTEM_COMPUTE_POOL_GPU"),
            ("PUBLIC", "USAGE", "WAREHOUSE", "SYSTEM$STREAMLIT_NOTEBOOK_WH"),
            ("SNOWFLAKE_LEARNING_ROLE", "USAGE", "WAREHOUSE", "SNOWFLAKE_LEARNING_WH"),
            ("SNOWFLAKE_LEARNING_ROLE", "USAGE", "DATABASE", "SNOWFLAKE_LEARNING_DB")]
@@ -1143,7 +1143,7 @@ def live(query, old=None, old_use=None):
         # it is granted, DB.ROLE
         sqls["GRANT"] = f"""SELECT IFF(GRANTED_TO = 'DATABASE_ROLE',
                        IFF(GRANTED_ON = 'DATABASE', NAME, TABLE_CATALOG) || '.' || GRANTEE_NAME, GRANTEE_NAME) AS GRANTEE_ROLE,
-                   PRIVILEGE, GRANTED_ON,
+                   PRIVILEGE, IFF(GRANTED_ON LIKE '%ROLE', GRANTED_ON, REPLACE(GRANTED_ON, '_', ' ')) AS GRANTED_ON,
                    CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
                         WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
                         ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END AS OBJECT_NAME,
@@ -1778,6 +1778,12 @@ def usable(t, r):
     return dated(r["DAY" if t == "ACTIVITY" else "WEEK"]) and (t == "OBJECT_USE" or r["ACTION"] in ("READ", "WRITE", "DDL"))
 
 
+def spell(kind):
+    """One spelling of an object type: GRANTS_TO_ROLES says EXTERNAL_TABLE, SHOW says EXTERNAL TABLE. Role links
+    (ROLE, DATABASE_ROLE, APPLICATION_ROLE) keep theirs. The same in SP_ACCESS_SNAPSHOT (sql/1_setup.sql)."""
+    return kind if not isinstance(kind, str) or kind.endswith("ROLE") else kind.replace("_", " ")
+
+
 def tidy(d):
     """Data set d (fake, snapshot, live, mine), in place, in the shape build() reads: run a dict with SOURCES and NOTES,
     every table a list of rows with every column of sql/1_setup.sql (None where the read gave none), no row without
@@ -1809,6 +1815,8 @@ def tidy(d):
                 for c in NEED[t]:  # a name the walks sort and match on is text (VARCHAR is; a hand-made data set may not be)
                     if r[c] is not None and not isinstance(r[c], str) and c not in ("DAY", "WEEK"):
                         r[c] = str(r[c])
+                if t == "GRANT":
+                    r["GRANTED_ON"] = spell(r["GRANTED_ON"])  # older snapshots and Direct mode: one spelling, as the procedure writes
                 if t == "ACTIVITY":
                     r["HOURS"] = hours(r["HOURS"])
                     if r["ACTION"] == "DDL" and str(r["QUERY_TYPE"] or "").upper().startswith(LOOKS):

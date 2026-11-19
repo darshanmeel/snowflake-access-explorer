@@ -309,6 +309,10 @@ def ident(name):
     return '"' + name.replace('"', '""') + '"'
 
 
+def spell(kind):  # GRANTS_TO_ROLES says EXTERNAL_TABLE, SHOW says EXTERNAL TABLE: one kind (as access.tidy); role links keep _ROLE
+    return kind if not isinstance(kind, str) or kind.endswith("ROLE") else kind.replace("_", " ")
+
+
 def clean(name):  # SHOW quotes names with special characters; ACCOUNT_USAGE does not
     return (name or "").replace('"', "")
 
@@ -374,7 +378,7 @@ def grants(session, run_id, mode):
             session.sql(f"""INSERT INTO {GRANT} ({", ".join(GRANT_COLS)})
                 SELECT '{run_id}', IFF(GRANTED_TO = 'DATABASE_ROLE',
                            IFF(GRANTED_ON = 'DATABASE', NAME, TABLE_CATALOG) || '.' || GRANTEE_NAME, GRANTEE_NAME),
-                       PRIVILEGE, GRANTED_ON,
+                       PRIVILEGE, IFF(GRANTED_ON LIKE '%ROLE', GRANTED_ON, REPLACE(GRANTED_ON, '_', ' ')) AS GRANTED_ON,
                        CASE WHEN GRANTED_ON = 'DATABASE' THEN NAME
                             WHEN GRANTED_ON = 'SCHEMA' THEN TABLE_CATALOG || '.' || NAME
                             ELSE ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(TABLE_CATALOG, TABLE_SCHEMA, NAME), '.') END,
@@ -402,7 +406,7 @@ def grants(session, run_id, mode):
         if bad:  # both SHOWs before keeping either: a half-read role would look like it has no holders; a role the
             skipped.append(f"{role}: {first_line(bad)}")  # owner may not inspect: keep going, list it in NOTES
             continue
-        g += [[run_id, role, x.get("privilege"), x.get("granted_on"), clean(x.get("name")), False,
+        g += [[run_id, role, x.get("privilege"), spell(x.get("granted_on")), clean(x.get("name")), False,
                str(x.get("grant_option")).lower() == "true", x.get("granted_by")]
               for x in to if x.get("granted_to") in ("ROLE", None)]
         u += [[run_id, x.get("grantee_name"), role, x.get("granted_by")] for x in of if x.get("granted_to") == "USER"]
@@ -425,7 +429,7 @@ def grants(session, run_id, mode):
             if isinstance(got, Exception):
                 skipped.append(f"{q}: {first_line(got)}")
                 continue
-            g += [[run_id, q, x.get("privilege"), x.get("granted_on"), clean(x.get("name")), False,
+            g += [[run_id, q, x.get("privilege"), spell(x.get("granted_on")), clean(x.get("name")), False,
                    str(x.get("grant_option")).lower() == "true", x.get("granted_by")] for x in got]
     n = len(g) + len(u)  # a row without a name or privilege: left out, as the app leaves it out (access.tidy)
     g, u = [r for r in g if all(r[1:5])], [r for r in u if r[1]]
@@ -793,7 +797,7 @@ def objects(session, run_id, mode):
                 bad.append(f"{name}: {first_line(got)}")
             else:
                 added += inventory_rows(seen, kind, got)
-        save(session, GRANT, GRANT_COLS, [[run_id, who, "OWNERSHIP", k, o, False, False, None] for who, k, o in added])
+        save(session, GRANT, GRANT_COLS, [[run_id, who, "OWNERSHIP", spell(k), o, False, False, None] for who, k, o in added])
         return inventory_note(steps, bad, added)
     except Exception as e:
         return "UNAVAILABLE", first_line(e)

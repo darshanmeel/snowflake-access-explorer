@@ -705,6 +705,21 @@ def test_live_inside():
     assert info["future_grants"] == "Future grants unread" and info["streams"] == "Streams unread"
 
 
+def test_type_spelling():
+    """GRANTS_TO_ROLES spells a type with underscores (EXTERNAL_TABLE), SHOW with a space: one kind either way, so
+    counts and the Type list do not split; a database role link keeps DATABASE_ROLE."""
+    d = a.fake()
+    g = next(x for x in d["GRANT"] if x["GRANTED_ON"] == "TABLE")
+    d["GRANT"] += [dict(g, GRANTED_ON="EXTERNAL_TABLE", OBJECT_NAME="SALES.CORE.EXT_A"),
+                   dict(g, GRANTED_ON="EXTERNAL TABLE", OBJECT_NAME="SALES.CORE.EXT_B")]
+    try:
+        a.build(d)
+        assert a.kinds["SALES.CORE.EXT_A"] == a.kinds["SALES.CORE.EXT_B"] == "EXTERNAL TABLE"
+        assert any(x["GRANTED_ON"] == "DATABASE_ROLE" for x in d["GRANT"]) and a.db_roles
+    finally:
+        a.build(a.fake())
+
+
 def test_inventory():
     """Direct mode reads the object inventory: objects with no grant row (a Streamlit app and a notebook, as on a real
     account) appear as objects owned by their owner role; one OWNERSHIP row per object, none for an object the grants
