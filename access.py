@@ -259,7 +259,10 @@ def fake():
            (f"{T}SHARED_MONITORING_EXECUTE", "MONITOR", "WAREHOUSE", "WH_SALES_XS"),
            (f"{T}SALES_CORE_EXECUTE", "OPERATE", "WAREHOUSE", "WH_SALES_XS"),  # fake: not the owner (21)
            (f"{T}SALES_PIPELINE_EXECUTE", "OPERATE", "TASK", "SALES.PIPELINE.TSK_LOAD_CUSTOMER"),  # fake: (18, 20)
-           (f"{T}SALES_PIPELINE_EXECUTE", "EXECUTE TASK", "ACCOUNT", "ACCOUNT")]  # fake: reaches a person (19)
+           (f"{T}SALES_PIPELINE_EXECUTE", "EXECUTE TASK", "ACCOUNT", "ACCOUNT"),  # fake: reaches a person (19)
+           # fake: only their owner, no other grant (on an account the object inventory adds them: inventory_rows)
+           (f"{T}SALES_PIPELINE_OWNER", "OWNERSHIP", "STREAMLIT", "SALES.PIPELINE.ST_ORDER_BOARD"),
+           (f"{T}SALES_PIPELINE_OWNER", "OWNERSHIP", "NOTEBOOK", "SALES.PIPELINE.NB_CHURN")]
     rg += [
         # technical -> technical (same and cross database)
         (f"{T}SALES_RAW_OWNER", f"{T}SALES_CLEAN_OWNER"),
@@ -895,6 +898,19 @@ def mine(query, db):
         notes["database_roles"] = (f"{len(bad)} database roles not readable, held but their grants unknown: "
                                    + " | ".join(bad[:10]))
     src["grants"] = "SHOW GRANTS TO ROLE" if isinstance(au_g, Exception) else "ACCOUNT_USAGE"
+    # objects the grant reads miss (Streamlit apps, notebooks, ...): the inventory's SHOW reads, those your roles own
+    steps, bad, have = [x for x in inventory_sql() if x[2].startswith("SHOW")], [], set(roles) | {g["GRANTEE_ROLE"] for g in grants}
+    seen = inventory_seen((g.get("OBJECT_NAME"), g.get("GRANTED_ON"), g.get("PRIVILEGE")) for g in grants)
+    for (name, kind, _), got in zip(steps, each(query, [x[2] for x in steps], what="Object inventory")):
+        if isinstance(got, Exception):
+            bad.append(f"{name}: {line(got)}")
+            continue
+        grants += [dict(GRANTEE_ROLE=who, PRIVILEGE="OWNERSHIP", GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False)
+                   for who, k, o in inventory_rows(seen, kind, [{c.lower(): v for c, v in x.items()} for x in got])
+                   if who in have]
+    src["objects"], why = inventory_note(steps, bad, [])
+    if why:
+        notes["objects"] = why
     # SNOWFLAKE last: without IMPORTED PRIVILEGES the user can't even see it, any usable database works
     dbs = list(dict.fromkeys(([db] if db else []) + [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE"]
                              + ["SNOWFLAKE"]))
@@ -962,6 +978,95 @@ USE_COLS = ("USER_NAME", "OBJECT_NAME", "WEEK", "ACTION", "QUERIES", "LAST_USED"
 ACT_COLS = ("DAY", "USER_NAME", "ROLE_NAME", "CLIENT", "OBJECT_NAME", "ACTION", "QUERY_TYPE", "QUERIES", "LAST_USED",
             "HOURS", "APP")  # activity_sql's columns
 TAG_FALLBACK_MAX = 300  # tables/views read per object (SHOW_THREADS at a time) when the ACCOUNT_USAGE views are not readable
+
+
+def inventory_sql():
+    """The object inventory: every object the account lists, also those with no grant row (a Streamlit app or notebook
+    GRANTS_TO_ROLES does not list). (step, kind, sql), one read per source, so a refused one loses only its own kind;
+    kind None: the row's KIND. ACCOUNT_USAGE views where they exist (DELETED IS NULL), SHOW ... IN ACCOUNT for kinds with
+    none (only what the role can see). Each read gives DATABASE_NAME, SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE, as
+    SHOW does. Kinds as GRANTS_TO_ROLES names them (underscores). The same text is in access.py and SP_ACCESS_SNAPSHOT
+    (sql/1_setup.sql). to verify: GRANTED_ON of hybrid and Iceberg tables (an object already granted keeps its kind)."""
+    def au(view, kind, pre, name=None, owner=None, more="", where=""):  # a view with <pre>_CATALOG, _SCHEMA, _NAME, _OWNER
+        return (view, kind, f"""SELECT {pre}_CATALOG AS DATABASE_NAME, {pre}_SCHEMA AS SCHEMA_NAME, {name or pre + '_NAME'} AS NAME,
+                   {owner or pre + '_OWNER'} AS OWNER, OWNER_ROLE_TYPE{more}
+            FROM {AU}.{view} WHERE DELETED IS NULL{where}""")
+    return [
+        ("DATABASES", "DATABASE", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, DATABASE_NAME AS NAME,
+                   DATABASE_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.DATABASES WHERE DELETED IS NULL"""),
+        ("SCHEMATA", "SCHEMA", f"""SELECT CATALOG_NAME AS DATABASE_NAME, NULL AS SCHEMA_NAME, SCHEMA_NAME AS NAME,
+                   SCHEMA_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.SCHEMATA
+            WHERE DELETED IS NULL AND SCHEMA_NAME <> 'INFORMATION_SCHEMA'"""),
+        # views too; a temporary table lives only in its session
+        au("TABLES", None, "TABLE", more=""",
+                   CASE WHEN IS_DYNAMIC = 'YES' THEN 'DYNAMIC_TABLE' WHEN IS_ICEBERG = 'YES' THEN 'ICEBERG_TABLE'
+                        WHEN IS_HYBRID = 'YES' THEN 'HYBRID_TABLE' WHEN TABLE_TYPE = 'BASE TABLE' THEN 'TABLE'
+                        ELSE REPLACE(TABLE_TYPE, ' ', '_') END AS KIND""", where=" AND TABLE_TYPE <> 'TEMPORARY TABLE'"),
+        au("FUNCTIONS", "FUNCTION", "FUNCTION", "FUNCTION_NAME || ARGUMENT_SIGNATURE"),
+        au("PROCEDURES", "PROCEDURE", "PROCEDURE", "PROCEDURE_NAME || ARGUMENT_SIGNATURE"),
+        au("STAGES", "STAGE", "STAGE"),
+        au("PIPES", "PIPE", "PIPE"),
+        au("SEQUENCES", "SEQUENCE", "SEQUENCE"),
+        au("FILE_FORMATS", "FILE_FORMAT", "FILE_FORMAT"),
+        au("STREAMS", "STREAM", "STREAM", owner="OWNER"),
+        ("TASKS", "TASK", f"""SELECT TASK_DATABASE AS DATABASE_NAME, TASK_SCHEMA AS SCHEMA_NAME, TASK_NAME AS NAME,
+                   TASK_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TASKS WHERE DELETED IS NULL"""),
+        ("TAGS", "TAG", f"""SELECT TAG_DATABASE AS DATABASE_NAME, TAG_SCHEMA AS SCHEMA_NAME, TAG_NAME AS NAME,
+                   TAG_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TAGS WHERE DELETED IS NULL"""),
+        au("MASKING_POLICIES", "MASKING_POLICY", "POLICY"),
+        au("ROW_ACCESS_POLICIES", "ROW_ACCESS_POLICY", "POLICY"),
+        ("INTEGRATIONS", "INTEGRATION", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE
+            FROM {AU}.INTEGRATIONS WHERE DELETED IS NULL"""),
+        ("SHOW STREAMLITS", "STREAMLIT", "SHOW STREAMLITS IN ACCOUNT"),
+        ("SHOW NOTEBOOKS", "NOTEBOOK", "SHOW NOTEBOOKS IN ACCOUNT"),
+        ("SHOW ALERTS", "ALERT", "SHOW ALERTS IN ACCOUNT"),
+        ("SHOW WAREHOUSES", "WAREHOUSE", "SHOW WAREHOUSES"),
+        ("SHOW COMPUTE POOLS", "COMPUTE_POOL", "SHOW COMPUTE POOLS")]
+
+
+def inventory_seen(grants):
+    """{object name before "(": [kind, owned]} of the grant rows read, (OBJECT_NAME, GRANTED_ON, PRIVILEGE) each; a
+    function's grant name carries its argument types and return type, the inventory's its argument names."""
+    seen = {}
+    for o, k, pv in grants:
+        if isinstance(o, str) and o and k not in ("ROLE", "DATABASE_ROLE", "ACCOUNT"):
+            got = seen.setdefault(o.split("(", 1)[0], [k, False])
+            got[1] = got[1] or pv == "OWNERSHIP"
+    return seen
+
+
+def inventory_rows(seen, kind, found):
+    """(owner, kind, object) for each object of one inventory read (found: rows with lower-case keys) whose ownership
+    the grant read lacks: one OWNERSHIP grant row each, so an object with no grant row is listed too. Named like the
+    grant rows (DB, DB.SCHEMA, DB.SCHEMA.NAME, unquoted); an object already granted keeps its kind, so kinds and counts
+    merge. Owner: the role, a database role as DB.ROLE, None when no role owns it (an application) or the read does
+    not say: listed with no holder. seen (inventory_seen) is updated, so a later read adds no duplicate."""
+    out = []
+    for x in found:
+        db, sc, n = ((x.get(c) or "").replace('"', "") for c in ("database_name", "schema_name", "name"))
+        k = kind or x.get("kind")
+        if not n or not k:
+            continue
+        name = ".".join(p for p in (db, sc, n) if p)
+        got = seen.get(name.split("(", 1)[0])
+        if got and got[1]:
+            continue
+        who, typ = x.get("owner") or None, str(x.get("owner_role_type") or "ROLE").upper()
+        if typ == "DATABASE_ROLE" and who and not who.startswith(db + "."):
+            who = f"{db}.{who}"
+        out.append((who if typ in ("ROLE", "DATABASE_ROLE") else None, got[0] if got else k, name))
+        seen[name.split("(", 1)[0]] = [out[-1][1], True]
+    return out
+
+
+def inventory_note(steps, bad, added):
+    """(source, note) of the inventory: steps read (inventory_sql), bad: "step: error" of the failed ones, added:
+    inventory_rows of the others."""
+    ok = {"SHOW" if s.startswith("SHOW") else "ACCOUNT_USAGE" for n, _, s in steps if not any(b.startswith(n + ":") for b in bad)}
+    note = [f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])] * bool(bad)
+    lone = sum(1 for who, _, _ in added if not who)
+    note += [f"{lone} object{'s' * (lone != 1)} without an owner role, listed with no holder"] * bool(lone)
+    return " + ".join(sorted(ok)) or "UNAVAILABLE", "; ".join(note) or None
 
 
 def live(query, old=None, old_use=None):
@@ -1368,6 +1473,18 @@ def live(query, old=None, old_use=None):
         note("streams", "SHOW", None)
     except Exception as e:
         note("streams", "UNAVAILABLE", line(e))
+
+    # every object the account lists, an OWNERSHIP row for each the grants lack (as SP_ACCESS_SNAPSHOT's objects())
+    seen, steps, bad, added = inventory_seen((g.get("OBJECT_NAME"), g.get("GRANTED_ON"), g.get("PRIVILEGE"))
+                                             for g in d["GRANT"] if not g.get("IS_FUTURE")), inventory_sql(), [], []
+    for (name, kind, _), got in zip(steps, many([s for _, _, s in steps], "Object inventory")):
+        if isinstance(got, Exception):
+            bad.append(f"{name}: {line(got)}")
+        else:
+            added += inventory_rows(seen, kind, got)
+    d["GRANT"] += [dict(GRANTEE_ROLE=who, PRIVILEGE="OWNERSHIP", GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False,
+                        GRANT_OPTION=False, GRANTED_BY=None) for who, k, o in added]
+    note("objects", *inventory_note(steps, bad, added))
     say(f"done in {took(t0)}")
     return d | {"run": dict(RUN_ID="direct", FINISHED_AT=now, SOURCES=src, NOTES=notes)}
 
@@ -1585,6 +1702,9 @@ def build(d, key=None, builtin=False):
             db_roles.add(g["OBJECT_NAME"])
         if "." in (g["GRANTEE_ROLE"] or ""):  # a grantee DB.ROLE: account role names have no dot (unless quoted)
             db_roles.add(g["GRANTEE_ROLE"])
+    for g in d["UNOWNED"]:  # an object no role owns: listed, no holder
+        if builtin or not is_builtin(g["OBJECT_NAME"]):
+            kinds.setdefault(g["OBJECT_NAME"], g["GRANTED_ON"])
     user_grants.extend((g["ROLE_NAME"], g["USER_NAME"]) for g in d["USER_ROLE"])
     for child, parent in role_grants:
         holds.setdefault(parent, []).append(child)
@@ -1667,7 +1787,7 @@ def tidy(d):
     run = d.get("run") if isinstance(d.get("run"), dict) else {}
     run = d["run"] = dict(run, SOURCES=run.get("SOURCES") if isinstance(run.get("SOURCES"), dict) else {},
                           NOTES=run.get("NOTES") if isinstance(run.get("NOTES"), dict) else {})
-    gone, lacks = {}, {}
+    gone, lacks, lone = {}, {}, list(d.get("UNOWNED") or [])  # lone: objects no role owns (inventory_rows), kept apart
     for t, cols in COLS.items():
         rows = d.get(t)
         if not isinstance(rows, list):
@@ -1693,6 +1813,8 @@ def tidy(d):
                         r["ACTION"] = "READ"  # ACCESS_HISTORY names the object of a DESCRIBE as "modified by DDL": it changes nothing
             if isinstance(r, dict) and usable(t, r):
                 keep.append(r)
+            elif t == "GRANT" and isinstance(r, dict) and r["PRIVILEGE"] == "OWNERSHIP" and r["OBJECT_NAME"] and r["GRANTED_ON"]:
+                lone.append(r)  # listed as an object with no holder: no other code sees a grant row without a grantee
             else:
                 gone.setdefault(t, []).append(r)
         if len(keep) < len(rows):
@@ -1710,6 +1832,7 @@ def tidy(d):
     if lacks and run.get("RUN_ID") not in ("live", "direct"):  # only the snapshot tables have a setup to run again
         run["NOTES"]["missing_columns"] = ("; ".join(f"TBL_ACCESS_{t} lacks {', '.join(sorted(c))}" for t, c in lacks.items())
                                            + ": those values are empty (run sql/1_setup.sql again)")
+    d["UNOWNED"] = lone
     d["_tidy"] = tidy_stamp()
     return d
 

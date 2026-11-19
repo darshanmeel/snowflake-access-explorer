@@ -394,6 +394,7 @@ def test_show_fallback():
     session.sql = sql
     out = ns["grants"](session, "run-9", "SHOW")
     assert out["grants"][0] == "SHOW" and f"{bad}: Insufficient privileges" in out["grants"][1], out
+    assert ns["objects"](session, "run-9", "SHOW")[0] == "SHOW"  # the Streamlit apps and notebooks SHOW GRANTS lacks
     proc = Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                    for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-9'"))
     proc_users = Counter((r["USER_NAME"], r["ROLE_NAME"]) for r in query(con, "SELECT * FROM TBL_ACCESS_USER_ROLE WHERE RUN_ID = 'run-9'"))
@@ -414,6 +415,7 @@ def test_show_fallback():
     assert any(x.startswith("SHOW GRANTS OF ROLE") for x in sent) and any(x.startswith("SHOW FUTURE GRANTS") for x in sent)
     ns["ASYNC"], sent[:] = False, []  # run()'s probe job gave no rows: the same result, one statement after another
     assert ns["grants"](session, "run-11", "SHOW") == out and not sent
+    ns["objects"](session, "run-11", "SHOW")
     assert Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                    for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-11'")) == proc
     ns["ASYNC"] = True
@@ -432,6 +434,50 @@ def test_show_fallback():
     session.sql = refused
     src, why = ns["future"](session, "run-9")
     assert src == "UNAVAILABLE" and "not allowed" in why  # the run goes on, as access.live() does
+
+
+def test_objects():
+    """SP_ACCESS_SNAPSHOT's object inventory (the same functions as access.live): an object with no grant row becomes an
+    OWNERSHIP row of its owner, one already owned in the grant read adds nothing, one no role owns is kept with no
+    grantee, a refused read leaves a note and the rest still loads."""
+    import inspect
+    for f in (a.inventory_sql, a.inventory_seen, a.inventory_rows, a.inventory_note):
+        assert inspect.getsource(f) in SETUP, f.__name__
+    con = load(a.fake(), build=False)
+    for c, k in (("GRANT_OPTION", "BOOLEAN"), ("GRANTED_BY", "VARCHAR")):
+        con.execute(f"ALTER TABLE TBL_ACCESS_GRANT ADD COLUMN IF NOT EXISTS {c} {k}")
+    con.execute("INSERT INTO TBL_ACCESS_GRANT (RUN_ID, GRANTEE_ROLE, PRIVILEGE, GRANTED_ON, OBJECT_NAME, IS_FUTURE) VALUES "
+                "('run-9', 'R_OWN', 'OWNERSHIP', 'FUNCTION', 'D.S.FN(NUMBER):NUMBER(38,0)', FALSE), "
+                "('run-9', 'R_USE', 'USAGE', 'STREAMLIT', 'D.S.APP', FALSE)")
+    ns, session = snapshot_proc(), fake_session(con)
+    duck_sql = session.sql
+    answers = {
+        "FUNCTIONS": [dict(DATABASE_NAME="D", SCHEMA_NAME="S", NAME="FN(X NUMBER)", OWNER="R_OWN", OWNER_ROLE_TYPE="ROLE")],
+        "SHOW STREAMLITS": [dict(database_name="D", schema_name="S", name="APP", owner="R_APP", owner_role_type="ROLE")],
+        "SHOW NOTEBOOKS": [dict(database_name="D", schema_name="S", name="NB", owner="DBR", owner_role_type="DATABASE_ROLE"),
+                           dict(database_name="D", schema_name="S", name="NB2", owner=None, owner_role_type=None)],
+        "SHOW WAREHOUSES": [dict(name="WH_NEW", owner="R_WH")]}
+
+    def sql(text, params=None):
+        name = next((n for n, _, q in ns["inventory_sql"]() if q == text), None)
+        if name is None:
+            return duck_sql(text, params)
+
+        def got(**k):
+            if name not in answers:
+                raise RuntimeError("Object does not exist or not authorized.")
+            return [Row(r) for r in answers[name]]
+        return SimpleNamespace(collect=got, collect_nowait=lambda **k: SimpleNamespace(result=got))
+
+    session.sql = sql
+    src, note = ns["objects"](session, "run-9", "AUTO")
+    assert src == "ACCOUNT_USAGE + SHOW" and "TABLES: Object does not exist" in note and "1 object without an owner role" in note, note
+    got = sorted(((r["GRANTEE_ROLE"], r["GRANTED_ON"], r["OBJECT_NAME"]) for r in query(
+        con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-9' AND GRANTEE_ROLE IS DISTINCT FROM 'R_USE' "
+             "AND GRANTEE_ROLE IS DISTINCT FROM 'R_OWN'")), key=str)
+    assert got == sorted([("R_APP", "STREAMLIT", "D.S.APP"), ("D.DBR", "NOTEBOOK", "D.S.NB"), (None, "NOTEBOOK", "D.S.NB2"),
+                          ("R_WH", "WAREHOUSE", "WH_NEW")], key=str), got  # the function is owned already: no second row
+    assert ns["objects"](session, "run-10", "SHOW")[0] == "SHOW"  # P_SOURCE = SHOW: the SHOW reads only
 
 
 def snapshot_proc():
@@ -712,7 +758,7 @@ def test_history_shared():
 
 
 if __name__ == "__main__":
-    for t in (test_demo, test_cap_and_admin, test_edges, test_blocked, test_findings, test_streams, test_object_use, test_activity, test_show_fallback,
+    for t in (test_demo, test_cap_and_admin, test_edges, test_blocked, test_findings, test_streams, test_objects, test_object_use, test_activity, test_show_fallback,
               test_run_overlap, test_usage_extra, test_object_use_weeks, test_same_queries, test_proc_settings, test_history_shared):
         t()
         print("ok", t.__name__)

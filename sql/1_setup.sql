@@ -689,6 +689,116 @@ def streams(session, run_id):
         return "UNAVAILABLE", first_line(e)
 
 
+def inventory_sql():
+    """The object inventory: every object the account lists, also those with no grant row (a Streamlit app or notebook
+    GRANTS_TO_ROLES does not list). (step, kind, sql), one read per source, so a refused one loses only its own kind;
+    kind None: the row's KIND. ACCOUNT_USAGE views where they exist (DELETED IS NULL), SHOW ... IN ACCOUNT for kinds with
+    none (only what the role can see). Each read gives DATABASE_NAME, SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE, as
+    SHOW does. Kinds as GRANTS_TO_ROLES names them (underscores). The same text is in access.py and SP_ACCESS_SNAPSHOT
+    (sql/1_setup.sql). to verify: GRANTED_ON of hybrid and Iceberg tables (an object already granted keeps its kind)."""
+    def au(view, kind, pre, name=None, owner=None, more="", where=""):  # a view with <pre>_CATALOG, _SCHEMA, _NAME, _OWNER
+        return (view, kind, f"""SELECT {pre}_CATALOG AS DATABASE_NAME, {pre}_SCHEMA AS SCHEMA_NAME, {name or pre + '_NAME'} AS NAME,
+                   {owner or pre + '_OWNER'} AS OWNER, OWNER_ROLE_TYPE{more}
+            FROM {AU}.{view} WHERE DELETED IS NULL{where}""")
+    return [
+        ("DATABASES", "DATABASE", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, DATABASE_NAME AS NAME,
+                   DATABASE_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.DATABASES WHERE DELETED IS NULL"""),
+        ("SCHEMATA", "SCHEMA", f"""SELECT CATALOG_NAME AS DATABASE_NAME, NULL AS SCHEMA_NAME, SCHEMA_NAME AS NAME,
+                   SCHEMA_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.SCHEMATA
+            WHERE DELETED IS NULL AND SCHEMA_NAME <> 'INFORMATION_SCHEMA'"""),
+        # views too; a temporary table lives only in its session
+        au("TABLES", None, "TABLE", more=""",
+                   CASE WHEN IS_DYNAMIC = 'YES' THEN 'DYNAMIC_TABLE' WHEN IS_ICEBERG = 'YES' THEN 'ICEBERG_TABLE'
+                        WHEN IS_HYBRID = 'YES' THEN 'HYBRID_TABLE' WHEN TABLE_TYPE = 'BASE TABLE' THEN 'TABLE'
+                        ELSE REPLACE(TABLE_TYPE, ' ', '_') END AS KIND""", where=" AND TABLE_TYPE <> 'TEMPORARY TABLE'"),
+        au("FUNCTIONS", "FUNCTION", "FUNCTION", "FUNCTION_NAME || ARGUMENT_SIGNATURE"),
+        au("PROCEDURES", "PROCEDURE", "PROCEDURE", "PROCEDURE_NAME || ARGUMENT_SIGNATURE"),
+        au("STAGES", "STAGE", "STAGE"),
+        au("PIPES", "PIPE", "PIPE"),
+        au("SEQUENCES", "SEQUENCE", "SEQUENCE"),
+        au("FILE_FORMATS", "FILE_FORMAT", "FILE_FORMAT"),
+        au("STREAMS", "STREAM", "STREAM", owner="OWNER"),
+        ("TASKS", "TASK", f"""SELECT TASK_DATABASE AS DATABASE_NAME, TASK_SCHEMA AS SCHEMA_NAME, TASK_NAME AS NAME,
+                   TASK_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TASKS WHERE DELETED IS NULL"""),
+        ("TAGS", "TAG", f"""SELECT TAG_DATABASE AS DATABASE_NAME, TAG_SCHEMA AS SCHEMA_NAME, TAG_NAME AS NAME,
+                   TAG_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TAGS WHERE DELETED IS NULL"""),
+        au("MASKING_POLICIES", "MASKING_POLICY", "POLICY"),
+        au("ROW_ACCESS_POLICIES", "ROW_ACCESS_POLICY", "POLICY"),
+        ("INTEGRATIONS", "INTEGRATION", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE
+            FROM {AU}.INTEGRATIONS WHERE DELETED IS NULL"""),
+        ("SHOW STREAMLITS", "STREAMLIT", "SHOW STREAMLITS IN ACCOUNT"),
+        ("SHOW NOTEBOOKS", "NOTEBOOK", "SHOW NOTEBOOKS IN ACCOUNT"),
+        ("SHOW ALERTS", "ALERT", "SHOW ALERTS IN ACCOUNT"),
+        ("SHOW WAREHOUSES", "WAREHOUSE", "SHOW WAREHOUSES"),
+        ("SHOW COMPUTE POOLS", "COMPUTE_POOL", "SHOW COMPUTE POOLS")]
+
+
+def inventory_seen(grants):
+    """{object name before "(": [kind, owned]} of the grant rows read, (OBJECT_NAME, GRANTED_ON, PRIVILEGE) each; a
+    function's grant name carries its argument types and return type, the inventory's its argument names."""
+    seen = {}
+    for o, k, pv in grants:
+        if isinstance(o, str) and o and k not in ("ROLE", "DATABASE_ROLE", "ACCOUNT"):
+            got = seen.setdefault(o.split("(", 1)[0], [k, False])
+            got[1] = got[1] or pv == "OWNERSHIP"
+    return seen
+
+
+def inventory_rows(seen, kind, found):
+    """(owner, kind, object) for each object of one inventory read (found: rows with lower-case keys) whose ownership
+    the grant read lacks: one OWNERSHIP grant row each, so an object with no grant row is listed too. Named like the
+    grant rows (DB, DB.SCHEMA, DB.SCHEMA.NAME, unquoted); an object already granted keeps its kind, so kinds and counts
+    merge. Owner: the role, a database role as DB.ROLE, None when no role owns it (an application) or the read does
+    not say: listed with no holder. seen (inventory_seen) is updated, so a later read adds no duplicate."""
+    out = []
+    for x in found:
+        db, sc, n = ((x.get(c) or "").replace('"', "") for c in ("database_name", "schema_name", "name"))
+        k = kind or x.get("kind")
+        if not n or not k:
+            continue
+        name = ".".join(p for p in (db, sc, n) if p)
+        got = seen.get(name.split("(", 1)[0])
+        if got and got[1]:
+            continue
+        who, typ = x.get("owner") or None, str(x.get("owner_role_type") or "ROLE").upper()
+        if typ == "DATABASE_ROLE" and who and not who.startswith(db + "."):
+            who = f"{db}.{who}"
+        out.append((who if typ in ("ROLE", "DATABASE_ROLE") else None, got[0] if got else k, name))
+        seen[name.split("(", 1)[0]] = [out[-1][1], True]
+    return out
+
+
+def inventory_note(steps, bad, added):
+    """(source, note) of the inventory: steps read (inventory_sql), bad: "step: error" of the failed ones, added:
+    inventory_rows of the others."""
+    ok = {"SHOW" if s.startswith("SHOW") else "ACCOUNT_USAGE" for n, _, s in steps if not any(b.startswith(n + ":") for b in bad)}
+    note = [f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])] * bool(bad)
+    lone = sum(1 for who, _, _ in added if not who)
+    note += [f"{lone} object{'s' * (lone != 1)} without an owner role, listed with no holder"] * bool(lone)
+    return " + ".join(sorted(ok)) or "UNAVAILABLE", "; ".join(note) or None
+
+def objects(session, run_id, mode):
+    """Every object the account lists (inventory_sql), as an OWNERSHIP row in TBL_ACCESS_GRANT for each one whose
+    ownership the grant read lacks (inventory_rows, as access.live): objects with no grant row are shown too. One
+    read per source, in async waves; a refused one is noted and skipped (P_SOURCE = SHOW: the SHOW reads only).
+    An error: UNAVAILABLE, the run stays OK."""
+    try:
+        seen = inventory_seen((r["object_name"], r["granted_on"], r["privilege"]) for r in rows(session, f"""
+            SELECT OBJECT_NAME, GRANTED_ON, MAX(CASE WHEN PRIVILEGE = 'OWNERSHIP' THEN PRIVILEGE END) AS PRIVILEGE
+            FROM {GRANT} WHERE RUN_ID = '{run_id}' AND NOT IS_FUTURE GROUP BY 1, 2"""))
+        steps = [x for x in inventory_sql() if mode != "SHOW" or x[2].startswith("SHOW")]
+        bad, added = [], []
+        for (name, kind, _), got in zip(steps, many(session, [s for _, _, s in steps])):
+            if isinstance(got, Exception):
+                bad.append(f"{name}: {first_line(got)}")
+            else:
+                added += inventory_rows(seen, kind, got)
+        save(session, GRANT, GRANT_COLS, [[run_id, who, "OWNERSHIP", k, o, False, False, None] for who, k, o in added])
+        return inventory_note(steps, bad, added)
+    except Exception as e:
+        return "UNAVAILABLE", first_line(e)
+
+
 def use_sql(since):
     """Object usage from ACCESS_HISTORY (query metadata, never table data), aggregated in Snowflake per user, object,
     ISO week (its Monday, whatever WEEK_START says) and READ (objects read) / WRITE (objects modified) /
@@ -919,6 +1029,8 @@ def run(session, p_source):
         keep("policies", *policies(session, run_id, mode))
         step = "streams"
         keep("streams", *streams(session, run_id))
+        step = "objects"
+        keep("objects", *objects(session, run_id, mode))
         step = "usage"
         keep("usage", *waits[2]())
         step = "object_use"
