@@ -5332,9 +5332,13 @@ def review_parts(db=None):
                     rows.append((x, who[x] | cls[(pvs, k)], g, path))
             if seen[sig]:
                 objs.append((o, d, sc, nm, k, ", ".join(sorted({tag_label(t, val) for _, t, val, _ in sens.get(o, [])})), sig))
-        admins = []
+        admins, ns = [], {}
         for u, rs in sorted(adm.items()):
-            n = sum(db in (None, split_name(o)[0]) and bool(split_name(o)[0]) for o in set().union(*map(admin_objects, rs)))
+            k = tuple(sorted(rs))  # admins share a few role sets: count each once, not per user over every object
+            if k not in ns:
+                dbs = cached("db_of", lambda: {o: split_name(o)[0] for o in objects})
+                ns[k] = sum(bool(dbs.get(o)) and db in (None, dbs.get(o)) for o in set().union(*map(admin_objects, rs)))
+            n = ns[k]
             admins.append(dict(database=db or "(every database)", schema="", type="", user=u,
                                object=f"({n} objects, through the real links of an admin role)" if n else
                                f"(no object: {'; '.join(r + ' ' + ADMIN_POWER[r] for r in rs)})",
