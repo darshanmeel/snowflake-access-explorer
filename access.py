@@ -3931,7 +3931,8 @@ def title(pv, path):
 
 def matrix(obj, kind=None, limit=None, priv=None):
     """Object page, effective access by user. Row: user, admin ([admin roles held]),
-    status, service, privs {privilege: dict(has, owner (implied by OWNERSHIP), depth, count, title, path)} over
+    status, service, privs {privilege: dict(has, owner (implied by OWNERSHIP), depth, count, title, path, admin (the admin
+    role it comes through, else None))}, unknown ([]) over
     the privileges of valid_privs(kind or the object's type) found in the data, via {cls: [granted roles]} ("Read via / Write via"), holders {cls: [grant
     holders]}.
     priv: only users who have it (or OWNERSHIP, which implies it). Users with a path first, then the admin users who
@@ -3952,13 +3953,13 @@ def matrix(obj, kind=None, limit=None, priv=None):
         for c in cols:
             r = g.get(c)
             cells[c] = dict(has=r is not None, owner=r is None and own, depth=r["depth"] if r else None,
-                            count=r["count"] if r else 0, path=r["path"] if r else None,
+                            count=r["count"] if r else 0, path=r["path"] if r else None, admin=None,
                             title=title(c, r["path"]) if r else "implied by OWNERSHIP" if own else "")
         via, hs = {}, {}
         for pv, r in g.items():
             via.setdefault(priv_class(pv, k0), set()).update(p[1] for p in r["paths"])
             hs.setdefault(priv_class(pv, k0), set()).update(p[-2] for p in r["paths"])
-        out.append(dict(user=u, admin=adm.get(u, []), status=status(u), service=is_service(u), privs=cells,
+        out.append(dict(user=u, admin=adm.get(u, []), status=status(u), service=is_service(u), privs=cells, unknown=[],
                         via={c: sorted(v) for c, v in via.items()}, holders={c: sorted(v) for c, v in hs.items()}))
     aw = {c: admin_ways_to(obj, {c}, kind) for c in cols}
     for u, a in sorted(adm.items()):
@@ -3970,8 +3971,9 @@ def matrix(obj, kind=None, limit=None, priv=None):
             ps = aw[c].get(u)
             cells[c] = dict(has=bool(ps), owner=not ps and own, depth=depth(ps[0][:-1], True) if ps else None,
                             count=len(ps or []), path=ps[0] if ps else None,
+                            admin=next((x for x in (ps or aw["OWNERSHIP"].get(u) or [[]])[0] if x in ADMIN), None),
                             title=title(c, ps[0]) if ps else "implied by OWNERSHIP" if own else "")
-        out.append(dict(user=u, admin=a, status=status(u), service=is_service(u), privs=cells, via={}, holders={}))
+        out.append(dict(user=u, admin=a, status=status(u), service=is_service(u), privs=cells, unknown=[], via={}, holders={}))
     return out
 
 

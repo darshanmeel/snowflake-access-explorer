@@ -186,6 +186,22 @@ def test_object():
     get("/api/object?name=NOPE", 404)
 
 
+def test_object_admin_rows():
+    """A user who reaches the object only through an admin role gets the privileges that role's real links give, with
+    depth and shortest path; only cells worth a look are flagged."""
+    o = "FINANCE.REPORT.TBL_REVENUE"
+    rows = {r["user"]: r for r in js(f"/api/object?name={o}")["matrix"]["rows"]}
+    r = rows["OPS_01"]
+    assert r["admin"] == ["SYSADMIN"] and not r["real"] and r["depth"] == 2 and r["paths"] > 0
+    assert r["path"][:3] == ["OPS_01", "SYSADMIN", a.TECH + "FINANCE_REPORT_OWNER"] and r["path"][-1] == o
+    c = r["cells"]["SELECT"]
+    assert c["has"] and c["admin"] == "SYSADMIN" and c["depth"] == 2 and "via SYSADMIN" in c["title"]
+    assert set(r["flags"]) == {"OWNERSHIP", "INSERT", "UPDATE", "DELETE", "TRUNCATE"}  # a person writes sensitive data
+    assert not rows["SVC_DEPLOY"]["flags"].keys() & {"OWNERSHIP", "INSERT"}  # a service user is not flagged
+    assert rows["FIN_14"]["flags"]["status"].startswith("Disabled")  # disabled and can still read it
+    assert all(not x["cells"][k]["admin"] for x in rows.values() if x["real"] for k in x["cells"])
+
+
 def test_big_lanes():
     """Big accounts: the people lane of the Object, Role and Access graph pages folds into one lazy box opened through
     graph?group=; grantees, held by and role privileges page on the server (CSV complete); the map's objects roll up
