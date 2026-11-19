@@ -313,8 +313,8 @@ export function PlanPanel() {
               {d.users.length > 0 && (
                 <div>
                   <h4>Who loses what</h4>
-                  <LoseKeep users={d.users} />
-                  <LossGroups users={d.users} changes={list} refs={d.refs} max={4} />
+                  <LoseKeep d={d} />
+                  <LossGroups gs={d.groups} total={d.groups_total} changes={list} refs={d.refs} max={4} />
                 </div>
               )}
               <CodeOutput changes={[]} name="change_plan" texts={planTexts(list, d.sql)} />

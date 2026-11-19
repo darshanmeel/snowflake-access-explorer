@@ -2,11 +2,11 @@
 // impact tiles, Group by People / Objects / Roles / Findings, the text to apply. access.what_if simulates; nothing runs.
 import { useState } from "react";
 import { download, useApi } from "../api/client";
-import type { ListItem, Refs, WhatIfChange, WhatIfPage, WhatIfUser } from "../api/types";
+import type { ListItem, LossGroup, Refs, WhatIfChange, WhatIfPage } from "../api/types";
 import { Card, CodeOutput, CutPath, EmptyState, FilterChips, MiniBar, StackBar, useCsv } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { Load, Pick, Sel } from "./common";
-import { addTo, changeText, cutLinks, lossGroups, objectImpact, plan, planTexts, useSaved } from "./changeplan";
+import { addTo, changeText, cutLinks, plan, planTexts, useSaved } from "./changeplan";
 
 type Kind = "revoke" | "drop" | "priv" | "public";
 const KINDS: [Kind, string][] = [["revoke", "Revoke role"], ["drop", "Drop role"], ["priv", "Revoke privilege"], ["public", "Empty PUBLIC"]];
@@ -39,30 +39,29 @@ function AddForm() {
 }
 
 /** Lose vs keep for the whole plan: privileges taken away against privileges still reached another way. */
-export function LoseKeep({ users }: { users: WhatIfUser[] }) {
-  const lost = users.reduce((n, u) => n + u.lost, 0), kept = users.reduce((n, u) => n + u.kept, 0);
+export function LoseKeep({ d }: { d: Pick<WhatIfPage, "lost_privs" | "kept_privs"> }) {
+  const lost = d.lost_privs, kept = d.kept_privs;
   if (!lost && !kept) return null;
   return <StackBar label="Privileges lost and kept" parts={[{ key: "lost", label: "Privileges lost", value: lost, cls: "lose" }, { key: "kept", label: "Kept another way", value: kept, cls: "keep" }]} />;
 }
 
-/** People who lose the same thing, as one row: who, what, the lost path with the cut link crossed out, what they keep. */
-export function LossGroups({ users, changes, refs, max = 50 }: { users: WhatIfUser[]; changes: WhatIfChange[]; refs: Refs; max?: number }) {
+/** People who lose the same thing, as one row (grouped on the server): who, what, the lost path with the cut link
+ * crossed out, what they keep. */
+export function LossGroups({ gs, total, changes, refs, max = 50 }: { gs: LossGroup[]; total: number; changes: WhatIfChange[]; refs: Refs; max?: number }) {
   const o = useOpen(refs);
   const [open, setOpen] = useState<string | null>(null);
-  const gs = lossGroups(users);
   if (!gs.length) return <EmptyState title="Nobody loses anything" art="clear">Everyone keeps their access through another path.</EmptyState>;
   return (
     <div className="ae-lgroups">
       {gs.slice(0, max).map((g) => {
-        const n = g.users.length, lost = g.users.reduce((s, u) => s + u.lost, 0), kept = g.users.reduce((s, u) => s + u.kept, 0);
-        const off = g.users.filter((u) => u.status !== "active");
+        const n = g.n, lost = g.lost_sum, kept = g.kept_sum;
         const on = open === g.key;
         return (
           <div key={g.key} className={`ae-lgroup${g.lost.length ? "" : " keep"}`}>
             <button type="button" className="ae-lgroup-head" aria-expanded={on} onClick={() => setOpen(on ? null : g.key)}>
               <span className="ae-lgroup-n" aria-hidden>{n}</span>
               <span className="ae-lgroup-text">{g.text}</span>
-              {off.length > 0 && <span className="ae-warn-word">{off.length} not active</span>}
+              {g.off > 0 && <span className="ae-warn-word">{g.off} not active</span>}
               <MiniBar of={Math.max(1, lost + kept)} text={`${lost} lost${kept ? ` · ${kept} kept` : ""}`}
                 parts={[{ key: "l", label: "Lost", value: lost, cls: "lose" }, { key: "k", label: "Kept another way", value: kept, cls: "keep" }]} />
             </button>
@@ -75,12 +74,13 @@ export function LossGroups({ users, changes, refs, max = 50 }: { users: WhatIfUs
               <div className="ae-lgroup-who">
                 {g.users.map((u) => <button type="button" key={u.user} className={`ae-pchip${u.status === "active" ? "" : " ae-pchip-off"}`} onClick={() => o.open(`${u.user} (user)`)}
                   title={u.status}>{u.user}{u.status === "active" ? "" : ` · ${u.status}`}</button>)}
+                {n > g.users.length && <span className="ae-muted">and {n - g.users.length} more: the CSV has every person</span>}
               </div>
             )}
           </div>
         );
       })}
-      {gs.length > max && <p className="ae-muted">and {gs.length - max} more groups: the CSV has every person.</p>}
+      {total > Math.min(max, gs.length) && <p className="ae-muted">and {total - Math.min(max, gs.length)} more groups: the CSV has every person.</p>}
     </div>
   );
 }
@@ -90,7 +90,7 @@ function Impact({ d, list }: { d: WhatIfPage; list: WhatIfChange[] }) {
   const csvOn = useCsv();
   const o = useOpen(d.refs);
   const k = d.counts;
-  const objs = objectImpact(d.users);
+  const objs = d.impact;
   const by = (["people", "objects", "roles", "findings"] as const).find((x) => x === c.params.by) ?? "people";
   const tiles: [string, number, string][] = [["People lose access", k.users, k.users ? " ae-tile-bad" : ""], ["Objects affected", k.objects, ""],
     ["Kept another way", k.kept, ""], ["Nobody reaches", k.unreached, k.unreached ? " ae-tile-bad" : ""], ["Roles orphaned", k.orphans, k.orphans ? " ae-tile-warn" : ""],
@@ -98,17 +98,18 @@ function Impact({ d, list }: { d: WhatIfPage; list: WhatIfChange[] }) {
   return (
     <>
       <p className="ae-answer"><b>{d.summary}.</b> A simulation: nothing changes in Snowflake.</p>
-      <LoseKeep users={d.users} />
+      <LoseKeep d={d} />
       <div className="ae-tiles">{tiles.map(([l, v, t]) => <div key={l} className={`ae-tile${t}`}><span className="ae-tile-l">{l}</span><span className="ae-tile-v">{v}</span></div>)}</div>
       <Card title="Impact" right={
           <FilterChips label="Group impact by" value={by} onPick={(x) => c.set({ by: x === "people" ? null : x })} items={[
-            { key: "people", label: "People", count: d.users.length }, { key: "objects", label: "Objects", count: objs.length },
-            { key: "roles", label: "Roles", count: d.roles.length }, { key: "findings", label: "Findings", count: d.findings.length }]} />}>
-        {by === "people" && <LossGroups users={d.users} changes={list} refs={d.refs} />}
+            { key: "people", label: "People", count: d.users_total }, { key: "objects", label: "Objects", count: d.impact_total },
+            { key: "roles", label: "Roles", count: d.roles_total }, { key: "findings", label: "Findings", count: d.findings_total }]} />}>
+        {by === "people" && <LossGroups gs={d.groups} total={d.groups_total} changes={list} refs={d.refs} />}
         {by === "objects" && (objs.length || d.objects.length ? (
           <ul className="ae-plan-lose ae-plan-objs">
             {objs.map((x) => <li key={x.object}><button type="button" className="ae-link ae-mono" onClick={() => o.open(x.object)}>{x.object}</button><span className="ae-muted">{x.type.toLowerCase()}</span>
               <span><b>{x.people === 1 ? "1 person" : `${x.people} people`}</b> lose {x.privileges.join(", ")}</span></li>)}
+            {d.impact_total > objs.length && <li className="ae-muted">First {objs.length} of {d.impact_total} objects, most people first: the CSV has all.</li>}
             {d.objects.map((x) => <li key={`left:${x.object}`}><span className="ae-mono">{x.object}</span><span className="ae-muted">{x.type.toLowerCase()}</span>
               <span className="ae-bad">{[x.unreached && "nobody reaches it", x.ownerless && "no owner"].filter(Boolean).join(", ")}{x.sensitive ? " · sensitive" : ""}</span></li>)}
           </ul>) : <EmptyState title="No object loses a reader" art="clear" />)}

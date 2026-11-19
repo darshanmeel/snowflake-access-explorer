@@ -43,7 +43,7 @@ function Body({ d }: { d: CheckPage }) {
   const tabs = [
     { key: "answer", label: "Answer & diagram" },
     ...(d.lanes_total ? [{ key: "routes", label: "Routes & where to cut", count: d.lanes_total }] : []),
-    ...(d.verdict === "no" ? [{ key: "nearest", label: "Nearest ways in", count: d.nearest.length }] : []),
+    ...(d.verdict === "no" ? [{ key: "nearest", label: "Nearest ways in", count: d.nearest?.length ?? null }] : []),
     ...(d.layers ? [{ key: "layers", label: "Rows & columns", tone: d.verdict === "partly" ? ("warn" as const) : null }] : []),
   ];
   const at = tabs.some((t) => t.key === show) ? show : "answer";
@@ -153,10 +153,19 @@ function Routes({ d }: { d: CheckPage }) {
   );
 }
 
+/** The nearest ways in, asked for when the tab opens (near=1): the slow part of a No on a big account. */
 function NearestWays({ d }: { d: CheckPage }) {
   const c = useApp();
+  const asked = subjectIn(c.params);
+  const s = useApi<CheckPage>(d.nearest ? null : "check", { ...apiParams(c), ...(asked.role ? { role: d.user } : { name: d.user }), obj: d.object, near: "1" });
+  if (d.nearest) return <NearestList d={d} />;
+  return <Load s={s} wait="Looking for the closest roles that lead there">{(x) => <NearestList d={x} />}</Load>;
+}
+
+function NearestList({ d }: { d: CheckPage }) {
+  const c = useApp();
   if (d.view === "mine") return <EmptyState title="Not worked out in My access" art="wait">The nearest ways in need everyone's grants: open the shared snapshot.</EmptyState>;
-  if (!d.nearest.length) return <EmptyState title="No way in to suggest" art="search">No role that can be suggested reaches {d.ask_priv} on {d.object} (admin and build roles are never suggested).</EmptyState>;
+  if (!d.nearest?.length) return <EmptyState title="No way in to suggest" art="search">No role that can be suggested reaches {d.ask_priv} on {d.object} (admin and build roles are never suggested).</EmptyState>;
   return (
     <Card title="Nearest ways in" sub={`For ${d.ask_priv}. The dashed red link is what is missing. Fewest missing links first, then the fewest people who would get it too.`}>
       <div className="ae-near">

@@ -36,7 +36,7 @@ export function RulesPageView() {
           <div className="ae-graph-open">
             Showing
             {d.filters.rule && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ rule: null })}>rule {d.filters.rule} ×</button>}
-            {d.filters.grantee && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ grantee: null })}>{d.filters.grantee} ×</button>}
+            {d.filters.grantee && <button className="ae-chip ae-chip-plain" onClick={() => c.set({ grantee: null, of: null })}>{d.filters.grantee}{d.filters.of === "user" && " and its roles"} ×</button>}
           </div>
         );
         const unknown = d.rows_unknown;

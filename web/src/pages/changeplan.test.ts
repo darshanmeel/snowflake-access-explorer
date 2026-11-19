@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { redirect } from "../App";
-import type { Finding, WhatIfChange, WhatIfUser } from "../api/types";
-import { addTo, changeText, findingKey, inPlan, objectImpact, planTexts, rulesQuery, saved, toChange, toggleFix, visible } from "./changeplan";
+import type { Finding, WhatIfChange } from "../api/types";
+import { addTo, changeText, findingKey, inPlan, planTexts, rulesQuery, saved, toChange, toggleFix, visible } from "./changeplan";
 
 const f = (num: string, grantee: string, more: Partial<Finding> = {}): Finding => ({
   num, title: `rule ${num}`, severity: "High", area: "", grantee, kind: "user", what: `w${num}`, impact: null, people: [grantee],
@@ -56,12 +56,6 @@ describe("change plan", () => {
     expect(t.ticket).toContain("1. Revoke F_A from user U1\n2. Drop role F_OLD\n3. Empty PUBLIC");
     expect(planTexts([], "").sql).toBe("-- nothing to revoke\n");
     expect(changeText(r2)).toBe("Revoke SELECT on DB.S.T from T_X");
-  });
-  it("adds up what each object loses", () => {
-    const row = (object: string, privileges: string[]) => ({ object, type: "TABLE", privileges, classes: [], path: [] });
-    const u = (user: string, rows: ReturnType<typeof row>[]): WhatIfUser => ({ user, status: "active", lost: rows.length, objects: rows.length, kept: 0, lost_rows: rows, kept_rows: [], kept_roles: [] });
-    expect(objectImpact([u("U1", [row("B", ["SELECT"])]), u("U2", [row("B", ["INSERT"]), row("A", ["SELECT"])])])).toEqual([
-      { object: "B", type: "TABLE", people: 2, privileges: ["INSERT", "SELECT"] }, { object: "A", type: "TABLE", people: 1, privileges: ["SELECT"] }]);
   });
   it("redirects the old and new links to Risks, Rules and the plan", () => {
     expect(redirect("rulelist", {})).toEqual({ page: "rules", params: { show: "list" } });

@@ -33,12 +33,13 @@ export function RequestPageView() {
           onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v], "request"), role: null, to: null })} />}
         <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, role: null, to: null })} />
       </div>
-      {none ? <PickFirst /> : <Load s={s}>{(d) => <Body key={`${d.user}:${d.object}:${d.need}:${d.asked?.role ?? ""}`} d={d} />}</Load>}
+      {none ? <PickFirst /> : <Load s={s}>{(d) => d.object ? <Body key={`${d.user}:${d.object}:${d.need}:${d.asked?.role ?? ""}`} d={{ ...d, object: d.object }} />
+        : <EmptyState title="Pick an object" art="search">Search for the table, view or other object above.</EmptyState>}</Load>}
     </>
   );
 }
 
-function Body({ d }: { d: RequestPage }) {
+function Body({ d }: { d: RequestPage & { object: string } }) {
   const c = useApp();
   const o = useOpen(d.refs);
   const a = d.asked;
@@ -49,7 +50,7 @@ function Body({ d }: { d: RequestPage }) {
   const choices = [...extra, ...d.suggestions.map((x) => ({ role: x.role, change: x.change }))];
   const [pick, setPick] = useState(viaNew ? "" : asked ?? choices[0]?.role ?? "");
   const [days, setDays] = useState(30);
-  const [approver, setApprover] = useState(d.approver ?? "");
+  const [approver, setApprover] = useState(d.approver ?? d.owners[0] ?? "");  // no owner tag: the owner role
   const [reason, setReason] = useState("");
   const ch = choices.find((x) => x.role === pick);
   const note = { by: forRole ? undefined : d.user, reason, approver, expiry: expiryOf(days) || "until revoked" };

@@ -103,13 +103,13 @@ def test_paged():
     and opened through graph?group=, the same members as sent whole."""
     whole = js("/api/graph?of=user&name=SVC_DEPLOY")
     server.LAZY = 0  # the fake data's boxes are small: every box lazy
-    server.ANSWERS.clear()
+    server.forget()
     try:
         lazy = js("/api/graph?of=user&name=SVC_DEPLOY")
         tab = js("/api/graph?of=user-tab&name=SVC_DEPLOY&tab=all")
         role = js(f"/api/role?name={a.FUNC}DEPLOY")["graph"]
         server.MAX_LANE = 2  # crowded role lanes fold into one lazy box each, its role names sent
-        server.ANSWERS.clear()
+        server.forget()
         lanes = js("/api/graph?of=user&name=SVC_DEPLOY")
         box = next(x for k, x in lanes["groups"].items() if k.startswith("lane:"))
         roles = js(f"/api/graph?of=user&name=SVC_DEPLOY&group=lane:{box['label'].split(':')[1]}")
@@ -118,7 +118,7 @@ def test_paged():
         assert not drawn & set(box["ids"]) and all(e["source"] in drawn and e["target"] in drawn for e in lanes["edges"])
     finally:
         server.LAZY, server.MAX_LANE = 300, 24
-        server.ANSWERS.clear()
+        server.forget()
     for g in (lazy, tab, role):
         graph_ok(g)
         assert g["groups"] and all(x["lazy"] for x in g["groups"].values()) and g["src"]["name"]
@@ -187,7 +187,7 @@ def test_big_lanes():
     per database and a box drawn later gets its detail through node=."""
     t, r = "SALES.CORE.TBL_CUSTOMER", f"{a.FUNC}ENGINEER"
     server.LAZY, server.MAX_LANE = 0, 1
-    server.ANSWERS.clear()
+    server.forget()
     try:
         for url, of in ((f"/api/object?name={t}", f"of=object&name={t}"), ("/api/role?name=PUBLIC", "of=role&name=PUBLIC"),
                         (f"/api/map?table={t}&same=0", f"of=map&table={t}&same=0")):
@@ -203,7 +203,7 @@ def test_big_lanes():
         assert len(n) == 1 and next(iter(n.values()))["leads_count"]
     finally:
         server.LAZY, server.MAX_LANE = 300, 24
-        server.ANSWERS.clear()
+        server.forget()
     u = js("/api/map?user=SVC_DEPLOY")["graph"]
     dbs = [x for x in u["groups"].values() if x["kind"] == "database_group"]
     assert dbs and sum(x["count"] for x in dbs) > a.MAX_OBJECTS
@@ -237,7 +237,8 @@ def test_check():
     assert y["verdict"] == "yes" and y["lanes_total"] == 2 and y["cut"] == [a.FUNC + "ENGINEER", "HR.SC_W_PEOPLE"]
     assert len(y["cuts"]) == 2 and y["cuts"][0]["people"] == ["ENGINEER_01"] and y["cuts"][0]["lost"] < y["cuts"][1]["lost"]
     assert {x["privilege"] for x in y["held"] if x["held"]} == {"SELECT", "INSERT", "UPDATE"} and y["approver"] == "HR data owner"
-    n = js("/api/check?name=FIN_09&obj=HR.PEOPLE.TBL_EMPLOYEE&do=read")
+    assert js("/api/check?name=FIN_09&obj=HR.PEOPLE.TBL_EMPLOYEE&do=read")["nearest"] is None  # the slow part: on its tab
+    n = js("/api/check?name=FIN_09&obj=HR.PEOPLE.TBL_EMPLOYEE&do=read&near=1")
     assert n["verdict"] == "no" and n["priv"] == "SELECT" and n["nearest"] and not n["lanes"] and n["roles_count"] > 5
     assert not any(x["held"] for x in n["held"]) and n["nearest"][0]["path"][0] == "FIN_09"
     p = js("/api/check?name=MARKETING_01&obj=FINANCE.REPORT.TBL_REVENUE")
@@ -250,7 +251,7 @@ def test_check():
     assert pr["cuts"][0]["people"] == ["MARKETING_01"] and "FROM ROLE " + m in pr["cuts"][0]["sql"]
     ry = js(f"/api/check?role={a.FUNC}ENGINEER&obj={e}")
     assert ry["verdict"] == "yes" and ry["paths"][0]["path"][0] == a.FUNC + "ENGINEER" and ry["graph"]
-    rn = js(f"/api/check?role={a.FUNC}ANALYST&obj={e}&do=read")
+    rn = js(f"/api/check?role={a.FUNC}ANALYST&obj={e}&do=read&near=1")
     assert rn["verdict"] == "no" and rn["nearest"] and all(x["to"] == a.FUNC + "ANALYST" and not x["to_user"] for x in rn["nearest"])
     assert js(f"/api/check?name={m}&obj={e}")["subject"]["user"] is False  # Home's "can F_MARKETING read ..."
     assert js("/api/check?user=ENGINEER_01")["subject"]["user"] is True
@@ -272,8 +273,9 @@ def test_request():  # screen 15: suggested role, approver, read / change, alrea
     assert w["asked"]["people"] > 10 and w["asked"]["broad"] and w["subject"]["kind"] == "user"
     h = js("/api/request?name=ENGINEER_01&obj=HR.PEOPLE.TBL_EMPLOYEE")
     assert h["has"] and h["suggestions"] == [] and h["level"] == "change"
-    assert js("/api/request?name=FIN_09&role=NOPE")["asked"] is None
-    js("/api/request", keys)
+    assert js("/api/request?name=FIN_09&obj=SALES.CORE.TBL_CUSTOMER&role=NOPE")["asked"] is None
+    assert js("/api/request?name=FIN_09")["object"] is None  # never a guessed object: the page asks for one
+    js("/api/request?obj=SALES.CORE.TBL_CUSTOMER", keys)
     get("/api/request?name=NOPE", 404)
     get("/api/request?obj=NOPE", 404)
     m = a.FUNC + "MARKETING"  # a role as the subject: GRANT ROLE x TO ROLE y, everyone holding it gets it too
@@ -405,11 +407,70 @@ def test_streamlit_bridge():  # the React app inside Streamlit gets the same ans
     assert st == 200 and sid2 != sid and sid not in server.MINE and sid2 in server.MINE
 
 
+def test_find_lock_free():  # search as you type never waits for a slow page once a data set has its name index
+    import threading
+    import time
+    first = js("/api/find?q=ANALYST")
+    assert first["items"][0]["answer"] and all(not x["answer"] for x in first["items"][server.ANSWER_TOP:])
+    hold, done = threading.Event(), threading.Event()
+
+    def slow_page():
+        with server.LOCK:
+            hold.set()
+            done.wait(20)
+    t = threading.Thread(target=slow_page)
+    t.start()
+    hold.wait()
+    t0 = time.time()
+    try:
+        r = server.serve("find", {"view": "shared", "q": "ENGINEER"})
+    finally:
+        done.set()
+        t.join()
+    assert time.time() - t0 < 5 and r["items"] and r["items"][0]["name"].startswith("ENGINEER") and r["partial"]
+    again = server.serve("find", {"view": "shared", "q": "ENGINEER"})  # LOCK free: the answer lines come now
+    assert "partial" not in again and again["items"][0]["answer"]
+    assert a.search("ANALYTS_01", [f"N{i}" for i in range(a.FUZZY_MAX + 1)]) == []  # no fuzzy pass over a big account
+    assert "ANALYST_01" in a.search("ANALYTS_01", a.users)  # a small one keeps it
+
+
+def test_findings_link():  # a User / Role page's "All N on Risks & fixes" lists the same N
+    for u in a.users:
+        d = js(f"/api/user?name={u}")
+        if d["findings_total"] > sum(x["grantee"] == u for x in server.S["rows"]):  # some come from its roles
+            break
+    r = js(f"/api/rules?grantee={u}&of=user&sev=all")
+    assert r["findings_total"] == d["findings_total"] and r["filters"]["of"] == "user"
+    role = next(x["grantee"] for x in server.S["rows"] if x["kind"] != "user")
+    assert js(f"/api/rules?grantee={role}&of=role&sev=all")["findings_total"] == js(f"/api/role?name={role}")["findings_total"]
+
+
+def test_review_csv_cap():  # every database of a big account is millions of rows: one database or schema instead
+    d = js("/api/review?db=*")
+    assert d["csv_max"] == server.REVIEW_CSV_MAX and get("/api/review.csv?db=*").text
+    old, server.REVIEW_CSV_MAX = server.REVIEW_CSV_MAX, d["kpis"]["rows"] - 1
+    try:
+        assert "pick one database" in get("/api/review.csv?db=*", 400).json()["message"]
+    finally:
+        server.REVIEW_CSV_MAX = old
+
+
 def test_whatif():
     from urllib.parse import quote
     ch = quote(json.dumps([{"op": "drop_role", "role": a.FUNC + "ANALYST"}]))
-    d = js(f"/api/whatif?changes={ch}", ["changes", "summary", "counts", "users", "objects", "roles", "findings", "iac", "sql", "refs"])
-    assert d["counts"]["users"] and d["users"][0]["lost_rows"] and "DROP ROLE" in d["sql"]
+    d = js(f"/api/whatif?changes={ch}", ["changes", "summary", "counts", "users", "objects", "roles", "findings", "iac", "sql", "refs",
+                                          "groups", "impact", "lost_privs", "kept_privs"])
+    assert d["counts"]["users"] and "DROP ROLE" in d["sql"] and "lost_rows" not in d["users"][0]  # per person: counts only
+    assert sum(g["n"] for g in d["groups"]) == d["users_total"] == len(d["users"]) and d["groups"][0]["text"]
+    assert d["lost_privs"] == sum(u["lost"] for u in d["users"]) and d["impact"][0]["people"] >= d["impact"][-1]["people"]
+    assert all(d[k + "_total"] >= len(d[k]) for k in ("findings", "objects", "roles", "impact", "groups", "users"))
+    u = js(f"/api/whatif?changes={ch}&user={d['users'][0]['user']}")["user"]  # one person's rows, on open
+    assert u["lost_rows"] and u["objects"] == d["users"][0]["objects"]
+    get(f"/api/whatif?changes={ch}&user=NOPE", 404)
+    long = json.dumps([{"op": "drop_role", "role": a.FUNC + "ANALYST"}] * 1500)  # a plan too long for a URL comes as a POST
+    assert len(long) > 40000 and c.post("/api/whatif", json={"changes": long}).json()["counts"] == d["counts"]
+    assert "What if" in c.post("/api/whatif.csv", json={"changes": long}).text
+    assert c.post("/api/whatif", content="[]", headers={"Content-Type": "application/json"}).status_code == 400
     assert "What if" in get(f"/api/whatif.csv?changes={ch}").text
     get("/api/whatif?changes=nope", 400)
     hs = js(f"/api/list?what=role_holders&role={a.TECH}SALES_CORE_READ")["items"]
@@ -724,7 +785,16 @@ def test_who():  # screen 2: who has access to an object, the admin preset, ware
 
 def test_access_home():  # screens 0 and 1: one row per object at its highest level, counted once
     d = js("/api/access?user=ENGINEER_01", ["who", "counts", "objects", "heat", "why", "refs"])
+    assert "findings" not in d  # the page lists findings per object only
     n = d["counts"]
+    h = d["heat"]  # each object in one cell, riskiest schema first, as the filter chips count them
+    assert sum(x["read"] + x["change"] + x["own"] for x in h) == n["read"] and [x["own"] + x["change"] + x["sensitive"] for x in h] == sorted((x["own"] + x["change"] + x["sensitive"] for x in h), reverse=True)
+    for x in h:
+        for k in ("read", "change", "own"):
+            assert js(f"/api/access?user=ENGINEER_01&cell={x['schema']}&min={k}")["total"] == x[k], (x, k)
+    assert sum(x["read"] for x in h) == js("/api/access?user=ENGINEER_01&filter=read")["total"]
+    assert js("/api/access?user=ENGINEER_01&hq=zzz")["heat"] == [] and d["heat_total"] == len(h)
+    assert all(len(r["kids"]) <= server.KIDS and r["kids_total"] >= len(r["kids"]) for r in d["why"])
     assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (6, 5, 2, 3, 5, 8), n
     powers = {(x["privileges"][0], x["object"]) for x in d["powers"]}
     assert powers == {("EXECUTE TASK", "ACCOUNT"), ("VIEW LINEAGE", "ACCOUNT"), ("CREATE TABLE", "SALES.CORE")}, powers
@@ -780,7 +850,11 @@ def test_graph_see_compare():  # screens 4, 7, 9
     assert "old" not in c and "dbs" not in c  # one differences view; the database picker searches the server
     assert c["a"]["name"] == server.DEMO_USER and c["b"]["name"] != c["a"]["name"] and c["scope"] == "sensitive"
     assert all(ch["sql"] and "roleDb" in ch and "toDb" in ch for ch in c["match"] + c["extras"])  # SQL from access.with_sql
-    assert sum(c["counts"].values()) == len(c["rows"]) and c["rows"]
+    assert sum(c["counts"].values()) == js("/api/compare?same=1&limit=0")["rows_total"] and c["rows"]
+    assert all(r["diff"] != "same" for r in c["rows"]) and c["rows_total"] == sum(v for k, v in c["counts"].items() if k != "same")
+    big = js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all&same=1&limit=2&c_offset=2")
+    assert len(big["rows"]) == 2 and big["offset"] == 2 and big["rows_total"] > 4  # one page, never every row
+    assert all(r["diff"] == "only_a" for r in js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all&f=only_a")["rows"])
     x = js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all")
     assert x["counts"]["only_a"] > 0 and x["match"] and x["extras"] and x["a"]["kind"] == "functional"
     assert js("/api/compare?a=ENGINEER_01&b=ANALYST_01&scope=db&db=HR")["rows"][0]["diff"] == "only_a"
@@ -882,13 +956,23 @@ def test_review_grid_catalog_flow():  # screens 6, 8, 16
         assert False, "grid on My access"
     except server.ApiError as x:
         assert x.status == 400
-    s = js("/api/sensitive", ["catalog"])
+    assert js("/api/sensitive")["catalog"] is None  # only for its tab
+    s = js("/api/sensitive?show=catalog", ["catalog"])
     assert [r["status"] for r in s["catalog"]][:2] == ["not", "partly"] and s["catalog"][0]["columns"]
-    assert len(js("/api/sensitive?db=FINANCE")["catalog"]) == 2
-    f = js("/api/flow", ["state", "groups", "roles", "objects", "links", "select", "refs"])
+    assert len(js("/api/sensitive?db=FINANCE&show=catalog")["catalog"]) == 2 == js("/api/sensitive?db=FINANCE")["catalog_total"]
+    k = s["kpis"]
+    assert len(k["stale"]) <= server.NAMES and k["stale_total"] >= len(k["stale"])
+    assert all(len(o["roles"]) <= server.ROLES_SHOWN <= o["roles_total"] or len(o["roles"]) == o["roles_total"] for o in s["objects"])
+    assert all(len(o["roles"]) == o["roles_total"] for o in js("/api/sensitive?limit=0")["objects"])  # the CSV: every role
+    t = js("/api/flow", ["state", "objects", "roles_all", "roles_total"])  # the tables: no links, no followed box
+    assert t["links"] == [] and t["follow"] is None and t["roles_total"] == len(t["roles_all"]) > len(t["roles"]) - 1
+    assert all(o["roles"] >= 1 for o in t["objects"]) and t["roles_all"][0]["count"] >= t["roles_all"][-1]["count"]
+    f = js("/api/flow?show=graph", ["state", "groups", "roles", "objects", "links", "select", "refs"])
     assert f["state"] == "ok" and f["select"] == "risky" and f["roles"][0]["kind"] == "admin"
     assert f["follow"]["sel"] == "risky" and f["follow"]["users"] and "users" not in f["links"][0]
-    assert js("/api/flow?sel=none")["follow"]["lit"] is None and js("/api/flow?sel=admin")["follow"]["users"] == ["ADMIN_01", "OPS_01"]
+    assert js("/api/flow?show=graph&sel=none")["follow"]["lit"] is None
+    assert js("/api/flow?show=graph&sel=admin")["follow"]["users"] == ["ADMIN_01", "OPS_01"]
+    assert len(f["objects"]) <= server.FLOW_OBJECTS + 1
     assert server.flow_page({}, "mine")["state"] == "mine"
     m = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
     assert m["flow"] == m["sensitive"] == "risk" and m["review"] == "govern"
@@ -1024,7 +1108,7 @@ def test_pages_empty():
         for name, d in test_access.none_variants(full=False):
             server.read_shared = lambda d=d: d
             server.cache.MEM.pop(server.KEY, None)
-            server.ANSWERS.clear()
+            server.forget()
             a.memo.clear()  # every variant has the same run, so the same key: built again, not taken from the last one
             a.built.clear()
             notes = {n["key"] for n in js("/api/meta")["notes"]}
@@ -1036,7 +1120,7 @@ def test_pages_empty():
     finally:
         server.read_shared = old
         server.cache.MEM.pop(server.KEY, None)
-        server.ANSWERS.clear()
+        server.forget()
         server.MINE.clear()
         a.memo.clear()
         a.built.clear()
@@ -1055,11 +1139,11 @@ def test_review_fixes():  # search answers, row policy list, defaults that exist
     assert js("/api/meta")["pages"] and {"home_summary", "rule_badge"} <= set(a.memo)  # Home and meta count the findings once per data set
     old = server.DEMO_USER
     try:
-        server.DEMO_USER = "NOBODY_HERE"; server.ANSWERS.clear()  # answers are kept per data set; this changes a setting
+        server.DEMO_USER = "NOBODY_HERE"; server.forget()  # answers are kept per data set; this changes a setting
         assert js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["default_user"] is None  # shared: nobody until one is picked
     finally:
         server.DEMO_USER = old
-        server.ANSWERS.clear()
+        server.forget()
     users = a.users
     try:
         a.users = []
@@ -1175,16 +1259,16 @@ def test_kept_rules():
     d = a.fake()
     try:
         cache.MEM[server.KEY] = (d, time.time())
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()  # as after a start: nothing checked yet
+        a.memo.clear(), a.built.clear(), server.forget()  # as after a start: nothing checked yet
         want = js("/api/rules")
         assert cache.file(server.KEY).with_suffix(".rules.pkl").is_file()
 
         def boom():
             raise AssertionError("checked again")
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        a.memo.clear(), a.built.clear(), server.forget()
         a.rule_rows = boom
         assert js("/api/rules") == want  # a restart: kept
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        a.memo.clear(), a.built.clear(), server.forget()
         os.environ["DORMANT_DAYS"] = "91"
         try:
             c.get("/api/rules")
@@ -1195,14 +1279,14 @@ def test_kept_rules():
         os.environ.pop("DORMANT_DAYS", None)
         cache.DIR, cache.HOURS, server.MODE, a.rule_rows = old
         cache.MEM.pop(server.KEY, None)
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        a.memo.clear(), a.built.clear(), server.forget()
 
 
 def test_built_ready():
     """A load does the first page's work too (rule 17, what each fix breaks, sensitive objects), with load-log lines,
     so the first page after "Ready" does not sit on Loading."""
     lines = []
-    a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+    a.memo.clear(), a.built.clear(), server.forget()
     try:
         with a.progress(lines.append):
             server.built(a.fake())
@@ -1210,7 +1294,7 @@ def test_built_ready():
         assert any(x.startswith("Working out what each fix changes") for x in lines), lines
         assert any(x.startswith("Preparing the pages") for x in lines), lines
     finally:
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        a.memo.clear(), a.built.clear(), server.forget()
 
 
 def test_changes_kept():
@@ -1221,7 +1305,7 @@ def test_changes_kept():
     import time
     cache = server.cache
     old = cache.DIR, cache.HOURS, server.MODE, cache.prev, a.diff
-    a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+    a.memo.clear(), a.built.clear(), server.forget()
     want = js("/api/changes", ["events_total", "offset", "f"])
     assert want["events_total"] == want["counts"]["all"] == len(want["events"]) and want["f"] == "all"
     g = js("/api/changes?f=gain&limit=1&offset=1")  # one filter, one page: the server pages a big change
@@ -1235,7 +1319,7 @@ def test_changes_kept():
         raise AssertionError("compared again")
     try:
         cache.MEM[server.KEY] = (d, time.time())
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        a.memo.clear(), a.built.clear(), server.forget()
         server.built(d)
         a.diff = boom
         server.compared(d)  # the previous snapshot is not built (a same-run refresh kept an older one): left to the page
@@ -1245,14 +1329,14 @@ def test_changes_kept():
         server.built(d)
         server.compared(d)
         assert cache.file(server.KEY).with_suffix(".diff.pkl").is_file()
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()  # a restart
+        a.memo.clear(), a.built.clear(), server.forget()  # a restart
         a.diff = boom
         got = js("/api/changes")
         assert got["events"] == want["events"] and got["text"] == want["text"] and got["counts"] == want["counts"]
         a.diff = old[4]
         big = dict(people=[f"U{i:03}" for i in range(50)], objects=[], subjects=[f"U{i:03}" for i in range(50)], capped=True)
         a.memo[("diff", cache.run_of(a.fake_previous()))]["events"].append(dict(got["events"][0], text="big", **big))
-        server.ANSWERS.clear()
+        server.forget()
         one = {e["text"]: e for e in js("/api/changes?subject=U040")["events"]}["big"]
         assert one["people"] == one["subjects"] == big["people"][:server.NAMES] + ["U040"]
         assert "Big changes name only" in js("/api/changes?subject=U040")["text"] and "Big" not in js("/api/changes")["text"]
@@ -1260,7 +1344,7 @@ def test_changes_kept():
     finally:
         cache.DIR, cache.HOURS, server.MODE, cache.prev, a.diff = old
         cache.MEM.pop(server.KEY, None)
-        a.memo.clear(), a.built.clear(), server.ANSWERS.clear()
+        a.memo.clear(), a.built.clear(), server.forget()
 
 
 def test_parts():
@@ -1380,7 +1464,7 @@ def test_switches():
     import st_react
 
     def fresh():  # answers and built data sets are kept per data set; this changes a setting
-        server.ANSWERS.clear(), a.built.clear(), a.memo.clear()
+        server.forget(), a.built.clear(), a.memo.clear()
     old = a.HIERARCHY_ON
     try:
         a.HIERARCHY_ON = False
@@ -1470,7 +1554,7 @@ def test_not_read_and_caps():  # a source not read is "not read", never none; a 
     try:
         a.run["SOURCES"] = {"activity": "UNAVAILABLE", "streams": "UNAVAILABLE"}
         a.run["NOTES"] = {"activity": "ACCESS_HISTORY: not authorized", "streams": "SHOW STREAMS: not authorized"}
-        server.ANSWERS.clear()  # the answers kept for this data set came before the change
+        server.forget()  # the answers kept for this data set came before the change
         sk = a.skipped_rules()
         assert set(sk) == a.ACTIVITY_RULES | {"22"} and all(v.startswith("not read") for v in sk.values()), sk
         r = js("/api/rules")
@@ -1479,7 +1563,7 @@ def test_not_read_and_caps():  # a source not read is "not read", never none; a 
         assert js("/api/home")["skipped"] == sk
     finally:
         a.run["SOURCES"], a.run["NOTES"] = src, notes
-        server.ANSWERS.clear()
+        server.forget()
     old = a.FUNC, a.TECH
     try:  # a big account named another way: rules 1 and 2 did not run, they do not pass
         a.FUNC, a.TECH = "QQF_", "QQT_"
@@ -1502,7 +1586,7 @@ def test_not_read_and_caps():  # a source not read is "not read", never none; a 
     assert js("/api/rules?sq=zzz")["stale_matched"] == 0
     assert len(js("/api/rules?limit=0")["stale"]) == r["stale_total"]  # the CSV: every one
     t = get("/api/flow.csv?sel=none").text  # every person of the box, not the first MAX_PATHS
-    assert len(t.strip().splitlines()) - 5 == js("/api/flow?sel=none")["follow"]["count"], t[:300]
+    assert len(t.strip().splitlines()) - 5 == js("/api/flow?sel=none&show=graph")["follow"]["count"], t[:300]
     g, every = a.review_grid(cap=2), a.review_grid()  # people who reach only objects past the cap are rows too
     assert len(g["columns"]) == 2 and g["total"] > 2 and set(g["users"]) == set(every["users"])
     assert all(x["beyond"] >= 0 for x in g["rows"]) and sum(x["beyond"] for x in g["rows"]) > 0

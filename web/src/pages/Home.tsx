@@ -79,7 +79,13 @@ export function HomePageView() {
   useEffect(() => {
     if (q.trim().length < 2 || parseQuestion(q)) { setHits({ q, items: [] }); return; }
     let live = true; // a slow answer for older text must not replace the newer one
-    const t = setTimeout(() => { get<{ items: FindItem[]; totals: Record<string, number> }>("find", { q, view: c.view, limit: "24" }).then((r) => live && setHits({ q, items: r.items, totals: r.totals }), () => live && setHits({ q, items: [] })); }, 160);
+    let t = 0;
+    const load = (tries: number) => get<{ items: FindItem[]; totals: Record<string, number>; partial?: boolean }>("find", { q, view: c.view, limit: "24" }).then((r) => {
+      if (!live) return;
+      setHits({ q, items: r.items, totals: r.totals });
+      if (r.partial && tries) t = window.setTimeout(() => load(tries - 1), 1500); // the server was busy: answer lines come later
+    }, () => live && setHits({ q, items: [] }));
+    t = window.setTimeout(() => load(20), 160);
     return () => { live = false; clearTimeout(t); };
   }, [q, c.view]);
   const openItem = (i: FindItem) => openFound(i, c.nav);

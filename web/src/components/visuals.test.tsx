@@ -1,8 +1,7 @@
 // Step 3 of the 2026-11-09 review: the small visuals and the web fixes (search box, copy, start view, legend).
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import type { WhatIfObjectRow, WhatIfUser } from "../api/types";
-import { cutLinks, lossGroups } from "../pages/changeplan";
+import { cutLinks } from "../pages/changeplan";
 import { areaCounts, ladderParts, sevParts } from "../pages/Home";
 import { DataInfo, mineText } from "../App";
 import { Combo } from "./Combo";
@@ -13,11 +12,6 @@ import { subLines } from "./layout";
 import { DayStack, Overlap } from "./visuals";
 import { DataTable } from "./DataTable";
 
-const lost = (object: string, privileges: string[]): WhatIfObjectRow =>
-  ({ object, type: "TABLE", privileges, classes: ["read"], path: ["U", "F_A", "T_R", object] }) as WhatIfObjectRow;
-const user = (name: string, rows: WhatIfObjectRow[], objects = rows.length): WhatIfUser =>
-  ({ user: name, status: "active", lost: rows.length, objects, kept: 0, lost_rows: rows, kept_rows: [], kept_roles: [] }) as unknown as WhatIfUser;
-
 describe("change plan pictures", () => {
   it("crosses out only the links a change removes", () => {
     const p = ["ANALYST_01 (user)", "F_ANALYST", "T_SALES_CORE_READ", "SALES.CORE.TBL_CUSTOMER"];
@@ -25,14 +19,6 @@ describe("change plan pictures", () => {
     expect([...cutLinks(p, [{ op: "revoke_role_from_user", user: "ANALYST_01", role: "F_ANALYST" } as never])]).toEqual([0]);
     expect([...cutLinks(p, [{ op: "drop_role", role: "T_SALES_CORE_READ" } as never])].sort()).toEqual([1, 2]);
     expect(cutLinks(p, [{ op: "revoke_role_from_role", grantee: "F_OTHER", role: "T_SALES_CORE_READ" } as never]).size).toBe(0);
-  });
-
-  it("groups people who lose the same thing, most people first", () => {
-    const a = [lost("SALES.CORE.TBL_CUSTOMER", ["SELECT"])];
-    const g = lossGroups([user("A1", a), user("A2", a), user("E1", [lost("SALES.CORE.TBL_ORDER", ["SELECT", "INSERT"])], 3)]);
-    expect(g.map((x) => x.users.length)).toEqual([2, 1]);
-    expect(g[0].text).toBe("2 people lose SELECT on SALES.CORE.TBL_CUSTOMER");
-    expect(g[1].text).toBe("E1 loses SELECT, INSERT on SALES.CORE.TBL_ORDER and 2 more objects");
   });
 });
 

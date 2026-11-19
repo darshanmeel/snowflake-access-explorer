@@ -39,13 +39,15 @@ function OldReview() {
     offset: String(pg.at * pg.size), limit: String(pg.size) });
   return (
     <>
-      {csvOn && <div className="ae-row ae-right"><button className="ae-btn" onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV (every row, with reviewer columns)</button></div>}
       <Load s={s}>{(d) => {
         const f = d.filters, k = d.kpis;
+        const big = k.rows > d.csv_max;
         const t = d.part;
         const opt = (xs: string[], all: string): [string, string][] => [["", all], ...xs.map((x): [string, string] => [x, x])];
         return (
           <>
+            {csvOn && <div className="ae-row ae-right">{big && <span className="ae-muted">Too many rows for one file: pick one database or schema.</span>}
+              <button className="ae-btn" disabled={big} onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV ({k.rows.toLocaleString()} rows, with reviewer columns)</button></div>}
             <Controls>
               <Pick label="Database" value={f.db === "*" ? "" : f.db} what="databases" width={200} onPick={(v) => c.set({ db: v, schema: null, object: null })} />
               {f.db !== "*" && <button type="button" className="ae-link" onClick={() => c.set({ db: "*", schema: null, object: null })}>All databases</button>}

@@ -52,7 +52,7 @@ export function UserPage() {
               { label: "Admin roles", value: d.kpis.admin_roles, tone: d.kpis.admin_roles ? "bad" : null },
               { label: "Account privileges", value: d.kpis.account_privs, tone: d.kpis.account_privs ? "bad" : null },
             ]} />
-            <Findings list={d.findings} total={d.findings_total} refs={d.refs} />
+            <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.user.name} of="user" refs={d.refs} />
             <GraphCard g={d.graph} refs={d.refs} />
             <CutBanner capped={d.capped} />
             <Tabs nav={c.inside ? 2 : 1} active={part} onChange={(t) => { setPart(t); c.set({ schema: null, otype: null, full: null }); }} tabs={[

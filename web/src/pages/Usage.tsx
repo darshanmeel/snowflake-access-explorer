@@ -34,7 +34,7 @@ export function UsagePageView() {
           <div className="ae-h1 ae-h1-pick">Granted vs used for <Pick label="Person or role" value={role || user} user={!role} what="users,roles" onPick={pick} width={260} /></div>
         )}
       </div>
-      {role || user ? <Load s={s}>{(d) => <Body d={d} />}</Load> : <PickFirst />}
+      {role || user ? <Load s={s} wait="Matching every grant with the query history (a big person or role takes up to a minute)">{(d) => <Body d={d} />}</Load> : <PickFirst />}
     </>
   );
 }

@@ -1,9 +1,8 @@
 // Screen 9: Compare two people or roles. One differences view: only A / only B / both reach (different or the same),
 // differences first, and the changes that make B match A or remove A's extras (text only, What if to simulate).
-import { useState } from "react";
 import { useApi } from "../api/client";
 import type { CompareRow, CompareSide, ComparePage } from "../api/types";
-import { AccessPill, Banner, Card, CodeOutput, EmptyState, FilterChips, Overlap, type Change } from "../components";
+import { AccessPill, Banner, Card, CodeOutput, EmptyState, FilterChips, Overlap, Pager, type Change } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Load, Pick, PickFirst, Sel } from "./common";
 import { whatIfOf } from "./screens";
@@ -15,7 +14,7 @@ const PILL: Record<string, string> = { only_a: "Only A", only_b: "Only B", diffe
 export function ComparePageView() {
   const c = useApp();
   const none = c.view !== "mine" && !c.params.a;  // shared: nobody picked yet
-  const s = useApi<ComparePage>(none ? null : "compare", { ...apiParams(c), f: null, plan: null });
+  const s = useApi<ComparePage>(none ? null : "compare", { ...apiParams(c), plan: null });
   const d = s.data;
   const what = subjects(c.view === "mine");
   return (
@@ -65,21 +64,22 @@ function SideCell({ x, who }: { x: CompareSide | null; who: "a" | "b" }) {
 function Diffs({ d }: { d: ComparePage }) {
   const c = useApp();
   const o = useOpen(d.refs);
-  const [same, setSame] = useState(false);
+  const same = c.params.same === "1";
   const plan = c.params.plan === "match" || c.params.plan === "extras" ? c.params.plan : null;
   const f = c.params.f === "only_a" || c.params.f === "only_b" || c.params.f === "both" ? c.params.f : "";
   const n = d.counts;
-  const rows = d.rows.filter((r) => (f === "both" ? r.a && r.b : f ? r.diff === f : same || r.diff !== "same"));
+  const rows = d.rows; // filtered and paged on the server
+  const size = 50; // the server's PAGE
   const changes = (plan === "match" ? d.match : d.extras) as Change[];
   return (
     <>
       <Card title={<>Differences · <span className="ae-cmp-a ae-mono">A {d.a.name}</span> and <span className="ae-cmp-b ae-mono">B {d.b.name}</span></>}
         sub="Differences first; the same ones are folded.">
-        <FilterChips label="Show" value={f} onPick={(k) => c.set({ f: k || null })} items={[
+        <FilterChips label="Show" value={f} onPick={(k) => c.set({ f: k || null, c_offset: null })} items={[
           { key: "", label: "All differences", count: n.only_a + n.only_b + n.different },
           { key: "only_a", label: "Only A", count: n.only_a }, { key: "only_b", label: "Only B", count: n.only_b },
           { key: "both", label: "Both", count: n.different + n.same }]} />
-        {!d.rows.length ? <EmptyState title="Nothing in scope" art="search">Neither reaches an object here.</EmptyState>
+        {!d.any ? <EmptyState title="Nothing in scope" art="search">Neither reaches an object here.</EmptyState>
           : !rows.length ? <p className="ae-muted">{f ? "No objects match this filter." : "No differences: both reach the same objects with the same access."}</p> : (
           <div className="ae-cmp" role="table">
             <div className="ae-cmp-row ae-cmp-row-h" role="row"><span>Object</span><span>Difference</span><span className="ae-cmp-a">A · {d.a.name}</span><span className="ae-cmp-b">B · {d.b.name}</span></div>
@@ -94,7 +94,8 @@ function Diffs({ d }: { d: ComparePage }) {
             ))}
           </div>
         )}
-        {!f && d.counts.same > 0 && <button type="button" className="ae-btn ae-mt" onClick={() => setSame(!same)}>{same ? `Hide the ${d.counts.same} that are the same` : `Show the ${d.counts.same} that are the same`}</button>}
+        {d.rows_total > size && <Pager at={Math.floor(d.offset / size)} size={size} total={d.rows_total} onPage={(n) => c.set({ c_offset: n ? String(n * size) : null })} />}
+        {!f && d.counts.same > 0 && <button type="button" className="ae-btn ae-mt" onClick={() => c.set({ same: same ? null : "1", c_offset: null })}>{same ? `Hide the ${d.counts.same} that are the same` : `Show the ${d.counts.same} that are the same`}</button>}
       </Card>
       <div className="ae-actions">
         <button type="button" className={`ae-btn${plan === "match" ? " ae-btn-primary" : ""}`} disabled={!d.match.length} onClick={() => c.set({ plan: plan === "match" ? null : "match" })}>Make B match A</button>

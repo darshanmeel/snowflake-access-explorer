@@ -17,7 +17,7 @@ const row = { id: 7, num: "9", title: "PUBLIC grant", severity: "High", area: "R
   what: "SELECT on DB.S.T", impact: null, people: [], people_total: 0, paths: [["PUBLIC", "DB.S.T"]], paths_total: 1, fix: true,
   same_fix: "", changes: [], objects: ["DB.S.T"] };
 const page = {
-  view: "shared", scope: "account", filters: { grantee: "", sev: "High", rule: "", q: "", area: "", people: false, off: [], by: "rule", group: null },
+  view: "shared", scope: "account", filters: { grantee: "", of: "", sev: "High", rule: "", q: "", area: "", people: false, off: [], by: "rule", group: null },
   counts: { High: 1, Medium: 0, Low: 0, Passing: 28 }, per_rule: { 9: 1 }, skipped: {}, sev_counts: { Critical: 0, High: 1, Medium: 0, Low: 0 },
   hidden_off: 0, areas: ["Role model"], total: 1, groups: [{ key: "9", title: "PUBLIC grant", severity: "High", findings: 1, rules: 1, people: 0, kind: null }],
   groups_total: 1, grid: null, findings: [row], findings_total: 1, offset: 0, limit: 100, rows_unknown: [], admins: [], admins_total: 0, refs };

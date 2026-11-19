@@ -2,7 +2,7 @@
 // REVOKE text, it only prints it for infrastructure as code. The changes live in the URL (changes=<JSON list>).
 import { useState } from "react";
 import { download, useApi } from "../api/client";
-import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, WhatIfPage, WhatIfUser } from "../api/types";
+import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, WhatIfPage, WhatIfUser, WhatIfUserRows } from "../api/types";
 import { Banner, Card, DataTable, EmptyState, KpiRow, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
 import { col, Controls, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
@@ -92,8 +92,11 @@ function ObjRows({ rows, refs, kept }: { rows: WhatIfObjectRow[]; refs: WhatIfPa
   );
 }
 
-function UserRow({ u, refs }: { u: WhatIfUser; refs: WhatIfPage["refs"] }) {
+/** One person: counts, and their rows fetched when opened (a big plan has thousands of people). */
+function UserRow({ u, refs, changes }: { u: WhatIfUser; refs: WhatIfPage["refs"]; changes: string }) {
+  const c = useApp();
   const [on, setOn] = useState(false);
+  const r = useApi<{ user: WhatIfUserRows }>(on ? "whatif" : null, { view: c.view, changes, user: u.user });
   return (
     <div className="ae-gg">
       <div className="ae-gg-head">
@@ -102,14 +105,14 @@ function UserRow({ u, refs }: { u: WhatIfUser; refs: WhatIfPage["refs"] }) {
         {u.objects > 0 && <span className="ae-tag ae-tag-bad">loses {u.lost} privilege{u.lost === 1 ? "" : "s"} on {u.objects} object{u.objects === 1 ? "" : "s"}</span>}
         {u.kept > 0 && <span className="ae-tag ae-tag-ok">keeps {u.kept} another way</span>}
       </div>
-      {on && (
+      {on && <Load s={r}>{({ user: x }) => (
         <div className="ae-wi-user">
-          {u.lost_rows.length > 0 && <><h4>Loses</h4><ObjRows rows={u.lost_rows} refs={refs} />
-            {u.lost_rows.length < u.objects && <p className="ae-muted">First {u.lost_rows.length} of {u.objects.toLocaleString()} objects: the CSV has all.</p>}</>}
-          {u.kept_rows.length > 0 && <><h4>Keeps through another path</h4><ObjRows rows={u.kept_rows} refs={refs} kept /></>}
-          {u.kept_roles.length > 0 && <><h4>Roles still reached</h4>{u.kept_roles.map((k) => <div key={k.role}><PathCell path={k.via} refs={refs} /></div>)}</>}
+          {x.lost_rows.length > 0 && <><h4>Loses</h4><ObjRows rows={x.lost_rows} refs={refs} />
+            {x.lost_rows.length < x.objects && <p className="ae-muted">First {x.lost_rows.length} of {x.objects.toLocaleString()} objects: the CSV has all.</p>}</>}
+          {x.kept_rows.length > 0 && <><h4>Keeps through another path</h4><ObjRows rows={x.kept_rows} refs={refs} kept /></>}
+          {x.kept_roles.length > 0 && <><h4>Roles still reached</h4>{x.kept_roles.map((k) => <div key={k.role}><PathCell path={k.via} refs={refs} /></div>)}</>}
         </div>
-      )}
+      )}</Load>}
     </div>
   );
 }
@@ -138,21 +141,22 @@ function Result({ d }: { d: WhatIfPage }) {
         { label: "Findings fixed", value: k.fixed }, { label: "New findings", value: k.new },
       ]} />
       <Tabs active={tab} onChange={setTab} tabs={[
-        { key: "users", label: "Users", count: d.users.length },
-        { key: "objects", label: "Objects", count: d.objects.length, tone: k.unreached ? "bad" : null },
-        { key: "roles", label: "Roles", count: d.roles.length },
-        { key: "findings", label: "Findings", count: d.findings.length },
+        { key: "users", label: "Users", count: d.users_total },
+        { key: "objects", label: "Objects", count: d.objects_total, tone: k.unreached ? "bad" : null },
+        { key: "roles", label: "Roles", count: d.roles_total },
+        { key: "findings", label: "Findings", count: d.findings_total },
         { key: "fix", label: "Text to apply" },
       ]} />
       {tab === "users" && (
         <Card title="Who loses what" sub={`People who lose the same thing are one row; the crossed-out link is the one the change removes. Open a row for the names.${
-          d.users.some((u) => u.lost_rows.length < u.objects) ? ` A person lists at most ${c.meta.limits.max_paths} objects: the CSV has all.` : ""}`}>
-          <LoseKeep users={d.users} />
-          <LossGroups users={d.users} changes={d.changes.map((x) => x.change)} refs={d.refs} />
+          d.rows_capped ? ` A person lists at most ${c.meta.limits.max_paths} objects: the CSV has all.` : ""}`}>
+          <LoseKeep d={d} />
+          <LossGroups gs={d.groups} total={d.groups_total} changes={d.changes.map((x) => x.change)} refs={d.refs} />
           {d.users.length > 0 && (
             <details className="ae-mt">
               <summary>One row per person, with every path</summary>
-              {d.users.map((u) => <UserRow key={u.user} u={u} refs={d.refs} />)}
+              {d.users.map((u) => <UserRow key={u.user} u={u} refs={d.refs} changes={c.params.changes ?? ""} />)}
+              {d.users_total > d.users.length && <p className="ae-muted">First {d.users.length} of {d.users_total} people, most lost first: the CSV has all.</p>}
             </details>
           )}
         </Card>
@@ -166,6 +170,7 @@ function Result({ d }: { d: WhatIfPage }) {
             col("w", "No owner", (r: WhatIfPage["objects"][number]) => (r.ownerless ? "yes" : ""), { wrap: "nowrap" }),
             col("s", "Sensitive", (r: WhatIfPage["objects"][number]) => (r.sensitive ? "yes" : ""), { wrap: "nowrap" }),
           ]} />
+          {d.objects_total > d.objects.length && <p className="ae-muted">First {d.objects.length} of {d.objects_total} objects: the CSV has all.</p>}
         </Card>
       )}
       {tab === "roles" && (
@@ -176,11 +181,13 @@ function Result({ d }: { d: WhatIfPage }) {
             col("o", "Orphan", (r: WhatIfPage["roles"][number]) => (r.orphan ? "yes" : ""), { wrap: "nowrap" }),
             col("u", "No user reaches it", (r: WhatIfPage["roles"][number]) => (r.unreached ? "yes" : ""), { wrap: "nowrap" }),
           ]} />
+          {d.roles_total > d.roles.length && <p className="ae-muted">First {d.roles.length} of {d.roles_total} roles: the CSV has all.</p>}
         </Card>
       )}
       {tab === "findings" && (
         <Card title="Rule findings that change" sub={`${k.fixed} go away, ${k.new} new, ${k.changed} changed.`}>
           <DataTable csv="whatif_findings.csv" rows={d.findings} columns={fcols} onRowClick={(r: WhatIfFinding) => o.open(r.grantee)} />
+          {d.findings_total > d.findings.length && <p className="ae-muted">First {d.findings.length} of {d.findings_total} findings: the CSV has all.</p>}
         </Card>
       )}
       {tab === "fix" && (

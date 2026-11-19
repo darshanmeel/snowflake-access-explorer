@@ -1,7 +1,7 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
 import { useEffect, useState, type ReactNode } from "react";
 import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
-import type { Banner as B, ListItem, Meta, Note, Sees, Finding, Graph as G, Refs, StateWhy, UsageCard } from "../api/types";
+import type { Banner as B, ListItem, Meta, Note, Sees, Finding, Graph as G, Refs, Severity, StateWhy, UsageCard } from "../api/types";
 import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, Waiting, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { PagedTable } from "./paged";
@@ -21,9 +21,9 @@ export function PickFirst({ what = "a person or role" }: { what?: string }) {
 }
 
 /** Loading / error frame around a page's answer. */
-export function Load<T>({ s, children }: { s: State<T>; children: (d: T) => ReactNode }) {
+export function Load<T>({ s, children, wait }: { s: State<T>; children: (d: T) => ReactNode; wait?: string }) {
   if (s.error) return <ErrorBox e={s.error} />;
-  if (!s.data) return <Waiting />;
+  if (!s.data) return <Waiting what={wait} />;
   return <div className={s.loading ? "ae-fade" : undefined}>{children(s.data)}</div>;
 }
 
@@ -217,13 +217,17 @@ export function ScopeChips() {
 }
 
 /** Rule findings of a user, role or object: compact "High 2 · Medium 1" that opens the severity tabs in place. */
-export function Findings({ list, refs }: { list: Finding[]; total?: number; refs: Refs }) {
+/** A user's or role's findings: the worst ones the server sent (`total` counts all, `sev` per severity), the rest of
+ * the subject's own on Risks & fixes. */
+export function Findings({ list, total = list.length, sev, grantee, of, refs }: { list: Finding[]; total?: number; sev?: Partial<Record<Severity, number>>; grantee?: string; of?: "user" | "role"; refs: Refs }) {
   const c = useApp();
   const o = useOpen(refs);
   if (!list.length) return null;
+  const more = total > list.length && (
+    <p className="ae-muted">The worst {list.length} of {total} findings.{grantee && <> <button type="button" className="ae-link" onClick={() => c.nav("rules", { grantee, ...(of && { of }), sev: "all" })}>All {total} on Risks &amp; fixes</button></>}</p>);
   return (
     <section className="ae-card ae-card-tight">
-      <FindingList list={list} compact kinds={refs.kinds} onOpen={o.open} onRule={(num) => c.nav("rules", { rule: num })}
+      <FindingList list={list} compact kinds={refs.kinds} onOpen={o.open} onRule={(num) => c.nav("rules", { rule: num })} sev={sev} more={more}
         whatIf={(p) => { const ch = changeOfPath(p, refs.kinds); return ch && <WhatIfButton ch={[ch]} />; }} />
     </section>
   );

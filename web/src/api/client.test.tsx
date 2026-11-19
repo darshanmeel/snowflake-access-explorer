@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
-import { clearCache, useApi } from "./client";
+import { clearCache, get, LONG_URL, useApi } from "./client";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); clearCache(); });
 
@@ -29,5 +29,17 @@ describe("useApi", () => {
     fetch.mockImplementationOnce(() => answer(503, { detail: "shared_unreadable", message: "no warehouse" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByText("error no warehouse")).toBeTruthy();
+  });
+});
+
+describe("get", () => {
+  it("sends a query too long for a URL as a POST body, a short one as a GET", async () => {
+    const fetch = vi.fn(() => answer(200, { n: 1 }));
+    vi.stubGlobal("fetch", fetch);
+    const changes = "x".repeat(LONG_URL);
+    await get("whatif", { view: "shared", changes, user: null });
+    expect(fetch).toHaveBeenLastCalledWith("/api/whatif", expect.objectContaining({ method: "POST", body: JSON.stringify({ view: "shared", changes }) }));
+    await get("whatif", { view: "shared", changes: "[]" });
+    expect(fetch).toHaveBeenLastCalledWith("/api/whatif?view=shared&changes=%5B%5D", { credentials: "same-origin" });
   });
 });

@@ -83,9 +83,11 @@ export interface FindingsProps {
   compact?: boolean; // entity pages: one line "High 2 · Medium 1" that opens the tabs in place
   csvName?: string;
   whatIf?: WhatIfFn; // a "What if revoked?" control for a path in the Fix panel
+  sev?: Partial<Record<Severity, number>>; // counts over every finding when the list holds only the worst of them
+  more?: ReactNode; // a line under the list: where the rest are
 }
 
-export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, csvName = "findings", whatIf }: FindingsProps) {
+export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, csvName = "findings", whatIf, sev, more }: FindingsProps) {
   const [tab, setTab] = useState<Severity | "All">(() => firstTab(list));
   const [open, setOpen] = useState(!compact);
   const [area, setArea] = useState("");
@@ -103,8 +105,9 @@ export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, cs
   const csvOn = useCsv();
   if (!list.length) return null;
 
-  const summary = SEVERITIES.filter((s) => count(s)).map((s) => (
-    <span key={s} className={`ae-sevpill ae-sev-${s}`}>{s} {count(s)}</span>
+  const all = (s: Severity) => sev?.[s] ?? count(s);
+  const summary = SEVERITIES.filter((s) => all(s)).map((s) => (
+    <span key={s} className={`ae-sevpill ae-sev-${s}`}>{s} {all(s)}</span>
   ));
   if (compact && !open)
     return <button className="ae-fsum" onClick={() => setOpen(true)}><span className="ae-muted">Rule findings</span>{summary}<span className="ae-link">show</span></button>;
@@ -141,6 +144,7 @@ export function Findings({ list, kinds = {}, onOpen, onRule, compact = false, cs
       {hidden > 0 && <p className="ae-muted ae-fd-hidden">{hidden} hidden: {why}</p>}
       {groups.map((g, i) => <Group key={`${tab}:${g.num}`} g={g} open={groups.length === 1 || (i === 0 && g.items.length <= 5)} kinds={kinds} onOpen={onOpen} onRule={onRule} whatIf={whatIf} />)}
       {!groups.length && <p className="ae-muted">Nothing here.</p>}
+      {more}
     </div>
   );
 }

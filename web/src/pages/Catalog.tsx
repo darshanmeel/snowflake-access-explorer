@@ -1,7 +1,7 @@
 // Screen 8, the sensitive objects catalog: one row per tagged object with its protection, most exposed first.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CatalogRow } from "../api/types";
-import { Card, EmptyState, FilterChips, ListToolbar, MiniBar } from "../components";
+import { Card, EmptyState, FilterChips, ListToolbar, MiniBar, Pager, StackBar } from "../components";
 import { download } from "../components/table";
 import { useApp } from "../ctx";
 import { catalogCsv, catalogOf, catalogSentence, protectionText, type CatFilter } from "./signoff";
@@ -10,28 +10,44 @@ const STATUS: Record<CatalogRow["status"], [string, string]> = {
   not: ["Not protected", "ae-pst-bad"], partly: ["Partly", "ae-pst-warn"], protected: ["Protected", "ae-pst-ok"], whole: ["Whole object", "ae-pst-plain"],
 };
 
+const SIZE = 50; // rows drawn per page: a big account tags hundreds of objects
+const BAR: Record<CatalogRow["status"], string> = { not: "high", partly: "medium", protected: "keep", whole: "people" };
+const SORTS: Record<string, (a: CatalogRow, b: CatalogRow) => number> = {
+  exposed: () => 0, readers: (a, b) => b.readers + b.admin - a.readers - a.admin, name: (a, b) => a.object.localeCompare(b.object),
+};
+
 export function Catalog({ rows }: { rows: CatalogRow[] }) {
   const c = useApp();
   const [f, setF] = useState<CatFilter>("all");
   const [q, setQ] = useState("");
-  const shown = catalogOf(rows, f, q);
+  const [st, setSt] = useState<string | null>(null); // a status picked on the bar
+  const [sort, setSort] = useState("exposed");
+  const [at, setAt] = useState(0);
+  useEffect(() => setAt(0), [f, q, st, sort]);
+  const shown = catalogOf(rows, f, q).filter((r) => !st || r.status === st).sort(SORTS[sort]);
+  const page = shown.slice(at * SIZE, (at + 1) * SIZE);
+  const by = (k: CatalogRow["status"]) => rows.filter((r) => r.status === k).length;
   const most = Math.max(1, ...rows.map((r) => r.readers + r.admin));
   const off = c.meta.sources.policies === "UNAVAILABLE"; // not read: masked or not is unknown, never "Not protected"
   return (
     <>
       <div className="ae-headrow">
-        <p className="ae-answer">{catalogSentence(rows)} Most exposed first.</p>
+        <p className="ae-answer">{catalogSentence(rows)}</p>
         <button type="button" className="ae-btn" onClick={() => c.nav("flow", {})}>Where it flows</button>
       </div>
+      {!off && <StackBar label="Tagged objects by protection: click a part to list them" on={st} onPick={(k) => setSt(st === k ? null : k)}
+        parts={(Object.keys(STATUS) as CatalogRow["status"][]).map((k) => ({ key: k, label: STATUS[k][0], value: by(k), cls: BAR[k] }))} />}
       <ListToolbar search={q} onSearch={setQ} onCsv={() => download("sensitive_catalog.csv", catalogCsv(shown))}>
         <FilterChips label="Filter" value={f} onPick={(k) => setF(k as CatFilter)} items={([["all", "All"], ["open", "Not protected"], ["pii", "PII / identifiers"], ["confidential", "Confidential"]] as const)
           .map(([key, label]) => ({ key, label, count: catalogOf(rows, key, q).length }))} />
+        <FilterChips label="Sort" value={sort} onPick={setSort} items={[{ key: "exposed", label: "Most exposed" }, { key: "readers", label: "Most readers" }, { key: "name", label: "Name" }]} />
+        {st && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setSt(null)}>{STATUS[st as CatalogRow["status"]][0]} ×</button>}
       </ListToolbar>
       <Card scroll>
         {!shown.length ? <EmptyState title="Nothing matches" art="search">Pick another filter or clear the search.</EmptyState> : (
           <div className="ae-cat" role="table">
             <div className="ae-cat-row ae-cat-h" role="row"><span>Object</span><span>Tags</span><span>Protection</span><span>Who can read</span><span /></div>
-            {shown.map((r) => (
+            {page.map((r) => (
               <div className="ae-cat-row" role="row" key={r.object}>
                 <span><b className="ae-mono">{r.name}</b><span className="ae-muted ae-osub">{r.type.toLowerCase()} · {r.ns}</span></span>
                 <span className="ae-objtags0">{r.labels.map((t) => <span key={t} className="ae-otag ae-sens-tag">{t.split("=").pop()}</span>)}</span>
@@ -47,6 +63,7 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
             ))}
           </div>
         )}
+        {shown.length > SIZE && <Pager at={at} size={SIZE} total={shown.length} onPage={setAt} />}
       </Card>
       <div className="ae-bar-legend">
         <span><span className="ae-colchip ae-colchip-bad">COL</span>column with no masking</span>

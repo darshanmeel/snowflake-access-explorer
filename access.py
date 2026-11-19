@@ -3406,46 +3406,71 @@ def flow_sets(max_roles=None):
                 if us & bu:
                     links[(g, b)] = us & bu
         cat = {r["object"]: r for r in catalog()}
+        reach = {r: s if r == ADMIN_BOX else sr[r] for r in keep}
+        via = Counter(o for r in keep for o in reach[r])  # real roles per object, not boxes
         nodes = [(dict(id=o, label=split_name(o)[2] or o, ns=".".join(split_name(o)[:2]), status=cat[o]["status"],
                        unmasked=[c["column"] for c in cat[o]["columns"] if not c["masked"]],
                        masked=[c["column"] for c in cat[o]["columns"] if c["masked"]],
-                       row_policies=cat[o]["row_policies"]), us) for o, us in objs.items()]
+                       row_policies=cat[o]["row_policies"], roles=via[o]), us) for o, us in objs.items()]
         return dict(groups=[(g, w, grp[g]) for g, w in FLOW_WORD.items() if g in grp],
                     roles=[(r, "admin" if r == ADMIN_BOX else "fold" if r not in per else role_kind(r), us)
                            for r, us in roles.items()],
+                    every=[dict(id=r, kind="admin" if r == ADMIN_BOX else role_kind(r), count=len(per[r]),
+                                objects=len(reach[r])) for r in keep],
                     objects=sorted(nodes, key=lambda x: (-len(x[1]), x[0]["id"])), links=links,
                     group_of={u: g for g, us in grp.items() for u in us})
     return cached(("flow", max_roles), make)
 
 
-def sens_flow(max_roles=None):
+def fold_objects(f, max_objects):
+    """{object: its box}: past the max_objects most read, every object goes into one "Other objects (N)" box."""
+    rest = [n["id"] for n, _ in f["objects"][max_objects:]] if max_objects else []
+    box = f"Other objects ({len(rest)})"
+    return {o: box for o in rest}
+
+
+def sens_flow(max_roles=None, max_objects=None):
     """Screen 16, where sensitive data flows: people (by flow_group) -> the role they were granted (first role on the
     path) -> sensitive object they read (READ_PRIVS). Admin users go through one ADMIN_BOX to every sensitive object.
     Over max_roles roles, those with the fewest users fold into "Other roles (N)". Returns dict(groups, roles,
     objects, links): nodes dict(id, label, count (users)), roles also kind, objects also ns, status, unmasked, masked,
-    row_policies; links dict(source, target, count): the users that flow over the link. Who they are: flow_follow."""
+    row_policies, roles (real roles that reach it); links dict(source, target, count): the users that flow over the
+    link; every: each real role [dict(id, kind, count, objects)], most people first. Over max_objects objects, the
+    least read fold into one "Other objects (N)" box (fold_objects). Who they are: flow_follow."""
     f = flow_sets(max_roles)
+    fold = fold_objects(f, max_objects)
+    objs, links = [n | dict(count=len(us)) for n, us in f["objects"] if n["id"] not in fold], {}
+    for (x, y), us in f["links"].items():
+        links.setdefault((x, fold.get(y, y)), set()).update(us)
+    if fold:
+        rest = set().union(*(us for n, us in f["objects"] if n["id"] in fold))
+        objs.append(dict(id=next(iter(fold.values())), label=next(iter(fold.values())), ns="", status=None, unmasked=[],
+                         masked=[], row_policies=[], roles=0, count=len(rest), kind="fold"))
     return dict(groups=[dict(id=g, label=w, count=len(us)) for g, w, us in f["groups"]],
                 roles=[dict(id=r, label=r, count=len(us), kind=k) for r, k, us in f["roles"]],
-                objects=[n | dict(count=len(us)) for n, us in f["objects"]],
-                links=[dict(source=x, target=y, count=len(us)) for (x, y), us in sorted(f["links"].items())])
+                objects=objs, every=f["every"],
+                links=[dict(source=x, target=y, count=len(us)) for (x, y), us in sorted(links.items())])
 
 
-def flow_follow(sel, max_roles=None, cap=MAX_PATHS):
+def flow_follow(sel, max_roles=None, cap=MAX_PATHS, max_objects=None):
     """Screen 16, following one box sel (None or not a box: everyone): every user through it, then each user's own
     role and object links. dict(sel, lit [boxes at full strength] | None, width {"source>target": users on the link},
     tone {"source>target": the group of most of them}, headline, users (sel's box, sorted, first cap; None: all), count)."""
     f = flow_sets(max_roles)
+    fold = fold_objects(f, max_objects)
     gof, rids = f["group_of"], {r for r, _, _ in f["roles"]}
     names = {g: w for g, w, _ in f["groups"]} | {n["id"]: n["label"] for n, _ in f["objects"]} | {r: r for r in rids}
+    names |= {b: b for b in fold.values()}
     sel = sel if sel in names else None
     mine = next((us for g, _, us in f["groups"] if g == sel), None)  # sel is a group of people
-    on = {}  # role box -> {object: the selection's users on that link}
+    on, real = {}, set()  # role box -> {object box: the selection's users on that link}; the objects themselves
     for (b, o), us in f["links"].items():
-        if b in rids and (mine is not None or sel in (None, b, o)):
+        ob = fold.get(o, o)
+        if b in rids and (mine is not None or sel in (None, b, ob)):
             got = us & mine if mine is not None else us
             if got:
-                on.setdefault(b, {})[o] = got
+                on.setdefault(b, {}).setdefault(ob, set()).update(got)
+                real.add(o)
     width, tone, every, objs = {}, {}, set(), set()
     for b, per in on.items():
         into = {}
@@ -3462,8 +3487,8 @@ def flow_follow(sel, max_roles=None, cap=MAX_PATHS):
     pl = lambda k, w, many=None: f"{k} {w if k == 1 else many or w + 's'}"
     lst = lambda xs: (f"{', '.join(xs[:3])} and {len(xs) - 3} more" if len(xs) > 3
                       else " and ".join([", ".join(xs[:-1]), xs[-1]]) if len(xs) > 1 else "".join(xs))
-    who, reach = pl(len(every), "person", "people"), pl(len(objs), "sensitive object")
-    head = (f"{who} reach {pl(len(f['objects']), 'sensitive object')} through {pl(len(f['roles']), 'role')}." if sel is None
+    who, reach = pl(len(every), "person", "people"), pl(len(real), "sensitive object")
+    head = (f"{who} reach {pl(len(f['objects']), 'sensitive object')} through {pl(len(f['every']), 'role')}." if sel is None
             else f"{pl(len(every), 'dormant or disabled person', 'dormant or disabled people')} still reach {reach}, "
                  f"through {lst(rs)}." if sel == "risky"
             else f"{names[sel]}: {who} reach {reach}, through {lst(rs)}." if mine is not None
@@ -5065,6 +5090,9 @@ def review_parts(db=None):
     return cached(("review", db), make)
 
 
+FUZZY_MAX = 20000
+
+
 def search(q, names):
     """Search ranking: every word of q anywhere in the name, in any order ("core order" finds DWH.CORE.TBL_ORDER);
     names holding q as typed first (prefix, then earlier position), then shorter; fuzzy matches only when nothing
@@ -5080,7 +5108,8 @@ def search(q, names):
             at = u.find(q)
             return (at < 0, at != 0, at if at >= 0 else u.find(words[0]), len(n), n)
         return sorted(hits, key=rank)
-    return difflib.get_close_matches(q, list(names), n=10, cutoff=0.6)
+    names = list(names)  # fuzzy costs seconds per key over 200k names: only on smaller accounts
+    return difflib.get_close_matches(q, names, n=10, cutoff=0.6) if len(names) <= FUZZY_MAX else []
 
 
 # ---------- what if: grants removed in memory, before / after diff (read-only: prints the IaC / REVOKE text) ----------
@@ -5097,6 +5126,7 @@ def changes_of(changes):
     {(user, role)}, link {(role, grantee role)}, priv {(role, privilege, object)}, drop {role}, public). ValueError
     for an unknown op or a grant that is not there."""
     cut, out = dict(user=set(), link=set(), priv=set(), drop=set(), public=False), []
+    held = {}  # role -> {(privilege, object): types}: one pass over a role's grants, not one per change (a trim has 1000s)
     for c in changes:
         op, r = c.get("op"), c.get("role")
         if op in ("revoke_role_from_user", "revoke_role_from_role"):
@@ -5117,7 +5147,11 @@ def changes_of(changes):
             iac, sql = fix_text(edges)
         elif op == "revoke_priv":
             pv, o = c.get("privilege"), c.get("object")
-            ks = sorted({k for p, k, x in granted.get(r, []) if p == pv and x == o})
+            if r not in held:
+                held[r] = {}
+                for p, k, x in granted.get(r, []):
+                    held[r].setdefault((p, x), set()).add(k)
+            ks = sorted(held[r].get((pv, o), ()))
             if not ks:
                 raise ValueError(f"Role {r} holds no {pv} on {o}")
             cut["priv"].add((r, pv, o))

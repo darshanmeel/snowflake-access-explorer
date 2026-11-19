@@ -2,11 +2,12 @@
 // line width = people. A click follows one box (sel= in the URL; the server answers its links and people in follow);
 // the default is the dormant or disabled people.
 import { download, useApi } from "../api/client";
-import type { FlowNode, FlowPage } from "../api/types";
-import { Banner, Card, DataTable, StackBar, Tabs } from "../components";
+import type { FlowNode, FlowPage, FlowRole } from "../api/types";
+import { Banner, Card, DataTable, StackBar, Tabs, Waiting } from "../components";
 import { useCsv } from "../components/table";
 import { apiParams, useApp } from "../ctx";
 import { col, Head, Load } from "./common";
+import { PagedTable } from "./paged";
 import { PolicyNote } from "./Sensitive";
 import { linkKey } from "./signoff";
 
@@ -29,7 +30,7 @@ export function FlowPageView() {
 }
 
 function sub(n: FlowNode, col: number, off: boolean): string {
-  if (col === 0) return plural(n.count, "person", "people");
+  if (col === 0 || n.kind === "fold") return plural(n.count, "person", "people");
   if (col === 1) return n.kind === "admin" ? "inherit everything" : plural(n.count, "person", "people");
   if (off) return `${n.ns} · masking unknown`;
   if (n.unmasked?.length) return `${n.unmasked.join(", ")} unmasked`;
@@ -46,20 +47,17 @@ function Flow({ d }: { d: FlowPage }) {
       <PolicyNote />
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "table" ? null : k })} tabs={[
         { key: "table", label: "Tables" }, { key: "graph", label: "Graph" }]} />
-      {show === "table" ? <Tables d={d} /> : <Body d={d} />}
+      {show === "table" ? <Tables d={d} /> : d.follow ? <Body d={d} /> : <Waiting />}
     </>
   );
 }
 
-type Obj = FlowNode & { roles: number };
-type Role = FlowNode & { objects: number };
+type Obj = FlowNode;
+type Role = FlowRole;
 
 function Tables({ d }: { d: FlowPage }) {
   const c = useApp();
-  const out = new Map<string, number>(), into = new Map<string, number>();
-  d.links.forEach((l) => { out.set(l.source, (out.get(l.source) ?? 0) + 1); into.set(l.target, (into.get(l.target) ?? 0) + 1); });
-  const objs: Obj[] = d.objects.map((n) => ({ ...n, roles: into.get(n.id) ?? 0 }));
-  const roles: Role[] = d.roles.map((n) => ({ ...n, objects: out.get(n.id) ?? 0 }));
+  const objs = d.objects.filter((n) => n.kind !== "fold");
   const off = c.meta.sources.policies === "UNAVAILABLE";
   const LABEL: Record<string, string> = { active: "Active people", risky: "Dormant or disabled", admin: "Admin", service: "Service" };
   return (
@@ -70,13 +68,14 @@ function Tables({ d }: { d: FlowPage }) {
       <Card title="Sensitive objects" sub="People who can read each one, the roles they come through, and what is masked">
         <DataTable csv="sensitive_objects.csv" rows={objs} rowTone={(r) => (r.unmasked?.length && !off ? "bad" : null)} onRowClick={(r) => c.nav("object", { name: r.id, show: "who" })}
           columns={[col("o", "Object", (r: Obj) => r.id, { wrap: "wrap" }), col("p", "People", (r: Obj) => r.count, { num: true }),
-            col("r", "Through roles", (r: Obj) => r.roles, { num: true }),
+            col("r", "Through roles", (r: Obj) => r.roles ?? 0, { num: true }),
             col("u", "Unmasked columns", (r: Obj) => (off ? "unknown: policies not read" : (r.unmasked ?? []).join(", "))), col("m", "Masked columns", (r: Obj) => (r.masked ?? []).join(", ")),
             col("w", "Rows", (r: Obj) => (r.row_policies?.length ? `by ${r.row_policies.map((x) => x.split(".").pop()).join(", ")}` : "whole object"))]} />
       </Card>
-      <Card title="Roles that lead there" sub="The role people were granted, the people holding it and the sensitive objects it reaches">
-        <DataTable csv="sensitive_roles.csv" rows={roles} onRowClick={(r) => r.kind !== "admin" && r.kind !== "fold" && c.nav("access", { role: r.id })}
-          columns={[col("r", "Role", (r: Role) => r.label, { wrap: "wrap" }), col("k", "Kind", (r: Role) => r.kind ?? ""),
+      <Card title={`Roles that lead there · ${d.roles_total}`} sub="Every role people were granted that reaches sensitive data, the people holding it and the sensitive objects it reaches; most people first">
+        <PagedTable path="flow" at="e_offset" total={d.roles_total} offset={d.roles_offset} pick={(x: FlowPage) => x.roles_all} csv="sensitive_roles.csv"
+          rows={d.roles_all} onRowClick={(r: Role) => r.kind !== "admin" && c.nav("access", { role: r.id })}
+          columns={[col("r", "Role", (r: Role) => r.id, { wrap: "wrap" }), col("k", "Kind", (r: Role) => r.kind),
             col("p", "People", (r: Role) => r.count, { num: true }), col("o", "Sensitive objects", (r: Role) => r.objects, { num: true })]} />
       </Card>
     </>
@@ -88,7 +87,7 @@ function Body({ d }: { d: FlowPage }) {
   const f = d.follow!, sel = f.sel, lit = f.lit && new Set(f.lit);
   const cols = [d.groups, d.roles, d.objects];
   const most = Math.max(...cols.map((xs) => xs.reduce((s, n) => s + n.count, 0)));
-  const unit = Math.max(2, Math.min(9, 520 / Math.max(most, 1)));
+  const unit = Math.min(9, 520 / Math.max(most, 1)); // the tallest column about 520 px however many people
   const pos = new Map<string, { x: number; y: number; h: number; col: number; n: FlowNode }>();
   const ys = cols.map((xs, i) => xs.reduce((y, n) => { const h = Math.max(MIN, n.count * unit); pos.set(n.id, { x: COLX[i], y, h, col: i, n }); return y + h + GAP; }, TOP));
   const gh = Math.max(...ys) + 8, gw = COLX[2] + W;
@@ -112,7 +111,7 @@ function Body({ d }: { d: FlowPage }) {
               const x1 = a.x + W, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2, mx = (x1 + x2) / 2;
               const tone = TONE[a.col === 0 ? l.source : f.tone[k] ?? "active"] ?? TONE.active;
               return <path key={k} d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`} fill="none" stroke={tone}
-                strokeWidth={Math.max(2, Math.min(n || l.count, 40) * Math.min(3, unit * 0.6))} opacity={n ? 0.5 : 0.07}><title>{`${l.source} → ${l.target}: ${plural(n || l.count, "person", "people")}`}</title></path>;
+                strokeWidth={Math.max(1.5, Math.min((n || l.count) * unit, 40))} opacity={n ? 0.5 : 0.07}><title>{`${l.source} → ${l.target}: ${plural(n || l.count, "person", "people")}`}</title></path>;
             })}
           </svg>
           {[...pos.values()].map(({ x, y, h, col, n }) => {
@@ -138,7 +137,8 @@ function Body({ d }: { d: FlowPage }) {
           <div><b className="ae-mono">{picked.n.label}</b> <span className="ae-muted">{plural(f.count, "person", "people")}, disabled and service users included{f.users.length < f.count ? `: first ${f.users.length} of ${f.count} shown, the CSV has all` : ""}</span></div>
           <div className="ae-objtags0">{f.users.map((u) => <button type="button" key={u} className="ae-pchip" onClick={() => c.nav("access", { user: u })}>{u}</button>)}</div>
           <div className="ae-row0">
-            {(picked.col === 2 || (picked.col === 1 && picked.n.kind !== "admin" && picked.n.kind !== "fold")) &&
+            {picked.n.kind === "fold" && <button type="button" className="ae-btn" onClick={() => c.set({ show: null })}>List them in the tables</button>}
+            {((picked.col === 2 && picked.n.kind !== "fold") || (picked.col === 1 && picked.n.kind !== "admin" && picked.n.kind !== "fold")) &&
               <button type="button" className="ae-btn" onClick={() => open(picked.n, picked.col)}>{picked.col === 2 ? "Who has access" : "Open the role"}</button>}
             <button type="button" className="ae-btn" onClick={() => c.nav("review", { show: "grid", ...(picked.n.id === "risky" ? { stale: "1" } : {}) })}>Review these people</button>
             {csvOn && <button type="button" className="ae-btn" onClick={() => download("flow.csv", { ...apiParams(c), sel: picked.n.id }, "sensitive_flow_people.csv")}>CSV of all {plural(f.count, "person", "people")}</button>}

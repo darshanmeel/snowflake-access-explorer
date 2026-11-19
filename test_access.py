@@ -2012,6 +2012,13 @@ def test_review_catalog_flow():  # screens 6, 8, 16: review grid, sensitive cata
     assert cu["unmasked"] == ["BIRTH_DATE", "PHONE"] and cu["masked"] == ["EMAIL"]
     small = a.sens_flow(max_roles=3)
     assert len(small["roles"]) == 4 and small["roles"][-1]["kind"] == "fold" and small["roles"][-1]["id"].startswith("Other roles")
+    assert len(small["every"]) > 4 and a.flow_follow(None, max_roles=3)["headline"].endswith(f"through {len(small['every'])} roles.")
+    assert all(x["roles"] >= 1 for x in small["objects"])  # real roles per object, not boxes
+    fo = a.sens_flow(max_objects=2)  # the least read objects fold into one box, its people each once
+    box = fo["objects"][-1]
+    assert len(fo["objects"]) == 3 and box["kind"] == "fold" and box["id"] == f"Other objects ({len(f['objects']) - 2})"
+    assert box["count"] == a.flow_follow(box["id"], max_objects=2)["count"] <= sum(x["count"] for x in f["objects"][2:])
+    assert {l["target"] for l in fo["links"] if l["target"] in {x["id"] for x in f["objects"][2:]}} == set()
 
 
 def test_usage_changes():  # screens 13, 14: granted vs used (ACCESS_HISTORY), what changed between two snapshots

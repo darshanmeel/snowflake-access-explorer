@@ -107,7 +107,7 @@ export function RolePageView() {
             { label: "Direct in scope", value: d.scope_kpis.direct }, { label: "Effective in scope", value: d.scope_kpis.effective },
             { label: "Objects", value: d.scope_kpis.objects }, { label: "Holders", value: d.scope_kpis.holders }, { label: "Sensitive", value: d.scope_kpis.sensitive },
           ]} />}
-          <Findings list={d.findings} total={d.findings_total} refs={d.refs} />
+          <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.role.name} of="role" refs={d.refs} />
           {d.readonly_writes.length > 0 && (
             <Card title="Read-only role that can write" sub="Named like a reader, yet holds a write privilege">
               <DataTable csv={`${d.role.name}_readonly_writes.csv`} rows={d.readonly_writes} rowTone={() => "bad"}

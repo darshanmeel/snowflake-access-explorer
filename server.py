@@ -1102,12 +1102,28 @@ def finding(x):
                 objects=a.finding_objects(x))
 
 
+FIRST_FINDINGS = 50  # findings a User / Role page lists, worst first (a big user has 10k+); Risks & fixes pages them all
+
+
+def subject_of_finding(name, of):
+    """Test (grantee, kind) -> is it a finding of name: of="user" its own and those of the roles granted to it
+    directly, "role" the role's own, else any grantee called name."""
+    via = set(a.roles_of.get(name, [])) if of == "user" else set()
+    if of in ("user", "role"):
+        return lambda g, k: (g == name and (k == "user") == (of == "user")) or (g in via and k != "user")
+    return lambda g, k: g == name
+
+
 def findings_of(name, user, skip=()):
-    """Rule findings of a user or role (for a user also of the roles granted to it directly)."""
-    via = set(a.roles_of.get(name, [])) if user else set()
-    xs = [x for x in S["rows"] if x["num"] not in skip and ((x["grantee"] == name and (x["kind"] == "user") == user)
-                                                           or (x["grantee"] in via and x["kind"] != "user"))]
-    return [finding(x) for x in xs], len(xs)
+    """Rule findings of a user or role (for a user also of the roles granted to it directly): the worst
+    FIRST_FINDINGS, the total and the count per severity."""
+    mine = subject_of_finding(name, "user" if user else "role")
+    xs = [x for x in S["rows"] if x["num"] not in skip and mine(x["grantee"], x["kind"])]
+    sev = dict.fromkeys(SEV_RANK, 0)
+    for x in xs:
+        sev[x["severity"]] = sev.get(x["severity"], 0) + 1
+    xs.sort(key=lambda x: SEV_RANK.get(x["severity"], 9))
+    return [finding(x) for x in xs[:FIRST_FINDINGS]], len(xs), sev
 
 
 def usage(u):
@@ -1229,7 +1245,7 @@ def user_page(p, view):
         banners.append(banner("warn", "Dormant user: " + ("never logged in" if d is None else f"no login for {d} days"),
                               ["Unused access is risk: revoke the roles or disable the user."],
                               [link("Rule 16", "rules", rule="16"), link("Rule 7", "rules", rule="7")]))
-    findings, total = findings_of(u, True)
+    findings, total, sev = findings_of(u, True)
     text, mark = login(u)
     sec = str(pr.get("DEFAULT_SECONDARY_ROLES") or "")
     twice = sum(r["count"] > 1 for r in rows)
@@ -1251,7 +1267,7 @@ def user_page(p, view):
                   last_login_text=text, login_mark=mark, login_days=a.login_days(u)),
         filters=dict(roles="default" if c["default_only"] else "all", depth=c["limit"], dataonly=c["data_only"],
                      schema=scope, otype=c["otype"] or "", on=c["on"], priv=c["pv"], privileges=c["privs"]),
-        banners=banners, findings=findings, findings_total=total,
+        banners=banners, findings=findings, findings_total=total, findings_sev=sev,
         kpis=dict(privileges=len(rows), objects=len(objs), paths=sum(r["count"] for r in rows), multi=twice,
                   roles=len(reach), roles_direct=sum(x["direct"] for x in reach),
                   deepest=max((r["depth"] for r in rows), default=0), sensitive=len(sens) if (S["sens"] or shared) else None,
@@ -1454,11 +1470,12 @@ def access_entries(name, user, mine):
         k = f'{o["database"]}.{o["schema"]}' if o["schema"] else o["object"]
         h = heat.setdefault(k, dict(schema=k, read=0, change=0, own=0, sensitive=0))
         i = a.LEVELS.index(o["level"]) if o["level"] else 0
-        h["read"] += i >= 1
-        h["change"] += i >= 2
+        h["read"] += i == 1  # each object in one cell, as the ladder bar and the filter chips count it
+        h["change"] += i == 2
         h["own"] += i >= 3
         h["sensitive"] += o["sensitive"]
-    return dict(objs=objs, counts=counts, heat=sorted(heat.values(), key=lambda h: h["schema"]),
+    risk = lambda h: (-(h["own"] + h["change"] + h["sensitive"]), -h["own"], -h["read"], h["schema"])
+    return dict(objs=objs, counts=counts, heat=sorted(heat.values(), key=risk),
                 deepest=max((o["depth"] for o in objs), default=0))
 
 
@@ -1477,12 +1494,11 @@ def access_list(p, objs):
     (kept together, in that order)."""
     lvl, q, cell, low = p.get("filter", "all"), p.get("q", "").lower(), p.get("cell", ""), p.get("min", "")
     usage = flag(p, "usage")
-    keep = lambda x: (lvl == "all" or (x["level"] == "read" if lvl == "read" else at_least(x, "change") and x["level"] != "own"
-                                       if lvl == "change" else at_least(x, "own") if lvl == "own" else x["ways"] > 1
-                                       if lvl == "multi" else True)) \
+    step = lambda x, k: x["level"] in (k,) if k in ("read", "change") else at_least(x, "own") if k == "own" else False
+    keep = lambda x: (lvl == "all" or (x["ways"] > 1 if lvl == "multi" else step(x, lvl) if lvl in ("read", "change", "own")
+                                       else True)) \
         and (not q or q in x["object"].lower()) \
-        and (not cell or (group_of(x, "schema") == cell and (x["sensitive"] if low == "sensitive" else
-                                                              low in a.LEVELS and at_least(x, low))))
+        and (not cell or (group_of(x, "schema") == cell and (x["sensitive"] if low == "sensitive" else step(x, low))))
     xs = [x for x in objs if (x["category"] == "data" or (usage and x["category"] == "names")) and keep(x)]
     if p.get("sort") == "name":
         xs.sort(key=lambda x: x["object"])
@@ -1493,6 +1509,16 @@ def access_list(p, objs):
             order.setdefault(group_of(x, by), len(order))
         xs.sort(key=lambda x: order[group_of(x, by)])
     return xs
+
+
+HEAT = 15  # schemas in "Where the access is", riskiest first; hq= searches the rest
+HOLDERS = 20  # roles that hold a role, listed above it
+KIDS = 8  # roles listed under each role of "Why they have it"; Role paths lists them all
+
+
+def kids(r):
+    ks = sorted(a.holds.get(r, []))
+    return dict(kids=ks[:KIDS], kids_total=len(ks))
 
 
 def access_page(p, view):
@@ -1518,26 +1544,28 @@ def access_page(p, view):
         text, mark = login(name)
         top = sorted(a.roles_of.get(name, []), key=lambda r: (r != dr, r))
         why = [dict(role=r, kind=norm(a.role_kind(r)), note="default" if r == dr else "secondary" if sec else "",
-                    kids=sorted(a.holds.get(r, []))) for r in top]
+                    **kids(r)) for r in top]
         if "PUBLIC" not in top:
-            why.append(dict(role="PUBLIC", kind="group", note="everyone", kids=sorted(a.holds.get("PUBLIC", []))))
+            why.append(dict(role="PUBLIC", kind="group", note="everyone", **kids("PUBLIC")))
         who = dict(kind="user", name=name, id=a.uid(name, True), type=str(pr.get("TYPE") or "PERSON"), status=a.status(name),
                    disabled=a.is_disabled(name), last_login=text, login_mark=mark, default_role=dr or None, secondary_all=sec,
                    held_by=None)
     else:
         rs, us = a.ups(name)
-        why = [dict(role=x, kind=nk(x), note="holds it", kids=[]) for x in sorted(set(a.held_by.get(name, [])))]
-        why.append(dict(role=name, kind=nk(name), note="this role", kids=sorted(a.holds.get(name, []))))
+        hb = sorted(set(a.held_by.get(name, [])))
+        why = [dict(role=x, kind=nk(x), note="holds it", kids=[], kids_total=0) for x in hb[:HOLDERS]]
+        why.append(dict(role=name, kind=nk(name), note="this role", **kids(name)))
         who = dict(kind=nk(name), name=name, id=name, type=KIND.get(norm(a.role_kind(name)), "Role"), status=None,
                    disabled=False, last_login=None, login_mark="", default_role=None, secondary_all=False,
                    held_by=dict(users=len(us), roles=len(rs) - 1))
-    findings, total = findings_of(name, user)
     out = lambda o: {k: v for k, v in o.items() if k != "holders"}
+    hq = p.get("hq", "").lower()
+    heat = [h for h in x["heat"] if hq in h["schema"].lower()]
     return dict(view=view, who=who, counts=x["counts"], objects=[out(o) for o in page], total=len(xs),
                 data=sum(o["category"] == "data" or (usage and o["category"] == "names") for o in objs),
                 offset=off, limit=lim, groups=groups, runs=[out(o) for o in runs[:PAGE]], runs_total=len(runs),
-                powers=[out(o) for o in powers[:PAGE]], powers_total=len(powers), heat=x["heat"],
-                why=why, findings=findings, findings_total=total, deepest=x["deepest"],
+                powers=[out(o) for o in powers[:PAGE]], powers_total=len(powers), heat=heat[:HEAT],
+                heat_total=len(heat), why=why, why_more=0 if user else max(0, len(hb) - HOLDERS), deepest=x["deepest"],
                 roles=len(a.cached(("reach", name, user), lambda: a.reach(name, user))))
 
 
@@ -1816,7 +1844,7 @@ def role_page(p, view):
         hold = [h for h in hold if a.in_scope(h, scope)]
     owner = [g for g, pv, t in a.on.get(r, []) if pv == "OWNERSHIP" and t == "ROLE"]
     admin, acct = a.admin_paths(r), a.account_privs(r)
-    findings, total = findings_of(r, False, {"17"} if ro else ())
+    findings, total, sev = findings_of(r, False, {"17"} if ro else ())
     banners = []
     if p.get("schema") and not scope:
         banners.append(banner("info", f"{p['schema']} is not reached by {r}", ["Showing all of its access."]))
@@ -1871,7 +1899,7 @@ def role_page(p, view):
         scope_kpis=dict(direct=len(hold), effective=len(sc), objects=len({x["object"] for x in sc}),
                         holders=len({x["holder"] for x in sc}), sensitive=len({x["object"] for x in sc if x["object"] in S["sens"]}))
         if scope else None,
-        banners=banners, findings=findings, findings_total=total, usage=role_usage(r), readonly_writes=ro_rows, account=acc, graph=graph,
+        banners=banners, findings=findings, findings_total=total, findings_sev=sev, usage=role_usage(r), readonly_writes=ro_rows, account=acc, graph=graph,
         held_by=dict(rows=us[:MAX_HELD] + rs[:MAX_HELD], total=len(h["rows"]), users=len(us), roles=len(rs),
                      revoke=h["revoke"]),
         holds=dict(types=types_, other=[dict(privilege=x["privilege"], cls=x["cls"], type=x["type"], object=x["object"],
@@ -2282,7 +2310,8 @@ def check_page(p, view):
     ls, cut = a.lanes(ps)
     cut = [x for x in cut if x in r["choke"]]  # lanes list at most MAX_PATHS paths; choke is counted over all
     ask = pv if pv != ALL else a.basic_priv(k)
-    near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o, is_user=user)
+    # the slow part of a No (seconds on a big account): only when the Nearest ways in tab asks (near=1)
+    near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o, is_user=user) if p.get("near") == "1" else None
     layers = None
     if read:  # Partly: the grant is there, but a row policy returns nothing or columns are masked
         v = a.data_view(u, o, user)
@@ -2320,8 +2349,9 @@ def request_page(p, view):
     SQL / Terraform / ticket text, nothing runs."""
     need(a.objects, "No objects in this data.")
     u, user = asker(p, view, "for_role")
-    tables = [x for x in a.objects if a.is_data(a.kinds[x])]
-    o = p.get("obj") or (tables[0] if tables else a.objects[0])
+    o = p.get("obj")
+    if not o:  # never a guessed object: the page asks for one
+        return dict(view=view, user=u, subject=subject_of(u, user), object=None)
     need(o in a.kinds, f"{o} is not in this snapshot")
     k, nd = a.kinds[o], p.get("need") if p.get("need") in ("read", "change") else "read"
     pvs = a.need_privs(k, nd)
@@ -2646,9 +2676,16 @@ def compare_page(p, view):
     dbs = sorted({a.split_name(o, a.kinds[o])[0] for o in a.objects} - {""})
     scope = p.get("scope") if p.get("scope") in ("sensitive", "all", "db") else "sensitive" if S["sens"] else "all"
     db = p.get("db") if p.get("db") in dbs else dbs[0] if dbs else ""
-    c = a.compare(x, xu, y, yu, scope, db)
+    c = a.cached(("compare", x, xu, y, yu, scope, db), lambda: a.compare(x, xu, y, yu, scope, db))
     side = lambda n, u: dict(name=n, id=a.uid(n, u), kind="user" if u else nk(n))
-    return dict(view=view, a=side(x, xu), b=side(y, yu), scope=scope, db=db, sensitive=bool(S["sens"]), **c)
+    # one page of rows (c_offset=, limit=; scope "everything" is 200k rows on a big account): f=only_a|only_b|both,
+    # else the differences (same=1: the same ones too)
+    f = p.get("f") if p.get("f") in ("only_a", "only_b", "both") else ""
+    keep = lambda r: (r["a"] and r["b"]) if f == "both" else r["diff"] == f if f else p.get("same") == "1" or r["diff"] != "same"
+    rows = [r for r in c["rows"] if keep(r)]
+    w, off = window(p, "c_offset", len(rows))
+    return dict(view=view, a=side(x, xu), b=side(y, yu), scope=scope, db=db, sensitive=bool(S["sens"]), **c) | dict(
+        rows=rows[w], rows_total=len(rows), offset=off, any=bool(c["rows"]))
 
 
 # ---------- sensitive data ----------
@@ -2682,9 +2719,10 @@ def sensitive_page(p, view):
     tw, to = window(p, "t_offset", len(rt))
     rows = dict(row_list=[dict(object=o, policies=v) for o, v in rt[tw]], row_total=len(rt), row_offset=to)
     empty = dict(view=view, governance=gov, filters=dict(tag="", db="", people=False, tags=[], dbs=[]),
-                 kpis=dict(objects=0, columns=0, whole=0, people=0, admin=0, disabled=0, service=0, unmasked=0, stale=[]),
+                 kpis=dict(objects=0, columns=0, whole=0, people=0, admin=0, disabled=0, service=0, unmasked=0, stale=[],
+                           stale_total=0),
                  objects=[], objects_total=0, objects_offset=0, readers=[], readers_total=0, readers_offset=0,
-                 catalog=[]) | rows
+                 catalog=[], catalog_total=0) | rows
     if not S["sens"]:
         state = ("mine" if mine else "unavailable" if a.run["SOURCES"].get("tags") == "UNAVAILABLE"
                  else "no_tags" if not a.tags else "none_sensitive")
@@ -2724,26 +2762,32 @@ def sensitive_page(p, view):
 
     cols = sum(len(r["cols"]) for r in rank)
     ow, oo = window(p, "o_offset", len(rank))
+    cat = [r for r in a.catalog() if (not db or r["database"] == db) and (not tg or tg in r["labels"])]
+    col_of = {r["object"]: r["columns"] for r in cat}
+    every_role = p.get("limit") == "0"  # the CSV: every role
     rw, ro = window(p, "r_offset", len(us))
     return dict(
         view=view, state="ok", governance=gov, filters=dict(tag=tg, db=db, people=people, tags=labels, dbs=dbs),
         kpis=dict(objects=len(rank), columns=cols, whole=sum(not r["cols"] for r in rank), people=len(ppl), admin=len(adm),
                   disabled=len(every("disabled")), service=len(every("service")),
-                  unmasked=sum(n - k for k, n in (r["masked"] for r in rank)), stale=stale),
+                  unmasked=sum(n - k for k, n in (r["masked"] for r in rank)), stale=stale[:NAMES], stale_total=len(stale)),
         objects=[dict(object=r["object"], database=r["database"], schema=r["schema"], name=r["name"], type=r["kind"],
                       tags=[dict(label=k, origins=list(dict.fromkeys(v))) for k, v in
                             {lab: [o + (f" {c}" if c else "") for c2, t2, v2, o in r["tags"] if a.tag_label(t2, v2) == lab
                                     for c in [c2]] for lab in dict.fromkeys(a.tag_label(t, v) for _, t, v, _ in r["tags"])}.items()],
                       cols=r["cols"], masked=list(r["masked"]), row_policies=r["row_policies"], readers=parts(r),
-                      roles=r["roles"]) for r in rank[ow]],
+                      columns=col_of.get(r["object"], []), roles=r["roles"] if every_role else r["roles"][:ROLES_SHOWN],
+                      roles_total=len(r["roles"])) for r in rank[ow]],
         objects_total=len(rank), objects_offset=oo,
         readers=[reader(u) for u in us[rw]], readers_total=len(us), readers_offset=ro,
         catalog=[dict(object=r["object"], name=r["name"], ns=f'{r["database"]}.{r["schema"]}', type=r["kind"],
                       labels=r["labels"], groups=r["groups"], status=r["status"], masked=list(r["masked"]),
                       columns=r["columns"], unmasked=r["unmasked"], row_policies=r["row_policies"], readers=r["readers"],
                       admin=len(r["admin"]))
-                 for r in a.catalog() if (not db or r["database"] == db)
-                 and (not tg or tg in r["labels"])], **rows)
+                 for r in cat] if p.get("show") == "catalog" else None, catalog_total=len(cat), **rows)  # only for its tab
+
+
+ROLES_SHOWN = 5  # roles listed per sensitive object (a big account has thousands); roles_total counts them
 
 
 # ---------- rules ----------
@@ -2843,7 +2887,8 @@ def rules_page(p, view):
     people=1, off (rules turned off in the browser), by (rule | person | object | grid), offset, limit."""
     ix = rule_index()
     who = p.get("grantee", "")
-    mine = [i for i, x in enumerate(ix) if x["grantee"] == who] if who else range(len(ix))
+    is_of = subject_of_finding(who, p.get("of", ""))
+    mine = [i for i, x in enumerate(ix) if is_of(x["grantee"], x["kind"])] if who else range(len(ix))
     if who and not mine:
         who, mine = "", range(len(ix))
     count = dict.fromkeys(a.RULES, 0)
@@ -2877,7 +2922,7 @@ def rules_page(p, view):
                                       for g in sums[:MAX_GROUPS]])
     out = dict(
         view=view, scope="mine" if view == "mine" else "account",
-        filters=dict(grantee=who, sev=sev, rule=sel, q=q, area=area, people=ppl, off=sorted(off, key=int), by=by, group=group),
+        filters=dict(grantee=who, of=p.get("of", "") if who else "", sev=sev, rule=sel, q=q, area=area, people=ppl, off=sorted(off, key=int), by=by, group=group),
         counts={**{s: sum(ix[i]["sev"] == s for i in mine) for s in SEVS},
                 "Passing": sum(not count[n] and n not in skipped for n in a.RULES)},
         per_rule=count, skipped=skipped, sev_counts=sev_counts, hidden_off=sum(ix[i]["num"] in off for i in mine),
@@ -2936,7 +2981,8 @@ def rules_csv(p, view):
     now, who = datetime.now(), p.get("grantee", "")
     sev = p.get("sev", "") if p.get("sev", "") in SEVS + ["Passing"] else ""
     sel = p.get("rule", "") if p.get("rule", "") in a.RULES else ""
-    shown = [x for x in S["rows"] if (not who or x["grantee"] == who) and (not sev or x["severity"] == sev)
+    is_of = subject_of_finding(who, p.get("of", ""))
+    shown = [x for x in S["rows"] if (not who or is_of(x["grantee"], x["kind"])) and (not sev or x["severity"] == sev)
              and (not sel or x["num"] == sel)]
     what = [f"rule {sel}"] * bool(sel) + [sev] * bool(sev) + [who] * bool(who)
     text = csv_text(["Rule", "Title", "Severity", "Grantee", "Detail", "Fix", "SQL", "Affects users", "Same fix", "Paths"],
@@ -2967,10 +3013,65 @@ def what_if(p, cap):
         raise ApiError(400, "bad_change", str(x))
 
 
-def whatif_page(p, view):
-    out = what_if(p, a.MAX_PATHS)
-    out.pop("csv")
+WHATIF_USERS, WHATIF_GROUPS, WHATIF_OBJECTS = 200, 50, 100  # people (findings, objects left, roles), groups, objects lost a What if answer
+# lists; the counts stay exact and the CSV has every row
+WHATIF = {}  # (data set, changes) -> a.what_if(): a person's rows (user=) and the plan panel ask again for the same plan
+
+
+def loss_groups(us):
+    """People who lose the same privileges on the same objects (and keep the same ones another way) as one group,
+    biggest first: the first names, the first lost / kept rows and a sentence."""
+    sig = lambda rows: "|".join(sorted(f'{r["object"]}:{",".join(r["privileges"])}' for r in rows))
+    by = {}
+    for u in us:
+        by.setdefault((sig(u["lost_rows"]), sig(u["kept_rows"]), u["objects"]), []).append(u)
+    out = []
+    for i, g in enumerate(sorted(by.values(), key=lambda g: (-len(g), -len(g[0]["lost_rows"])))):
+        n, lost = len(g), g[0]["lost_rows"]
+        who, verb = (g[0]["user"], "loses") if n == 1 else (f"{n} people", "lose")
+        what = [f'{", ".join(r["privileges"])} on {r["object"]}' for r in lost[:3]]
+        more = g[0]["objects"] - len(what)
+        tail = f" and {plural(more, 'more object')}" if more > 0 else ""
+        out.append(dict(key=str(i), n=n, users=[dict(user=u["user"], status=u["status"]) for u in g[:WHATIF_USERS]],
+                        off=sum(u["status"] != "active" for u in g), lost=lost[:3], kept=g[0]["kept_rows"][:2],
+                        lost_sum=sum(u["lost"] for u in g), kept_sum=sum(u["kept"] for u in g),
+                        text=f'{who} {verb} {" and ".join(what)}{tail}' if what else f"{who} {verb} nothing"))
     return out
+
+
+def object_impact(us):
+    """Objects people lose, most people first: {object, type, people, privileges}."""
+    by = {}
+    for u in us:
+        for r in u["lost_rows"]:
+            x = by.setdefault(r["object"], dict(object=r["object"], type=r["type"], who=set(), pv=set()))
+            x["who"].add(u["user"])
+            x["pv"].update(r["privileges"])
+    out = [dict(object=x["object"], type=x["type"], people=len(x["who"]), privileges=sorted(x["pv"])) for x in by.values()]
+    return sorted(out, key=lambda x: (-x["people"], x["object"]))
+
+
+def whatif_page(p, view):
+    """What if: counts, groups and objects for the plan, the first WHATIF_USERS people as counts; user= one person's
+    rows (lost, kept, roles still reached)."""
+    k = (S["key"], p.get("changes", ""))
+    if k not in WHATIF:
+        if len(WHATIF) >= 4:
+            WHATIF.clear()
+        WHATIF[k] = what_if(p, a.MAX_PATHS)
+    x = WHATIF[k]
+    us = x["users"]
+    if p.get("user"):
+        u = next((u for u in us if u["user"] == p["user"]), None)
+        need(u, f'{p["user"]} loses nothing in this plan')
+        return dict(user=u)
+    gs, objs = loss_groups(us), object_impact(us)
+    return {k: v for k, v in x.items() if k not in ("csv", "users")} | dict(
+        findings=x["findings"][:WHATIF_USERS], findings_total=len(x["findings"]), objects=x["objects"][:WHATIF_USERS],
+        objects_total=len(x["objects"]), roles=x["roles"][:WHATIF_USERS], roles_total=len(x["roles"]), users=[{k: v for k, v in u.items() if k in ("user", "status", "lost", "objects", "kept")} for u in us[:WHATIF_USERS]],
+        users_total=len(us), groups=gs[:WHATIF_GROUPS], groups_total=len(gs), impact=objs[:WHATIF_OBJECTS],
+        impact_total=len(objs), lost_privs=sum(u["lost"] for u in us), kept_privs=sum(u["kept"] for u in us),
+        rows_capped=any(len(u["lost_rows"]) < u["objects"] for u in us))
 
 
 def whatif_csv(p, view):
@@ -2990,6 +3091,7 @@ REVIEW_COLS = ["Database", "Schema", "Object", "Type", "User", "User type", "Sta
 
 REVIEW_SORT = {"o": "object", "db": "object", "u": 0, "l": "login", "p": "privileges", "g": 2, "path": 3}  # web columns
 REVIEW_PAGE = 50
+REVIEW_CSV_MAX = int(os.environ.get("REVIEW_CSV_MAX", "300000"))  # rows of one review CSV (about 60 MB)
 
 
 def review_ctx(p):
@@ -3065,7 +3167,7 @@ def review_page(p, view):
                      object=c["ob"], objects=sorted({x[3] for x in c["rv"]["objects"] if not c["sc"] or x[2] == c["sc"]}),
                      active=c["active"], hideusage=noise),
         kpis=kpis, counts=counts, part=part, total=counts[part], offset=off, limit=lim, sort=key, dir=-1 if desc else 1,
-        rows=[dict(database=x[1], schema=x[2], object=x[3], type=x[4] or "", future_label=fl(x),
+        csv_max=REVIEW_CSV_MAX, rows=[dict(database=x[1], schema=x[2], object=x[3], type=x[4] or "", future_label=fl(x),
                    user=r[0], user_type=str(r[1]["user_type"]), status=r[1]["status"],
                    last_login=str(r[1]["last_login"])[:16] if r[1]["last_login"] else None,
                    privileges=split(r[1]["privileges"]), classes=split(r[1]["classes"]), sensitive=split(x[5]),
@@ -3142,11 +3244,19 @@ def flow_page(p, view):
     or disabled. sel= follows one box (none: everyone): follow holds its links, headline and people."""
     if view == "mine" or not S["sens"]:
         return dict(view=view, state="mine" if view == "mine" else "none", groups=[], roles=[], objects=[], links=[],
-                    select=None, follow=None)
-    f = a.sens_flow()
+                    select=None, follow=None, roles_all=[], roles_total=0, roles_offset=0)
+    graph = p.get("show") == "graph"  # the tables need neither the links nor a followed box
+    f = a.sens_flow(max_objects=FLOW_OBJECTS if graph else None)
     select = "risky" if any(g["id"] == "risky" for g in f["groups"]) else None
     sel = None if p.get("sel") == "none" else p.get("sel") or select
-    return dict(view=view, state="ok", **f, select=select, follow=a.flow_follow(sel))
+    every = f.pop("every")
+    w, off = window(p, "e_offset", len(every))
+    return dict(view=view, state="ok", **f, select=select, roles_all=every[w], roles_total=len(every), roles_offset=off,
+                follow=a.flow_follow(sel, max_objects=FLOW_OBJECTS) if graph else None) | (
+        {} if graph else dict(links=[]))
+
+
+FLOW_OBJECTS = 15  # object boxes the flow graph draws, most read first; the rest are one box (the tables list all)
 
 
 def flow_csv(p, view):
@@ -3154,7 +3264,7 @@ def flow_csv(p, view):
     need(view != "mine" and S["sens"], "The flow needs the shared snapshot and sensitive data.")
     sel = None if p.get("sel") == "none" else p.get("sel") or (
         "risky" if any(g["id"] == "risky" for g in a.sens_flow()["groups"]) else None)
-    f, now = a.flow_follow(sel, cap=None), datetime.now()
+    f, now = a.flow_follow(sel, cap=None, max_objects=FLOW_OBJECTS), datetime.now()
     pr = lambda u: a.profile.get(u) or {}
     text = csv_text(["User", "Type", "Status", "Last login", "Roles"],
                     [[u, str(pr(u).get("TYPE") or "PERSON"), a.status(u), str(pr(u).get("LAST_SUCCESS_LOGIN") or "")[:16],
@@ -3168,6 +3278,10 @@ def review_csv(p, view):
     if view == "mine":
         raise ApiError(400, "shared_only", "The access review is about everyone: use the shared snapshot.")
     c = review_ctx(p)
+    n = sum(len(rs) for _, rs in c["ents"])
+    if n > REVIEW_CSV_MAX:  # all databases of a big account: millions of rows, built in memory
+        raise ApiError(400, "too_big", f"{n:,} rows are too many for one file (at most {REVIEW_CSV_MAX:,}): "
+                                       "pick one database or schema.")
     now, where = datetime.now(), "every database" if c["db"] == "*" else c["db"]
     filt = [f"schema {c['sc']}"] * bool(c["sc"]) + [f"object {c['ob']}"] * bool(c["ob"]) + ["disabled excluded"] * c["active"]
     v = lambda x: "" if x is None else x
@@ -3181,20 +3295,45 @@ def review_csv(p, view):
 
 # ---------- find, list, graph, meta ----------
 
-def find_page(p, view):
-    names = [a.uid(u, True) for u in a.users] + a.roles + a.objects
-    hits_ = a.search(p.get("q", ""), names)
+FIND = {}  # (data key, builtin) -> find_index(): search as you type needs no LOCK once a data set has one
+SAID = {}  # (data key, builtin, id) -> answer() of a search hit
+ANSWER_TOP = 8  # hits that get an answer() line (a walk each); the rest show name and kind
+
+
+def find_index():
+    """Every searchable name with what a hit shows, worked out once per data set: {id: item without answer}."""
+    adm = {x["user"] for x in admin_list()}
+    out = {}
+    for n in [a.uid(u, True) for u in a.users] + a.roles + a.objects:
+        k, name = nk(n), a.node_name(n)
+        group = k if k in ("user", "object") and a.kinds.get(n) != "WAREHOUSE" else "warehouse" if k == "object" else "role"
+        out[n] = dict(id=n, name=name, kind=k, kind_label=kind_label(name, a.node_kind(n)) if k != "object"
+                      else (a.kinds.get(n) or "Object").capitalize(), type=a.kinds.get(n) if k == "object" else None,
+                      sensitive=n in S["sens"], page=page_of(k), status=a.status(name) if k == "user" else None,
+                      admin=k == "user" and name in adm, group=group)
+    return out
+
+
+def find_items(p, ix, fk):
+    """The Find answer from an index; missing: the top hits whose answer() is not worked out yet."""
+    hits_ = a.search(p.get("q", ""), ix)
     lim = int(p.get("limit", "20")) if p.get("limit", "20").isdigit() else 20
-    out, adm = [], {x["user"] for x in admin_list()}
-    for n in hits_[:lim]:
-        k = nk(n)
-        name = a.node_name(n)
-        out.append(dict(id=n, name=name, kind=k, kind_label=kind_label(name, a.node_kind(n)) if k != "object"
-                        else (a.kinds.get(n) or "Object").capitalize(), type=a.kinds.get(n) if k == "object" else None,
-                        sensitive=n in S["sens"], page=page_of(k), answer=answer(n, k, name),
-                        status=a.status(name) if k == "user" else None, admin=k == "user" and name in adm))
-    group = lambda k, n: k if k in ("user", "object") and a.kinds.get(n) != "WAREHOUSE" else "warehouse" if k == "object" else "role"
-    return dict(items=out, total=len(hits_), totals=dict(Counter(group(nk(n), n) for n in hits_)))  # Home.groupOf
+    out = [{k: v for k, v in ix[n].items() if k != "group"} | dict(answer=SAID.get(fk + (n,), "")) for n in hits_[:lim]]
+    missing = [x for x in out[:ANSWER_TOP] if fk + (x["id"],) not in SAID]
+    return dict(items=out, total=len(hits_), totals=dict(Counter(ix[n]["group"] for n in hits_))), missing  # Home.groupOf
+
+
+def find_page(p, view):
+    fk = S["key"]
+    if fk not in FIND and len(FIND) >= 4:
+        FIND.clear()
+    if len(SAID) > 100000:
+        SAID.clear()
+    ix = FIND[fk] = FIND.get(fk) or a.cached("find_ix", find_index)
+    out, missing = find_items(p, ix, fk)
+    for x in missing:
+        x["answer"] = SAID[fk + (x["id"],)] = answer(x["id"], x["kind"], x["name"])
+    return out
 
 
 def answer(n, k, name):
@@ -3323,26 +3462,43 @@ def meta(p, sid):
                 governance=None, tokens=theme_tokens(), help=ui.HELP,
                 type_icon={k: list(v) for k, v in ui.TYPE_ICON.items()}, pclass=ui.PCLASS)
     try:
-        with session(view, sid, p.get("builtin") == "1") as d:
-            run = a.run
-            when, old, at = snap_time(run) if view == "shared" else ("live", False, None)
-            worst, hit, hit_rules, rule_counts = rule_badge()
-            badge = {"rules": hit, "sensitive": len(S["sens"])}  # findings at the worst severity
-            base.update(loaded=True, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
-                                              when=when, old=old, at=at),
-                        sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view) + loop_notes(),
-                        pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k],
-                                    title=f"{plural(hit, worst.lower() + ' finding')} in {plural(hit_rules, 'rule')}" if k == "rules" and hit else None)
-                               for k, lab in PAGES.items() if not (view == "mine" and k in SHARED_ONLY)],
-                        governance=a.governance_kpis()["text"] if view == "shared" else None,
-                        protection=protection() if view == "shared" else None,
-                        builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
-                        rule_counts=rule_counts, rule_sev=home_summary()["rule_sev"],  # the side menu's Findings: severity, then rule
-                        people=side_people() if view == "shared" else None,
-                        default_user=(a.users[0] if a.users else None) if view == "mine" else None)  # shared: the pages ask for a pick
+        key = (data_key(view, sid), view, p.get("builtin") == "1")
+        if key[0] and key in META:  # every page view asks for meta: a seen data set answers without LOCK
+            run, part = META[key]
+        else:
+            run, part = meta_part(view, sid, p.get("builtin") == "1")
+            if key[0]:
+                if len(META) >= 8:
+                    META.clear()
+                META[key] = run, part
+        when, old, at = snap_time(run) if view == "shared" else ("live", False, None)
+        base.update(part, run=dict(run_id=str(run.get("RUN_ID")), finished_at=str(run.get("FINISHED_AT"))[:16],
+                                   when=when, old=old, at=at))
     except ApiError as x:
         base["error"] = dict(detail=x.detail, message=x.message)
     return clean(base)
+
+
+META = {}  # (data key, view, builtin) -> (run, the part of meta worked out from the data)
+
+
+def meta_part(view, sid, builtin):
+    with session(view, sid, builtin):
+        run = a.run
+        worst, hit, hit_rules, rule_counts = rule_badge()
+        badge = {"rules": hit, "sensitive": len(S["sens"])}  # findings at the worst severity
+        base = dict(loaded=True,
+                    sources=run.get("SOURCES") or {"all": "fake data"}, notes=notes_of(run, view) + loop_notes(),
+                    pages=[dict(key=k, label=lab, badge=badge.get(k) or None, severity=worst if k == "rules" else None, group=GROUP[k],
+                                title=f"{plural(hit, worst.lower() + ' finding')} in {plural(hit_rules, 'rule')}" if k == "rules" and hit else None)
+                           for k, lab in PAGES.items() if not (view == "mine" and k in SHARED_ONLY)],
+                    governance=a.governance_kpis()["text"] if view == "shared" else None,
+                    protection=protection() if view == "shared" else None,
+                    builtin=a.builtin_info(), what_if_ops=list(a.WHAT_IF_OPS),
+                    rule_counts=rule_counts, rule_sev=home_summary()["rule_sev"],  # the side menu's Findings: severity, then rule
+                    people=side_people() if view == "shared" else None,
+                    default_user=(a.users[0] if a.users else None) if view == "mine" else None)  # shared: the pages ask for a pick
+    return dict(run), base
 
 
 def rule_badge():
@@ -3532,6 +3688,12 @@ def data_key(view, sid):
     return m and m["key"]
 
 
+def forget():
+    """Drop every answer kept per data set (a new run has a new key; tests reuse one)."""
+    for x in (ANSWERS, META, FIND, SAID, WHATIF):
+        x.clear()
+
+
 def serve(name, params=None, sid=None):
     """The JSON answer of one endpoint (a dict), as the local server and the Streamlit components get it. Answers
     depend only on the data set and the parameters, so a repeat comes from ANSWERS without the lock."""
@@ -3540,7 +3702,16 @@ def serve(name, params=None, sid=None):
     key = dk and (dk, name, tuple(sorted(p.items())))
     if key in ANSWERS:
         return ANSWERS[key]
+    fk = (dk, p.get("builtin") == "1")
+    if name == "find" and fk in FIND:  # matched without LOCK; the answer lines of new hits need it, unless it is busy
+        out, missing = find_items(p, FIND[fk], fk)
+        if not missing:
+            return out
+        if not LOCK.acquire(blocking=False):
+            return out | dict(partial=True)  # the client asks again; the answer lines need LOCK
+        LOCK.release()
     with session(p.get("view", "shared"), sid, p.get("builtin") == "1"):
+        S["key"] = fk  # the data set, for what a page keeps across calls (FIND, WHATIF)
         out = ROUTES[name](p, p.get("view", "shared"))
         if name in WITH_REFS:
             out["refs"] = mkrefs(out)
@@ -3668,9 +3839,32 @@ def make_app():
             return JSONResponse(serve(name, dict(request.query_params), sid_of(request)))
         return h
 
+    async def body_of(request):  # a GET whose query would be too long for a URL (a big change plan) comes as a POST
+        try:
+            b = await request.json()
+        except ValueError:
+            b = None
+        if not isinstance(b, dict):
+            raise ApiError(400, "bad_param", "The body must be a JSON object of parameters.")
+        return dict(request.query_params) | {k: str(v) for k, v in b.items() if v is not None}
+
+    def post_route(name):
+        async def h(request: Request):
+            p = await body_of(request)
+            return JSONResponse(await run_in_threadpool(serve, name, p, sid_of(request)))
+        return h
+
+    def post_csv(name):
+        async def h(request: Request):
+            p = await body_of(request)
+            fname, text = await run_in_threadpool(serve_csv, name, p, sid_of(request))
+            return Response(text, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={fname}"})
+        return h
+
     for n in ("home", "access", "user", "privs", "held", "grantees", "role", "object", "check", "sensitive", "rules", "review", "find", "list", "graph",
               "whatif", "who", "request", "map", "see", "compare", "grid", "flow", "usage", "changes", "activity", "sql", "finding"):
         app.get(f"/api/{n}")(route(n))
+        app.post(f"/api/{n}")(post_route(n))
 
     def csv_route(name):
         def h(request: Request):
@@ -3680,6 +3874,7 @@ def make_app():
 
     for n in CSV:
         app.get(f"/api/{n}.csv")(csv_route(n))
+        app.post(f"/api/{n}.csv")(post_csv(n))
 
     @app.get("/{path:path}")
     def spa(path: str):

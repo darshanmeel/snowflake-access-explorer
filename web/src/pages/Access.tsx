@@ -14,6 +14,7 @@ import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
 
 const nameOf = (o: AccessObject) => o.label ?? o.object;
+const HEAT_MIN = 15; // the server's HEAT: more schemas than this get a search box
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 const subjectOf = (c: ReturnType<typeof useApp>) => {
@@ -58,6 +59,11 @@ function Body({ d }: { d: AccessPage }) {
   const [sq, setSq] = useState(""); // q as sent, a moment after the last key
   const [page, setPage] = useState(0);
   useEffect(() => { const t = setTimeout(() => setSq(q), 250); return () => clearTimeout(t); }, [q]);
+  const [hq, setHq] = useState("");
+  const [sq2, setSq2] = useState(""); // hq as sent
+  useEffect(() => { const t = setTimeout(() => setSq2(hq), 250); return () => clearTimeout(t); }, [hq]);
+  const hs = useApi<AccessPage>(sq2 ? "access" : null, { ...subjectOf(c), hq: sq2 });
+  const heat = sq2 ? hs.data ?? d : d;
   useEffect(() => setPage(0), [lvl, sq, usage, group, sort, cell]);
   const w = d.who, n = d.counts, user = w.kind === "user";
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
@@ -86,7 +92,7 @@ function Body({ d }: { d: AccessPage }) {
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", user ? { user: w.name } : { role: w.name })}>Show as graph</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
+        <button type="button" className="ae-btn" title="Every grant next to the query history: up to a minute for a big person or role" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
       </div>
       <p className="ae-answer">
         <span className="ae-mono">{w.name}</span> can <b>read data in {plural(n.read, "object")}</b> across {plural(n.schemas, "schema")}.
@@ -114,11 +120,12 @@ function Body({ d }: { d: AccessPage }) {
       {show === "history" && <ChangeFeed subject={w.id} />}
       {show === "summary" && <>
       <div className="ae-two">
-        <Card title="Where the access is" sub="Objects per schema, by the most they can do. Click a cell to filter the list.">
-          {d.heat.length ? (
-            <div className="ae-heat" role="table">
-              <div role="row" className="ae-heat-h"><span>Schema</span><span>Read</span><span>Change</span><span>Own</span><span>Sensitive</span></div>
-              {d.heat.map((h) => (
+        <Card title="Where the access is" sub={`Objects per schema, each at the most they can do; riskiest ${d.heat_total > HEAT_MIN ? `${heat.heat.length} of ${d.heat_total} ` : ""}schemas first. Click a cell to filter the list.`}>
+          {d.heat_total > HEAT_MIN && <input className="ae-input" placeholder={`Search ${d.heat_total} schemas`} value={hq} onChange={(e) => setHq(e.target.value)} aria-label="Search schemas" />}
+          {heat.heat.length ? (
+            <div className={`ae-heat${sq2 && hs.loading ? " ae-fade" : ""}`} role="table">
+              <div role="row" className="ae-heat-h"><span>Schema</span><span>Read only</span><span>Change</span><span>Own</span><span>Sensitive</span></div>
+              {heat.heat.map((h) => (
                 <div role="row" key={h.schema}>
                   <span className="ae-mono">{h.schema}</span>
                   {(["read", "change", "own", "sensitive"] as const).map((k) => (
@@ -127,18 +134,21 @@ function Body({ d }: { d: AccessPage }) {
                   ))}
                 </div>
               ))}
+              {heat.heat_total > heat.heat.length && <div role="row" className="ae-muted">{plural(heat.heat_total - heat.heat.length, "more schema")}: search to find one</div>}
             </div>
-          ) : <EmptyState title="No data objects">Only names, runnable things or account powers.</EmptyState>}
+          ) : sq2 ? <EmptyState title="No schema matches">Clear the search.</EmptyState> : <EmptyState title="No data objects">Only names, runnable things or account powers.</EmptyState>}
         </Card>
         <Card title="Why they have it" sub={`${plural(d.roles, "role")} · deepest ${d.deepest}`}>
           <ul className="ae-why">
             {d.why.map((r) => (
               <li key={r.role}>
                 <div><button type="button" className={`ae-pchip ae-pchip-${r.kind}`} onClick={() => o.open(r.role)}>{r.role}</button> <span className="ae-muted">{r.note}</span></div>
-                {r.kids.length > 0 && <div className="ae-why-kids">{r.kids.map((k) => <button type="button" key={k} className="ae-pchip" onClick={() => o.open(k)}>{k}</button>)}</div>}
+                {r.kids.length > 0 && <div className="ae-why-kids">{r.kids.map((k) => <button type="button" key={k} className="ae-pchip" onClick={() => o.open(k)}>{k}</button>)}
+                  {r.kids_total > r.kids.length && <button type="button" className="ae-link" onClick={() => c.nav("role", { name: r.role })}>+{r.kids_total - r.kids.length} more</button>}</div>}
               </li>
             ))}
           </ul>
+          {d.why_more > 0 && <p className="ae-muted">{plural(d.why_more, "more role")} hold{d.why_more === 1 ? "s" : ""} it: <button type="button" className="ae-link" onClick={() => c.nav("role", { name: w.name })}>Role paths</button></p>}
           {w.secondary_all && <p className="ae-note">Secondary roles are <b>ALL</b>, so every query uses all of these roles at once.</p>}
         </Card>
       </div>

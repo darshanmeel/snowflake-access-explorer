@@ -44,7 +44,7 @@ export function sideEffects(people: number, lost: number): { text: string; tone:
 export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "roles_count" | "lanes_total" | "cut" | "layers" | "nearest" | "answer">
   & { subject?: Pick<Subject, "user"> }): string {
   if (d.verdict === "no") {
-    const n = d.nearest[0];
+    const n = d.nearest?.[0];
     return (d.subject && !d.subject.user ? `Neither ${d.user} nor any of its ${plural(d.roles_count, "role")} leads to ${d.object}.`
       : `None of ${d.user}'s ${plural(d.roles_count, "role")} leads to ${d.object}.`)
       + (n ? ` The nearest route is ${n.cost === 1 ? "one grant" : `${n.cost} grants`} away.` : "");

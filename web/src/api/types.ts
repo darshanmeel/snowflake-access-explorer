@@ -418,8 +418,9 @@ export interface UserPage {
     privileges: string[];
   };
   banners: Banner[];
-  findings: Finding[];
+  findings: Finding[]; // the worst FIRST_FINDINGS
   findings_total: number;
+  findings_sev: Partial<Record<Severity, number>>;
   kpis: {
     privileges: number;
     objects: number;
@@ -494,8 +495,9 @@ export interface RolePage {
   };
   scope_kpis: { direct: number; effective: number; objects: number; holders: number; sensitive: number } | null;
   banners: Banner[];
-  findings: Finding[];
+  findings: Finding[]; // the worst FIRST_FINDINGS
   findings_total: number;
+  findings_sev: Partial<Record<Severity, number>>;
   usage: RoleUsage;
   readonly_writes: {
     object: string;
@@ -664,7 +666,7 @@ export interface CheckPage {
   lanes_total: number;
   cut: string[];
   cuts: { iac: string; sql: string; people: string[]; lost: number; edges: { grantee: string; to: string; priv: string | null; user: boolean }[] }[];
-  nearest: Nearest[];
+  nearest: Nearest[] | null; // null: not worked out, ask again with near=1
   approver: string | null;
   view: View;
   user: string;
@@ -702,7 +704,7 @@ export interface RequestPage {
   view: View;
   user: string; // the subject's name: a user, or a role (subject.user false)
   subject: Subject;
-  object: string;
+  object: string | null; // null: no obj= asked, the rest is not sent
   type: string;
   database: string; // the object's database ("" for an account-level object)
   need: "read" | "change";
@@ -731,7 +733,8 @@ export interface SensitivePage {
     disabled: number;
     service: number;
     unmasked: number;
-    stale: string[];
+    stale: string[]; // the first NAMES of stale_total
+    stale_total: number;
   };
   objects: {
     object: string;
@@ -744,7 +747,9 @@ export interface SensitivePage {
     masked: [number, number];
     row_policies: string[];
     readers: { active: number; dormant: number; service: number; admin: number }; // each reader once
-    roles: string[];
+    columns: { column: string; masked: boolean; policies: string[] }[];
+    roles: string[]; // the first ROLES_SHOWN (limit=0: all)
+    roles_total: number;
   }[]; // one page: objects_offset, limit= rows (limit=0: all)
   objects_total: number;
   objects_offset: number;
@@ -761,7 +766,8 @@ export interface SensitivePage {
   }[]; // one page, as objects
   readers_total: number;
   readers_offset: number;
-  catalog: CatalogRow[]; // screen 8, most exposed first
+  catalog: CatalogRow[] | null; // screen 8, most exposed first: only with show=catalog
+  catalog_total: number;
   row_list: { object: string; policies: string[] }[]; // tables with a row policy, sensitive or not: one page at row_offset
   row_total: number;
   row_offset: number;
@@ -809,7 +815,7 @@ export interface FindingGroup {
 export interface RulesPage {
   view: View;
   scope: "account" | "mine";
-  filters: { grantee: string; sev: Severity | ""; rule: string; q: string; area: string; people: boolean; off: string[];
+  filters: { grantee: string; of: "user" | "role" | ""; sev: Severity | ""; rule: string; q: string; area: string; people: boolean; off: string[];
     by: "rule" | "person" | "object" | "grid"; group: string | null };
   counts: Record<Severity | "Passing", number>; // every finding (of grantee=)
   per_rule: Record<string, number>;
@@ -884,6 +890,7 @@ export interface ReviewPage {
   limit: number;
   sort: string;
   dir: 1 | -1;
+  csv_max: number; // rows one CSV holds at most (kpis.rows is what it would have)
   rows: ReviewRow[]; // one page: offset .. offset + limit
   refs: Refs;
 }
@@ -922,9 +929,26 @@ export interface WhatIfUser {
   lost: number; // privileges lost (exact)
   objects: number; // objects lost (exact)
   kept: number; // privileges kept through another path (exact)
+}
+
+/** One person's rows: GET /api/whatif?changes=…&user=<name> */
+export interface WhatIfUserRows extends WhatIfUser {
   lost_rows: WhatIfObjectRow[]; // first max_paths objects
   kept_rows: WhatIfObjectRow[];
   kept_roles: { role: string; path: Path; via: Path; through: string }[];
+}
+
+/** People who lose the same thing: the first names, lost and kept rows, and the sentence. */
+export interface LossGroup {
+  key: string;
+  n: number;
+  users: { user: string; status: UserStatus }[];
+  off: number; // not active
+  lost: WhatIfObjectRow[]; // first 3
+  kept: WhatIfObjectRow[]; // first 2
+  lost_sum: number;
+  kept_sum: number;
+  text: string;
 }
 
 export interface WhatIfFinding {
@@ -954,10 +978,21 @@ export interface WhatIfPage {
     new: number;
     changed: number;
   };
-  users: WhatIfUser[];
-  objects: { object: string; type: string; sensitive: boolean; unreached: boolean; ownerless: boolean }[];
-  roles: { role: string; kind: string; orphan: boolean; unreached: boolean }[];
-  findings: WhatIfFinding[];
+  users: WhatIfUser[]; // the first WHATIF_USERS of users_total, most lost first
+  users_total: number;
+  groups: LossGroup[]; // biggest first, the first WHATIF_GROUPS of groups_total
+  groups_total: number;
+  impact: { object: string; type: string; people: number; privileges: string[] }[]; // objects people lose, most people first
+  impact_total: number;
+  lost_privs: number;
+  kept_privs: number;
+  rows_capped: boolean; // someone lists fewer objects than they lose
+  objects: { object: string; type: string; sensitive: boolean; unreached: boolean; ownerless: boolean }[]; // first WHATIF_USERS of objects_total
+  objects_total: number;
+  roles: { role: string; kind: string; orphan: boolean; unreached: boolean }[]; // first WHATIF_USERS of roles_total
+  roles_total: number;
+  findings: WhatIfFinding[]; // the first WHATIF_USERS of findings_total
+  findings_total: number;
   iac: string;
   sql: string;
   refs: Refs;
@@ -1021,10 +1056,10 @@ export interface AccessPage {
   runs_total: number;
   powers: AccessObject[]; // powers over the account, the first PAGE of powers_total
   powers_total: number;
-  heat: { schema: string; read: number; change: number; own: number; sensitive: number }[];
-  why: { role: string; kind: NodeKind; note: string; kids: string[] }[];
-  findings: Finding[];
-  findings_total: number;
+  heat: { schema: string; read: number; change: number; own: number; sensitive: number }[]; // riskiest HEAT schemas (hq= filters), each object in one cell
+  heat_total: number;
+  why: { role: string; kind: NodeKind; note: string; kids: string[]; kids_total: number }[]; // kids: the first KIDS
+  why_more: number; // a role's holders past the HOLDERS listed
   deepest: number;
   roles: number;
   refs: Refs;
@@ -1195,7 +1230,10 @@ export interface ComparePage {
   scope: "sensitive" | "all" | "db";
   db: string;
   sensitive: boolean;
-  rows: CompareRow[];
+  rows: CompareRow[]; // one page (offset) of the rows f= / same= keep; rows_total: all of them
+  rows_total: number;
+  offset: number;
+  any: boolean; // either reaches something in scope
   counts: Record<Diff, number>;
   match: CompareChange[]; // make B match A
   extras: CompareChange[]; // remove A's extras
@@ -1251,7 +1289,9 @@ export interface GridPage {
 }
 
 /** Screen 16 (/api/flow). */
-export interface FlowNode { id: string; label: string; count: number; kind?: string; ns?: string; status?: string; unmasked?: string[]; masked?: string[]; row_policies?: string[] }
+export interface FlowNode { id: string; label: string; count: number; kind?: string; ns?: string; status?: string | null; unmasked?: string[]; masked?: string[]; row_policies?: string[]; roles?: number }
+/** One real role of the flow (not a box): people who hold it, sensitive objects it reaches. */
+export interface FlowRole { id: string; kind: string; count: number; objects: number }
 export interface FlowLink { source: string; target: string; count: number }
 /** The box followed (sel=): link keys "source>target" -> people and their main group; users: the box's first 200. */
 export interface FlowFollow { sel: string | null; lit: string[] | null; width: Record<string, number>; tone: Record<string, string>; headline: string; users: string[]; count: number }
@@ -1260,10 +1300,13 @@ export interface FlowPage {
   state: "ok" | "mine" | "none";
   groups: FlowNode[];
   roles: FlowNode[];
-  objects: FlowNode[];
-  links: FlowLink[];
+  objects: FlowNode[]; // show=graph: the FLOW_OBJECTS most read, then one fold box (kind "fold")
+  links: FlowLink[]; // show=graph only
   select: string | null;
-  follow: FlowFollow | null;
+  follow: FlowFollow | null; // show=graph only
+  roles_all: FlowRole[]; // one page (roles_offset, e_offset=) of every role, most people first
+  roles_total: number;
+  roles_offset: number;
   refs: Refs;
 }
 

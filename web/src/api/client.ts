@@ -35,13 +35,28 @@ async function check(r: Response) {
   throw new ApiFail(r.status, String(b.detail ?? r.status), b.message ?? `Request failed (${r.status})`);
 }
 
+/** A query string longer than this (a change plan of hundreds of revokes) goes as a POST body: servers refuse long URLs. */
+export const LONG_URL = 6000;
+
+const clean = (p: Record<string, string | undefined | null>) => Object.fromEntries(Object.entries(p).filter(([, v]) => v != null && v !== ""));
+
+/** GET `/api/<path>` with `p`, or the same as a POST when the URL would be too long; the answer as text or JSON. */
+function ask(path: string, p: Record<string, string | undefined | null>, text: boolean): Promise<unknown> {
+  const url = `/api/${path}${qs(p)}`;
+  const long = url.length > LONG_URL;
+  if (transport) return long ? transport("POST", `/api/${path}`, clean(p)) : transport("GET", url);
+  const r = long ? fetch(`/api/${path}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(clean(p)) })
+    : fetch(url, { credentials: "same-origin" });
+  return r.then(check).then((x) => (text ? x.text() : x.json()));
+}
+
 export function get<T>(path: string, p: Record<string, string | undefined | null> = {}): Promise<T> {
   const url = `/api/${path}${qs(p)}`;
   let hit = cache.get(url);
   if (!hit) {
-    hit = transport ? transport("GET", url) : fetch(url, { credentials: "same-origin" }).then(check).then((r) => r.json());
+    hit = ask(path, p, false);
     cache.set(url, hit);
-    hit.catch(() => cache.delete(url));
+    hit.then((x) => { if ((x as { partial?: boolean } | null)?.partial) cache.delete(url); }, () => cache.delete(url)); // partial: asked again next time
   }
   return hit as Promise<T>;
 }
@@ -63,8 +78,7 @@ export async function post<T>(path: string, body?: unknown): Promise<T> {
 
 /** Save a server CSV (`path` like "review.csv") as a file. */
 export async function download(path: string, p: Record<string, string | undefined | null>, name: string) {
-  const url = `/api/${path}${qs(p)}`;
-  const text = transport ? String(await transport("GET", url)) : await (await check(await fetch(url, { credentials: "same-origin" }))).text();
+  const text = String(await ask(path, p, true));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
   a.download = name;

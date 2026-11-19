@@ -2,7 +2,7 @@
 // this browser only (localStorage, which can be blocked: every access wrapped). They only change what the UI shows: the
 // plan is simulated by access.what_if and its text never runs; Off and Mute hide findings, access.py results stay.
 import { useSyncExternalStore } from "react";
-import type { Finding, WhatIfChange, WhatIfUser } from "../api/types";
+import type { Finding, WhatIfChange } from "../api/types";
 import { terraformOf, type Change } from "../components/codegen";
 
 export interface Saved<T> { get: () => T; set: (v: T) => void; sub: (f: () => void) => () => void }
@@ -89,18 +89,6 @@ export function planTexts(list: WhatIfChange[], sql: string): { sql: string; tf:
   return { sql: sql ? `${sql.trimEnd()}\n` : "-- nothing to revoke\n", tf, ticket };
 }
 
-/** What if "Group by Objects": per object the people who lose it and the privileges lost, most people first. */
-export function objectImpact(users: WhatIfUser[]): { object: string; type: string; people: number; privileges: string[] }[] {
-  const m = new Map<string, { type: string; who: Set<string>; pv: Set<string> }>();
-  for (const u of users) for (const r of u.lost_rows) {
-    const x = m.get(r.object) ?? { type: r.type, who: new Set(), pv: new Set() };
-    x.who.add(u.user); r.privileges.forEach((p) => x.pv.add(p));
-    m.set(r.object, x);
-  }
-  return [...m.entries()].map(([object, x]) => ({ object, type: x.type, people: x.who.size, privileges: [...x.pv].sort() }))
-    .sort((a, b) => b.people - a.people || a.object.localeCompare(b.object));
-}
-
 /** The links of a lost path that the changes remove (index i: path[i] -> path[i+1]), to draw them crossed out. */
 export function cutLinks(path: string[], changes: WhatIfChange[]): Set<number> {
   const out = new Set<number>();
@@ -118,25 +106,3 @@ export function cutLinks(path: string[], changes: WhatIfChange[]): Set<number> {
   return out;
 }
 
-export interface LossGroup { key: string; users: WhatIfUser[]; lost: WhatIfUser["lost_rows"]; kept: WhatIfUser["kept_rows"]; text: string }
-
-/** People who lose the same privileges on the same objects (and keep the same ones another way), as one row:
- * "24 people lose USAGE on WH_SALES_XS". Most people first. */
-export function lossGroups(users: WhatIfUser[]): LossGroup[] {
-  const sig = (rows: WhatIfUser["lost_rows"]) => rows.map((r) => `${r.object}:${r.privileges.join(",")}`).sort().join("|");
-  const by = new Map<string, LossGroup>();
-  for (const u of users) {
-    const key = `${sig(u.lost_rows)}#${sig(u.kept_rows)}#${u.objects}`;
-    const g = by.get(key) ?? { key, users: [], lost: u.lost_rows, kept: u.kept_rows, text: "" };
-    g.users.push(u);
-    by.set(key, g);
-  }
-  return [...by.values()].map((g) => {
-    const who = g.users.length === 1 ? g.users[0].user : `${g.users.length} people`;
-    const what = g.lost.map((r) => `${r.privileges.join(", ")} on ${r.object}`);
-    const more = g.users[0].objects - g.lost.length;
-    const text = what.length ? `${who} lose${g.users.length === 1 ? "s" : ""} ${what.join(" and ")}${more > 0 ? ` and ${more} more object${more === 1 ? "" : "s"}` : ""}`
-      : `${who} lose${g.users.length === 1 ? "s" : ""} nothing`;
-    return { ...g, text };
-  }).sort((a, b) => b.users.length - a.users.length || b.lost.length - a.lost.length);
-}
