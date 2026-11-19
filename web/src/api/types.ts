@@ -713,7 +713,7 @@ export interface RequestPage {
   privileges: string[];
   level: string | null; // the user's step on the object today
   has: boolean;
-  via_admin?: string[]; // has only through these admin roles (they inherit every role)
+  via_admin?: string[]; // has it through the roles granted to these admin roles (their real links)
   asked: { role: string; kind: NodeKind; to: string | null; rule1: boolean; people: number; broad: boolean; change: CompareChange } | null; // picked on Can they?
   suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[]; people: number; broad: boolean; change: CompareChange }[];
   approver: string | null;

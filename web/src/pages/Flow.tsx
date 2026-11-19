@@ -31,7 +31,7 @@ export function FlowPageView() {
 
 function sub(n: FlowNode, col: number, off: boolean): string {
   if (col === 0 || n.kind === "fold") return plural(n.count, "person", "people");
-  if (col === 1) return n.kind === "admin" ? "inherit everything" : plural(n.count, "person", "people");
+  if (col === 1) return n.kind === "admin" ? `${plural(n.count, "person", "people")} · through admin roles` : plural(n.count, "person", "people");
   if (off) return `${n.ns} · masking unknown`;
   if (n.unmasked?.length) return `${n.unmasked.join(", ")} unmasked`;
   if (n.masked?.length) return `${n.masked.join(", ")} masked`;

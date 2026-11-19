@@ -1634,7 +1634,16 @@ def test_correct_answers():
     # Request agrees with Can they? for an admin holder
     q = js("/api/request?name=ADMIN_01&obj=SALES.CORE.TBL_CUSTOMER")
     ch = js("/api/check?name=ADMIN_01&obj=SALES.CORE.TBL_CUSTOMER")
-    assert ch["answer"]["how"] == "admin" and q["has"] and q["via_admin"] == ["SECURITYADMIN", "SYSADMIN"] and not q["suggestions"]
+    assert ch["answer"]["how"] == "admin" and q["has"] and q["via_admin"] == ["SYSADMIN"] and not q["suggestions"]
+    assert "SYSADMIN > " in ch["answer"]["text"] and ch["admin_paths"][0][-1] == "SALES.CORE.TBL_CUSTOMER"
+    # admin roles reach only through their real links: DW's database roles sit below no admin role
+    sb = "DW.SANDBOX.TBL_SANDBOX_01"
+    q, ch = js(f"/api/request?name=OPS_01&obj={sb}"), js(f"/api/check?name=OPS_01&obj={sb}")
+    assert not q["has"] and not q["via_admin"] and ch["verdict"] == "no" and not ch["admin_paths"]
+    ch = js(f"/api/check?name=ADMIN_01&obj={sb}")
+    assert ch["verdict"] == "no" and "SECURITYADMIN can grant itself anything (MANAGE GRANTS)" in ch["answer"]["text"]
+    w = js(f"/api/who?name={sb}")
+    assert not {"OPS_01", "ADMIN_01"} & {x["name"] for x in w["people"]}
     assert not js("/api/request?name=ANALYST_01&obj=SALES.CORE.TBL_CUSTOMER")["via_admin"]
     # Can they? No: one list of ways in (Nearest), no second disagreeing one
     no = js("/api/check?name=MARKETING_01&obj=SALES.CORE.TBL_CUSTOMER&priv=INSERT")
@@ -1675,7 +1684,8 @@ def test_correct_answers():
     assert all(x["clear"] == x["readers"] for x in sp["catalog"] if x["unmasked"] or x["status"] == "whole")
     assert all(o["clear"] == cat[o["object"]]["clear"] for o in sp["objects"])
     via = [x for x in js("/api/sensitive?limit=0")["readers"] if x["via_admin"]]
-    assert via and all(x["objects"] is None for x in via)
+    n = js("/api/sensitive")["kpis"]["objects"]  # an admin reader counts what its admin roles reach, not every object
+    assert via and all(0 < x["objects"] <= n and "SYSADMIN" in x["path"] for x in via)
     assert js("/api/sensitive?people=1")["kpis"] == js("/api/sensitive")["kpis"]
 
 

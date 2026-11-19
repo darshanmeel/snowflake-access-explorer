@@ -128,7 +128,7 @@ function Detail({ d, n, x }: { d: MapPage; n: GraphNode; x: MapNode }) {
   const c = useApp();
   const stack = n.marks.includes("stack");
   const fold = n.kind === "fold" || n.group != null;
-  const fake = n.id === "Every object (admin)" || n.id === "ACCOUNT"; // drawn boxes, not roles or objects
+  const fake = n.id === "Through admin roles" || n.id === "ACCOUNT"; // drawn boxes, not roles or objects
   const droppable = !fake && n.id !== "PUBLIC" && !c.meta.admin_roles.includes(n.id) && n.kind !== "user" && n.kind !== "object";
   const open = () => (n.kind === "user" ? c.nav("access", { user: n.name }) : n.kind === "object" ? c.nav("object", { name: n.id }) : c.nav("access", { role: n.id }));
   const chips = (xs: string[], kind: string, more: number) => (

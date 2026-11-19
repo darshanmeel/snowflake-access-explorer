@@ -60,10 +60,9 @@ export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "
 
 /** The note under the answer: the warehouses a query can run on (it needs one); none = it can't run queries. */
 export function warehouseNote(w: CheckPage["warehouses"]): { text: string; bad: boolean } {
-  if (w.admin) return { text: "Warehouses: any, through an admin role", bad: false };
   if (!w.total) return { text: "No warehouse it can use: blocked to run queries", bad: true };
   const more = w.total > w.names.length ? ` and ${w.total - w.names.length} more` : "";
-  return { text: `Can run queries on ${w.total === 1 ? "warehouse" : "warehouses"} ${w.names.join(", ")}${more}`, bad: false };
+  return { text: `Can run queries on ${w.total === 1 ? "warehouse" : "warehouses"} ${w.names.join(", ")}${more}${w.admin ? ", some through an admin role" : ""}`, bad: false };
 }
 
 export function nearestTitle(n: Nearest): string {

@@ -1444,8 +1444,6 @@ def access_all(name, user, mine):
 
 def access_entries(name, user, mine):
     rows = a.grants(name, user)
-    if not user and name in a.ADMIN:  # it inherits every role below it: only its own account powers are listed
-        rows = [r for r in rows if a.category(r["privilege"], r["type"]) == "account"]
     objs = a.access_objects(rows, user)
     views = {v["object"]: v for v in a.data_views(name, user)} if not mine or S["sens"] else {}
     chips = row_findings(name, user, objs, rows)
@@ -1852,8 +1850,10 @@ def role_page(p, view):
     if p.get("schema") and not scope:
         banners.append(banner("info", f"{p['schema']} is not reached by {r}", ["Showing all of its access."]))
     if admin_role:
-        banners.append(banner("bad", "Admin role: inherits every role below it (hierarchy hidden)", [
-            "Its effective privileges are those of every custom role, so they are not listed here."],
+        n = len(a.admin_below(r)) - 1
+        banners.append(banner("bad", f"Admin role: {a.ADMIN_POWER[r]} (hierarchy hidden)", [
+            f"It reaches {plural(n, 'role')} and {plural(len(a.admin_objects(r)), 'object')} through the roles granted to it; "
+            "they are not listed here." if n else "No role is granted to it: it reads no data through other roles."],
             [link("People with admin roles", "rules")]))
     sc = [x for x in every if a.in_scope(x, scope)]
     graph = role_graph(p, c, up, ro)
@@ -1932,7 +1932,7 @@ def sensitivity(o):
     if not tg and not ps["columns"] and not ps["rows"]:
         return None
     rules = a.tag_rules()
-    sp = a.split_users(a.readers(o), a.admin_users())
+    sp = a.split_users(a.readers(o), a.admin_readers(o, a.READ_PRIVS))
     cols = sorted({c for c, *_ in tg if c} | set(ps["columns"]))
     rows = []
     for c in cols:
@@ -2079,7 +2079,9 @@ MAX_ADMIN_PATHS = 20  # Object page banner: admin paths listed (the counts cover
 def object_page(p, view):
     c = object_ctx(p, view)
     o, t, pv, active, only_users, m, s = c["o"], c["t"], c["pv"], c["active"], c["only_users"], c["m"], c["stats"]
-    adm = a.cached("admin_from_user", lambda: [q for x, q in a.admin_holders() if a.from_user(q)])
+    via = a.admin_readers(o, None, t)  # the admin users whose admin roles reach o through their real links
+    adm = [q for q in a.cached("admin_from_user", lambda: [q for x, q in a.admin_holders() if a.from_user(q)])
+           if q[-1] in via.get(q[0], [])]
     real = [x for x in m if not x["admin"] or x["via"]]
     n_cls = {k: sum(k in x["via"] for x in real) for k in ("read", "write", "own")}
     data = a.is_data(t)
@@ -2293,7 +2295,8 @@ def check_page(p, view):
     else:
         held, r = [pv], a.can(u, pv, o, is_user=user)
         r["paths"] = [q | dict(privilege=pv) for q in r["paths"]]
-    ps, admin = r["paths"], a.admin_paths(u, user) or ([[u]] if not user and u in a.ADMIN else [])
+    ps, admin = r["paths"], a.admin_can(u, o, user, None if pv == ALL else [pv])  # through an admin role's real links
+    power = "".join(f" {x} {a.ADMIN_POWER[x]}." for x in a.held_admin(u, user) if x not in {q[-1] for q in admin})
     what = (", ".join(held) if held else "anything") if pv == ALL else pv
     off = r["status"] == "disabled"
     sleep = user and not off and a.is_dormant(u) and not a.is_service(u)
@@ -2317,14 +2320,14 @@ def check_page(p, view):
                    text=f"{u} reaches OWNERSHIP of {o}, which implies {pv}.{note}", tone=tone,
                    stats=[["Paths", r["owner_count"]], ["Shortest depth", a.depth(r["owner"][0][:-1], user)]])
     elif not ps and admin:
-        ans = dict(yes=True, how="admin", title=yes_text or f"Yes, through admin role {', '.join(dict.fromkeys(x[-1] for x in admin))}",
-                   text=f"{u} can {pv} {o}: the admin role inherits every role, not through a granted role path.{note}"
-                   if user or admin[0] != [u] else f"{u} is an admin role: it inherits every role, no granted path needed.",
+        via = list(dict.fromkeys(next(x for x in q if x in a.ADMIN) for q in admin))
+        ans = dict(yes=True, how="admin", title=yes_text or f"Yes, through admin role {', '.join(via)}",
+                   text=f"{u} can {pv} {o} through the roles granted to admin role {via[0]}: {' > '.join(admin[0])}.{note}",
                    tone=tone, stats=[["Paths", 0], ["Via admin", len(admin)]])
     elif not ps:
         ans = dict(yes=False, how="none", title="No, not through any role",
                    text=f"No role {'granted to' if user else 'held by'} {u}, at any depth, "
-                   f"{'' if user else f'and not {u} itself, '}holds {'any privilege' if pv == ALL else pv} on {o}.{note}", tone="low",
+                   f"{'' if user else f'and not {u} itself, '}holds {'any privilege' if pv == ALL else pv} on {o}.{note}{power}", tone="low",
                    stats=[["Paths", 0], ["Shortest depth", "—"]])
     else:
         ends = {x["holder"] for x in ps}
@@ -2333,6 +2336,8 @@ def check_page(p, view):
                    text=(f"{u} has {what} on {o}." if pv == ALL else f"{u} can {pv} {o}.") + (f" Every path ends at {ps[0]['holder']}." if len(ends) == 1 else "")
                    + (" Also through an admin role." if admin else "") + note, tone=tone,
                    stats=([["Privileges", len(held)]] if pv == ALL else []) + [["Paths", r["count"]], ["Shortest depth", r["shortest"]]])
+    wa = sorted({x for q in a.held_admin(u, user) for x in a.admin_objects(q) if a.kinds.get(x) == "WAREHOUSE"} - set(r["warehouses"]))
+    whs = r["warehouses"] + wa  # a warehouse an admin role reaches through its real links runs queries too
     read = None
     if not mine and not gaps and any(x in a.READ_PRIVS for x in held) and a.is_data(a.kinds[o]) and (ps or r["owner"]):
         v = a.data_view(u, o, user)
@@ -2344,7 +2349,7 @@ def check_page(p, view):
                                 for x in held if any(q["privilege"] == x for q in ps)], user=user)
     k = a.kinds[o]
     got = {x["privilege"] for x in mine_rows if x["object"] == o}
-    has = set(opts) if admin or "OWNERSHIP" in got else got
+    has = set(opts) if "OWNERSHIP" in got or a.admin_can(u, o, user, ["OWNERSHIP"]) else         got | {x for x in opts if admin and a.admin_can(u, o, user, [x])}
     ls, cut = a.lanes(ps)
     cut = [x for x in cut if x in r["choke"]]  # lanes list at most MAX_PATHS paths; choke is counted over all
     ask = pv if pv != ALL else a.basic_priv(k)
@@ -2380,7 +2385,7 @@ def check_page(p, view):
                                  for x in r["options"]],
         use_role=r["use_role"], warehouse=r["warehouse"], read=read,
         blocked=[dict(type=t, name=c) for t, c in gaps], unblock=dict(iac=r["unblock"][0], sql=r["unblock"][1]) if gaps else None,
-        warehouses=dict(names=r["warehouses"][:MAX_WH], total=len(r["warehouses"]), admin=bool(admin)),
+        warehouses=dict(names=whs[:MAX_WH], total=len(whs), admin=bool(wa)),
         graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None, capped=sorted(a.capped))
 
 
@@ -2399,7 +2404,7 @@ def request_page(p, view):
     mine = {x["privilege"] for x in a.grants(u, user) if x["object"] == o}
     now = max((a.obj_level(x, k) for x in mine), key=a.OBJ_LEVELS.index, default=None)
     held = all(x in mine for x in pvs) or "OWNERSHIP" in mine
-    adm = sorted({q[-1] for q in a.admin_paths(u, user)} | ({u} & a.ADMIN if not user else set()))  # as Can they? says Yes
+    adm = sorted({x for q in a.admin_can(u, o, user, pvs) for x in q if x in a.ADMIN})         if all(a.admin_can(u, o, user, [x]) for x in pvs) else []  # as Can they? says Yes: every privilege needed
     if adm and not held:
         held, now = True, "admin"
     r, to = p.get("role"), p.get("to") if user else u
@@ -2459,7 +2464,7 @@ def map_graph(p, view, only=None):
 
 
 def dress(n, g, bi):
-    """An access graph box as the map draws it: stacked people, every object (admin), the built-ins, the account."""
+    """An access graph box as the map draws it: stacked people, what the admin roles reach, the built-ins, the account."""
     k = g["kinds"].get(n["id"])
     if k == "stack":
         us = g["stacks"][n["id"]]
@@ -2467,7 +2472,8 @@ def dress(n, g, bi):
                  sub=", ".join(us[:3]) + (f" +{len(us) - 3}" if len(us) > 3 else ""),
                  tip="People with the same lines, stacked into one box")
     elif k == "every":
-        n.update(kind="admin", label="Every object", sub="admin roles inherit every role", action=None, tip="No grant needed")
+        n.update(kind="admin", label="Through admin roles", sub=f"{plural(g['every_objects'], 'object')} below their real links",
+                 action=None, tip="What the roles granted to the admin roles reach; the every role -> SYSADMIN links are not drawn")
     elif k == "fold":
         n.update(sub=f"{bi['objects']} objects · folded" if bi else None, action=None)
     elif n["id"] == "ACCOUNT":
@@ -2786,20 +2792,22 @@ def sensitive_page(p, view):
         return set().union(*(r[k] for r in rank))
 
     stale = sorted(u for u in who if not a.is_service(u) and u in idle)
+    # admin readers: the objects their admin roles reach through real links (sensitive_rank "admin"), never all of them
     ppl, adm = every("people"), every("admin") - set(who)  # the tiles count every reader, People only or not
-    everyone = len(who) + sum(u not in who for u in a.admin_users())  # the Who can read tab without People only
+    everyone = len(who) + len(adm)  # the Who can read tab without People only
     if people:
         who = {u: w for u, w in who.items() if not a.is_disabled(u) and not a.is_service(u)}
-    admins = a.admin_users()
-    ad = sorted(u for u in admins if u not in who and not (people and (a.is_disabled(u) or a.is_service(u))))
+    admins, by_adm = a.admin_users(), Counter(u for r in rank for u in r["admin"])
+    ad = sorted(u for u in adm if not (people and (a.is_disabled(u) or a.is_service(u))))
     us = sorted(who, key=lambda u: (-len(who[u][0]), u)) + ad
 
     def reader(u):
         pr, w = a.profile.get(u) or {}, who.get(u)
+        first = None if w else next(r["object"] for r in rank if u in r["admin"])
         return dict(user=u, type=str(pr.get("TYPE") or "PERSON"), status=a.status(u), last_login_text=login(u)[0],
-                    objects=len(w[0]) if w else None, roles=sorted(w[1]) if w else admins[u],
-                    path=a.sens_path(u, [o for o in order if o in w[0]]) if w else None, via_admin=not w,
-                    admin_paths=[] if w else a.admin_paths(u, True))
+                    objects=len(w[0]) + by_adm[u] if w else by_adm[u], roles=sorted(w[1]) if w else admins[u],
+                    path=a.sens_path(u, [o for o in order if o in w[0]]) if w else a.admin_ways_to(first, a.READ_PRIVS)[u][0],
+                    via_admin=not w, admin_paths=[] if w else a.admin_paths(u, True))
 
     def parts(r):  # the bar of "Who can read": each reader once
         n = sum(u in idle for u in r["people"])
@@ -3188,7 +3196,7 @@ def review_ctx(p):
     ents.sort(key=lambda e: (type_rank(e[0][4] or ""), e[0][1], e[0][2], e[0][3]))
     adm = [(x["user"], {k: x[k] for k in ("user_type", "status", "last_login", "privileges", "classes")}, x["granted"], "")
            for x in rv["admins"] if not (active and x["status"] == "disabled")]
-    ents.append(((None, db if db != "*" else "(every database)", "", "(every object, through an admin role)", "", "", None), adm))
+    ents.append(((None, db if db != "*" else "(every database)", "", "(what their admin roles reach through real links)", "", "", None), adm))
     return dict(dbs=dbs, db=db, sc=sc, ob=ob, active=active, rv=rv, ents=[e for e in ents if e[1]])
 
 
@@ -3419,7 +3427,7 @@ def answer(n, k, name):
     """One-line answer of a search hit: "reads 6 · changes 5 · owns 2" for a person or role (reach only, fast), for an
     object its people and admin holders as the Object page counts them (split_users)."""
     if k == "object":
-        s = a.split_users(set().union(*(a.ups(r)[1] for r, _, _ in a.on.get(n, []))), a.admin_users())
+        s = a.split_users(set().union(*(a.ups(r)[1] for r, _, _ in a.on.get(n, []))), a.admin_readers(n))
         n_ = len(s["people"])
         return f"{n_} {'person' if n_ == 1 else 'people'} + {plural(len(s['admin']), 'admin holder')}"
     c = a.reach_counts(name, k == "user")

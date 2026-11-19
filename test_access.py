@@ -1832,7 +1832,7 @@ def test_blocked():  # Can they? / Who has access: the privilege without USAGE o
     assert a.can("DW_DEV_01", "SELECT", o)["blocked"] == []  # the write role it also reaches has the schema
     assert a.can("GRP_DW_READERS", "SELECT", o, is_user=False)["blocked"] == [("SCHEMA", "DW.SANDBOX")]
     assert a.can("HR_01", "SELECT", "HR.PAYROLL.TBL_PAY_00")["blocked"] == []
-    assert a.can("ADMIN_01", "USAGE", "SHARED.STAGE")["blocked"] == []  # an admin role inherits every role
+    assert a.can("ADMIN_01", "USAGE", "SHARED.STAGE")["blocked"] == []  # an admin holder is never reported as blocked
     assert a.can(T + "SHARED_STAGE_READ", "USAGE", "SHARED.STAGE", is_user=False)["blocked"] == [("DATABASE", "SHARED")]
     assert a.can("ANALYST_01", "USAGE", "WH_SALES_XS")["blocked"] == []  # an account object has no container
     assert a.containers("DW.SANDBOX") == [("DATABASE", "DW")] and a.containers("DW") == [] == a.containers("WH_SALES_XS")
@@ -1840,7 +1840,7 @@ def test_blocked():  # Can they? / Who has access: the privilege without USAGE o
     w = a.who_has(o)
     by = {x["name"]: x for x in w["people"] + w["roles"]}
     assert by["DW_BI_01"]["blocked"] == by["GRP_DW_READERS"]["blocked"] == "no schema USAGE" and by["DW_BI_01"]["level"] == "read"
-    assert by["DW_DEV_01"]["blocked"] is None and by["OPS_01"]["blocked"] is None
+    assert by["DW_DEV_01"]["blocked"] is None and "OPS_01" not in by  # DW's database roles are not below SYSADMIN
     g = a.same_paths(w["people"])
     assert any(x["blocked"] for x in g) and all(x["blocked"] is None for x in g if "DW_DEV_01" in x["names"])
     assert all(x["blocked"] is None for x in a.who_has("SALES.CORE.TBL_CUSTOMER")["people"])
@@ -1857,7 +1857,8 @@ def test_who_has():  # screen 2: one entry per user / role at its highest step, 
     by = {x["name"]: x for x in w["people"]}
     assert by["ENGINEER_01"]["level"] == "change" and by["ENGINEER_01"]["first"] == F + "ENGINEER" and by["ENGINEER_01"]["ways"] > 1
     assert by["SVC_DEPLOY"]["level"] == "own" and by["ANALYST_01"]["privileges"] == ["SELECT"]
-    assert by["OPS_01"]["level"] == "admin" and by["OPS_01"]["path"] == ["OPS_01", "SYSADMIN"] and by["OPS_01"]["first"] is None
+    assert by["OPS_01"]["level"] == "admin" and by["OPS_01"]["path"][:2] == ["OPS_01", "SYSADMIN"] and by["OPS_01"]["first"] == "SYSADMIN"
+    assert by["OPS_01"]["path"][-1] == "SALES.CORE.TBL_CUSTOMER" and by["OPS_01"]["holder"] in a.admin_below("SYSADMIN")
     assert [x["level"] for x in w["people"]] == sorted((x["level"] for x in w["people"]), key=lambda l: -a.OBJ_LEVELS.index(l))
     assert {x["name"] for x in w["roles"]} >= {F + "ENGINEER", T + "SALES_CORE_READ"} and all(x["users"] >= 0 for x in w["roles"])
     assert a.obj_level("USAGE", "WAREHOUSE") == "use" and a.obj_level("OPERATE", "WAREHOUSE") == "change"
@@ -1871,6 +1872,30 @@ def test_who_has():  # screen 2: one entry per user / role at its highest step, 
     em = next(c for c in cols if c["column"] == "EMAIL")
     assert em["policies"] and em["masked"] and "ENGINEER_01" in em["clear"]
     assert next(c for c in seen["ANALYST_01"] if c["column"] == "EMAIL")["state"] == "masked"
+
+
+def test_admin_real_links():  # admin roles reach what their real role links reach, not every object
+    sys_ = a.admin_below("SYSADMIN")
+    assert F + "ENGINEER" in sys_ and "GRP_DW_READERS" not in sys_ and "DW.SC_R_SANDBOX" not in sys_
+    assert set(a.admin_below("ACCOUNTADMIN")) >= set(sys_) | set(a.admin_below("SECURITYADMIN"))
+    assert not a.admin_objects("SECURITYADMIN") and not a.admin_objects("USERADMIN") and not a.admin_objects("ORGADMIN")
+    o = "DW.SANDBOX.TBL_SANDBOX_01"  # granted to DW's database roles, held by group roles only: below no admin role
+    assert a.admin_via(o) == {} and a.admin_readers(o) == {} and a.object_stats(o)["admin_users"] == 0
+    assert not {"ADMIN_01", "OPS_01"} & {x["name"] for x in a.who_has(o)["people"]}
+    assert not {"ADMIN_01", "OPS_01"} & {x["user"] for x in a.matrix(o)}
+    c = "SALES.CORE.TBL_CUSTOMER"
+    assert set(a.admin_readers(c)) == {"ADMIN_01", "OPS_01"} and a.admin_readers(c)["ADMIN_01"] == ["SYSADMIN"]
+    d = a.fake()
+    d["USER_ROLE"].append(dict(USER_NAME="SEC_ONLY", ROLE_NAME="SECURITYADMIN", GRANTED_BY="SECURITYADMIN"))
+    a.build(d)
+    assert a.admin_users()["SEC_ONLY"] == ["SECURITYADMIN"]  # still an admin holder, shown red
+    assert "SEC_ONLY" not in a.admin_readers(c) and "SEC_ONLY" not in {x["name"] for x in a.who_has(c)["people"]}
+    assert all("SEC_ONLY" not in r["admin"] + r["users"] for r in a.sensitive_rank())
+    assert "SEC_ONLY" not in a.flow_sets()["group_of"] and "SEC_ONLY" not in {x["user"] for x in a.matrix(c)}
+    assert not a.review_grid()["rows"] or "SEC_ONLY" not in {r["user"] for r in a.review_grid()["rows"]}
+    assert "SECURITYADMIN" in next(r["object"] for r in a.review() if r["user"] == "SEC_ONLY")
+    assert {x["name"] for x in a.admin_access()["people"]} >= {"SEC_ONLY", "OPS_01"}
+    a.build(a.fake())
 
 
 def test_nearest():  # screens 3, 12, 15: lanes and cuts, nearest ways in, suggested role, approver
@@ -1940,7 +1965,9 @@ def test_graph_see_compare():  # screens 4, 7, 9: access graph, what they see, c
     assert [lab for lab, _ in g["lanes"]][0] == "People" and g["lanes"][-1] == ("Table", [o])
     st = next(s for s, us in g["stacks"].items() if "ANALYST_01" in us)
     assert set(g["stacks"][st]) == {"ANALYST_01", "ANALYST_02"} and (st, "GRP_ANALYSTS") in cls
-    assert g["risky"][("OPS_01", "SYSADMIN")] == "admin" and g["people"][o] and g["leads"]["GRP_ANALYSTS"] == {o}
+    st = next(s for s, us in g["stacks"].items() if "OPS_01" in us)  # OPS_01 and ADMIN_01 both come through SYSADMIN
+    assert g["risky"][(st, "SYSADMIN")] == "admin" and g["people"][o] and g["leads"]["GRP_ANALYSTS"] == {o}
+    assert ("SECURITYADMIN", o) not in cls  # SECURITYADMIN reads no data: nothing is granted below it
     lane = {n: i for i, (_, ns) in enumerate(g["lanes"]) for n in ns}
     assert lane["GRP_ANALYSTS"] == 1 and lane[F + "ANALYST"] == 1  # shortest step: ENGINEER_01 holds it directly
     assert not a.access_graph("object", o, same=False)["stacks"]

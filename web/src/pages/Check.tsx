@@ -281,7 +281,7 @@ function Answer({ d }: { d: CheckPage }) {
       )}
       {d.status && d.status !== "active" && <Banner tone="warn" title={`User is ${d.status}`} lines={d.dormant_days ? [`No login for ${d.dormant_days} days.`] : []} />}
       {d.admin_paths.length > 0 && (
-        <Banner tone="bad" title={`Admin roles give this ${d.subject.user ? "user" : "role"} everything`} lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
+        <Banner tone="bad" title={`Reached through the roles granted to an admin role`} lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
       )}
       {d.owner.length > 0 && (
         <Card title="Through ownership" sub="The owner of an object can do everything on it">

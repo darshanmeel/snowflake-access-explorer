@@ -6,7 +6,7 @@ export const TITLE: Record<ObjLevel, string> = {
   admin: "Admin", own: "Owns", change: "Can change", read: "Read only", use: "Can use", names: "Can see names",
 };
 export const NOTE: Record<ObjLevel, string> = {
-  admin: "Admin roles inherit every role, so they need no grant on this object",
+  admin: "Reached through the roles granted to an admin role (its real links)",
   own: "OWNERSHIP: every privilege, and can grant it on",
   change: "INSERT, UPDATE, DELETE, or MODIFY / OPERATE",
   read: "SELECT or READ",
@@ -34,7 +34,7 @@ export function stepsOf(e: WhoEntry, kinds: Record<string, string>, disabled = f
     if (i === 0 && disabled) kind += " · disabled";
     if (n === e.holder && end < p.length && i > 0 && e.privileges.length) kind += ` · grants ${e.privileges.join(", ")}`;
     if (n === "PUBLIC") kind = "Everyone (PUBLIC)" + (n === e.holder && e.privileges.length ? ` · grants ${e.privileges.join(", ")}` : "");
-    if (k === "admin") kind = "Admin role · inherits every role";
+    if (k === "admin") kind = "Admin role · through the roles granted to it";
     return { name: n.replace(/ \(user\)$/, ""), kind };
   });
   if (end < p.length) out.push({ name: p[p.length - 1], kind: e.privileges.length ? e.privileges.join(", ") : "Object" });

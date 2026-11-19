@@ -41,7 +41,7 @@ describe("Can they? helpers", () => {
     expect(warehouseNote({ names: ["WH_A"], total: 1, admin: false })).toEqual({ text: "Can run queries on warehouse WH_A", bad: false });
     expect(warehouseNote({ names: ["WH_A", "WH_B"], total: 5, admin: false }).text).toBe("Can run queries on warehouses WH_A, WH_B and 3 more");
     expect(warehouseNote({ names: [], total: 0, admin: false })).toEqual({ text: "No warehouse it can use: blocked to run queries", bad: true });
-    expect(warehouseNote({ names: [], total: 0, admin: true }).bad).toBe(false);
+    expect(warehouseNote({ names: ["WH_A"], total: 1, admin: true })).toEqual({ text: "Can run queries on warehouse WH_A, some through an admin role", bad: false });
   });
   it("names the nearest ways and warns", () => {
     expect(nearestTitle(near({}))).toBe("Get role F_X");

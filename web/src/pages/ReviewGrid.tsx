@@ -122,7 +122,7 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
                 <div role="row" className="ae-rgrid-row ae-rgrid-group" style={{ gridTemplateColumns: tpl }}>
                   <span className="ae-rgrid-who"><b>Admin holders · {admins.length} people</b>
                     <span className="ae-muted ae-small" title={admins.join(", ")}>{admins[0]}{admins.length > 1 ? ` +${admins.length - 1}` : ""}</span></span>
-                  <span className="ae-gcell ae-lvl-admin" style={{ gridColumn: `span ${d.columns.length}` }}>Admin on every object: an admin role inherits every role</span>
+                  <span className="ae-gcell ae-lvl-admin" style={{ gridColumn: `span ${d.columns.length}` }}>Admin on every object shown: reached through the roles granted to an admin role</span>
                   <Dec who={`the ${admins.length} admin holders`} v={admins.every((u) => dec[u] === "keep") ? "keep" : admins.every((u) => dec[u] === "revoke") ? "revoke" : undefined}
                     pick={(v) => decideAll(admins, v)} />
                 </div>

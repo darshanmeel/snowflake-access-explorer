@@ -100,7 +100,7 @@ export function SensitivePageView() {
                 columns={[
                   col("u", "User", (r: R) => r.user, { render: (r: R) => <NameLink id={r.user} refs={d.refs} /> }),
                   col("t", "Type", (r: R) => r.type), col("s", "Status", (r: R) => r.status), col("l", "Last login", (r: R) => r.last_login_text),
-                  col("ob", "Objects", (r: R) => r.objects ?? "every object (admin role)", { num: true }),
+                  col("ob", "Objects", (r: R) => r.objects ?? "through an admin role", { num: true }),
                   col("ro", "Via roles", (r: R) => r.roles.join(", "), { wrap: "truncate" }),
                   pathCol<R>(d.refs),
                 ]} />

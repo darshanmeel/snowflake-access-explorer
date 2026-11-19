@@ -16,7 +16,7 @@ describe("who has access", () => {
     expect(s).toEqual([{ name: "ENGINEER_01", kind: "User" }, { name: "F_ENGINEER", kind: "Functional role" },
       { name: "T_W", kind: "Technical role · grants INSERT, SELECT" }, { name: "DB.S.T", kind: "INSERT, SELECT" }]);
     const a = stepsOf(e("OPS_01", "admin", ["OPS_01", "SYSADMIN"], []), kinds, true);
-    expect(a).toEqual([{ name: "OPS_01", kind: "User · disabled" }, { name: "SYSADMIN", kind: "Admin role · inherits every role" }]);
+    expect(a).toEqual([{ name: "OPS_01", kind: "User · disabled" }, { name: "SYSADMIN", kind: "Admin role · through the roles granted to it" }]);
   });
   it("names a group of people with the same route", () => {
     expect(sameLabel(["A", "B", "C"], ["PUBLIC", "WH"])).toBe("3 people via PUBLIC (everyone)");

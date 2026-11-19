@@ -63,7 +63,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   counts and rules (`a.hidden`), drawn as one fold box under PUBLIC; `builtin=1` shows them. Never rule 9 / 13 findings.
 - What if (`a.what_if`): simulation only, restores every lookup afterwards; prints REVOKE / IaC text, never runs it.
 - Admin roles `ACCOUNTADMIN`, `SECURITYADMIN`, `SYSADMIN`, `USERADMIN`, `ORGADMIN`: hide the "every role -> SYSADMIN"
-  hierarchy. Show any user or role that holds an admin role in red, with its path.
+  hierarchy in graphs (`a.admin_links`, kept out of the walks). An admin role reaches only what its real links reach
+  (`a.admin_below`): ACCOUNTADMIN = SYSADMIN + SECURITYADMIN + its own grants, SYSADMIN = the roles granted to it;
+  SECURITYADMIN / USERADMIN / ORGADMIN read no data (`a.ADMIN_POWER`). Show any user or role that holds an admin role in red, with its path.
   Show account-level privileges (MANAGE GRANTS, CREATE DATABASE, ...) in red too.
 
 ## Code style

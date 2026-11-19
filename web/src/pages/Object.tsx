@@ -247,7 +247,7 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
   const ch = changeOfPath(e.path, d.refs.kinds);
   const sum = gone ? "Disabled, but the grants are still there"
     : e.blocked ? `Blocked: ${e.blocked}, so Snowflake refuses the ${e.privileges.join(", ")}`
-    : e.level === "admin" && !e.privileges.length ? "An admin role inherits everything" : `${TITLE[e.level]}, ${plural(steps.length - 1, "step")} away`;
+    : e.level === "admin" && !e.privileges.length ? "Through the roles granted to an admin role" : `${TITLE[e.level]}, ${plural(steps.length - 1, "step")} away`;
   return (
     <Card title={`How ${e.name} gets in`} sub={sum}>
       {d.object.id && <HowGraph who={role ? { role: e.name } : { name: e.name }} obj={d.object.id} level={e.level} key={e.name} />}
@@ -340,7 +340,7 @@ export function ObjectDetail() {
               {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
             </Card>
             {d.admin_paths.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_paths.map((p, i) => <span key={i} className="ae-fd-path"><PathCell path={p} refs={d.refs} /><WhatIfButton ch={[{ op: "revoke_role_from_user", role: p[1], user: p[0].replace(/ \(user\)$/, "") }]} /></span>)}>
-              <p className="ae-muted">An admin role inherits every role, so these users reach this object without a path drawn below.
+              <p className="ae-muted">These users reach this object through the roles granted to an admin role; those links are not drawn below.
                 {d.admin_total > d.admin_paths.length && <> First {d.admin_paths.length} of {d.admin_total} paths: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button>.</>}</p>
             </Banner>}
             <CutBanner capped={d.capped} />
