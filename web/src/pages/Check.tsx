@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { CheckPage, ListItem, Path, Refs } from "../api/types";
-import { Banner, Card, CodeOutput, DataTable, EmptyState, KpiRow, NameList, Tabs } from "../components";
+import { Banner, Card, CodeOutput, DataTable, EmptyState, MiniBar, NameList, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
 import { col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
@@ -55,7 +55,7 @@ function Body({ d }: { d: CheckPage }) {
           <div>
             <div className="ae-verdict-word">{WORD[d.verdict]}{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}</span>}
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
-            <div className="ae-verdict-line">{verdictLine(d)}</div>
+            <div className="ae-verdict-line">{answerLine(d)}</div>
           </div>
         </div>
         <ul className="ae-privrow" aria-label={`Privileges on ${d.object}`}>
@@ -73,6 +73,15 @@ function Body({ d }: { d: CheckPage }) {
       {at === "layers" && <Layers d={d} />}
     </>
   );
+}
+
+/** The one answer sentence: routes (never "paths") and the shortest depth; ownership or an admin role say how. */
+export function answerLine(d: CheckPage): string {
+  if (d.verdict !== "yes") return verdictLine(d);
+  if (!d.lanes_total) return d.answer.text;
+  const depth = d.answer.stats.find(([l]) => l === "Shortest depth")?.[1];
+  const line = verdictLine(d);
+  return `${line[0].toUpperCase()}${line.slice(1)}${typeof depth === "number" ? ` · shortest ${depth} role${depth === 1 ? "" : "s"} deep` : ""}.`;
 }
 
 const KIND_WORD: Record<string, string> = {
@@ -178,6 +187,9 @@ function NearestList({ d, first }: { d: CheckPage; first?: boolean }) {
             <div className="ae-near-foot">
               <div>
                 <b>{nearestTitle(n)}</b> · <span className="ae-muted">{nearestNote(n, d.approver)}</span>
+                {n.extra > 0 && <div className={n.extra >= WIDE ? "ae-warn-word" : "ae-muted"}>
+                  <MiniBar of={n.extra + 1} parts={[{ key: "need", label: "Needed", value: 1, cls: "lvl-read" }, { key: "extra", label: "Also brings", value: n.extra, cls: n.extra >= WIDE ? "medium" : "low" }]}
+                    text={`${(n.extra + 1).toLocaleString()} privileges, you need 1`} />{n.extra >= WIDE && " · much more than asked for"}</div>}
                 {n.broad && <div className="ae-warn-word">Too broad: {n.broad}. Not recommended.</div>}
               </div>
               <div className="ae-row">
@@ -189,6 +201,8 @@ function NearestList({ d, first }: { d: CheckPage; first?: boolean }) {
                 <button type="button" className="ae-btn" title="Everything this role gives: the effect of granting it" onClick={() => c.nav("access", { role: n.role })}>What it brings</button>
               </div>
             </div>
+            {n.change && (i === 0 ? <CodeOutput changes={[n.change]} name={`grant_${n.role.toLowerCase()}`} />
+              : <details className="ae-near-sql"><summary>Grant text</summary><CodeOutput changes={[n.change]} name={`grant_${n.role.toLowerCase()}`} /></details>)}
           </div>
         ))}
       </div>
@@ -196,6 +210,8 @@ function NearestList({ d, first }: { d: CheckPage; first?: boolean }) {
     </Card>
   );
 }
+
+const WIDE = 10; // a way in that brings this many other privileges is flagged: far more than the one asked for
 
 function Layers({ d }: { d: CheckPage }) {
   return (
@@ -236,11 +252,11 @@ function Answer({ d }: { d: CheckPage }) {
   const a = d.answer;
   return (
     <>
-      <Banner tone={a.yes ? (a.tone === "warn" ? "warn" : a.tone === "low" ? "info" : "bad") : "info"} title={a.title} lines={[a.text]} />
+      {!a.yes && d.view !== "mine" && <NearestWays d={d} first />}
       <CutBanner capped={d.capped} no={d.verdict === "no"} />
       <GraphCard g={d.graph} refs={d.refs} />
       {d.paths.length > 0 && (
-        <Card title="Paths" sub={`${(d.paths_total ?? d.paths.length).toLocaleString()} way(s) to ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}${
+        <Card title="Routes, one row per privilege" sub={`${(d.paths_total ?? d.paths.length).toLocaleString()} row(s) for ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}${
           (d.paths_total ?? 0) > d.paths.length ? `: first ${d.paths.length} listed` : ""}`}>
           <DataTable csv="check_paths.csv" rows={d.paths}
             columns={[...(d.priv === "*" ? [col("p", "Privilege", (r: CheckPage["paths"][number]) => r.privilege, { wrap: "nowrap" })] : []),
@@ -250,7 +266,6 @@ function Answer({ d }: { d: CheckPage }) {
               col("act", "", () => "", { render: (r: CheckPage["paths"][number]) => { const ch = changeOfPath(r.path, d.refs.kinds); return ch && <WhatIfButton ch={[ch]} />; } })]} />
         </Card>
       )}
-      <KpiRow items={a.stats.map(([label, value]) => ({ label, value }))} />
       {d.status && d.status !== "active" && <Banner tone="warn" title={`User is ${d.status}`} lines={d.dormant_days ? [`No login for ${d.dormant_days} days.`] : []} />}
       {d.admin_paths.length > 0 && (
         <Banner tone="bad" title={`Admin roles give this ${d.subject.user ? "user" : "role"} everything`} lines={d.admin_paths.map((p, i) => <PathCell key={i} path={p} refs={d.refs} />)} />
@@ -266,7 +281,6 @@ function Answer({ d }: { d: CheckPage }) {
           {d.cuts.length ? `${d.cuts.length} place${d.cuts.length === 1 ? "" : "s"} to cut, each with its side effects and the text to apply.` : "each route needs its own cut."}
         </p>
       )}
-      {!a.yes && d.view !== "mine" && <NearestWays d={d} first />}
       {d.options.length > 0 && !d.lanes_total && <Card title="Ways to remove this access" sub="Text to copy into your infrastructure as code. This app never runs it."><RemoveOptions d={d} /></Card>}
       {d.read && (
         <Card title="What they see" sub={d.read.summary}>

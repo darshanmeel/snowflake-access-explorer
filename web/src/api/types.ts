@@ -650,6 +650,7 @@ export interface Nearest {
   also: Also[];
   rule1: boolean;
   broad: string | null;
+  change?: CompareChange | null; // the GRANT for a one-grant way (Can they?); null when a new account role is needed
 }
 
 /** Who Can they? / Request access asks about: a user or a role (separate namespaces; id as in a.uid). */
@@ -725,6 +726,7 @@ export interface SensitivePage {
   filters: { tag: string; db: string; people: boolean; tags: string[]; dbs: string[] };
   kpis: {
     objects: number;
+    readers: number; // every user who can read one (any status, service, only through an admin role): the Who can read tab
     columns: number;
     whole: number;
     people: number;
@@ -768,7 +770,9 @@ export interface SensitivePage {
   readers_offset: number;
   catalog: CatalogRow[] | null; // screen 8, most exposed first: only with show=catalog
   catalog_total: number;
-  row_list: { object: string; policies: string[] }[]; // tables with a row policy, sensitive or not: one page at row_offset
+  /** tables with a row policy, sensitive or not (t_q= searches table and policy names): one page at row_offset.
+   * all_rows / some_rows: roles the policy text lets see every row / some rows (others none); known false: not plain role checks */
+  row_list: { object: string; policies: string[]; sensitive: boolean; readers: number; all_rows: string[]; some_rows: string[]; known: boolean }[];
   row_total: number;
   row_offset: number;
   refs: Refs;
@@ -949,7 +953,9 @@ export interface LossGroup {
   kept: WhatIfObjectRow[]; // first 2
   lost_sum: number;
   kept_sum: number;
-  text: string;
+  where: { where: string; objects: number; privileges: string[] }[]; // lost per schema (database, account), most first
+  where_total: number;
+  text: string; // one short sentence: who loses how much where
 }
 
 export interface WhatIfFinding {
@@ -1111,11 +1117,14 @@ export interface WhoEntry {
   depth: number | null;
 }
 
+export type WhoState = "active" | "dormant" | "disabled" | "service";
+
 export interface WhoPerson extends WhoEntry {
   id: string;
   admin: string[];
   status: UserStatus;
   service: boolean;
+  state: WhoState; // the People filter (st=): service before active / dormant (never logged in too)
   days: number | null;
   login: string;
   mark: string;
@@ -1141,12 +1150,13 @@ export interface WhoPage {
     sensitive: boolean; tags: string[]; columns: number; masking: string[]; row_policies: string[]; owners: string[]; owner_note: string;
   };
   people: WhoPerson[]; // the first 200 matching q= (plus as= and sel=); shown counts every match
-  shown: { people: number; roles: number; groups: number };
+  shown: { people: number; roles: number; groups: number }; // with q= and st=
+  st: WhoState | ""; // people of one state only, filtered before the cap
   /** A Streamlit app: it runs with its owner's rights, so viewers see what the owner role reads. */
   app: { owner: string[]; sensitive: Record<string, string[]>; holders: Record<string, string[]>; exposed: Record<string, string[]> } | null;
   roles: WhoRole[];
   groups: { level: ObjLevel; privileges: string[]; route: string[]; names: string[] }[];
-  counts: { levels: Record<ObjLevel, number>; people: number; roles: number; disabled: number; dormant: number };
+  counts: { levels: Record<ObjLevel, number>; people: number; roles: number; disabled: number; dormant: number; states: Partial<Record<WhoState, number>> };
   columns: WhoColumn[];
   default_user: string | null;
   refs: Refs;

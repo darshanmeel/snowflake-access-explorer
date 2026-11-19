@@ -134,7 +134,7 @@ function Result({ d }: { d: WhatIfPage }) {
   ];
   return (
     <>
-      <Banner tone={k.users || k.unreached ? "warn" : "info"} title="If these changes were made" lines={[d.summary, "A simulation: nothing changes in Snowflake."]} />
+      <Banner tone={k.unreached || k.orphans ? "warn" : "info"} title="If these changes were made" lines={[d.summary, "A simulation: nothing changes in Snowflake."]} />
       <KpiRow items={[
         { label: "Users lose access", value: k.users }, { label: "Objects lost", value: k.objects }, { label: "Kept another way", value: k.kept },
         { label: "Objects nobody reaches", value: k.unreached }, { label: "Roles orphaned", value: k.orphans },

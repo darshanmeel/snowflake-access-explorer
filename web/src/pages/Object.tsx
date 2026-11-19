@@ -2,7 +2,7 @@
 // (graph, by path / by user or role, users × privileges) is the default tab; the new list by level is next to it.
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
-import type { CheckPage, ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole } from "../api/types";
+import type { CheckPage, ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole, WhoState } from "../api/types";
 import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, Graph, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
@@ -15,6 +15,7 @@ import { changeOfPath, WhatIfButton } from "./Whatif";
 import { byLevel, NOTE, ORDER, sameLabel, stepsOf, TITLE } from "./who";
 import { doOf } from "./verdict";
 
+const STATES: [WhoState, string][] = [["active", "Active"], ["dormant", "Dormant"], ["disabled", "Disabled"], ["service", "Service"]];
 const STATUS: Record<string, string> = { active: "Active", dormant: "Dormant", never: "Never logged in", disabled: "Disabled" };
 const ini = (n: string) => { const w = n.match(/[A-Z]+|[0-9]+/g) ?? [n]; return w[0][0] + (w[1] ? (/\d/.test(w[1]) ? w[1].slice(-1) : w[1][0]) : ""); };
 const tagWord = (t: string) => (t.includes("SEMANTIC_CATEGORY") ? "" : t.split("=").pop());
@@ -27,7 +28,7 @@ export function ObjectPageView() {
   const admin = c.params.preset === "admin";
   // a big object sends the first people matching the search (wq), plus the person picked (as, sel)
   const s = useApi<WhoPage>("who", { view: c.view, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }),
-    q: c.params.wq, as: c.params.as, sel: c.params.sel });
+    q: c.params.wq, st: c.params.st, as: c.params.as, sel: c.params.sel });
   const id = s.data?.object.id ?? c.params.name ?? "";
   const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
   const type = c.params.type || undefined; // narrows the Object search only
@@ -166,6 +167,8 @@ function List({ d }: { d: WhoPage }) {
         </>}
         {(d.shown.people > d.people.length || d.shown.roles > d.roles.length || d.shown.groups > d.groups.length) &&
           <p className="ae-muted">First {roles ? d.roles.length : same ? d.groups.length : d.people.length} of {roles ? d.shown.roles : same ? d.shown.groups : d.shown.people}, the most access first: search to find the rest.</p>}
+        {!roles && n.people > 0 && <FilterChips label="People" value={d.st} onPick={(k) => c.set({ st: k || null, sel: null })}
+          items={[{ key: "", label: "Everyone", count: n.people }, ...STATES.filter(([k]) => n.states[k]).map(([key, label]) => ({ key, label, count: n.states[key] ?? 0 }))]} />}
         <ListToolbar search={q} onSearch={setQ}>
           {!roles && <Toggle label="Group people with the same path" on={same} onPick={(v) => c.set({ same: v ? "1" : "0" })} />}
         </ListToolbar>
@@ -267,7 +270,7 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
 
 /** Every path from the person or role to the object, drawn (Can they?'s graph for the step they have): the answer to
  * "how", shown as soon as someone is picked. */
-function HowGraph({ who, obj, level }: { who: Record<string, string>; obj: string; level: string }) {
+export function HowGraph({ who, obj, level }: { who: Record<string, string>; obj: string; level: string }) {
   const c = useApp();
   const s = useApi<CheckPage>("check", { ...who, obj, ...doOf(level), view: c.view });
   const o = useOpen(s.data?.refs);
@@ -323,8 +326,7 @@ export function ObjectDetail() {
           <>
             <Card title={o.id} sub={`${o.type.toLowerCase()}${o.sensitive ? " · sensitive" : ""}`}>
               <KpiRow items={[
-                { label: "People", value: k.people, caption: `${k.disabled} disabled · ${k.service} service` },
-                { label: "Admin", value: k.admin, tone: k.admin ? "bad" : null },
+                { label: "Users with access", value: k.people + k.disabled + k.service + k.admin, caption: `${k.people} people · ${k.disabled} disabled · ${k.service} service · ${k.admin} only through an admin role`, tone: k.admin ? "bad" : null },
                 { label: "Read / Write / Own", value: `${k.read} / ${k.write} / ${k.own}` },
                 { label: "Roles on the way", value: k.roles, caption: `${k.direct} direct holders` },
                 { label: "Longest chain", value: k.longest },
@@ -340,7 +342,7 @@ export function ObjectDetail() {
             <CutBanner capped={d.capped} />
             <GraphCard g={d.graph} refs={d.refs} />
             <Tabs active={part} onChange={setPart} tabs={[
-              { key: "who", label: "Who has access", count: d.grantees.total },
+              { key: "who", label: "By path", count: d.grantees.total },
               { key: "users", label: "Users × privileges", count: d.matrix.total },
               ...(d.sees ? [{ key: "sees", label: "What each role sees", count: d.sees.rows.length }] : []),
               ...(d.sensitivity ? [{ key: "sens", label: "Sensitivity", count: d.sensitivity.columns.length, tone: o.sensitive ? "warn" as const : null }] : []),
@@ -388,7 +390,7 @@ export function ObjectDetail() {
               </Card>
             )}
             {part === "who" && (
-              <Card title="Who has access" sub="Users that come in through the same chain are one row" right={
+              <Card title="By path" sub="Users and roles that come in through the same chain are one row" right={
                 <div className="seg">{d.tabs.map((t) => <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>{t.label} {t.count}</button>)}</div>}>
                 <GroupedGrantees key={tab} params={{ ...apiParams(c), name: o.id, tab }} total={d.tabs.find((t) => t.key === tab)?.count ?? 0}
                   kinds={d.refs.kinds} onOpen={op.open} csv={`${o.name}_grantees_${tab}.csv`} />

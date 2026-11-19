@@ -101,7 +101,8 @@ export function HomePageView() {
   const who: Who | null = first ? { kind: first.kind, id: first.id, name: first.name } : me ? { kind: "user", id: me, name: me } : null;
   return (
     <div className="ae-home">
-      <h2 className="ae-h1">Who can access what in Snowflake?</h2>
+      {s.data?.risks && s.data.cards && s.data.protection && <Verdict d={s.data} />}
+      <h2 className="ae-home-h">Who can access what in Snowflake?</h2>
       <div className="ae-bigsearch">
         <label className="ae-sr" htmlFor="ae-home-q">Search</label>
         <input id="ae-home-q" ref={box} type="search" className="ae-input" value={q} autoComplete="off"
@@ -178,6 +179,28 @@ export function HomePageView() {
         </>
       )}</Load>
     </div>
+  );
+}
+
+/** Home's answer first: one line of the account's state, each part a link to where it is acted on. */
+export function Verdict({ d }: { d: HomePage }) {
+  const c = useApp();
+  if (!d.risks || !d.cards || !d.protection || unread(c.meta, "grants")) return null;
+  const crit = d.risks.Critical ?? 0, top = crit + (d.risks.High ?? 0);
+  const rules = new Set([...Object.keys(d.rule_sev?.Critical ?? {}), ...Object.keys(d.rule_sev?.High ?? {})]).size;
+  const parts: { key: string; text: string; bad: boolean; open: () => void }[] = [
+    { key: "risk", bad: top > 0, open: () => c.nav("rules", { sev: crit ? "Critical" : "High" }),
+      text: top ? `${plural(top, crit ? "critical or high finding" : "high finding")}${rules ? ` in ${plural(rules, "rule")}` : ""}` : "No critical or high findings" },
+    { key: "admin", bad: d.cards.admins.total > 0, open: () => c.nav("rules", { part: "admins" }), text: plural(d.cards.admins.total, "admin holder") },
+    ...(unread(c.meta, "users") ? [] : [{ key: "stale", bad: d.protection.dormant > 0, open: () => c.nav("rules", { rule: "7" }),
+      text: `${d.protection.dormant.toLocaleString()} dormant or disabled ${d.protection.dormant === 1 ? "person reads" : "people read"} sensitive data` }]),
+    ...(unread(c.meta, "policies") ? [] : [{ key: "mask", bad: d.protection.unmasked_columns > 0, open: () => c.nav("rules", { rule: "6" }),
+      text: `${plural(d.protection.unmasked_columns, "sensitive column")} not masked` }])];
+  return (
+    <p className="ae-home-verdict" aria-label="At a glance">
+      {parts.map((x, i) => <span key={x.key}>{i > 0 && <span className="ae-muted" aria-hidden> · </span>}
+        <button type="button" className={`ae-link${x.bad ? " ae-tone-bad" : ""}`} onClick={x.open}>{x.text}</button></span>)}
+    </p>
   );
 }
 

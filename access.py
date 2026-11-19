@@ -5239,7 +5239,8 @@ def what_if(changes, cap=MAX_PATHS):
     revoke_role_from_user (role, user), revoke_role_from_role (role, grantee), revoke_priv (role, privilege, object),
     drop_role (role), empty_public (every grant to PUBLIC). cap: objects / roles listed per user (None: all; counts
     are always exact). Returns dict(changes [dict(change, label, iac, sql)], summary, counts, users [dict(user, status,
-    lost (privileges), objects (lost), lost_rows [dict(object, type, privileges, classes, path)], kept (privileges
+    lost (privileges), objects (lost), lost_rows [dict(object, type, privileges, classes, path)], lost_where
+    [dict(where, objects, privileges)]: every lost object per place, not capped, kept (privileges
     still reached through another path), kept_rows [... + via (the path left), through (its first role the old path
     did not use)], kept_roles [dict(role, path, via, through)]: roles right under a cut still reached)],
     objects [dict(object, type, sensitive, unreached, ownerless)], roles [dict(role, kind, orphan, unreached)],
@@ -5351,6 +5352,16 @@ def what_if(changes, cap=MAX_PATHS):
             out.append(row | dict(via=xs[0][3] + [o], through=through(row["path"], xs[0][3])) if len(xs[0]) > 3 else row)
         return out
 
+    def places(got):  # every lost object per place (database.schema, the database, or the account), most objects first
+        by = {}
+        for (pv, o), x in got.items():
+            db, sc, _ = split_name(o, x[0])
+            y = by.setdefault(f"{db}.{sc}" if sc and x[0] != "SCHEMA" else db or "account", dict(objects=set(), privileges=set()))
+            y["objects"].add(o)
+            y["privileges"].add(pv)
+        return [dict(where=k, objects=len(v["objects"]), privileges=sorted(v["privileges"]))
+                for k, v in sorted(by.items(), key=lambda kv: (-len(kv[1]["objects"]), kv[0]))]
+
     def through(old, new):  # the first role of the path left that the old path did not use
         return next((r for r in new[1:] if r not in old), new[1] if len(new) > 1 else new[0])
 
@@ -5359,7 +5370,7 @@ def what_if(changes, cap=MAX_PATHS):
         b_reach = before[u][0]
         if lost or kept or moved:
             us.append(dict(user=u, status=status(u), lost=len(lost), objects=len({o for _, o in lost}),
-                           lost_rows=rows(lost, b_reach), kept=len(kept), kept_rows=rows(kept, b_reach),
+                           lost_rows=rows(lost, b_reach), lost_where=places(lost), kept=len(kept), kept_rows=rows(kept, b_reach),
                            kept_roles=[dict(role=r, path=b_reach[r], via=p, through=through(b_reach[r], p))
                                        for r, p in sorted(moved.items())][:cap]))
     us.sort(key=lambda x: (-x["objects"], -x["lost"], x["user"]))

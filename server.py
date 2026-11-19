@@ -2170,7 +2170,11 @@ def who_data(o):
                     columns=len(a.sensitive_cols(o)) if data else 0,
                     masking=sorted({x["name"] for xs in ps["columns"].values() for x in xs}),
                     row_policies=[x["name"] for x in ps["rows"]], owners=s["owners"], owner_note=s["owner_note"])
+    # active people first within a level: on a big account most holders never log in or are disabled
+    w["people"] = sorted(w["people"], key=lambda x: (-a.OBJ_LEVELS.index(x["level"]), x["status"] != "active", x["name"]))
     for x in w["people"]:
+        x["state"] = ("disabled" if x["status"] == "disabled" else "service" if a.is_service(x["name"])
+                      else "active" if x["status"] == "active" else "dormant")
         x["id"] = a.uid(x["name"], True)
         x["login"], x["mark"] = login(x["name"])
         x["columns"] = seen.get(x["name"], [])
@@ -2180,6 +2184,7 @@ def who_data(o):
     return dict(o=o, head=head, people=w["people"], roles=w["roles"], groups=a.same_paths(w["people"]),
                 app=a.app_exposure(o) if o and a.kinds.get(o) == "STREAMLIT" else None, columns=cols,
                 counts=dict(levels=levels, people=len(w["people"]), roles=len(w["roles"]),
+                            states=dict(Counter(x["state"] for x in w["people"])),
                             disabled=sum(x["status"] == "disabled" for x in w["people"]),
                             dormant=sum(x["status"] in ("dormant", "never") and not a.is_service(x["name"])
                                         for x in w["people"])))
@@ -2192,17 +2197,21 @@ def who_page(p, view):
     MAX_WHO_GROUPS groups; shown counts the people and roles that match."""
     x = who_all(p, view)
     q = p.get("q", "").lower()
+    st = p.get("st") if p.get("st") in ("active", "dormant", "disabled", "service") else ""  # people: before the cap
+    state = {e["name"]: e["state"] for e in x["people"]}
+    ok = lambda n: q in n.lower() and (not st or state.get(n) == st)
     hit = lambda e: q in e["name"].lower()
     du = None if view == "shared" else (a.users[0] if a.users else None)  # shared: nobody until one is picked
-    groups = [g for g in x["groups"] if any(q in n.lower() for n in g["names"])][:MAX_WHO_GROUPS]
-    people = [e for e in x["people"] if hit(e)]
+    every = [g | dict(names=[n for n in g["names"] if ok(n)]) for g in x["groups"]]
+    every = [g for g in every if g["names"]]
+    groups = every[:MAX_WHO_GROUPS]
+    people = [e for e in x["people"] if ok(e["name"])]
     roles = [e for e in x["roles"] if hit(e)]
     want = {p.get("as") or du, p.get("sel")} | {g["names"][0] for g in groups}
     sent = people[:MAX_WHO] + [e for e in x["people"] if e["name"] in want and e not in people[:MAX_WHO]]
     sel = [e for e in roles[MAX_WHO:] if e["name"] == p.get("sel")]
     return dict(view=view, object=x["head"], people=sent, roles=roles[:MAX_WHO] + sel, groups=groups,
-                shown=dict(people=len(people), roles=len(roles), groups=sum(any(q in n.lower() for n in g["names"])
-                                                                            for g in x["groups"])),
+                shown=dict(people=len(people), roles=len(roles), groups=len(every)), st=st,
                 app=x["app"], counts=x["counts"], columns=x["columns"], default_user=du)
 
 
@@ -2325,6 +2334,8 @@ def check_page(p, view):
     ask = pv if pv != ALL else a.basic_priv(k)
     # the slow part of a No (seconds on a big account): only when the Nearest ways in tab asks (near=1)
     near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o, is_user=user) if p.get("near") == "1" else None
+    for x in near or []:  # the grant text right on the answer; a new account role between is planned on Request access
+        x["change"] = a.with_sql(dict(op="grant", role=x["role"], to=x["to"], toUser=x["to_user"])) if x["cost"] == 1 else None
     layers = None
     if read:  # Partly: the grant is there, but a row policy returns nothing or columns are masked
         v = a.data_view(u, o, user)
@@ -2730,11 +2741,12 @@ def sensitive_page(p, view):
     or not (shared only), one page at t_offset=."""
     mine = view == "mine"
     gov = a.governance_kpis()["text"] if not mine else None
-    rt = list(a.row_tables().items()) if not mine else []
+    q = p.get("t_q", "").strip().upper()  # a table or policy name
+    rt = [(o, v) for o, v in a.row_tables().items() if not q or q in o.upper() or any(q in x.upper() for x in v)] if not mine else []
     tw, to = window(p, "t_offset", len(rt))
-    rows = dict(row_list=[dict(object=o, policies=v) for o, v in rt[tw]], row_total=len(rt), row_offset=to)
+    rows = dict(row_list=[row_policy_row(o, v) for o, v in rt[tw]], row_total=len(rt), row_offset=to)
     empty = dict(view=view, governance=gov, filters=dict(tag="", db="", people=False, tags=[], dbs=[]),
-                 kpis=dict(objects=0, columns=0, whole=0, people=0, admin=0, disabled=0, service=0, unmasked=0, stale=[],
+                 kpis=dict(objects=0, readers=0, columns=0, whole=0, people=0, admin=0, disabled=0, service=0, unmasked=0, stale=[],
                            stale_total=0),
                  objects=[], objects_total=0, objects_offset=0, readers=[], readers_total=0, readers_offset=0,
                  catalog=[], catalog_total=0) | rows
@@ -2757,6 +2769,7 @@ def sensitive_page(p, view):
 
     stale = sorted(u for u in who if not a.is_service(u) and u in idle)
     ppl, adm = every("people"), every("admin") - set(who)  # the tiles count every reader, People only or not
+    everyone = len(who) + sum(u not in who for u in a.admin_users())  # the Who can read tab without People only
     if people:
         who = {u: w for u, w in who.items() if not a.is_disabled(u) and not a.is_service(u)}
     admins = a.admin_users()
@@ -2783,7 +2796,7 @@ def sensitive_page(p, view):
     rw, ro = window(p, "r_offset", len(us))
     return dict(
         view=view, state="ok", governance=gov, filters=dict(tag=tg, db=db, people=people, tags=labels, dbs=dbs),
-        kpis=dict(objects=len(rank), columns=cols, whole=sum(not r["cols"] for r in rank), people=len(ppl), admin=len(adm),
+        kpis=dict(objects=len(rank), readers=everyone, columns=cols, whole=sum(not r["cols"] for r in rank), people=len(ppl), admin=len(adm),
                   disabled=len(every("disabled")), service=len(every("service")),
                   unmasked=sum(n - k for k, n in (r["masked"] for r in rank)), stale=stale[:NAMES], stale_total=len(stale)),
         objects=[dict(object=r["object"], database=r["database"], schema=r["schema"], name=r["name"], type=r["kind"],
@@ -2800,6 +2813,21 @@ def sensitive_page(p, view):
                       columns=r["columns"], unmasked=r["unmasked"], row_policies=r["row_policies"], readers=r["readers"],
                       clear=r["clear"], admin=len(r["admin"]))
                  for r in cat] if p.get("show") == "catalog" else None, catalog_total=len(cat), **rows)  # only for its tab
+
+
+def row_policy_row(o, names):
+    """A table with row policies: sensitive or not, how many users read it, and from the policy text which roles see
+    every row and which see some (all others see none); known False when a policy's logic is not plain role checks."""
+    see, known = {"all": set(), "some": set()}, True
+    for x in a.policies_of(o)["rows"]:
+        t = a.row_terms(x)
+        if t is None:
+            known = False
+            continue
+        for term in t:
+            see["some" if term["conds"] else "all"].update(r for g in term["roles"] for r, _ in g)
+    return dict(object=o, policies=names, sensitive=o in a.sensitive(), readers=len(a.readers(o)),
+                all_rows=sorted(see["all"]), some_rows=sorted(see["some"] - see["all"]), known=known)
 
 
 ROLES_SHOWN = 5  # roles listed per sensitive object (a big account has thousands); roles_total counts them
@@ -3049,19 +3077,22 @@ def loss_groups(us):
     sig = lambda rows: "|".join(sorted(f'{r["object"]}:{",".join(r["privileges"])}' for r in rows))
     by = {}
     for u in us:
-        by.setdefault((sig(u["lost_rows"]), sig(u["kept_rows"]), u["objects"]), []).append(u)
+        by.setdefault((sig(u["lost_rows"]), sig(u["kept_rows"]), u["objects"], str(u["lost_where"])), []).append(u)
     out = []
     for i, g in enumerate(sorted(by.values(), key=lambda g: (-len(g), -len(g[0]["lost_rows"])))):
         n, lost = len(g), g[0]["lost_rows"]
         who, verb = (g[0]["user"], "loses") if n == 1 else (f"{n} people", "lose")
-        what = [f'{", ".join(r["privileges"])} on {r["object"]}' for r in lost[:3]]
-        more = g[0]["objects"] - len(what)
-        tail = f" and {plural(more, 'more object')}" if more > 0 else ""
+        where = g[0]["lost_where"]
+        text = (f"{who} {verb} {', '.join(lost[0]['privileges'])} on {lost[0]['object']}" if g[0]["objects"] == 1 else
+                f"{who} {verb} access to {plural(g[0]['objects'], 'object')} in {plural(len(where), 'place')}" if lost else f"{who} {verb} nothing")
         out.append(dict(key=str(i), n=n, users=[dict(user=u["user"], status=u["status"]) for u in g[:WHATIF_USERS]],
                         off=sum(u["status"] != "active" for u in g), lost=lost[:3], kept=g[0]["kept_rows"][:2],
                         lost_sum=sum(u["lost"] for u in g), kept_sum=sum(u["kept"] for u in g),
-                        text=f'{who} {verb} {" and ".join(what)}{tail}' if what else f"{who} {verb} nothing"))
+                        where=where[:LOSS_WHERE], where_total=len(where), text=text))
     return out
+
+
+LOSS_WHERE = 5  # schemas (or database / account) a loss group lists; where_total counts them
 
 
 def object_impact(us):

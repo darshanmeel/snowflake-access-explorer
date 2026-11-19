@@ -70,6 +70,11 @@ export function LossGroups({ gs, total, changes, refs, max = 50 }: { gs: LossGro
                 first={n > 1 ? `${n} people` : undefined} onOpen={o.open} />)}
               {g.kept.slice(0, 2).map((r) => <span key={`k:${r.object}`} className="ae-muted ae-lgroup-kept">Keeps <span className="ae-mono">{r.object}</span>{r.through ? <> through <span className="ae-mono">{r.through}</span></> : ""}</span>)}
             </div>
+            {g.where.length > 1 || (g.where[0]?.objects ?? 0) > 1 ? (
+              <table className="ae-lgroup-where">
+                <tbody>{g.where.map((w) => <tr key={w.where}><td className="ae-mono">{w.where}</td><td className="ae-num">{w.objects.toLocaleString()} object{w.objects === 1 ? "" : "s"}</td><td>{w.privileges.join(" ")}</td></tr>)}</tbody>
+                {g.where_total > g.where.length && <tfoot><tr><td colSpan={3} className="ae-muted">and {g.where_total - g.where.length} more places: the CSV has every object</td></tr></tfoot>}
+              </table>) : null}
             {on && (
               <div className="ae-lgroup-who">
                 {g.users.map((u) => <button type="button" key={u.user} className={`ae-pchip${u.status === "active" ? "" : " ae-pchip-off"}`} onClick={() => o.open(`${u.user} (user)`)}

@@ -10,10 +10,13 @@ import { RolePageView } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick, PickFirst, unread } from "./common";
 import { ladderParts, recent, remember } from "./Home";
+import { HowGraph } from "./Object";
 import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
 
 const nameOf = (o: AccessObject) => o.label ?? o.object;
+/** A long role name cut in the middle, where technical role names differ least (T_DB_SCHEMA_..._READ). */
+export const mid = (s: string, n = 30) => (s.length > n ? `${s.slice(0, Math.ceil(n / 2) - 1)}…${s.slice(-Math.floor(n / 2))}` : s);
 const HEAT_MIN = 15; // the server's HEAT: more schemas than this get a search box
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -240,12 +243,13 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
   const [copied, setCopied] = useState(false);
   return (
     <div className="ae-how" role="row">
+      <HowGraph who={user ? { name: who } : { role: who }} obj={x.object} level={x.level ?? ""} />
       <div className="ae-muted">Shortest path</div>
       <div className="ae-how-path">
-        <span className="ae-pchip">{who}</span>
-        {steps.map((s) => <Fragment key={s}><span className="ae-arrow" aria-hidden>→</span><span className="ae-pchip">{s}</span></Fragment>)}
+        <span className="ae-pchip" title={who}>{mid(who)}</span>
+        {steps.map((s) => <Fragment key={s}><span className="ae-arrow" aria-hidden>→</span><span className="ae-pchip" title={s}>{mid(s)}</span></Fragment>)}
         <span className="ae-arrow" aria-hidden>→</span><span className="ae-privs">{x.privileges.join(" · ")}</span>
-        <span className="ae-arrow" aria-hidden>→</span><span className="ae-pchip ae-pchip-obj">{nameOf(x)}</span>
+        <span className="ae-arrow" aria-hidden>→</span><span className="ae-pchip ae-pchip-obj" title={x.object}>{mid(nameOf(x), 40)}</span>
       </div>
       <p>{x.ways > 1 ? `${x.ways - 1} other way${x.ways === 2 ? "" : "s"} lead here too, so removing one role may not remove the access.` : "This is the only way in: removing any role on it removes the access."}
         {x.columns.length > 0 && ` ${x.columns.map((col) => `${col.column} is ${col.state} (${col.reason})`).join("; ")}.`}</p>

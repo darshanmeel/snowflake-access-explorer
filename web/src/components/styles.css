@@ -138,6 +138,7 @@ button.ae-path-name:hover { text-decoration: underline; }
 /* legend */
 .ae-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; margin-top: 8px; }
 .ae-legend-item { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+@media (max-width: 480px) { .ae-legend-item { white-space: normal; flex-wrap: wrap; } } /* a phone: the severities line wraps */
 .ae-swatch { display: inline-block; width: 22px; height: 14px; }
 
 /* privilege tabs */

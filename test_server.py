@@ -1661,6 +1661,43 @@ def test_correct_answers():
     assert js("/api/sensitive?people=1")["kpis"] == js("/api/sensitive")["kpis"]
 
 
+
+def test_answer_first():  # each screen's answer: the grant on Can they?, one reader count, row policy roles, who filters
+    from urllib.parse import quote
+    n = js("/api/check?name=FIN_09&obj=HR.PEOPLE.TBL_EMPLOYEE&do=read&near=1")["nearest"]
+    one = [x for x in n if x["cost"] == 1]
+    assert one and all(x["change"]["sql"].startswith("GRANT ") and x["role"] in x["change"]["sql"] for x in one)
+    assert all(x["change"] is None for x in n if x["cost"] > 1)
+    s = js("/api/sensitive")
+    assert s["kpis"]["readers"] == s["readers_total"]  # the tile and the Who can read tab count the same users
+    k = s["kpis"]
+    assert k["readers"] == k["people"] + k["disabled"] + k["service"] + k["admin"]
+    r = {x["object"]: x for x in s["row_list"]}
+    assert r["FINANCE.REPORT.TBL_REVENUE"]["sensitive"] and r["FINANCE.REPORT.TBL_REVENUE"]["readers"] > 0
+    assert r["SALES.CLEAN.TBL_ORDER"]["all_rows"] and r["SALES.CLEAN.TBL_ORDER"]["some_rows"] and not r["SALES.RAW.TBL_ORDER_RAW"]["known"]
+    q = js("/api/sensitive?t_q=rap_region")
+    assert [x["object"] for x in q["row_list"]] == ["FINANCE.REPORT.TBL_REVENUE"] and q["row_total"] == 1
+    o = "SALES.CORE.TBL_CUSTOMER"
+    w, d = js(f"/api/who?name={o}"), js(f"/api/object?name={o}")
+    assert w["counts"]["people"] == sum(d["kpis"][x] for x in ("people", "disabled", "service", "admin")) == d["matrix"]["total"]
+    assert sum(w["counts"]["states"].values()) == w["counts"]["people"]
+    for st, n in w["counts"]["states"].items():
+        f = js(f"/api/who?name={o}&st={st}")
+        assert f["st"] == st and f["shown"]["people"] == n and all(x["state"] == st for x in f["people"])
+    lv = [x["level"] for x in w["people"]]
+    for l in set(lv):  # active first within a level
+        xs = [x["status"] != "active" for x in w["people"] if x["level"] == l]
+        assert xs == sorted(xs)
+    ch = quote(json.dumps([{"op": "drop_role", "role": a.FUNC + "ENGINEER"}]))
+    g = js(f"/api/whatif?changes={ch}")["groups"]
+    assert g and all(x["where_total"] >= len(x["where"]) and len(x["text"]) < 120 for x in g)
+    plan = [{"op": "drop_role", "role": a.FUNC + "ENGINEER"}]
+    full, one = a.what_if(plan, None)["users"], a.what_if(plan, 1)["users"]  # places count every object, not the listed ones
+    assert [u["lost_where"] for u in one] == [u["lost_where"] for u in full]
+    assert all(sum(w["objects"] for w in u["lost_where"]) == u["objects"] for u in full)
+    assert any(len(u["lost_rows"]) < u["objects"] for u in one)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
