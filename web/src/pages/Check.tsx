@@ -23,7 +23,7 @@ export function CheckPageView() {
       <div className="ae-ask" role="group" aria-label="Question">
         <span className="ae-ask-w">Can</span>
         {mine ? <span className="ae-mono ae-ask-w">{s.data?.user ?? "you"}</span>
-          : <Pick label="Person or role" value={name} user={!asked.role} what="users,roles" onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v]), obj: null })} />}
+          : <Pick label="Person or role" value={name} user={!asked.role} what="users,roles" onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v]), obj: c.params.obj ?? s.data?.object ?? null })} />}
         {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v, do: null })}
           options={s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p])} />}
         <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, priv: null })} />
