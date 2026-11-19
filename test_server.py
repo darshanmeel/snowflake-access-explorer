@@ -259,6 +259,17 @@ def test_check():
     adm = js(f"/api/check?role=SYSADMIN&obj={e}")
     assert adm["answer"]["how"] in ("admin", "paths", "owner") and adm["verdict"] != "no"
     get("/api/check?role=NOPE", 404)
+    sb = "DW.SANDBOX.TBL_SANDBOX_01"  # fake: the read role has no USAGE on its schema
+    b = js(f"/api/check?name=DW_BI_01&obj={sb}&priv=SELECT", ["blocked", "unblock", "warehouses"])
+    assert b["verdict"] == "blocked" and not b["answer"]["yes"] and b["answer"]["how"] == "blocked" and b["lanes_total"]
+    assert b["answer"]["title"] == "Has SELECT, but no USAGE on schema DW.SANDBOX: blocked" and b["read"] is None
+    assert b["blocked"] == [dict(type="SCHEMA", name="DW.SANDBOX")] and "GRANT USAGE ON SCHEMA DW.SANDBOX TO DATABASE ROLE DW.SC_R_SANDBOX;" == b["unblock"]["sql"]
+    assert "WH_SALES_XS" in b["warehouses"]["names"] and b["warehouses"]["total"] >= 1 and not b["warehouses"]["admin"]
+    assert js(f"/api/check?name=DW_BI_01&obj={sb}")["verdict"] == "blocked"  # every privilege held: blocked as well
+    assert js(f"/api/check?role=GRP_DW_READERS&obj={sb}&priv=SELECT")["verdict"] == "blocked"
+    ok = js(f"/api/check?name=DW_DEV_01&obj={sb}&priv=SELECT")
+    assert ok["verdict"] == "yes" and ok["blocked"] == [] and ok["unblock"] is None
+    assert js(f"/api/check?name=OPS_01&obj={sb}&priv=SELECT")["warehouses"]["admin"]
     for r in a.roles:
         js(f"/api/check?role={r}", ["verdict", "held", "lanes", "cuts", "nearest", "subject"])
 
@@ -768,7 +779,14 @@ def test_who():  # screen 2: who has access to an object, the admin preset, ware
     keys = ["object", "people", "roles", "groups", "counts", "columns", "default_user", "refs"]
     d = js("/api/who?name=SALES.CORE.TBL_CUSTOMER", keys)
     n = d["counts"]
-    assert n["people"] == len(d["people"]) == sum(n["levels"].values()) and n["levels"]["admin"] == 2, n
+    assert n["people"] == len(d["people"]) == sum(n["levels"].values()) and n["levels"]["admin"] == 2 and n["blocked"] == 0, n
+    sb = js("/api/who?name=DW.SANDBOX.TBL_SANDBOX_01")  # readers without USAGE on the schema: blocked, not readers
+    by = {x["name"]: x for x in sb["people"] + sb["roles"]}
+    assert by["DW_BI_01"]["blocked"] == by["GRP_DW_READERS"]["blocked"] == "no schema USAGE" and by["DW_DEV_01"]["blocked"] is None
+    c = sb["counts"]
+    assert c["blocked"] == 2 and c["levels"]["read"] == 0 and sum(c["levels"].values()) + c["blocked"] == c["people"], c
+    assert any(g["blocked"] for g in sb["groups"])
+    assert "no schema USAGE" in get("/api/who.csv?name=DW.SANDBOX.TBL_SANDBOX_01").text
     assert d["object"]["columns"] == 3 and d["object"]["masking"] and d["object"]["owners"]
     e = next(x for x in d["people"] if x["name"] == "ENGINEER_01")
     assert e["level"] == "change" and e["columns"] and e["login"] and d["refs"]["kinds"][e["first"]] == "functional"

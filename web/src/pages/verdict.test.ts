@@ -3,7 +3,7 @@ import { redirect } from "../App";
 import type { CheckPage, Nearest } from "../api/types";
 import { expiryOf, newRoleOf } from "../components/codegen";
 import { parseQuestion } from "./Home";
-import { cutLabel, cutTexts, cutWhatIf, doOf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
+import { cutLabel, cutTexts, cutWhatIf, doOf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine, warehouseNote } from "./verdict";
 
 const roleEdge = { grantee: "F_ENGINEER", to: "HR.SC_W_PEOPLE", priv: null, user: false };
 const userEdge = { grantee: "ENGINEER_01", to: "F_ENGINEER", priv: null, user: true };
@@ -34,6 +34,14 @@ describe("Can they? helpers", () => {
     const layers = [{ step: "Grant", ok: true, result: "Allowed", reason: "" }, { step: "Rows", ok: false, result: "No rows", reason: "" },
       { step: "Columns", ok: false, result: "Not reached", reason: "" }];
     expect(verdictLine({ ...base, verdict: "partly", layers } as unknown as CheckPage)).toBe("The query runs, but returns no rows.");
+    const title = "Has SELECT, but no USAGE on schema DB.S: blocked";
+    expect(verdictLine({ ...base, verdict: "blocked", lanes_total: 1, answer: { ...base.answer, how: "blocked", title } } as unknown as CheckPage)).toBe(title);
+  });
+  it("notes the warehouses a query can run on", () => {
+    expect(warehouseNote({ names: ["WH_A"], total: 1, admin: false })).toEqual({ text: "Can run queries on warehouse WH_A", bad: false });
+    expect(warehouseNote({ names: ["WH_A", "WH_B"], total: 5, admin: false }).text).toBe("Can run queries on warehouses WH_A, WH_B and 3 more");
+    expect(warehouseNote({ names: [], total: 0, admin: false })).toEqual({ text: "No warehouse it can use: blocked to run queries", bad: true });
+    expect(warehouseNote({ names: [], total: 0, admin: true }).bad).toBe(false);
   });
   it("names the nearest ways and warns", () => {
     expect(nearestTitle(near({}))).toBe("Get role F_X");

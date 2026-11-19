@@ -126,8 +126,9 @@ def check_who_can(con, obj, priv, limit):
 
 def check_can(con, user, priv, obj):
     res = a.can(user, priv, obj)
-    want = Counter((" > ".join(r["path"]), r["depth"], r["holder"], False) for r in res["paths"])
-    want += Counter((" > ".join(p), len(p) - 2, p[-2], True) for p in res["owner"])
+    gap = a.gap_text(res["blocked"])
+    want = Counter((" > ".join(r["path"]), r["depth"], r["holder"], False, gap) for r in res["paths"])
+    want += Counter((" > ".join(p), len(p) - 2, p[-2], True, gap) for p in res["owner"])
     same(rows(con, "SELECT * FROM TF_CAN(?, ?, ?)", [user, priv, obj]), want, f"TF_CAN({user}, {priv}, {obj})")
     return sum(want.values())
 
@@ -154,6 +155,9 @@ def test_demo():
     some = [o for o in a.objects if not a.is_builtin(o)] + [o for o in a.objects if a.is_builtin(o)][:5]
     assert sum(check_who_can(con, o, None, None) for o in some) > 100
     assert sum(check_can(con, u, pv, o) for u in a.users for o in OBJS for pv in privs[o] + ["USAGE"]) > 10
+    sandbox = "DW.SANDBOX.TBL_SANDBOX_01"  # the fake read role without USAGE on its schema: blocked
+    assert sum(check_can(con, u, pv, sandbox) for u in a.users for pv in ("SELECT", "INSERT")) >= 3
+    assert a.can("DW_BI_01", "SELECT", sandbox)["blocked"] == [("SCHEMA", "DW.SANDBOX")]
     deep = con.execute("SELECT MAX(DEPTH) FROM TF_ACCESS_OF('FIN_01', NULL)").fetchone()[0]
     assert deep == 10 and con.execute("SELECT MAX(DEPTH) FROM TF_ACCESS_OF('FIN_01', 9)").fetchone()[0] < 10
     assert con.execute("SELECT COUNT(*) FROM TF_CAN('FIN_01', 'DROP', 'NO.SUCH.OBJECT')").fetchone()[0] == 0
@@ -202,7 +206,8 @@ def test_edges():
              POLICY=[dict(OBJECT_NAME="D.S.T")])
     con = load(d)
     assert check_can(con, "U", "SELECT", "D.S.T") == 1  # owner only: "Yes, via ownership"
-    assert rows(con, "SELECT * FROM TF_CAN('U', 'SELECT', 'D.S.T')", []) == Counter([("U > R1 > D.S.T", 1, "R1", True)])
+    assert rows(con, "SELECT * FROM TF_CAN('U', 'SELECT', 'D.S.T')", []) == Counter([("U > R1 > D.S.T", 1, "R1", True,
+                                                                               "no USAGE on database D, no USAGE on schema D.S")])
     for lim in [None, 1, 2]:
         check_who_can(con, "D.S.T", None, lim)
     got = rows(con, "SELECT * FROM TF_WHO_CAN('D.S.T', 'SELECT', NULL)", [])
@@ -215,6 +220,29 @@ def test_edges():
     n = con.execute("SELECT COUNT(*) FROM TF_ACCESS_OF('R1', NULL)").fetchone()[0]
     con = load(dict(d, USER=d["USER"] + [dict(USER_NAME=None)]), build=False)
     assert n == 1 and con.execute("SELECT COUNT(*) FROM TF_ACCESS_OF('R1', NULL)").fetchone()[0] == 1
+
+
+def test_blocked():
+    """TF_CAN's BLOCKED as access.can(): a grant without USAGE on the schema is blocked; USAGE from another role the
+    user holds counts, a database role has its own database, a future grant does not count, an admin role misses
+    nothing."""
+    def grant(p, pv, k, o, future=False):
+        return dict(GRANTEE_ROLE=p, PRIVILEGE=pv, GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=future)
+
+    g = [grant(r, "SELECT", "TABLE", "D.S.T") for r in ("R1", "R2", "R3", "R5", "D.DR")]
+    g += [grant(r, "USAGE", "DATABASE", "D") for r in ("R1", "R2", "R3")]
+    g += [grant("R2", "USAGE", "SCHEMA", "D.S"), grant("D.DR", "USAGE", "SCHEMA", "D.S"),
+          grant("R3", "USAGE", "SCHEMA", "D.<SCHEMA>", True), grant("R4", "USAGE", "DATABASE_ROLE", "D.DR"),
+          grant("R5", "USAGE", "ROLE", "SYSADMIN")]
+    ur = [("U1", "R1"), ("U2", "R2"), ("U3", "R3"), ("U4", "R4"), ("U5", "R5"), ("U6", "R1"), ("U6", "R2")]
+    d = dict(run={}, GRANT=g, USER_ROLE=[dict(USER_NAME=u, ROLE_NAME=r) for u, r in ur], USER=[dict(USER_NAME="U1")],
+             USAGE=[dict(USER_NAME="U1")], TAG=[dict(OBJECT_NAME="D.S.T", DOMAIN="TABLE", TAG_NAME="T.S.N", TAG_VALUE="x")],
+             POLICY=[dict(OBJECT_NAME="D.S.T")])
+    con = load(d)
+    want = dict(U1="no USAGE on schema D.S", U2=None, U3="no USAGE on schema D.S", U4=None, U5=None, U6=None)
+    for u, gap in want.items():
+        assert check_can(con, u, "SELECT", "D.S.T") >= 1
+        assert {r[4] for r in con.execute("SELECT * FROM TF_CAN(?, 'SELECT', 'D.S.T')", [u]).fetchall()} == {gap}, u
 
 
 class Row(dict):  # a Snowpark Row: row["N"] and row.as_dict()
@@ -680,7 +708,7 @@ def test_history_shared():
 
 
 if __name__ == "__main__":
-    for t in (test_demo, test_cap_and_admin, test_edges, test_findings, test_streams, test_object_use, test_activity, test_show_fallback,
+    for t in (test_demo, test_cap_and_admin, test_edges, test_blocked, test_findings, test_streams, test_object_use, test_activity, test_show_fallback,
               test_run_overlap, test_usage_extra, test_object_use_weeks, test_same_queries, test_proc_settings, test_history_shared):
         t()
         print("ok", t.__name__)

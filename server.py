@@ -2178,12 +2178,16 @@ def who_data(o):
         x["id"] = a.uid(x["name"], True)
         x["login"], x["mark"] = login(x["name"])
         x["columns"] = seen.get(x["name"], [])
+    for x in w["people"] + w["roles"]:
+        x.setdefault("blocked", None)
     for x in w["roles"]:
         x["kind"] = nk(x["name"])
-    levels = {lv: sum(x["level"] == lv for x in w["people"]) for lv in a.OBJ_LEVELS[::-1]}
+    # blocked (the privilege without USAGE on the database or schema) are not readers: counted on their own
+    levels = {lv: sum(x["level"] == lv and not x["blocked"] for x in w["people"]) for lv in a.OBJ_LEVELS[::-1]}
     return dict(o=o, head=head, people=w["people"], roles=w["roles"], groups=a.same_paths(w["people"]),
                 app=a.app_exposure(o) if o and a.kinds.get(o) == "STREAMLIT" else None, columns=cols,
-                counts=dict(levels=levels, people=len(w["people"]), roles=len(w["roles"]),
+                counts=dict(levels=levels, blocked=sum(bool(x["blocked"]) for x in w["people"]),
+                            people=len(w["people"]), roles=len(w["roles"]),
                             states=dict(Counter(x["state"] for x in w["people"])),
                             disabled=sum(x["status"] == "disabled" for x in w["people"]),
                             dormant=sum(x["status"] in ("dormant", "never") and not a.is_service(x["name"])
@@ -2217,10 +2221,10 @@ def who_page(p, view):
 
 def who_csv(p, view):
     x = who_all(p, view)
-    out = [[e["name"], e["status"], e["login"], e["level"], " ".join(e["privileges"]), " > ".join(e["path"]), e["ways"]]
-           for e in x["people"]]
+    out = [[e["name"], e["status"], e["login"], e["level"], e["blocked"] or "", " ".join(e["privileges"]),
+            " > ".join(e["path"]), e["ways"]] for e in x["people"]]
     return f"{(x['o'] or 'admin_roles').split('.')[-1]}_who.csv", csv_text(
-        ["User", "Status", "Last login", "Access", "Privileges", "Path", "Ways"], out)
+        ["User", "Status", "Last login", "Access", "Blocked", "Privileges", "Path", "Ways"], out)
 
 
 # ---------- can they ----------
@@ -2261,6 +2265,9 @@ def subject_of(u, user):
                 people=None if user else len(a.ups(u)[1]), database=None if user else a.role_db(u))
 
 
+MAX_WH = 10  # Can they?: warehouses named in the note under the answer
+
+
 def check_page(p, view):
     need(a.objects, "No objects in this data.")
     mine = view == "mine"
@@ -2296,7 +2303,16 @@ def check_page(p, view):
                                                                        "(dormant).") if sleep else "")
     yes_text = "Yes, but the user is disabled" if off else "Yes, but the user is dormant" if sleep else ""
     tone = "warn" if (ps or r["owner"] or admin) and (off or sleep) else None
-    if not ps and r["owner"]:
+    gaps = r["blocked"] if (ps or r["owner"]) and not admin else []  # the grant is there, USAGE on its database or schema is not
+    if gaps:
+        has = what if ps else "OWNERSHIP"
+        fix = r["unblock"]
+        ans = dict(yes=False, how="blocked", title=f"Has {has}, but {a.gap_text(gaps)}: blocked",
+                   text=f"{u} holds {has} on {o}, but no role {u} reaches{'' if user else ' (itself included)'} has USAGE on the "
+                        f"{' or '.join(f'{t.lower()} {c}' for t, c in gaps)}, so Snowflake refuses the statement. "
+                        f"Smallest fix: {fix[0][0].lower()}{fix[0][1:]}.", tone="low",
+                   stats=[["Paths", r["count"] or r["owner_count"]], ["Missing USAGE", len(gaps)]])
+    elif not ps and r["owner"]:
         ans = dict(yes=True, how="owner", title=yes_text or "Yes, via ownership",
                    text=f"{u} reaches OWNERSHIP of {o}, which implies {pv}.{note}", tone=tone,
                    stats=[["Paths", r["owner_count"]], ["Shortest depth", a.depth(r["owner"][0][:-1], user)]])
@@ -2318,7 +2334,7 @@ def check_page(p, view):
                    + (" Also through an admin role." if admin else "") + note, tone=tone,
                    stats=([["Privileges", len(held)]] if pv == ALL else []) + [["Paths", r["count"]], ["Shortest depth", r["shortest"]]])
     read = None
-    if not mine and any(x in a.READ_PRIVS for x in held) and a.is_data(a.kinds[o]) and (ps or r["owner"]):
+    if not mine and not gaps and any(x in a.READ_PRIVS for x in held) and a.is_data(a.kinds[o]) and (ps or r["owner"]):
         v = a.data_view(u, o, user)
         if v["can_read"]:
             w = a.data_view(r["use_role"], o, False) if r["use_role"] and user else None
@@ -2350,7 +2366,7 @@ def check_page(p, view):
                        reason="No column shows when no rows return" if rows["state"] == "none" else
                        "; ".join(f"{x['column']}: {x['reason']}" for x in cols) or "no masking applies")]
     partly = bool(layers) and (layers[1]["result"] == "No rows" or not layers[2]["ok"])
-    verdict = "partly" if ans["yes"] and partly else "yes" if ans["yes"] else "no"
+    verdict = "blocked" if gaps else "partly" if ans["yes"] and partly else "yes" if ans["yes"] else "no"
     return dict(
         verdict=verdict, layers=layers, roles_count=len(set(a.best_paths(u, user)) - (set() if user else {u})), ask_priv=ask,
         held=[dict(privilege=x, held=x in has) for x in opts], lanes=ls[:20], lanes_total=len(ls), cut=cut,
@@ -2363,6 +2379,8 @@ def check_page(p, view):
         options=[] if mine else [dict(iac=x["iac"], sql=x["sql"], affects=x["affects"], users=x["users"], edges=len(x["edges"]))
                                  for x in r["options"]],
         use_role=r["use_role"], warehouse=r["warehouse"], read=read,
+        blocked=[dict(type=t, name=c) for t, c in gaps], unblock=dict(iac=r["unblock"][0], sql=r["unblock"][1]) if gaps else None,
+        warehouses=dict(names=r["warehouses"][:MAX_WH], total=len(r["warehouses"]), admin=bool(admin)),
         graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None, capped=sorted(a.capped))
 
 

@@ -7,7 +7,7 @@ import { useApi } from "../api/client";
 import type { CheckPage, ListItem, Path, Refs } from "../api/types";
 import { Banner, Card, CodeOutput, DataTable, EmptyState, MiniBar, NameList, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine } from "./verdict";
+import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine, warehouseNote } from "./verdict";
 import { col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
@@ -34,8 +34,8 @@ export function CheckPageView() {
   );
 }
 
-const MARK = { yes: "✓", partly: "½", no: "✕" } as const;
-const WORD = { yes: "Yes", partly: "Partly", no: "No" } as const;
+const MARK = { yes: "✓", partly: "½", no: "✕", blocked: "⊘" } as const;
+const WORD = { yes: "Yes", partly: "Partly", no: "No", blocked: "Blocked" } as const;
 
 function Body({ d }: { d: CheckPage }) {
   const c = useApp();
@@ -56,6 +56,7 @@ function Body({ d }: { d: CheckPage }) {
             <div className="ae-verdict-word">{WORD[d.verdict]}{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}</span>}
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
             <div className="ae-verdict-line">{answerLine(d)}</div>
+            <WarehouseLine d={d} />
           </div>
         </div>
         <ul className="ae-privrow" aria-label={`Privileges on ${d.object}`}>
@@ -73,6 +74,12 @@ function Body({ d }: { d: CheckPage }) {
       {at === "layers" && <Layers d={d} />}
     </>
   );
+}
+
+/** Which warehouses a query can run on: a query needs one. */
+function WarehouseLine({ d }: { d: CheckPage }) {
+  const w = warehouseNote(d.warehouses);
+  return <div className={w.bad ? "ae-blocked" : "ae-muted"}>{w.text}</div>;
 }
 
 /** The one answer sentence: routes (never "paths") and the shortest depth; ownership or an admin role say how. */
@@ -252,7 +259,13 @@ function Answer({ d }: { d: CheckPage }) {
   const a = d.answer;
   return (
     <>
-      {!a.yes && d.view !== "mine" && <NearestWays d={d} first />}
+      {d.verdict === "no" && d.view !== "mine" && <NearestWays d={d} first />}
+      {d.unblock && (
+        <Card title="Why it is blocked" sub="Snowflake checks USAGE on the database and schema before the privilege on the object. Text to copy into your infrastructure as code: this app never runs it.">
+          <p>{a.text}</p>
+          <pre className="ae-code">{d.unblock.iac}</pre><pre className="ae-code">{d.unblock.sql}</pre>
+        </Card>
+      )}
       <CutBanner capped={d.capped} no={d.verdict === "no"} />
       <GraphCard g={d.graph} refs={d.refs} />
       {d.paths.length > 0 && (
@@ -275,7 +288,7 @@ function Answer({ d }: { d: CheckPage }) {
           {d.owner.map((p, i) => <div key={i}><PathCell path={p} refs={d.refs} /></div>)}
         </Card>
       )}
-      {a.yes && d.lanes_total > 0 && d.view !== "mine" && (
+      {(a.yes || d.verdict === "blocked") && d.lanes_total > 0 && d.view !== "mine" && (
         <p className="ae-cutlink">
           To take this access away, see <button type="button" className="ae-link" onClick={() => c.set({ show: "routes" })}>Routes & where to cut</button>:{" "}
           {d.cuts.length ? `${d.cuts.length} place${d.cuts.length === 1 ? "" : "s"} to cut, each with its side effects and the text to apply.` : "each route needs its own cut."}

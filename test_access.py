@@ -1817,6 +1817,35 @@ def test_ladder():  # access ladder: highest level per object, counts at or abov
     assert len(dw) == 15 and len({(x["database"], x["schema"]) for x in dw}) == 5
 
 
+def test_blocked():  # Can they? / Who has access: the privilege without USAGE on the schema or database is blocked
+    o = "DW.SANDBOX.TBL_SANDBOX_01"  # fake: the SANDBOX read role has no USAGE on its schema
+    c = a.can("DW_BI_01", "SELECT", o)
+    assert c["paths"] and c["blocked"] == [("SCHEMA", "DW.SANDBOX")] and a.gap_text(c["blocked"]) == "no USAGE on schema DW.SANDBOX"
+    assert c["unblock"] == ("Add in the infrastructure-as-code repo: USAGE on schema DW.SANDBOX granted to database role DW.SC_R_SANDBOX",
+                            "GRANT USAGE ON SCHEMA DW.SANDBOX TO DATABASE ROLE DW.SC_R_SANDBOX;")
+    assert a.can("DW_DEV_01", "SELECT", o)["blocked"] == []  # the write role it also reaches has the schema
+    assert a.can("GRP_DW_READERS", "SELECT", o, is_user=False)["blocked"] == [("SCHEMA", "DW.SANDBOX")]
+    assert a.can("HR_01", "SELECT", "HR.PAYROLL.TBL_PAY_00")["blocked"] == []
+    assert a.can("ADMIN_01", "USAGE", "SHARED.STAGE")["blocked"] == []  # an admin role inherits every role
+    assert a.can(T + "SHARED_STAGE_READ", "USAGE", "SHARED.STAGE", is_user=False)["blocked"] == [("DATABASE", "SHARED")]
+    assert a.can("ANALYST_01", "USAGE", "WH_SALES_XS")["blocked"] == []  # an account object has no container
+    assert a.containers("DW.SANDBOX") == [("DATABASE", "DW")] and a.containers("DW") == [] == a.containers("WH_SALES_XS")
+    assert "WH_SALES_XS" in a.can("DW_BI_01", "SELECT", o)["warehouses"]  # through PUBLIC
+    w = a.who_has(o)
+    by = {x["name"]: x for x in w["people"] + w["roles"]}
+    assert by["DW_BI_01"]["blocked"] == by["GRP_DW_READERS"]["blocked"] == "no schema USAGE" and by["DW_BI_01"]["level"] == "read"
+    assert by["DW_DEV_01"]["blocked"] is None and by["OPS_01"]["blocked"] is None
+    g = a.same_paths(w["people"])
+    assert any(x["blocked"] for x in g) and all(x["blocked"] is None for x in g if "DW_DEV_01" in x["names"])
+    assert all(x["blocked"] is None for x in a.who_has("SALES.CORE.TBL_CUSTOMER")["people"])
+    # a database role holds USAGE on its own database; a future grant does not count
+    a.build(dict(run={}, GRANT=[dict(GRANTEE_ROLE="D.DR", PRIVILEGE="SELECT", GRANTED_ON="TABLE", OBJECT_NAME="D.S.T", IS_FUTURE=False),
+                                dict(GRANTEE_ROLE="D.DR", PRIVILEGE="USAGE", GRANTED_ON="SCHEMA", OBJECT_NAME="D.<SCHEMA>", IS_FUTURE=True),
+                                dict(GRANTEE_ROLE="R", PRIVILEGE="USAGE", GRANTED_ON="DATABASE_ROLE", OBJECT_NAME="D.DR", IS_FUTURE=False)],
+                 USER_ROLE=[dict(USER_NAME="U", ROLE_NAME="R")], USER=[dict(USER_NAME="U")], USAGE=[], TAG=[], POLICY=[]))
+    assert a.can("U", "SELECT", "D.S.T")["blocked"] == [("SCHEMA", "D.S")]
+
+
 def test_who_has():  # screen 2: one entry per user / role at its highest step, admins inherit, same routes grouped
     w = a.who_has("SALES.CORE.TBL_CUSTOMER")
     by = {x["name"]: x for x in w["people"]}

@@ -39,8 +39,8 @@ export function question(w: Watch): string {
 
 /** The answer of a watched question from the endpoint it uses (check, who, who?preset=admin). */
 export function answerOf(w: Watch, d: CheckPage | WhoPage): string {
-  if (w.kind === "can") return ({ yes: "Yes", partly: "Partly", no: "No" } as const)[(d as CheckPage).verdict];
-  const ps = (d as WhoPage).people.filter((p) => w.kind === "admins" || ["read", "change", "own", "admin"].includes(p.level));
+  if (w.kind === "can") return ({ yes: "Yes", partly: "Partly", no: "No", blocked: "Blocked" } as const)[(d as CheckPage).verdict];
+  const ps = (d as WhoPage).people.filter((p) => w.kind === "admins" || ["read", "change", "own", "admin"].includes(p.level) && !p.blocked);
   const n = `${ps.length} ${ps.length === 1 ? "person" : "people"}`;
   return ps.length && ps.length <= 3 ? `${n} · ${ps.map((p) => p.name).join(", ")}` : n;
 }

@@ -334,7 +334,9 @@ def fake():
     for sc in ("ODS", "STG", "CORE", "MART", "SANDBOX"):
         r, w, m, c = (f"DW.SC_{x}_{sc}" for x in "RWMC")
         caps = (r, w) if sc == "SANDBOX" else (r, w, m, c)
-        pv += [(x, "USAGE", k, o) for x in caps for k, o in (("DATABASE", "DW"), ("SCHEMA", f"DW.{sc}"))]
+        # fake: the SANDBOX read role lacks USAGE on its schema, so its readers hold SELECT but are blocked
+        pv += [(x, "USAGE", k, o) for x in caps for k, o in (("DATABASE", "DW"), ("SCHEMA", f"DW.{sc}"))
+               if not (x == r and sc == "SANDBOX" and k == "SCHEMA")]
         for i in range(1, 4):
             o = f"DW.{sc}.TBL_{sc}_{i:02}"
             pv += [(r, "SELECT", "TABLE", o)] + [(w, p, "TABLE", o) for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")]
@@ -1982,7 +1984,9 @@ def person(u, e, adm):
 def who_has(obj, kind=None):
     """Who has access to one object (screen 2): dict(people, roles), one who_entry each, highest step first. A user
     holding an admin role is "admin" (see person()), also without any grant on obj. People also: admin (admin roles
-    held), status, service, days (since the last login); roles: users (how many users reach the role)."""
+    held), status, service, days (since the last login); roles: users (how many users reach the role). Both:
+    blocked ("no schema USAGE", gap_word) when the privileges are there but USAGE on the database or schema is not:
+    Snowflake refuses them, so they are not readers; else None."""
     k0 = kind or kinds.get(obj)
     by = {}
     for r in grantees(obj, kind):
@@ -1991,6 +1995,10 @@ def who_has(obj, kind=None):
     people = [person(n, who_entry(n, rs, k0), adm) for (n, u), rs in by.items() if u]
     people += [person(u, dict(name=u, privileges=[]), adm) for u in adm if (u, True) not in by]
     roles = [who_entry(n, rs, k0) | dict(users=len(ups(n)[1])) for (n, u), rs in by.items() if not u]
+    for e in people:
+        e["blocked"] = gap_word(usage_gaps(e["name"], obj, True, k0))
+    for e in roles:
+        e["blocked"] = gap_word(usage_gaps(e["name"], obj, False, k0))
     rank = lambda e: (-OBJ_LEVELS.index(e["level"]), e["name"])
     return dict(people=sorted(people, key=rank), roles=sorted(roles, key=rank))
 
@@ -2023,12 +2031,12 @@ def admin_access():
 
 
 def same_paths(entries):
-    """Entries with the same level, privileges and route after their own name in one group ("12 people via PUBLIC"),
-    biggest first. Group: level, privileges, route (path without the first name), names."""
+    """Entries with the same level, privileges, route after their own name and blocked in one group ("12 people via
+    PUBLIC"), biggest first. Group: level, privileges, route (path without the first name), blocked, names."""
     gs = {}
     for e in entries:
-        gs.setdefault((e["level"], tuple(e["privileges"]), tuple(e["path"][1:])), []).append(e["name"])
-    return sorted((dict(level=k[0], privileges=list(k[1]), route=list(k[2]), names=v) for k, v in gs.items()),
+        gs.setdefault((e["level"], tuple(e["privileges"]), tuple(e["path"][1:]), e.get("blocked")), []).append(e["name"])
+    return sorted((dict(level=k[0], privileges=list(k[1]), route=list(k[2]), blocked=k[3], names=v) for k, v in gs.items()),
                   key=lambda g: (-len(g["names"]), -OBJ_LEVELS.index(g["level"]), g["route"]))
 
 
@@ -4494,6 +4502,73 @@ def closest_up(priv, obj):
     return [uid(users_on(p[-1])[0], True)] + p[::-1] + [obj]
 
 
+def containers(obj, kind=None):
+    """[(type, name)] a statement on obj also needs USAGE on (Snowflake checks them before the object privilege): its
+    database, and its schema for an object inside one. None for a database or an account-level object."""
+    k = (kind or kinds.get(obj) or "").replace("FUTURE ", "")
+    db, sc, _ = split_name(obj, k)
+    if not db or k == "DATABASE":
+        return []
+    return [("DATABASE", db)] + ([("SCHEMA", f"{db}.{sc}")] if sc and k != "SCHEMA" else [])
+
+
+def usage_reach(typ, name):
+    """(roles, users) that reach USAGE or OWNERSHIP on a database or schema through any role (primary and secondary
+    roles together, as a query is checked). A database role has USAGE on its own database (Snowflake grants it when
+    the role is made). Future grants don't count: they only reach schemas made later, which then hold their own
+    grant. Once per data set; reach only, no paths."""
+    def make():
+        hs = {r for r, pv, k, o in privs if k == typ and o == name and pv in ("USAGE", "OWNERSHIP")}
+        if typ == "DATABASE":
+            hs |= {r for r in db_roles if role_db(r) == name}
+        rs, us = set(), set()
+        for h in hs:
+            x, u = ups(h)
+            rs |= x
+            us |= u
+        return rs, us
+    return cached(("usage_reach", typ, name), make)
+
+
+def admin_reach():
+    """(roles, users) that hold an admin role: they inherit every role, so no USAGE is missing."""
+    def make():
+        rs, us = set(), set()
+        for r in ADMIN & set(roles):
+            x, u = ups(r)
+            rs |= x
+            us |= u
+        return rs, us
+    return cached("admin_reach", make)
+
+
+def usage_gaps(name, obj, user=True, kind=None):
+    """The containers of obj (containers()) name has no USAGE on through any role it reaches: [(type, name)]. A
+    privilege on obj without them is blocked: Snowflake refuses the statement."""
+    i = 1 if user else 0
+    if name in admin_reach()[i]:
+        return []
+    return [(t, c) for t, c in containers(obj, kind) if name not in usage_reach(t, c)[i]]
+
+
+def gap_text(gaps):
+    """"no USAGE on schema D.S" (TF_CAN's BLOCKED says the same), None when nothing is missing."""
+    return ", ".join(f"no USAGE on {t.lower()} {c}" for t, c in gaps) or None
+
+
+def gap_word(gaps):
+    """Short form for a list: "no schema USAGE", "no database and schema USAGE"; None when nothing is missing."""
+    return f"no {' and '.join(t.lower() for t, _ in gaps)} USAGE" if gaps else None
+
+
+def unblock(gaps, role):
+    """(iac, sql) of the smallest fix: USAGE on each missing container granted to role, the role holding the object
+    privilege (everyone reaching it needs the same). Text only, never run."""
+    who = f"{'database role' if role_kind(role) == 'database' else 'role'} {role}"
+    return ("; ".join(f"Add in the infrastructure-as-code repo: USAGE on {t.lower()} {c} granted to {who}" for t, c in gaps),
+            " ".join(f"GRANT USAGE ON {t} {sql_obj(c)} TO {role_sql(role)};" for t, c in gaps))
+
+
 def can(user, priv, obj, default_only=False, is_user=True):
     """Can they? page, for a user or a role (is_user=False: its own grants and the roles it inherits). Returns dict:
     paths: [dict(path user->...->holder->object, depth, holder, how)], shortest first, at most MAX_PATHS; count: every
@@ -4502,7 +4577,10 @@ def can(user, priv, obj, default_only=False, is_user=True):
     ownership"); options: removal(); ask: ask_for() when there is no path; use_role, warehouse: what to run with (a
     role: itself; a database role: None, USE ROLE can't take one); status: user status (None for a role);
     closest: when no path, the shortest chain grantee->...->holder->object holding priv on obj (from a user if any,
-    else from a role), else None. Depth as everywhere: a role start is depth 1 itself."""
+    else from a role), else None; blocked: usage_gaps() (a grant without USAGE on the database or schema: the statement
+    is refused), unblock: (iac, sql) granting them to the holder of the shortest path, else None; warehouses: every
+    warehouse the subject can use (a query needs one; none = it can't run queries). Depth as everywhere: a role start
+    is depth 1 itself."""
     dr = (profile.get(user) or {}).get("DEFAULT_ROLE")
     f = fast(user, is_user, default_only)
     t = tally(f, holding(obj, lambda pv: pv == priv))
@@ -4523,7 +4601,9 @@ def can(user, priv, obj, default_only=False, is_user=True):
     whs = sorted({o for h in f[2] for pv, k, o in granted.get(h, []) if k == "WAREHOUSE" and pv in ("USAGE", "OWNERSHIP")})
     wh = (profile.get(user) or {}).get("DEFAULT_WAREHOUSE") if is_user else None
     best = ps or owner
-    return dict(paths=rows, count=t["total"], shortest=rows[0]["depth"] if rows else None, choke=choke,
+    gaps = usage_gaps(user, obj, is_user)
+    return dict(blocked=gaps, unblock=unblock(gaps, best[0][-2]) if gaps and best else None, warehouses=whs,
+                paths=rows, count=t["total"], shortest=rows[0]["depth"] if rows else None, choke=choke,
                 closest=None if ps else closest_up(priv, obj), owner=owner, owner_count=ot["total"] if ot else 0,
                 options=removal(user, priv, obj, is_user), ask=[] if best else ask_for(priv, obj),
                 use_role=(best[0][1] if is_user else None if role_kind(user) == "database" else user) if best else None,

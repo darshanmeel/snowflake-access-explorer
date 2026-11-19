@@ -259,11 +259,13 @@ div.ae-tile { cursor: default; }
 .ae-ask-w { font-size: 18px; font-weight: 600; padding-bottom: 4px; }
 .ae-verdict { display: grid; gap: 12px; padding: 16px 18px; margin: 0 0 14px; border-radius: 12px; background: var(--ae-panel); border: 1px solid var(--ae-line); border-left: 6px solid var(--ae-ok_ink); }
 .ae-verdict-partly { border-left-color: var(--ae-warn_ink); }
-.ae-verdict-no { border-left-color: var(--ae-bad_ink); }
+.ae-verdict-no, .ae-verdict-blocked { border-left-color: var(--ae-bad_ink); }
 .ae-verdict-head { display: flex; gap: 14px; align-items: center; }
 .ae-verdict-mark { width: 40px; height: 40px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 20px; font-weight: 700; color: var(--ae-panel); background: var(--ae-ok_ink); flex: none; }
 .ae-verdict-partly .ae-verdict-mark { background: var(--ae-warn_ink); }
-.ae-verdict-no .ae-verdict-mark { background: var(--ae-bad_ink); }
+.ae-verdict-no .ae-verdict-mark, .ae-verdict-blocked .ae-verdict-mark { background: var(--ae-bad_ink); }
+.ae-blocked { color: var(--ae-bad_ink); font-weight: 600; }
+.ae-bar-blocked { background: repeating-linear-gradient(45deg, var(--ae-bad_ink) 0 4px, transparent 4px 8px); }
 .ae-verdict-word { font-size: 22px; font-weight: 700; }
 .ae-verdict-line { color: var(--ae-ink2); overflow-wrap: anywhere; }
 .ae-privrow { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }

@@ -43,6 +43,7 @@ export function sideEffects(people: number, lost: number): { text: string; tone:
 /** The line under Yes / Partly / No. */
 export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "roles_count" | "lanes_total" | "cut" | "layers" | "nearest" | "answer">
   & { subject?: Pick<Subject, "user"> }): string {
+  if (d.verdict === "blocked") return d.answer.title;
   if (d.verdict === "no") {
     const n = d.nearest?.[0];
     return (d.subject && !d.subject.user ? `Neither ${d.user} nor any of its ${plural(d.roles_count, "role")} leads to ${d.object}.`
@@ -55,6 +56,14 @@ export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "
   }
   if (!d.lanes_total) return d.answer.title;
   return `through ${plural(d.lanes_total, "route")}` + (d.cut.length && d.lanes_total > 1 ? `, all via ${d.cut[0]}` : "");
+}
+
+/** The note under the answer: the warehouses a query can run on (it needs one); none = it can't run queries. */
+export function warehouseNote(w: CheckPage["warehouses"]): { text: string; bad: boolean } {
+  if (w.admin) return { text: "Warehouses: any, through an admin role", bad: false };
+  if (!w.total) return { text: "No warehouse it can use: blocked to run queries", bad: true };
+  const more = w.total > w.names.length ? ` and ${w.total - w.names.length} more` : "";
+  return { text: `Can run queries on ${w.total === 1 ? "warehouse" : "warehouses"} ${w.names.join(", ")}${more}`, bad: false };
 }
 
 export function nearestTitle(n: Nearest): string {

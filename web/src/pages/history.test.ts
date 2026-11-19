@@ -31,6 +31,8 @@ describe("what changed", () => {
     const who: Watch = { id: "", kind: "who", object: "DB.S.T", notify: "" };
     const people = [{ name: "A", level: "read" }, { name: "B", level: "names" }, { name: "C", level: "own" }];
     expect(answerOf(who, { people } as WhoPage)).toBe("2 people · A, C");
+    expect(answerOf(who, { people: [...people, { name: "D", level: "read", blocked: "no schema USAGE" }] } as WhoPage)).toBe("2 people · A, C");
+    expect(answerOf(can, { verdict: "blocked" } as CheckPage)).toBe("Blocked");
     expect(answerOf({ ...who, kind: "admins" }, { people } as WhoPage)).toBe("3 people · A, B, C");
     expect(watchId(can)).toBe("can|U|DB.S.T");
   });

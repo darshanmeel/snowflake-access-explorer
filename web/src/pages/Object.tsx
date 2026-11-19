@@ -120,6 +120,7 @@ function For({ d }: { d: WhoPage }) {
       <Pick label="Access for" value={who} width={200} what="users" onPick={(v) => c.set({ as: v })} />
       {!x ? <span className="ae-muted">{who ? `${who} has no access here.` : "Pick a person to see their access here."}</span> : <>
         <span className={`ae-lvl ae-lvl-${x.level}`}>{TITLE[x.level]}</span>
+        {x.blocked && <span className="ae-blocked">blocked: {x.blocked}</span>}
         <span className="ae-privs">{x.privileges.join(" · ") || `through ${x.admin.join(", ")}`}</span>
         <span className="ae-muted">via</span><PathChips first={x.first} holder={x.holder} ways={x.ways} kinds={d.refs.kinds} />
         {x.columns.length > 0 && (
@@ -158,9 +159,11 @@ function List({ d }: { d: WhoPage }) {
         {n.people > 0 && <>
           <div className="ae-bar" role="img" aria-label={lv.map((l) => `${n.levels[l]} ${TITLE[l]}`).join(", ")}>
             {lv.map((l) => <span key={l} className={`ae-bar-lvl-${l}`} style={{ width: `${(100 * n.levels[l]) / n.people}%` }} />)}
+            {n.blocked > 0 && <span className="ae-bar-blocked" style={{ width: `${(100 * n.blocked) / n.people}%` }} />}
           </div>
           <div className="ae-bar-legend">
             {lv.map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{TITLE[l]} {n.levels[l]}</span>)}
+            {n.blocked > 0 && <span className="ae-blocked" title="The privilege is there, but not USAGE on the database or schema: Snowflake refuses it">Blocked {n.blocked}: no USAGE on the database or schema</span>}
             {n.disabled > 0 && <span className="ae-warn-word">{plural(n.disabled, "disabled user")} still hold{n.disabled === 1 ? "s" : ""} access</span>}
             {n.dormant > 0 && <span className="ae-muted">{n.dormant} dormant or never logged in</span>}
           </div>
@@ -184,7 +187,7 @@ function List({ d }: { d: WhoPage }) {
                     <span className="ae-whoname"><span className="ae-mono">{sameLabel(g.names, g.route)}</span>
                       {g.names.length > 1 ? <span className="ae-muted"><NameList items={g.names} max={3} plain /></span> : <span className="ae-muted">{`${STATUS[x.status]} · last login ${ago(x)}`}</span>}</span>
                     <span className={`ae-lvl ae-lvl-${g.level}`}>{TITLE[g.level]}</span>
-                    <span className="ae-privs">{g.privileges.join(" · ") || "All privileges"}</span>
+                    <span className="ae-privs">{g.blocked && <span className="ae-blocked">blocked: {g.blocked} · </span>}{g.privileges.join(" · ") || "All privileges"}</span>
                     <span />
                   </button>
                 );
@@ -203,7 +206,7 @@ function List({ d }: { d: WhoPage }) {
                         <span className="ae-whoname"><span className="ae-mono">{x.name}</span>
                           <span className="ae-muted">{roles ? `${r.kind.replace("_", " ")} · ${plural(r.users, "user")}` : `${STATUS[p.status]}${p.service ? " · service" : ""} · last login ${ago(p)}`}</span></span>
                         <PathChips first={x.first} holder={x.holder} ways={1} kinds={d.refs.kinds} />
-                        <span className="ae-privs">{x.privileges.join(" · ") || "All privileges"}</span>
+                        <span className="ae-privs">{x.blocked && <span className="ae-blocked">blocked: {x.blocked} · </span>}{x.privileges.join(" · ") || "All privileges"}</span>
                         <span className="ae-muted ae-whoways">{plural(x.ways, "path")}</span>
                       </button>
                     );
@@ -243,6 +246,7 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
   const steps = stepsOf(e, d.refs.kinds, gone);
   const ch = changeOfPath(e.path, d.refs.kinds);
   const sum = gone ? "Disabled, but the grants are still there"
+    : e.blocked ? `Blocked: ${e.blocked}, so Snowflake refuses the ${e.privileges.join(", ")}`
     : e.level === "admin" && !e.privileges.length ? "An admin role inherits everything" : `${TITLE[e.level]}, ${plural(steps.length - 1, "step")} away`;
   return (
     <Card title={`How ${e.name} gets in`} sub={sum}>

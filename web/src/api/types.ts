@@ -657,7 +657,7 @@ export interface Nearest {
 export interface Subject { kind: NodeKind; name: string; id: string; user: boolean; people: number | null; database: string | null }
 
 export interface CheckPage {
-  verdict: "yes" | "partly" | "no";
+  verdict: "yes" | "partly" | "no" | "blocked"; // blocked: the privilege is held, USAGE on its database or schema is not
   subject: Subject;
   layers: { step: string; ok: boolean; result: string; reason: string }[] | null;
   roles_count: number;
@@ -677,7 +677,7 @@ export interface CheckPage {
   privileges: string[];
   answer: {
     yes: boolean;
-    how: "paths" | "owner" | "admin" | "none";
+    how: "paths" | "owner" | "admin" | "none" | "blocked";
     title: string;
     text: string;
     tone: "warn" | "low" | null;
@@ -693,6 +693,9 @@ export interface CheckPage {
   options: { iac: string; sql: string; affects: number; users: string[]; edges: number }[];
   use_role: string | null;
   warehouse: string | null;
+  blocked: { type: "DATABASE" | "SCHEMA"; name: string }[]; // the USAGE missing; empty = none
+  unblock: { iac: string; sql: string } | null; // the smallest fix: text only, never run
+  warehouses: { names: string[]; total: number; admin: boolean }; // every warehouse the subject can use (first 10)
   read: { summary: string; rows: StateWhy<RowsState> | null; columns: (StateWhy<ColState> & { column: string })[]; role_only: string | null } | null;
   graph: Graph | null;
   capped: string[];
@@ -1115,6 +1118,7 @@ export interface WhoEntry {
   holder: string;
   ways: number;
   depth: number | null;
+  blocked?: string | null; // "no schema USAGE": the privilege is there, Snowflake refuses it
 }
 
 export type WhoState = "active" | "dormant" | "disabled" | "service";
@@ -1155,8 +1159,8 @@ export interface WhoPage {
   /** A Streamlit app: it runs with its owner's rights, so viewers see what the owner role reads. */
   app: { owner: string[]; sensitive: Record<string, string[]>; holders: Record<string, string[]>; exposed: Record<string, string[]> } | null;
   roles: WhoRole[];
-  groups: { level: ObjLevel; privileges: string[]; route: string[]; names: string[] }[];
-  counts: { levels: Record<ObjLevel, number>; people: number; roles: number; disabled: number; dormant: number; states: Partial<Record<WhoState, number>> };
+  groups: { level: ObjLevel; privileges: string[]; route: string[]; blocked?: string | null; names: string[] }[];
+  counts: { levels: Record<ObjLevel, number>; blocked: number; people: number; roles: number; disabled: number; dormant: number; states: Partial<Record<WhoState, number>> };
   columns: WhoColumn[];
   default_user: string | null;
   refs: Refs;
