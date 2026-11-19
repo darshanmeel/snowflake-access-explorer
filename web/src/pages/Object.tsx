@@ -339,29 +339,32 @@ export function ObjectDetail() {
         const o = d.object, k = d.kpis;
         return (
           <>
-            <Card title={o.id} sub={`${o.type.toLowerCase()}${o.sensitive ? " · sensitive" : ""}`}>
-              <KpiRow items={[
-                { label: "Users with access", value: k.people + k.disabled + k.service + k.admin, caption: `${k.people} people · ${k.disabled} disabled · ${k.service} service · ${k.admin} only through an admin role`, tone: k.admin ? "bad" : null },
-                { label: "Read / Write / Own", value: `${k.read} / ${k.write} / ${k.own}` },
-                { label: "Roles on the way", value: k.roles, caption: `${k.direct} direct holders` },
-                { label: "Longest chain", value: k.longest },
-              ]} />
-              {k.owners.length > 0 && <p>Owner: <Chips items={k.owners.map((r) => ({ id: r, kind: "technical" }))} /></p>}
-              {k.deployers.length > 0 && <p>Deployed by: <Chips items={k.deployers.map((r) => ({ id: r, kind: "user" }))} /></p>}
-              {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
-            </Card>
-            {d.admin_roles.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_roles.map((g) => <AdminRoleLine key={g.role} g={g} refs={d.refs} />)}>
-              <p className="ae-muted">These users reach this object through the roles granted to an admin role; those links are not drawn below.
-                {d.admin_roles.some((g) => g.total > g.paths.length) && <> Long lists are cut: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button> has every path.</>}</p>
-            </Banner>}
-            <CutBanner capped={d.capped} />
-            <GraphCard g={d.graph} refs={d.refs} />
-            <Tabs active={part} onChange={setPart} tabs={[
+            <Tabs nav={2} active={part} onChange={setPart} tabs={[
+              { key: "summary", label: "Summary" },
               { key: "users", label: "Users × privileges", count: d.matrix.total },
               { key: "who", label: "By path", count: d.grantees.total },
               ...(d.sees ? [{ key: "sees", label: "What each role sees", count: d.sees.rows.length }] : []),
               ...(d.sensitivity ? [{ key: "sens", label: "Sensitivity", count: d.sensitivity.columns.length, tone: o.sensitive ? "warn" as const : null }] : []),
             ]} />
+            {part === "summary" && <>  {/* the counts, owner, admin reach and paths diagram; the other tabs are tables */}
+              <Card title={o.id} sub={`${o.type.toLowerCase()}${o.sensitive ? " · sensitive" : ""}`}>
+                <KpiRow items={[
+                  { label: "Users with access", value: k.people + k.disabled + k.service + k.admin, caption: `${k.people} people · ${k.disabled} disabled · ${k.service} service · ${k.admin} only through an admin role`, tone: k.admin ? "bad" : null },
+                  { label: "Read / Write / Own", value: `${k.read} / ${k.write} / ${k.own}` },
+                  { label: "Roles on the way", value: k.roles, caption: `${k.direct} direct holders` },
+                  { label: "Longest chain", value: k.longest },
+                ]} />
+                {k.owners.length > 0 && <p>Owner: <Chips items={k.owners.map((r) => ({ id: r, kind: "technical" }))} /></p>}
+                {k.deployers.length > 0 && <p>Deployed by: <Chips items={k.deployers.map((r) => ({ id: r, kind: "user" }))} /></p>}
+                {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
+              </Card>
+              {d.admin_roles.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_roles.map((g) => <AdminRoleLine key={g.role} g={g} refs={d.refs} />)}>
+                <p className="ae-muted">These users reach this object through the roles granted to an admin role; those links are not drawn below.
+                  {d.admin_roles.some((g) => g.total > g.paths.length) && <> Long lists are cut: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button> has every path.</>}</p>
+              </Banner>}
+              <CutBanner capped={d.capped} />
+              <GraphCard g={d.graph} refs={d.refs} />
+            </>}
             {part === "sens" && d.sensitivity && (
               <Card title="Sensitivity" sub={`${d.sensitivity.readers.people} people can read it (${d.sensitivity.readers.admin} admin, ${d.sensitivity.readers.service} service)`}>
                 <Chips items={d.sensitivity.object_tags.map((t) => ({ id: t.label, title: t.origin, tone: t.sensitive ? "bad" : null }))} />
