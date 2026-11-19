@@ -3168,7 +3168,7 @@ def col_view(name, user, ps, inside):
 def data_view(name, obj, user=None):
     """What name (a role used as primary role, or a user with any role they hold) sees of table/view obj, from the
     policy text (not evaluated; never more certain than the text). Returns dict(object, name, can_read (reaches
-    SELECT or OWNERSHIP), tags [labels on the object, inherited ones included], columns [dict(column, tags, sensitive,
+    SELECT or OWNERSHIP and USAGE on its database and schema, usage_gaps()), tags [labels on the object, inherited ones included], columns [dict(column, tags, sensitive,
     state clear | masked | unknown, reason, policy, body)] for every tagged or masked column, rows dict(state all |
     filtered | none | unknown, reason, policy, body, condition), summary)."""
     user = kind_of(name) == "user" if user is None else user
@@ -3180,11 +3180,13 @@ def data_view(name, obj, user=None):
     rows = row_view(name, user, ps["rows"][0], inside) if ps["rows"] else \
         dict(state="all", reason="no row access policy", policy=None, body=None, condition=None)
     read = any(pv in READ_PRIVS and r in inside for r, pv, k in on.get(obj, []))
+    gaps = usage_gaps(name, obj, user) if read else []
     seen = {"all": "all rows", "filtered": "filtered rows", "none": "no rows", "unknown": "rows unknown"}[rows["state"]]
     bits = [seen] + [f"{c['column']} {c['state']}" for c in columns if c["state"] != "clear"]
-    return dict(object=obj, name=name, can_read=read, tags=[f"{tag_label(t, v)} ({o})" for c, t, v, o in tg if not c],
-                columns=columns, rows=rows,
-                summary=("can read: " + ", ".join(bits)) if read else "cannot read it (no SELECT or OWNERSHIP)")
+    return dict(object=obj, name=name, can_read=read and not gaps,
+                tags=[f"{tag_label(t, v)} ({o})" for c, t, v, o in tg if not c], columns=columns, rows=rows,
+                summary=f"holds SELECT, but {gap_text(gaps)}: blocked" if gaps else ("can read: " + ", ".join(bits))
+                if read else "cannot read it (no SELECT or OWNERSHIP)")
 
 
 def governed():
@@ -4513,14 +4515,18 @@ def containers(obj, kind=None):
 
 
 def usage_reach(typ, name):
-    """(roles, users) that reach USAGE or OWNERSHIP on a database or schema through any role (primary and secondary
+    """(roles, users) that reach USAGE, OWNERSHIP or IMPORTED PRIVILEGES (a shared database: its schemas too) on a
+    database or schema through any role (primary and secondary
     roles together, as a query is checked). A database role has USAGE on its own database (Snowflake grants it when
     the role is made). Future grants don't count: they only reach schemas made later, which then hold their own
     grant. Once per data set; reach only, no paths."""
     def make():
-        hs = {r for r, pv, k, o in privs if k == typ and o == name and pv in ("USAGE", "OWNERSHIP")}
+        hs = {r for r, pv, k, o in privs if k == typ and o == name and pv in ("USAGE", "OWNERSHIP", "IMPORTED PRIVILEGES")}
         if typ == "DATABASE":
             hs |= {r for r in db_roles if role_db(r) == name}
+        else:  # IMPORTED PRIVILEGES on a shared database cover its schemas too
+            db = name.split(".", 1)[0]
+            hs |= {r for r, pv, k, o in privs if k == "DATABASE" and o == db and pv == "IMPORTED PRIVILEGES"}
         rs, us = set(), set()
         for h in hs:
             x, u = ups(h)

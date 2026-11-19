@@ -1621,9 +1621,15 @@ def test_data_view():
         assert (got and [r for g in got[0]["roles"] for r, _ in g]) == want if want else got is None, body
     k = a.governance_kpis()
     assert (k["row_tables"], k["masked_columns"]) == (3, 2) and k["text"]["Masking"] == "2 columns"
-    a.build(tiny([], [("R", "U")], [("R", "SELECT", "TABLE", "D.S.T")]))
+    a.build(tiny([], [("R", "U")], [("R", "SELECT", "TABLE", "D.S.T"), ("R", "USAGE", "DATABASE", "D"),
+                                    ("R", "USAGE", "SCHEMA", "D.S")]))
     assert set(a.governance_kpis()["text"].values()) == {"not used"} and a.data_view("U", "D.S.T")["summary"] == \
         "can read: all rows"
+    a.build(tiny([], [("R", "U")], [("R", "SELECT", "TABLE", "D.S.T"), ("R", "USAGE", "DATABASE", "D")]))
+    v = a.data_view("U", "D.S.T")  # SELECT without schema USAGE: blocked, as Can they? says
+    assert not v["can_read"] and v["summary"] == "holds SELECT, but no USAGE on schema D.S: blocked"
+    a.build(tiny([], [("R", "U")], [("R", "SELECT", "TABLE", "D.S.T"), ("R", "IMPORTED PRIVILEGES", "DATABASE", "D")]))
+    assert a.data_view("U", "D.S.T")["can_read"] and a.can("U", "SELECT", "D.S.T")["blocked"] == []  # shared database
 
 
 def test_namespaces():

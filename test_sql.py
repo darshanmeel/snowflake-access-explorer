@@ -233,8 +233,9 @@ def test_blocked():
     g += [grant(r, "USAGE", "DATABASE", "D") for r in ("R1", "R2", "R3")]
     g += [grant("R2", "USAGE", "SCHEMA", "D.S"), grant("D.DR", "USAGE", "SCHEMA", "D.S"),
           grant("R3", "USAGE", "SCHEMA", "D.<SCHEMA>", True), grant("R4", "USAGE", "DATABASE_ROLE", "D.DR"),
-          grant("R5", "USAGE", "ROLE", "SYSADMIN")]
-    ur = [("U1", "R1"), ("U2", "R2"), ("U3", "R3"), ("U4", "R4"), ("U5", "R5"), ("U6", "R1"), ("U6", "R2")]
+          grant("R5", "USAGE", "ROLE", "SYSADMIN"), grant("R6", "SELECT", "TABLE", "E.S.T"),
+          grant("R6", "IMPORTED PRIVILEGES", "DATABASE", "E")]  # a shared database: its schemas need nothing more
+    ur = [("U1", "R1"), ("U2", "R2"), ("U3", "R3"), ("U4", "R4"), ("U5", "R5"), ("U6", "R1"), ("U6", "R2"), ("U7", "R6")]
     d = dict(run={}, GRANT=g, USER_ROLE=[dict(USER_NAME=u, ROLE_NAME=r) for u, r in ur], USER=[dict(USER_NAME="U1")],
              USAGE=[dict(USER_NAME="U1")], TAG=[dict(OBJECT_NAME="D.S.T", DOMAIN="TABLE", TAG_NAME="T.S.N", TAG_VALUE="x")],
              POLICY=[dict(OBJECT_NAME="D.S.T")])
@@ -243,6 +244,9 @@ def test_blocked():
     for u, gap in want.items():
         assert check_can(con, u, "SELECT", "D.S.T") >= 1
         assert {r[4] for r in con.execute("SELECT * FROM TF_CAN(?, 'SELECT', 'D.S.T')", [u]).fetchall()} == {gap}, u
+        assert a.gap_text(a.can(u, "SELECT", "D.S.T")["blocked"]) == gap, u
+    assert {r[4] for r in con.execute("SELECT * FROM TF_CAN('U7', 'SELECT', 'E.S.T')").fetchall()} == {None}
+    assert a.can("U7", "SELECT", "E.S.T")["blocked"] == []
 
 
 class Row(dict):  # a Snowpark Row: row["N"] and row.as_dict()
