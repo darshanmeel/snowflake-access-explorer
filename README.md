@@ -393,7 +393,9 @@ The app logs in like on a shared server: give the service `SNOWFLAKE_ACCOUNT`, `
 
 ## Data sources
 Only metadata, never table data: `ACCOUNT_USAGE` grants, users, query history, tags and policies (then INFORMATION_SCHEMA, then `SHOW`, when
-`ACCOUNT_USAGE` is not readable). Granted vs used also reads `ACCOUNT_USAGE.ACCESS_HISTORY` (Enterprise edition),
+`ACCOUNT_USAGE` is not readable). The object inventory lists objects no grant names: `ACCOUNT_USAGE` DATABASES, SCHEMATA, TABLES,
+FUNCTIONS, PROCEDURES, STAGES, PIPES, SEQUENCES, FILE_FORMATS, STREAMS, TASKS, TAGS, MASKING_POLICIES, ROW_ACCESS_POLICIES,
+INTEGRATIONS, and `SHOW` STREAMLITS / NOTEBOOKS / ALERTS / WAREHOUSES / COMPUTE POOLS (names and owners only; each read may fail on its own). Granted vs used also reads `ACCOUNT_USAGE.ACCESS_HISTORY` (Enterprise edition),
 aggregated per user, object and week (180 days, `USE_DAYS`, in whole weeks; a new read copies the weeks the last one has
 and reads only its last two weeks again); without it that screen explains why it is empty. The Activity tabs (object, person,
 role) and rules 24-28 read `ACCESS_HISTORY` with `QUERY_HISTORY` (role, statement type) and `SESSIONS` (client; only sessions opened from a week before the first day read, so Snowflake does not scan a year of them) for the

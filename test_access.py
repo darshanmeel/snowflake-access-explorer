@@ -404,8 +404,12 @@ def au_grants(sql, plain):
 
 def fake_snowflake(d, au):
     """query(sql) answering live()'s SHOW commands from data set d; ACCOUNT_USAGE readable when au (canned rows).
-    Database roles (DB.ROLE in d) only show up in SHOW DATABASE ROLES, never in SHOW ROLES."""
-    plain = [g for g in d["GRANT"] if not g["IS_FUTURE"]]
+    Database roles (DB.ROLE in d) only show up in SHOW DATABASE ROLES, never in SHOW ROLES. As on a real account, the
+    grant reads list no Streamlit app or notebook ownership: only SHOW STREAMLITS / NOTEBOOKS (the object inventory) do;
+    ACCOUNT_USAGE.TABLES lists the tables and views, all granted already."""
+    def apps(g):
+        return g["PRIVILEGE"] == "OWNERSHIP" and g["GRANTED_ON"] in ("STREAMLIT", "NOTEBOOK")
+    plain = [g for g in d["GRANT"] if not g["IS_FUTURE"] and not apps(g)]
     dbr = {g["OBJECT_NAME"] for g in plain if g["GRANTED_ON"] == "DATABASE_ROLE"} |         {g["GRANTEE_ROLE"] for g in plain if "." in g["GRANTEE_ROLE"]}
     roles = sorted(({g["GRANTEE_ROLE"] for g in d["GRANT"]} | {x["ROLE_NAME"] for x in d["USER_ROLE"]}) - dbr)
     dbs = sorted({g["OBJECT_NAME"].split(".")[0] for g in plain if g["GRANTED_ON"] not in ("ROLE", "ACCOUNT", "WAREHOUSE")})
@@ -428,6 +432,10 @@ def fake_snowflake(d, au):
                 return [dict(x) for x in d["ACTIVITY"]]
             if "ACCOUNT_USAGE.GRANTS_TO_ROLES " in s + " ":
                 return au_grants(s, plain)
+            if "ACCOUNT_USAGE.TABLES " in s + " ":  # the object inventory: owner and kind of each table and view
+                return [dict(zip(("DATABASE_NAME", "SCHEMA_NAME", "NAME"), g["OBJECT_NAME"].split(".")), OWNER=g["GRANTEE_ROLE"],
+                             OWNER_ROLE_TYPE="DATABASE_ROLE" if "." in g["GRANTEE_ROLE"] else "ROLE", KIND=g["GRANTED_ON"])
+                        for g in plain if g["PRIVILEGE"] == "OWNERSHIP" and g["GRANTED_ON"] in ("TABLE", "VIEW")]
             me = re.search(r"(?:GRANTEE_NAME|AND NAME) = '([^']*)'", s)  # mine(): one user's rows
             if me and "ACCOUNT_USAGE.GRANTS_TO_USERS " in s + " ":
                 return [{"ROLE": x["ROLE_NAME"]} for x in d["USER_ROLE"] if x["USER_NAME"] == me[1]]
@@ -472,6 +480,9 @@ def fake_snowflake(d, au):
             return []
         if s == "SHOW USERS":
             return [{k.lower(): ("" if v is None else v) for k, v in x.items()} | {"name": x["USER_NAME"]} for x in d["USER"]]
+        if s in ("SHOW STREAMLITS IN ACCOUNT", "SHOW NOTEBOOKS IN ACCOUNT"):
+            return [dict(zip(("database_name", "schema_name", "name"), g["OBJECT_NAME"].split(".")), owner=g["GRANTEE_ROLE"],
+                         owner_role_type="ROLE") for g in d["GRANT"] if apps(g) and s.split()[1].startswith(g["GRANTED_ON"])]
         if s == "SHOW STREAMS IN ACCOUNT":
             return [dict(zip(("database_name", "schema_name", "name"), x["STREAM_NAME"].split(".")),
                          table_name=x["SOURCE_NAME"], source_type=x["SOURCE_TYPE"]) for x in d["STREAM"]]
@@ -692,6 +703,38 @@ def test_live_inside():
     import server
     info = {k: server.note_info(k, src.get(k), "shared")[0] for k in notes}
     assert info["future_grants"] == "Future grants unread" and info["streams"] == "Streams unread"
+
+
+def test_inventory():
+    """Direct mode reads the object inventory: objects with no grant row (a Streamlit app and a notebook, as on a real
+    account) appear as objects owned by their owner role; one OWNERSHIP row per object, none for an object the grants
+    already own; an object no role owns is listed with no holder; a refused read leaves a note."""
+    d = a.fake()
+    show, calls = fake_snowflake(d, True)
+    lost = [dict(database_name="SALES", schema_name="MART", name="NB_LOST", owner="", owner_role_type="ROLE"),
+            dict(database_name="SALES", schema_name="MART", name="NB_APP", owner="SOME_APP", owner_role_type="APPLICATION")]
+
+    def query(sql):
+        if sql == "SHOW NOTEBOOKS IN ACCOUNT":
+            return show(sql) + [dict(x) for x in lost]
+        return show(sql)
+    s = a.live(query)
+    own = Counter(g["OBJECT_NAME"] for g in s["GRANT"] if g["PRIVILEGE"] == "OWNERSHIP" and not g["IS_FUTURE"])
+    assert max(own.values()) == 1, [o for o, n in own.items() if n > 1]  # no duplicates with the real grants
+    assert any("ACCOUNT_USAGE.TABLES" in c for c in calls) and "SHOW STREAMLITS IN ACCOUNT" in calls
+    src, notes = s["run"]["SOURCES"]["objects"], s["run"]["NOTES"]["objects"]
+    assert src == "ACCOUNT_USAGE + SHOW" and "DATABASES: " in notes and "2 objects without an owner role" in notes, notes
+    a.build(s)
+    try:
+        for o, k, r in (("SALES.PIPELINE.ST_ORDER_BOARD", "STREAMLIT", "PIPELINE"), ("SALES.PIPELINE.NB_CHURN", "NOTEBOOK", "PIPELINE"),
+                     ("SALES.MART.ST_CUSTOMER_LOOKUP", "STREAMLIT", "MART")):
+            assert a.kinds[o] == k and (f"{a.TECH}SALES_{r}_OWNER", "OWNERSHIP", k) in a.on[o], (o, a.on.get(o))
+        assert a.on["SALES.MART.ST_CUSTOMER_LOOKUP"].count((a.TECH + "SALES_MART_EXECUTE", "USAGE", "STREAMLIT")) == 1
+        for o in ("SALES.MART.NB_LOST", "SALES.MART.NB_APP"):
+            assert a.kinds[o] == "NOTEBOOK" and o in a.objects and not a.on.get(o), o
+        assert "SOME_APP" not in a.roles and not [g for g in s["GRANT"] if not g["GRANTEE_ROLE"]]  # kept apart by tidy()
+    finally:
+        a.build(a.fake())
 
 
 def test_duckdb():
@@ -1527,8 +1570,8 @@ def test_perf():
 def test_group_graph():
     rows = a.grants("SVC_DEPLOY", True)
     gs = {g["group"]: g for g in a.group_objects(rows, "schema")}
-    p = gs["SALES.PIPELINE"]
-    assert p["objects"] == 9 and p["classes"] == ["own"] and p["holders"] == [T + "SALES_PIPELINE_OWNER"]
+    p = gs["SALES.PIPELINE"]  # 2 of them only owned (a Streamlit app, a notebook)
+    assert p["objects"] == 11 and p["classes"] == ["own"] and p["holders"] == [T + "SALES_PIPELINE_OWNER"]
     assert gs["FINANCE.REPORT"]["sensitive"] == 2 and gs["FINANCE.REPORT"]["findings"] > 0
     # CREATE SCHEMA on database SALES: an object of its own at schema level, not a "SALES" group of 1
     assert gs["WH_SALES_XS"]["level"] == "object" and gs["SALES"]["level"] == "object"
@@ -1539,26 +1582,26 @@ def test_group_graph():
     assert set(next(g for g in a.group_objects(a.grants("ANALYST_01", True), "database")
                     if g["group"] == "SALES")["holders"]) == holders  # every holder, not one per row
     g = a.graph_input("SVC_DEPLOY", max_objects=40)
-    assert g["level"] == "object" and g["header"] == "35 objects" and g["kinds"] == {a.BUILTIN_NODE: "fold"}
+    assert g["level"] == "object" and g["header"] == "37 objects" and g["kinds"] == {a.BUILTIN_NODE: "fold"}
     g = a.graph_input("SVC_DEPLOY", max_objects=20)  # over the cap: grouped by schema (14 groups, under 20)
-    assert g["header"] == "35 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
+    assert g["header"] == "37 objects, grouped by schema" and g["lanes"][-1][0] == "Schemas"
     assert g["kinds"]["SALES.PIPELINE"] == "schema" and "SALES" not in g["kinds"] and "WH_SALES_XS" not in g["kinds"]
-    assert (T + "SALES_PIPELINE_OWNER", "SALES.PIPELINE", "own", "OWNERSHIP", 9) in g["edges"]
-    assert g["info"]["SALES.PIPELINE"]["count"] == 9 and "count" not in g["info"].get("SALES", {})
+    assert (T + "SALES_PIPELINE_OWNER", "SALES.PIPELINE", "own", "OWNERSHIP", 11) in g["edges"]
+    assert g["info"]["SALES.PIPELINE"]["count"] == 11 and "count" not in g["info"].get("SALES", {})
     g = a.graph_input("SVC_DEPLOY")  # over a lane's 12, and 14 schema groups: grouped by database
-    assert g["header"] == "35 objects, grouped by database" and g["kinds"]["SALES"] == "database"
-    assert g["info"]["SALES"]["count"] == 21 and g["info"]["SALES"]["noun"] == "objects"
+    assert g["header"] == "37 objects, grouped by database" and g["kinds"]["SALES"] == "database"
+    assert g["info"]["SALES"]["count"] == 23 and g["info"]["SALES"]["noun"] == "objects"
     d = a.graph_input("SVC_DEPLOY", "SALES")  # a database: its schemas, its own grants as objects
     assert d["level"] == "schema" and "SALES" in d["lanes"][-1][1] and "SALES" not in d["kinds"]
     g = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE", max_objects=3)
-    assert g["header"] == "9 objects in SALES.PIPELINE, grouped by object type"
+    assert g["header"] == "11 objects in SALES.PIPELINE, grouped by object type"
     assert [n for _, ns in g["lanes"][1:-1] for n in ns] == [F + "DEPLOY", T + "SALES_OWNER", T + "SALES_PIPELINE_OWNER"]
     assert set(g["kinds"].values()) == {"type-group"} and "SALES.PIPELINE · TASK" in g["kinds"]
     assert g["types"]["SALES.PIPELINE · TASK"] == "TASK"  # a type box links to ?otype=TASK
     t = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE", max_objects=3, otype="TASK")  # one type: its objects, one by one
     assert t["level"] == "object" and t["lanes"][-1][1] and all(a.kinds[o] == "TASK" for o in t["lanes"][-1][1])
     g = a.graph_input("SVC_DEPLOY", "SALES.PIPELINE")
-    assert g["level"] == "object" and len(g["lanes"][-1][1]) == 9
+    assert g["level"] == "object" and len(g["lanes"][-1][1]) == 11
     assert a.graph_input("SVC_DEPLOY", "NO.SUCH") is None
     h = a.graph_input("HR_01", "HR.PAYROLL")  # the fake data's own type boxes, at the default MAX_OBJECTS
     assert h["types"] == {"HR.PAYROLL · TABLE": "TABLE", "HR.PAYROLL · VIEW": "VIEW"}

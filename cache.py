@@ -257,6 +257,7 @@ def sql_copy(key, d, at):
         rid = f"{rid or 'read'}-{time.strftime('%Y%m%d%H%M%S', time.localtime(at))}"
     fin = run.get("FINISHED_AT")
     rows = {t: d.get(t) or [] for t in COLUMNS if t != "RUN"}
+    rows["GRANT"] = rows["GRANT"] + (d.get("UNOWNED") or [])  # objects no role owns: tidy() keeps them apart
     rows["RUN"] = [dict(STARTED_AT=None, FINISHED_AT=stamp(at) if fin in (None, "now") else fin, STATUS="OK",
                         SOURCES=json.dumps(run.get("SOURCES") or {}, default=str),
                         ROW_COUNTS=json.dumps({t.lower(): len(v) for t, v in rows.items()}),
