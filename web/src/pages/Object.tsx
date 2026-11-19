@@ -307,7 +307,7 @@ function AdminRoleLine({ g, refs }: { g: ObjectPage["admin_roles"][number]; refs
     <span className="ae-adm-role">
       <span className="ae-pchip ae-pchip-admin">{g.role}</span>
       <span>{plural(g.users, "user")}</span>
-      {g.first.map((u) => <NameLink key={u} id={u} refs={refs} label={unuser(u)} />)}
+      <span className="ae-adm-users">{g.first.map((u) => <NameLink key={u} id={u} refs={refs} label={unuser(u)} />)}</span>
       <details>
         <summary className="ae-link">{rest > 0 ? `+${rest} more · ` : ""}Show {plural(g.total, "path")}</summary>
         {g.paths.map((p, i) => <span key={i} className="ae-fd-path"><PathCell path={p} refs={refs} /><WhatIfButton ch={[{ op: "revoke_role_from_user", role: p[1], user: unuser(p[0]) }]} /></span>)}
