@@ -5,7 +5,7 @@ import type { ListItem, SensitiveReach, UserPage } from "../api/types";
 type MR = UserPage["multi"]["rows"][number];
 import { Banner, Card, DataTable, KpiRow, PrivilegeTabs, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, CutBanner, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, PickFirst, Sel, Tog, unread, Usage, ScopeChips } from "./common";
+import { Banners, col, Controls, CutBanner, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, PickFirst, Sel, Tog, unread, Usage, ScopeChips, ScopePick } from "./common";
 
 export function UserPage() {
   const c = useApp();
@@ -23,6 +23,7 @@ export function UserPage() {
         <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />
         <Tog label="Data only" on={c.params.dataonly !== "0"} help="Hide USAGE on databases and schemas outside the Usage tab"
           onPick={(v) => c.set({ dataonly: v ? null : "0" })} />
+        <ScopePick />
         <Pick label="Only on object" value={c.params.on ?? ""} what="objects" onPick={(v) => c.set({ on: v })} />
         {c.params.on && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ on: null })}>any object ×</button>}
         {s.data && <Sel label="Only privilege" value={s.data.filters.priv} onPick={(v) => c.set({ priv: v })}
@@ -55,7 +56,7 @@ export function UserPage() {
             <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.user.name} of="user" refs={d.refs} />
             <GraphCard g={d.graph} refs={d.refs} />
             <CutBanner capped={d.capped} />
-            <Tabs nav={c.inside ? 2 : 1} active={part} onChange={(t) => { setPart(t); c.set({ schema: null, otype: null, full: null }); }} tabs={[
+            <Tabs nav={c.inside ? 2 : 1} active={part} onChange={(t) => { setPart(t); c.set({ otype: null, full: null }); }} tabs={[
               { key: "privs", label: "Privileges", count: d.kpis.privileges },
               ...(d.multi.rows.length ? [{ key: "multi", label: "Reached more than one way", count: d.multi.total }] : []),
               ...(d.can_read?.total ? [{ key: "sees", label: "What they see", count: d.can_read.total }] : []),

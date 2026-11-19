@@ -201,6 +201,17 @@ export function NameLink({ id, refs, label }: { id: string; refs: Refs; label?: 
 
 const SCOPE: [string, string][] = [["on", "object"], ["priv", "privilege"]]; // schema / otype: the graph card shows them
 
+/** Database or schema filter of a person's or role's privileges (schema=: a database name or DB.SCHEMA), every tab. */
+export function ScopePick() {
+  const c = useApp();
+  return (
+    <>
+      <Pick label="Database or schema" value={c.params.schema ?? ""} what="databases,objects" params={{ type: "SCHEMA" }} onPick={(v) => c.set({ schema: v })} />
+      {c.params.schema && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ schema: null })}>any database ×</button>}
+    </>
+  );
+}
+
 /** The filters this page carries in its URL, as chips: × removes one. Keeps a picked object or schema from silently
  * narrowing other tabs. */
 export function ScopeChips() {

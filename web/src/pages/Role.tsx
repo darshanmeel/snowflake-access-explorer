@@ -3,7 +3,7 @@ import { useApi } from "../api/client";
 import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
 import { Banner, Card, DataTable, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Sel, Tog } from "./common";
+import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, ScopePick, Sel, Tog } from "./common";
 import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -88,6 +88,7 @@ export function RolePageView() {
       <Controls>
         <Pick label="Role" value={name} what="roles" onPick={(v) => c.nav("role", { name: v })} />
         <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />
+        <ScopePick />
         <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} help="Hide roles that no user holds" />
         <Tog label="Sensitive only" on={c.params.sensitive === "1"} onPick={(v) => c.set({ sensitive: v ? "1" : null })} />
       </Controls>
