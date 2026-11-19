@@ -2,7 +2,7 @@
 // and watched questions saved in this browser, asked again on each snapshot. ChangeFeed is also the History tab of
 // the Access and Object screens (subject=).
 import { useEffect, useMemo, useState } from "react";
-import { useApi } from "../api/client";
+import { forget, useApi } from "../api/client";
 import type { ChangeEvent, ChangesPage, CheckPage, ListItem, WhoPage } from "../api/types";
 import { Card, EmptyState, FilterChips, FindingChip, GrantLink, Pager, Tabs } from "../components";
 import { useApp } from "../ctx";
@@ -32,6 +32,7 @@ export function ChangesPageView() {
 export function ChangeFeed({ subject }: { subject?: string }) {
   const c = useApp();
   const s = useApi<ChangesPage>("changes", { view: c.view, subject, f: c.params.f, offset: c.params.ev_at, limit: c.params.limit });
+  useEffect(() => { if (s.data?.available) forget("home"); }, [s.data]);  // a first comparison: Home's What changed card shows it
   return <Load s={s}>{(d) => <Feed d={d} />}</Load>;
 }
 

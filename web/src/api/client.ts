@@ -13,6 +13,9 @@ const subs = new Set<() => void>();
 /** Drop every cached answer (after loading My access, reload, rebuild) and tell the open pages to refetch. */
 export function clearCache() { cache.clear(); epoch++; subs.forEach((f) => f()); }
 
+/** Drop the cached answers of one endpoint (`path` like "home"), so its next view asks the server again. */
+export function forget(path: string) { for (const k of [...cache.keys()]) if (k === `/api/${path}` || k.startsWith(`/api/${path}?`)) cache.delete(k); }
+
 export const qs = (p: Record<string, string | undefined | null>) => {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries(p)) if (v != null && v !== "") u.set(k, v);

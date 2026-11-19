@@ -127,7 +127,7 @@ export function HomePageView() {
                 {shown.map((i) => (
                   <button type="button" key={i.id} className="ae-suggest-row" onClick={() => openItem(i)}>
                     <span className="ae-mono">{i.name}{i.admin && <span className="ae-tone-bad"> · admin</span>}{i.status && i.status !== "active" && <span className="ae-warn-word"> · {i.status === "never" ? "never logged in" : i.status}</span>}</span>
-                    <span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}{i.admin ? " · admin roles: reaches everything" : i.answer ? ` · ${i.answer}` : ""}</span>
+                    <span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}{i.answer ? ` · ${i.answer}` : ""}{i.admin ? " · holds an admin role" : ""}</span>
                   </button>
                 ))}
                 {all > shown.length && <p className="ae-muted ae-suggest-more">{(all - shown.length).toLocaleString()} more {label.toLowerCase()}: type more of the name to narrow it.
