@@ -544,6 +544,7 @@ export interface MatrixCell {
   depth: number | null;
   count: number;
   title: string;
+  admin: string | null; // the admin role it comes through (its real role links), else null
 }
 
 export interface MatrixRow {
@@ -551,6 +552,8 @@ export interface MatrixRow {
   type: string;
   status: UserStatus;
   admin: string[];
+  unknown: string[]; // admin roles held whose links are not in the snapshot: what they give here is not known
+  flags: Record<string, string>; // "status" or a privilege -> why that cell is red
   real: boolean;
   cells: Record<string, MatrixCell>;
   seen: Record<string, StateWhy<ColState>>;

@@ -478,7 +478,10 @@ Object page. Producers: `a.object_stats(o, t, priv)`, `a.admin_holders()` + `a.f
                   "readers": {"people": 9, "admin": 2, "service": 1}} ,   // null when no tag or policy
   "matrix": {"privs": ["OWNERSHIP", "SELECT"], "sensitive_cols": ["EMAIL"], "row_policy": true,
              "rows": [{"user": "ANALYST_01", "type": "PERSON", "status": "active", "admin": [], "real": true,
-                       "cells": {"SELECT": {"has": true, "owner": false, "depth": 3, "count": 1, "title": "SELECT via ..."}},
+                       "unknown": [],   // admin roles held with no link or grant in the snapshot ("all, via X")
+                       "flags": {"status": "Dormant user who can still read this object"},   // red cells, why
+                       "cells": {"SELECT": {"has": true, "owner": false, "depth": 3, "count": 1, "title": "SELECT via ...",
+                                            "admin": null}},   // admin: the admin role a cell comes through (a.via_admin)
                        "seen": {"EMAIL": {"state": "masked", "reason": "..."}}, "rows_state": {"state": "all", "reason": "..."},
                        "via": [{"classes": ["read"], "roles": ["GRP_ANALYSTS"], "holders": ["T_SALES_CORE_READ"]}],
                        "depth": 3, "paths": 1, "path": ["..."], "admin_paths": []}],   // admin_paths: admin rows only

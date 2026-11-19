@@ -2074,6 +2074,7 @@ def grantees_csv(p, view):
 
 
 MAX_ADMIN_PATHS = 20  # Object page banner: admin paths listed (the counts cover every admin user)
+WRITES = ("OWNERSHIP", "INSERT", "UPDATE", "DELETE", "TRUNCATE")  # Users × privileges: red for a person on sensitive data (rule 10)
 
 
 def object_page(p, view):
@@ -2088,20 +2089,28 @@ def object_page(p, view):
     rows, mw = [], window(p, "m_offset", len(m))
     for x in m[mw[0]]:
         u = x["user"]
-        isreal = any(v["has"] or v["owner"] for v in x["privs"].values())
+        isreal = any((v["has"] or v["owner"]) and not v["admin"] for v in x["privs"].values())
         ds = [v["depth"] for v in x["privs"].values() if v["has"]]
         n = max((v["count"] for v in x["privs"].values()), default=0)
         best = min((v["path"] for v in x["privs"].values() if v["has"]), key=len, default=None)
         aps = a.admin_paths(u, True) if x["admin"] else []
-        if not isreal:
-            n, best = len(aps), None
-        reads = isreal and any(x["privs"].get(k, {}).get("has") or x["privs"].get(k, {}).get("owner")
-                               for k in a.READ_PRIVS if k in x["privs"])
-        dv = a.data_view(u, o, True) if reads and (scols or rpol) else None
+        if not ds and x["unknown"]:  # only admin roles whose links are not in the snapshot: their own path counts
+            ups = [q for q in aps if q[-1] in x["unknown"]]
+            n, best = len(ups), min(ups, key=len, default=None)
+            ds = [a.depth(best, True)] if best else []
+        reads = any(x["privs"].get(k, {}).get("has") or x["privs"].get(k, {}).get("owner")
+                    for k in a.READ_PRIVS if k in x["privs"])
+        dv = a.data_view(u, o, True) if isreal and reads and (scols or rpol) else None
         col_of = {k["column"]: k for k in dv["columns"]} if dv else {}
+        typ = str((a.profile.get(u) or {}).get("TYPE") or "PERSON")
+        flags = {"status": f"{x['status'].capitalize()} user who can still read this object"} if (
+            x["status"] in ("disabled", "dormant") and reads) else {}
+        if o in S["sens"] and "SERVICE" not in typ:
+            flags |= {k: f"A person can {'own' if k == 'OWNERSHIP' else 'change'} this sensitive object"
+                      for k in WRITES if x["privs"].get(k, {}).get("has")}
         rows.append(dict(
-            user=u, type=str((a.profile.get(u) or {}).get("TYPE") or "PERSON"), status=x["status"], admin=x["admin"],
-            real=isreal, cells={k: {f: v[f] for f in ("has", "owner", "depth", "count", "title")}
+            user=u, type=typ, status=x["status"], admin=x["admin"], unknown=x["unknown"], flags=flags,
+            real=isreal, cells={k: {f: v[f] for f in ("has", "owner", "depth", "count", "title", "admin")}
                                 for k, v in x["privs"].items()},
             seen={k: col_of.get(k) or dict(state="clear", reason="no masking policy") for k in scols} if dv else {},
             rows_state=dv["rows"] if dv and rpol else None, via=via_groups(x), depth=min(ds) if ds else None, paths=n,

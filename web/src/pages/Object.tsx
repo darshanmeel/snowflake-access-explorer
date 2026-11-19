@@ -305,13 +305,24 @@ function AdminDetail() {
   return <Load s={s}>{(r) => <Card title="People with admin roles or account privileges" scroll><AdminTable admins={r.admins} refs={r.refs} /></Card>}</Load>;
 }
 
+type AdminRow = { admin: string[]; unknown: string[]; real: boolean; cells: Record<string, { has: boolean; admin: string | null }> };
+
+/** Users × privileges, Admin column: the admin roles held; "all, via X" when nothing else shows what they give here. */
+export const adminText = (r: AdminRow) =>
+  !Object.values(r.cells).some((x) => x.has) && r.unknown.length ? `all, via ${r.unknown.join(", ")}` : r.admin.join(", ");
+
+export const adminTitle = (r: AdminRow) =>
+  adminText(r).startsWith("all") ? `${r.unknown.join(", ")}: no role link or grant of it is in the snapshot, so which privileges it gives here is not known; an admin role may hold every role`
+    : Object.values(r.cells).some((x) => x.admin) ? `Admin role: cells marked "admin" come through ${r.admin.join(", ")} and the roles it holds`
+    : `Holds ${r.admin.join(", ")}${r.real ? "" : "; no role it holds reaches this object"}`;
+
 /** The old Object page: graph of the paths in, who has access by path or by user / role, users × privileges, what
  * each role sees, sensitivity. The default tab of screen 2. */
 export function ObjectDetail() {
   const c = useApp();
   const name = c.params.name ?? "";
   const [tab, setTab] = useState("all");
-  const [part, setPart] = useState(c.params.part ?? "who");
+  const [part, setPart] = useState(c.params.part ?? "users");
   // no name: the server picks the first object of the type (as app.py)
   const s = useApi<ObjectPage>("object", { ...apiParams(c), name });
   const op = useOpen(s.data?.refs);
@@ -346,8 +357,8 @@ export function ObjectDetail() {
             <CutBanner capped={d.capped} />
             <GraphCard g={d.graph} refs={d.refs} />
             <Tabs active={part} onChange={setPart} tabs={[
-              { key: "who", label: "By path", count: d.grantees.total },
               { key: "users", label: "Users × privileges", count: d.matrix.total },
+              { key: "who", label: "By path", count: d.grantees.total },
               ...(d.sees ? [{ key: "sees", label: "What each role sees", count: d.sees.rows.length }] : []),
               ...(d.sensitivity ? [{ key: "sens", label: "Sensitivity", count: d.sensitivity.columns.length, tone: o.sensitive ? "warn" as const : null }] : []),
             ]} />
@@ -371,12 +382,15 @@ export function ObjectDetail() {
             {part === "users" && <Card title="Users" sub="Every user, with what they can do here" scroll
               right={c.view === "shared" && <button type="button" className="ae-btn" onClick={() => c.nav("review", { show: "grid", object: o.id, columns: "privileges" })}>Review people × privileges</button>}>
               <PagedTable path="object" at="m_offset" total={d.matrix.total} offset={d.matrix.offset} pick={(x: ObjectPage) => x.matrix.rows}
-                csv={`${o.name}_users.csv`} rows={d.matrix.rows} rowTone={(r: MatrixRow) => (r.admin.length ? "bad" : null)}
+                csv={`${o.name}_users.csv`} rows={d.matrix.rows}
                 columns={[
                   col("u", "User", (r: MatrixRow) => r.user, { render: (r: MatrixRow) => <NameLink id={r.user} refs={d.refs} /> }),
-                  col("t", "Type", (r: MatrixRow) => r.type), col("s", "Status", (r: MatrixRow) => r.status),
+                  col("t", "Type", (r: MatrixRow) => r.type),
+                  col("s", "Status", (r: MatrixRow) => r.status, { render: (r: MatrixRow) => (r.flags.status ? <span className="ae-bad" title={r.flags.status}>{r.status}</span> : r.status) }),
+                  col("adm", "Admin", (r: MatrixRow) => adminText(r), { render: (r: MatrixRow) => (r.admin.length ? <span className="ae-bad" title={adminTitle(r)}>{adminText(r)}</span> : null) }),
                   ...d.matrix.privs.map((p) => col(p, p, (r: MatrixRow) => (r.cells[p]?.has ? 1 : 0),
-                    { render: (r: MatrixRow) => (r.cells[p]?.has ? <span title={r.cells[p].title}>{r.cells[p].owner ? "owner" : `D${r.cells[p].depth ?? ""}`}</span> : null) })),
+                    { render: (r: MatrixRow) => { const x = r.cells[p], why = r.flags[p];
+                      return x?.has ? <span className={why ? "ae-bad" : undefined} title={why ? `${why}. ${x.title}` : x.title}>{x.owner ? "owner" : `D${x.depth ?? ""}`}{x.admin && " admin"}</span> : null; } })),
                   ...d.matrix.sensitive_cols.map((cn) => col(`c_${cn}`, cn, (r: MatrixRow) => r.seen[cn]?.state ?? "",
                     { render: (r: MatrixRow) => (r.seen[cn] ? StateTag(r.seen[cn]) : null) })),
                   ...(d.matrix.row_policy ? [col("rows", "Rows", (r: MatrixRow) => r.rows_state?.state ?? "", { render: (r: MatrixRow) => (r.rows_state ? StateTag(r.rows_state) : null) })] : []),

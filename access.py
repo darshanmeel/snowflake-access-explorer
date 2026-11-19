@@ -3818,10 +3818,11 @@ def title(pv, path):
 
 def matrix(obj, kind=None, limit=None, priv=None):
     """Object page, effective access by user. Row: user, admin ([admin roles held]; admins inherit everything),
-    status, service, privs {privilege: dict(has, owner (implied by OWNERSHIP), depth, count, title, path)} over
-    the privileges of valid_privs(kind or the object's type) found in the data, via {cls: [granted roles]} ("Read via / Write via"), holders {cls: [grant
-    holders]}.
-    priv: only users who have it (or OWNERSHIP, which implies it). Users with a path first, then admin users."""
+    status, service, privs {privilege: dict(has, owner (implied by OWNERSHIP), depth, count, title, path, admin (the
+    admin role it comes through, else None))} over the privileges of valid_privs(kind or the object's type) found in
+    the data, via {cls: [granted roles]} ("Read via / Write via"), holders {cls: [grant holders]}, unknown (via_admin).
+    priv: only users who have it (or OWNERSHIP, which implies it). Users with a path first, then admin users (their
+    cells through the admin roles: via_admin)."""
     k0 = kind or kinds.get(obj)
     found = cached(("privs_on", k0), lambda: {pv for _, pv, k, _ in privs if k == k0})
     cols = [c for c in valid_privs(k0) if c == "OWNERSHIP" or c in found]
@@ -3838,17 +3839,65 @@ def matrix(obj, kind=None, limit=None, priv=None):
         for c in cols:
             r = g.get(c)
             cells[c] = dict(has=r is not None, owner=r is None and own, depth=r["depth"] if r else None,
-                            count=r["count"] if r else 0, path=r["path"] if r else None,
+                            count=r["count"] if r else 0, path=r["path"] if r else None, admin=None,
                             title=title(c, r["path"]) if r else "implied by OWNERSHIP" if own else "")
         via, hs = {}, {}
         for pv, r in g.items():
             via.setdefault(priv_class(pv, k0), set()).update(p[1] for p in r["paths"])
             hs.setdefault(priv_class(pv, k0), set()).update(p[-2] for p in r["paths"])
-        out.append(dict(user=u, admin=adm.get(u, []), status=status(u), service=is_service(u), privs=cells,
+        out.append(dict(user=u, admin=adm.get(u, []), status=status(u), service=is_service(u), privs=cells, unknown=[],
                         via={c: sorted(v) for c, v in via.items()}, holders={c: sorted(v) for c, v in hs.items()}))
-    empty = {c: dict(has=False, owner=False, depth=None, count=0, path=None, title="") for c in cols}
-    return out + [dict(user=u, admin=a, status=status(u), service=is_service(u), privs=empty, via={}, holders={})
-                  for u, a in sorted(adm.items()) if u not in got]
+    return out + [dict(user=u, admin=a, status=status(u), service=is_service(u), via={}, holders={},
+                       **via_admin(u, obj, kind, limit, cols)) for u, a in sorted(adm.items()) if u not in got]
+
+
+def admin_links():
+    """{admin role: roles it holds}: the role links build() drops (every custom role -> SYSADMIN), once per data set."""
+    def make():
+        out = {}
+        for g in source["data"]["GRANT"]:
+            if (g["GRANTED_ON"] in ROLE_ON and g["PRIVILEGE"] == "USAGE" and g["GRANTEE_ROLE"] in ADMIN
+                    and (source["builtin"] or not builtin_grant(g))):
+                out.setdefault(g["GRANTEE_ROLE"], []).append(g["OBJECT_NAME"])
+        return out
+    return cached("admin_links", make)
+
+
+def via_admin(u, obj, kind, limit, cols):
+    """Matrix cells of a user who reaches obj only through admin roles, along the admin roles' real links: user ->
+    admin role (admin_holders) -> admin roles it holds -> a role it holds -> ... -> holder (grantees). Per privilege
+    the shortest path; count = the paths combined. unknown: admin roles held with no link or grant in the snapshot,
+    so what they give here is not known."""
+    links, rows = admin_links(), {}
+    for r in grantees(obj, kind, limit):
+        if r["kind"] != "user":
+            rows.setdefault(r["grantee"], {})[r["privilege"]] = r
+    best, unknown = {}, set()
+    for p in cached("admin_by_user", lambda: group((x, q) for x, q in admin_holders() if from_user(q))).get(u, []):
+        chain, todo = {p[-1]: [p[-1]]}, [p[-1]]
+        for b in todo:  # the admin roles' own links: ACCOUNTADMIN -> SYSADMIN -> custom roles
+            for k in links.get(b, []):
+                if k not in chain:
+                    chain[k] = chain[b] + [k]
+                    todo += [k] if k in ADMIN else []
+        if len(chain) == 1 and p[-1] not in granted:
+            unknown.add(p[-1])
+        for y, c in chain.items():
+            for pv, r in rows.get(y, {}).items():
+                full = p + c[1:] + r["path"][1:]
+                e = best.setdefault(pv, dict(path=full, count=0, admin=p[-1]))
+                e["count"] += r["count"]
+                if len(full) < len(e["path"]):
+                    e.update(path=full, admin=p[-1])
+    own = best.get("OWNERSHIP")
+    cells = {}
+    for c in cols:
+        e = best.get(c)
+        cells[c] = dict(has=e is not None, owner=e is None and own is not None, depth=depth(e["path"][:-1], True) if e else None,
+                        count=e["count"] if e else 0, path=e["path"] if e else None, admin=(e or own or {}).get("admin"),
+                        title=f"{title(c, e['path'])} (admin role {e['admin']})" if e
+                        else f"implied by OWNERSHIP through {own['admin']}" if own else "")
+    return dict(privs=cells, unknown=sorted(unknown))
 
 
 def object_stats(obj, kind=None, priv=None, limit=None):
