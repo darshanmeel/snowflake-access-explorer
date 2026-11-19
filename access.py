@@ -3865,30 +3865,33 @@ def admin_links():
 
 def via_admin(u, obj, kind, limit, cols):
     """Matrix cells of a user who reaches obj only through admin roles, along the admin roles' real links: user ->
-    admin role (admin_holders) -> admin roles it holds -> a role it holds -> ... -> holder (grantees). Per privilege
-    the shortest path; count = the paths combined. unknown: admin roles held with no link or grant in the snapshot,
-    so what they give here is not known."""
+    admin role (up_rows, counted) -> admin roles it holds -> a role it holds -> ... -> holder (grantees). Per privilege
+    the shortest path; count = every path (user paths to the admin role x admin chains x paths on to the holder).
+    unknown: admin roles held with no link or grant in the snapshot, so what they give here is not known."""
     links, rows = admin_links(), {}
     for r in grantees(obj, kind, limit):
         if r["kind"] != "user":
             rows.setdefault(r["grantee"], {})[r["privilege"]] = r
     best, unknown = {}, set()
-    for p in cached("admin_by_user", lambda: group((x, q) for x, q in admin_holders() if from_user(q))).get(u, []):
-        chain, todo = {p[-1]: [p[-1]]}, [p[-1]]
-        for b in todo:  # the admin roles' own links: ACCOUNTADMIN -> SYSADMIN -> custom roles
-            for k in links.get(b, []):
-                if k not in chain:
-                    chain[k] = chain[b] + [k]
-                    todo += [k] if k in ADMIN else []
-        if len(chain) == 1 and p[-1] not in granted:
-            unknown.add(p[-1])
-        for y, c in chain.items():
-            for pv, r in rows.get(y, {}).items():
-                full = p + c[1:] + r["path"][1:]
-                e = best.setdefault(pv, dict(path=full, count=0, admin=p[-1]))
-                e["count"] += r["count"]
+    for a in sorted(ADMIN):
+        n, q = up_rows(a).get((u, True), (0, None))
+        if not n:
+            continue
+        chains, todo = [[a]], [[a]]
+        for c in todo:  # every chain over the admin roles' own links: ACCOUNTADMIN -> SYSADMIN -> custom roles
+            for k in links.get(c[-1], []):
+                if k not in c:
+                    chains.append(c + [k])
+                    todo += [c + [k]] if k in ADMIN else []
+        if len(chains) == 1 and a not in granted:
+            unknown.add(a)
+        for c in chains:
+            for pv, r in rows.get(c[-1], {}).items():
+                full = q[::-1] + c[1:] + r["path"][1:]
+                e = best.setdefault(pv, dict(path=full, count=0, admin=a))
+                e["count"] += n * r["count"]
                 if len(full) < len(e["path"]):
-                    e.update(path=full, admin=p[-1])
+                    e.update(path=full, admin=a)
     own = best.get("OWNERSHIP")
     cells = {}
     for c in cols:

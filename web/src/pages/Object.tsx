@@ -387,7 +387,7 @@ export function ObjectDetail() {
                   col("u", "User", (r: MatrixRow) => r.user, { render: (r: MatrixRow) => <NameLink id={r.user} refs={d.refs} /> }),
                   col("t", "Type", (r: MatrixRow) => r.type),
                   col("s", "Status", (r: MatrixRow) => r.status, { render: (r: MatrixRow) => (r.flags.status ? <span className="ae-bad" title={r.flags.status}>{r.status}</span> : r.status) }),
-                  col("adm", "Admin", (r: MatrixRow) => adminText(r), { render: (r: MatrixRow) => (r.admin.length ? <span className="ae-bad" title={adminTitle(r)}>{adminText(r)}</span> : null) }),
+                  col("adm", "Admin", (r: MatrixRow) => adminText(r), { render: (r: MatrixRow) => (r.admin.length ? <span className="ae-bad" title={adminTitle(r)}>{adminText(r)}</span> : null), wrap: "nowrap" }),
                   ...d.matrix.privs.map((p) => col(p, p, (r: MatrixRow) => (r.cells[p]?.has ? 1 : 0),
                     { render: (r: MatrixRow) => { const x = r.cells[p], why = r.flags[p];
                       return x?.has ? <span className={why ? "ae-bad" : undefined} title={why ? `${why}. ${x.title}` : x.title}>{x.owner ? "owner" : `D${x.depth ?? ""}`}{x.admin && " admin"}</span> : null; } })),
