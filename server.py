@@ -2396,7 +2396,10 @@ def check_page(p, view):
     ask = pv if pv != ALL else a.basic_priv(k)
     # the slow part of a No (seconds on a big account): only when the Nearest ways in tab asks (near=1)
     near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o, is_user=user) if p.get("near") == "1" else None
-    for x in near or []:  # the grant text right on the answer; a new account role between is planned on Request access
+    # "do anything": the way to use it first, the way to own it apart; the narrowest grant before handing over a big role
+    own = a.nearest(u, "OWNERSHIP", o, is_user=user) if near is not None and not mine and pv == ALL and ask != "OWNERSHIP" else None
+    narrow = a.narrowest(u, user, ask, o) if near is not None and not mine and ask != "OWNERSHIP" else None
+    for x in (near or []) + (own or []):  # the grant text right on the answer; a new account role between is planned on Request access
         x["change"] = a.with_sql(dict(op="grant", role=x["role"], to=x["to"], toUser=x["to_user"])) if x["cost"] == 1 else None
     layers = None
     if read:  # Partly: the grant is there, but a row policy returns nothing or columns are masked
@@ -2422,7 +2425,7 @@ def check_page(p, view):
         cuts=[] if mine or not ps else [dict(iac=x["iac"], sql=x["sql"], people=x["people"], lost=x["lost"],
                                              edges=[dict(grantee=e["grantee"], to=e["to"], priv=e["priv"], user=e["user"])
                                                     for e in x["edges"]]) for x in a.cut_points(u, held, o, user)],
-        nearest=near, approver=a.approver(o), subject=subject_of(u, user),
+        nearest=near, nearest_own=own, narrow=narrow, approver=a.approver(o), subject=subject_of(u, user),
         view=view, user=u, object=o, type=a.kinds[o], priv=pv, privileges=[ALL] + opts, answer=ans, status=r["status"],
         dormant_days=d if sleep else None, admin_paths=admin, paths=r["paths"], paths_total=r["count"], owner=r["owner"], choke=r["choke"],
         options=[] if mine else [dict(iac=x["iac"], sql=x["sql"], affects=x["affects"], users=x["users"], edges=len(x["edges"]))

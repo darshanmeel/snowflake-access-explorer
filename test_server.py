@@ -245,6 +245,14 @@ def test_big_lanes():
     assert len(get(f"/api/privs.csv?name={r}&of=role&tab=all").text.strip().splitlines()) == pv["total"] + 1
 
 
+def test_check_narrow():  # No: a Streamlit app asks USAGE; the narrowest grant first, the ways to own it apart
+    d = js("/api/check?name=ANALYST_01&obj=SALES.MART.ST_CUSTOMER_LOOKUP&near=1")
+    assert d["verdict"] == "no" and d["ask_priv"] == "USAGE" and "USAGE" in d["privileges"]
+    assert d["narrow"]["role"] == a.TECH + "SALES_MART_READ" and "GRANT USAGE ON STREAMLIT" in d["narrow"]["change"]["sql"]
+    assert d["nearest_own"] and all(n["path"][-1] == d["object"] for n in d["nearest_own"])
+    assert js("/api/check?name=ANALYST_01&obj=SALES.MART.ST_CUSTOMER_LOOKUP&priv=OWNERSHIP&near=1")["nearest_own"] is None
+
+
 def test_check_inside():  # Can they? on a database or schema: each table and view inside, read / DML / DDL; USAGE chips
     t = js("/api/check?name=HR_01&obj=SALES.CORE.TBL_CUSTOMER")
     assert t["inside"] is None and [(u["type"], u["held"]) for u in t["usage"]] == [("DATABASE", False), ("SCHEMA", False)]

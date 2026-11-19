@@ -4040,7 +4040,8 @@ STANDARD = {"TABLE": {"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFER
             "WAREHOUSE": {"USAGE", "OPERATE", "MODIFY", "MONITOR"}, "PROCEDURE": {"USAGE"}, "FUNCTION": {"USAGE"},
             "TASK": {"OPERATE", "MONITOR"}, "STREAM": {"SELECT"}, "STAGE": {"USAGE", "READ", "WRITE"},
             "SEQUENCE": {"USAGE"}, "PIPE": {"OPERATE", "MONITOR"}, "DYNAMIC TABLE": {"SELECT", "OPERATE", "MONITOR"},
-            "SCHEMA": {"USAGE", "MONITOR", "CREATE TABLE", "CREATE VIEW"}, "DATABASE": {"USAGE", "MONITOR", "CREATE SCHEMA"}}
+            "SCHEMA": {"USAGE", "MONITOR", "CREATE TABLE", "CREATE VIEW"}, "DATABASE": {"USAGE", "MONITOR", "CREATE SCHEMA"},
+            "STREAMLIT": {"USAGE"}, "NOTEBOOK": {"USAGE"}}
 
 
 def valid_privs(kind):
@@ -5090,6 +5091,21 @@ def nearest(user, priv, obj, limit=5, is_user=True):
     for o in out:  # the levels only for the ones shown: a big role reaches 100k objects
         o["also"] = brings(o["role"], obj)["also"]
     return out
+
+
+def narrowest(name, user, priv, obj):
+    """Can they? No: the narrowest way in: priv on obj granted to the smallest role name already reaches that has USAGE
+    on obj's schema (else its database), so nothing else comes with it; its holders get it too. None when no role
+    fits (no container, or none name reaches). Text only, never run."""
+    cs = containers(obj, kinds[obj])
+    if not cs:
+        return None
+    rs = [r for r in usage_reach(*cs[-1])[0] & set(best_paths(name, user)) if suggestable(r)]
+    if not rs:
+        return None
+    r = min(rs, key=lambda x: (role_rows(x)["rows"], x))
+    return dict(role=r, holders=len(ups(r)[1]), privilege=priv,
+                change=with_sql(dict(op="grant", privilege=priv, objectType=kinds[obj], object=obj, to=r, toUser=False)))
 
 
 def basic_priv(kind):

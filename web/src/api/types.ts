@@ -681,6 +681,8 @@ export interface CheckPage {
   cut: string[];
   cuts: { iac: string; sql: string; people: string[]; lost: number; edges: { grantee: string; to: string; priv: string | null; user: boolean }[] }[];
   nearest: Nearest[] | null; // null: not worked out, ask again with near=1
+  nearest_own?: Nearest[] | null; // "do anything": the ways to own it, apart from the ways to use it
+  narrow?: { role: string; holders: number; privilege: string; change: CompareChange } | null; // the privilege alone, to a role they already reach
   approver: string | null;
   view: View;
   user: string;

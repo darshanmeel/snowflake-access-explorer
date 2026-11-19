@@ -221,17 +221,37 @@ function NearestWays({ d, first }: { d: CheckPage; first?: boolean }) {
 
 /** first: the best way only, under the verdict (Answer tab), the rest on Nearest ways in. */
 function NearestList({ d, first }: { d: CheckPage; first?: boolean }) {
-  const c = useApp();
-  const ways = first ? (d.nearest ?? []).slice(0, 1) : d.nearest ?? [];
-  const more = (d.nearest?.length ?? 0) - ways.length;
   if (d.view === "mine") return <EmptyState title="Not worked out in My access" art="wait">The nearest ways in need everyone's grants: open the shared snapshot.</EmptyState>;
-  if (!d.nearest?.length) return <EmptyState title="No way in to suggest" art="search">No role that can be suggested reaches {d.ask_priv} on {d.object} (admin and build roles are never suggested).</EmptyState>;
+  const own = !first && d.nearest_own?.length ? <WayList d={d} ways={d.nearest_own} priv="OWNERSHIP" title="To own it" /> : null;
   return (
-    <Card title={first ? "Nearest way in" : "Nearest ways in"} sub={`For ${d.ask_priv}. The dashed red link is what is missing. Fewest missing links first, then the fewest people who would get it too.`}>
+    <>
+      {d.narrow && <Narrow d={d} n={d.narrow} />}
+      {d.nearest?.length ? <WayList d={d} ways={d.nearest} priv={d.ask_priv} first={first} title={d.nearest_own ? `To use it (${d.ask_priv})` : undefined} />
+        : !d.narrow && <EmptyState title="No way in to suggest" art="search">No role that can be suggested reaches {d.ask_priv} on {d.object} (admin and build roles are never suggested).</EmptyState>}
+      {own}
+    </>
+  );
+}
+
+/** The narrowest way in: only the privilege asked, granted to a role they already reach that can see the schema. */
+function Narrow({ d, n }: { d: CheckPage; n: NonNullable<CheckPage["narrow"]> }) {
+  return (
+    <Card title="Narrowest way in" sub={`Only ${n.privilege} on this ${d.type.toLowerCase()}, nothing else: granted to ${n.role}, a role ${d.user} already reaches. Its ${n.holders} holders get it too.`}>
+      <CodeOutput changes={[n.change]} name={`grant_${n.privilege.toLowerCase()}_${n.role.toLowerCase()}`} />
+    </Card>
+  );
+}
+
+function WayList({ d, ways: all, priv, first, title }: { d: CheckPage; ways: NonNullable<CheckPage["nearest"]>; priv: string; first?: boolean; title?: string }) {
+  const c = useApp();
+  const ways = first ? all.slice(0, 1) : all;
+  const more = all.length - ways.length;
+  return (
+    <Card title={title ?? (first ? "Nearest way in" : "Nearest ways in")} sub={`For ${priv}. The dashed red link is what is missing. Fewest missing links first, then the fewest people who would get it too, then the least else it brings.`}>
       <div className="ae-near">
         {ways.map((n, i) => (
           <div key={i} className={`ae-near-row${n.broad || n.rule1 ? " warn" : ""}`}>
-            <Lane path={n.path} grant={d.ask_priv} refs={d.refs} missing={n.missing} user={d.subject.user} />
+            <Lane path={n.path} grant={priv} refs={d.refs} missing={n.missing} user={d.subject.user} />
             <div className="ae-near-foot">
               <div>
                 <b>{nearestTitle(n)}</b> · <span className="ae-muted">{nearestNote(n, d.approver)}</span>
@@ -242,7 +262,7 @@ function NearestList({ d, first }: { d: CheckPage; first?: boolean }) {
               </div>
               <div className="ae-row">
                 <button type="button" className={`ae-btn${i === 0 && !n.broad ? " ae-btn-primary" : ""}`}
-                  onClick={() => c.nav("request", { ...subjectLink(d.subject, "request"), obj: d.object, need: needOf(d.ask_priv), role: n.role,
+                  onClick={() => c.nav("request", { ...subjectLink(d.subject, "request"), obj: d.object, need: needOf(priv), role: n.role,
                     ...(n.to_user || !d.subject.user ? {} : { to: n.to }) })}>
                   {n.broad ? "Request anyway" : `Request ${n.cost > 1 ? "a new role" : n.role}`}
                 </button>
