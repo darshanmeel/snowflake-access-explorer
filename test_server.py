@@ -1454,6 +1454,10 @@ def test_parts():
             cache.write_part(cache.DIR / f"{eng}.parquet", rows)
             got = cache.read_part(cache.DIR / f"{eng}.parquet")
             assert got == rows and type(got[0]["N"]) is int, (eng, got)
+            mix = [{"NAME": "a", "__i": 0}, {"name": "b", "__i": 1}]  # ACCOUNT_USAGE and SHOW in one wave: names differ in case
+            cache.write_part(cache.DIR / f"{eng}2.parquet", mix)
+            got = cache.read_part(cache.DIR / f"{eng}2.parquet")
+            assert [{k: v for k, v in r.items() if v is not None} for r in got] == mix, (eng, got)
         finally:
             cache.engine = engine
 

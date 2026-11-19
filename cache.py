@@ -394,6 +394,9 @@ def duck_type(vals):
     return next(t for py, t in types if issubclass(k, py))
 
 
+DUP = "#dup"  # write_part: a column whose name differs from another only in case
+
+
 def write_part(f, rows):
     tmp = f.with_name(f.name + ".tmp")  # renamed when complete: a half-written file never counts
     if engine() == "pyarrow":
@@ -406,9 +409,13 @@ def write_part(f, rows):
         cols = list(dict.fromkeys(k for r in rows for k in r))
         vals = [[json.dumps(v) if isinstance(v, (dict, list)) else v for v in (r.get(c) for r in rows)] for c in cols]
         types = [duck_type(v) for v in vals]  # a dict or list as its JSON text, as Snowflake answers a VARIANT
+        seen, names = {}, []  # DuckDB names ignore case: SHOW's "name" next to ACCOUNT_USAGE's NAME gets a tag (read_part drops it)
+        for c in cols:
+            n = seen[c.lower()] = seen.get(c.lower(), -1) + 1
+            names.append(f"{c}{DUP}{n}" if n else c)
         con = duckdb.connect()
         try:
-            con.execute("CREATE TABLE t (" + ", ".join(access.ident(c) + " " + t for c, t in zip(cols, types)) + ")")
+            con.execute("CREATE TABLE t (" + ", ".join(access.ident(c) + " " + t for c, t in zip(names, types)) + ")")
             con.execute("INSERT INTO t SELECT " + ", ".join(f"UNNEST(?::{t}[])" for t in types), vals)
             con.execute("COPY t TO '" + str(tmp).replace("'", "''") + "' (FORMAT parquet)")
         finally:
@@ -424,7 +431,7 @@ def read_part(f):
     con = duckdb.connect()
     try:
         cur = con.execute("SELECT * FROM read_parquet(?)", [str(f)])
-        cols = [c[0] for c in cur.description]
+        cols = [c[0].split(DUP)[0] for c in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
     finally:
         con.close()
