@@ -1647,6 +1647,10 @@ def home_cards():
     """Home's area cards once per data set: admin holders by admin role, stale people by status (of all with that
     status), users by status and type, roles by kind, objects by type, chain depth, biggest schemas, daily queries and What changed counts when that diff is already made (Home
     never compares)."""
+    def holder(x):
+        return dict(user=x["user"], role=(x["roles"] or ["account privilege"])[0],
+                    login=x["status"] if x["status"] in ("disabled", "never") else str(x["last_login"])[:10])
+
     def make():
         adm, stale = admin_list(), [x["user"] for x in stale_list()]
         by_role = Counter(r for x in adm for r in x["roles"])
@@ -1663,9 +1667,8 @@ def home_cards():
             admins=dict(total=len(adm), service=sum(x["service"] for x in adm),
                         by_role=[dict(role=r, people=n) for r, n in by_role.most_common()],
                         account_only=sum(not x["roles"] for x in adm),
-                        names=[dict(user=x["user"], role=(x["roles"] or ["account privilege"])[0],
-                                    login=x["status"] if x["status"] in ("disabled", "never") else str(x["last_login"])[:10])
-                               for x in adm[:NAMES]]),
+                        names=[holder(x) for x in adm[:NAMES]],
+                        service_names=[holder(x) for x in adm if x["service"]][:NAMES]),  # Home: service users with admin
             stale=dict(total=len(stale), by_status=dict(Counter(a.status(u) for u in stale)), of_status=status, names=stale[:NAMES]),
             people=dict(by_status=status, service=sum(map(a.is_service, a.users))),
             roles=dict(Counter(a.role_kind(r) for r in a.roles)),

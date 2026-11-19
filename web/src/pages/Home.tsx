@@ -1,9 +1,11 @@
-// Screen 0: start with a question. Search (people, roles, objects), "can X read Y" goes to Can they?, my access,
-// account risks, data protection, recently viewed.
+// Screen 0: start with a question. Hero (search: people, roles, objects, "can X read Y" goes to Can they?; quick
+// links; recently viewed), then what needs attention, act first, findings, the admin / dormant / sensitive cards, the
+// account at a glance and What changed. Every number comes from the server (home_page); takeaways from homedata.
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
 import { AgeBars, Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
+import { areaTakeaway, attention, busiest, depthRows, depthTakeaway, peopleTakeaway, weekend } from "./homedata";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
@@ -65,6 +67,10 @@ const GROUP: [string, string][] = [["user", "People"], ["role", "Roles"], ["ware
 export const groupOf = (i: Pick<FindItem, "kind" | "type">) =>
   i.kind === "user" ? "user" : i.kind !== "object" ? "role" : i.type === "WAREHOUSE" ? "warehouse" : "object";
 
+/** Hero quick links: questions first, then the pages to explore (only those in the nav). */
+const QUICK: [string, Page[]][] = [["Ask a question", ["check", "compare", "whatif", "request"]],
+  ["Explore", ["graph", "flow", "usage", "changes", "objuse"]]];
+
 export function HomePageView() {
   const c = useApp();
   const s = useApi<HomePage>("home", { view: c.view });
@@ -99,60 +105,76 @@ export function HomePageView() {
   const rec = recent();
   const first = items[0], me = c.meta.default_user;
   const who: Who | null = first ? { kind: first.kind, id: first.id, name: first.name } : me ? { kind: "user", id: me, name: me } : null;
+  const links = shortcuts(c.meta.pages.map((p) => p.key), who);
   return (
     <div className="ae-home">
-      {s.data?.risks && s.data.cards && s.data.protection && <Verdict d={s.data} />}
-      <h2 className="ae-home-h">Who can access what in Snowflake?</h2>
-      <div className="ae-bigsearch">
-        <label className="ae-sr" htmlFor="ae-home-q">Search</label>
-        <input id="ae-home-q" ref={box} type="search" className="ae-input" value={q} autoComplete="off"
-          placeholder="Person, role, table, or: can X read Y"
-          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); if (e.key === "Escape") setQ(""); }} />
-        {!q && <span className="ae-muted ae-kbd">Press / to search</span>}
-      </div>
-      {ask && (
-        <button type="button" className="ae-askrow" onClick={go}>
-          Can <b className="ae-mono">{ask.who}</b> {ask.priv === "SELECT" ? "read" : ask.priv.toLowerCase()} <b className="ae-mono">{ask.what}</b>? <span className="ae-muted">Enter to check</span>
-        </button>
-      )}
-      {(items.length > 0 || screens.length > 0) && (
-        <div className="ae-suggest">
-          {screens.length > 0 && (
-            <div>
-              <h4>Screens</h4>
-              {screens.map((p) => (
-                <button type="button" key={p.key} className="ae-suggest-row" onClick={() => c.nav(p.key, {})}>
-                  <span>{p.label}</span><span className="ae-muted">{GROUPS.find(([g]) => g === p.group)?.[1]}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {GROUP.map(([g, label]) => {
-            const xs = items.filter((i) => groupOf(i) === g), shown = xs.slice(0, 8), all = hits.totals?.[g] ?? xs.length;
-            return xs.length ? (
-              <div key={g}>
-                <h4>{label}{all > shown.length && <span className="ae-muted"> · {shown.length} of {all.toLocaleString()}</span>}</h4>
-                {shown.map((i) => (
-                  <button type="button" key={i.id} className="ae-suggest-row" onClick={() => openItem(i)}>
-                    <span className="ae-mono">{i.name}{i.admin && <span className="ae-tone-bad"> · admin</span>}{i.status && i.status !== "active" && <span className="ae-warn-word"> · {i.status === "never" ? "never logged in" : i.status}</span>}</span>
-                    <span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}{i.answer ? ` · ${i.answer}` : ""}{i.admin ? " · holds an admin role" : ""}</span>
+      <section className="ae-hero" aria-labelledby="ae-home-h">
+        <h2 id="ae-home-h" className="ae-hero-h">Who can access what in Snowflake?</h2>
+        <div className="ae-bigsearch">
+          <label className="ae-sr" htmlFor="ae-home-q">Search</label>
+          <svg className="ae-bigsearch-i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+          <input id="ae-home-q" ref={box} type="search" className="ae-input" value={q} autoComplete="off"
+            placeholder="Person, role or table, or ask: can PERSON read DB.SCHEMA.TABLE"
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); if (e.key === "Escape") setQ(""); }} />
+          {!q && <kbd className="ae-kbd" title="Press / to search">/</kbd>}
+        </div>
+        {ask && (
+          <button type="button" className="ae-askrow" onClick={go}>
+            Can <b className="ae-mono">{ask.who}</b> {ask.priv === "SELECT" ? "read" : ask.priv.toLowerCase()} <b className="ae-mono">{ask.what}</b>? <span className="ae-muted">Enter to check</span>
+          </button>
+        )}
+        {(items.length > 0 || screens.length > 0) && (
+          <div className="ae-suggest">
+            {screens.length > 0 && (
+              <div>
+                <h4>Screens</h4>
+                {screens.map((p) => (
+                  <button type="button" key={p.key} className="ae-suggest-row" onClick={() => c.nav(p.key, {})}>
+                    <span>{p.label}</span><span className="ae-muted">{GROUPS.find(([g]) => g === p.group)?.[1]}</span>
                   </button>
                 ))}
-                {all > shown.length && <p className="ae-muted ae-suggest-more">{(all - shown.length).toLocaleString()} more {label.toLowerCase()}: type more of the name to narrow it.
-                  {g === "object" && <> <button type="button" className="ae-link" onClick={() => c.nav("object", {})}>Search them on Who has access</button></>}</p>}
+              </div>
+            )}
+            {GROUP.map(([g, label]) => {
+              const xs = items.filter((i) => groupOf(i) === g), shown = xs.slice(0, 8), all = hits.totals?.[g] ?? xs.length;
+              return xs.length ? (
+                <div key={g}>
+                  <h4>{label}{all > shown.length && <span className="ae-muted"> · {shown.length} of {all.toLocaleString()}</span>}</h4>
+                  {shown.map((i) => (
+                    <button type="button" key={i.id} className="ae-suggest-row" onClick={() => openItem(i)}>
+                      <span className="ae-mono">{i.name}{i.admin && <span className="ae-tone-bad"> · admin</span>}{i.status && i.status !== "active" && <span className="ae-warn-word"> · {i.status === "never" ? "never logged in" : i.status}</span>}</span>
+                      <span className="ae-muted">{i.kind_label}{i.sensitive ? " · sensitive" : ""}{i.answer ? ` · ${i.answer}` : ""}{i.admin ? " · holds an admin role" : ""}</span>
+                    </button>
+                  ))}
+                  {all > shown.length && <p className="ae-muted ae-suggest-more">{(all - shown.length).toLocaleString()} more {label.toLowerCase()}: type more of the name to narrow it.
+                    {g === "object" && <> <button type="button" className="ae-link" onClick={() => c.nav("object", {})}>Search them on Who has access</button></>}</p>}
+                </div>
+              ) : null;
+            })}
+          </div>
+        )}
+        {!ask && q.trim().length >= 2 && hits.q === q && !items.length && !screens.length && (
+          <EmptyState title={`No match for “${q.trim()}”`}>No person, role, object or screen has that in its name.</EmptyState>
+        )}
+        <div className="ae-quick">
+          {QUICK.map(([title, keys]) => {
+            const xs = keys.map((k) => links.find((x) => x.page === k)).filter((x): x is Short => !!x);
+            return xs.length ? (
+              <div key={title} className="ae-quick-g" role="group" aria-label={title}>
+                <span className="ae-quick-h" aria-hidden>{title}</span>
+                <div className="ae-quick-row">{xs.map((x) => <button type="button" key={x.page} className="ae-qa" onClick={() => c.nav(x.page, x.params)}>{x.label}</button>)}</div>
               </div>
             ) : null;
           })}
         </div>
-      )}
-      {!ask && q.trim().length >= 2 && hits.q === q && !items.length && !screens.length && (
-        <EmptyState title={`No match for “${q.trim()}”`}>No person, role, object or screen has that in its name.</EmptyState>
-      )}
-      <div className="ae-shortcuts">
-        <span className="ae-muted">Try:</span>
-        {shortcuts(c.meta.pages.map((p) => p.key), who).map((x) => <button type="button" key={x.page} className="ae-link" onClick={() => c.nav(x.page, x.params)}>{x.label}</button>)}
-        <span className="ae-muted">or type “can NAME read TABLE”</span>
-      </div>
+        {rec.length > 0 && (
+          <div className="ae-recent" role="group" aria-label="Recently viewed">
+            <span className="ae-muted" aria-hidden>Recently viewed</span>
+            {rec.map((r) => <button type="button" key={r.id} className="ae-pchip" title={r.label}
+              onClick={() => (r.page === "user" ? c.nav("access", { user: r.label }) : r.page === "role" ? c.nav("access", { role: r.id }) : c.nav(r.page, { name: r.id }))}>{r.label}</button>)}
+          </div>
+        )}
+      </section>
       {c.view === "shared" && c.meta.inside && <p className="ae-muted">These are the app owner's rights, not yours: inside Snowflake the app reads with its owner's role.</p>}
       {c.meta.notes.length > 0 && (
         <Banner tone="warn" title={`Incomplete: ${c.meta.notes.length} source${c.meta.notes.length === 1 ? "" : "s"} not fully read`}
@@ -168,46 +190,39 @@ export function HomePageView() {
               </Card>
             </div>
           )}
-          {d.risks && d.cards && d.protection && <Cards d={d} risks={d.risks} k={d.cards} prot={d.protection} />}
-          {rec.length > 0 && (
-            <div className="ae-shortcuts">
-              <span className="ae-muted">Recently viewed:</span>
-              {rec.map((r) => <button type="button" key={r.id} className="ae-pchip"
-                onClick={() => (r.page === "user" ? c.nav("access", { user: r.label }) : r.page === "role" ? c.nav("access", { role: r.id }) : c.nav(r.page, { name: r.id }))}>{r.label}</button>)}
-            </div>
-          )}
+          {d.risks && d.cards && d.protection && <Shared d={d} risks={d.risks} k={d.cards} prot={d.protection} />}
         </>
       )}</Load>
     </div>
   );
 }
 
-/** Home's answer first: one line of the account's state, each part a link to where it is acted on. */
-export function Verdict({ d }: { d: HomePage }) {
+const TOP = 3; // names a card lists; the rest open on the full list
+
+/** Needs attention: one clickable tile per problem, its label saying what it is (the tone only repeats it). */
+function Attention({ d }: { d: HomePage }) {
   const c = useApp();
-  if (!d.risks || !d.cards || !d.protection || unread(c.meta, "grants")) return null;
-  const crit = d.risks.Critical ?? 0, top = crit + (d.risks.High ?? 0);
-  const rules = new Set([...Object.keys(d.rule_sev?.Critical ?? {}), ...Object.keys(d.rule_sev?.High ?? {})]).size;
-  const parts: { key: string; text: string; bad: boolean; open: () => void }[] = [
-    { key: "risk", bad: top > 0, open: () => c.nav("rules", { sev: crit ? "Critical" : "High" }),
-      text: top ? `${plural(top, crit ? "critical or high finding" : "high finding")}${rules ? ` in ${plural(rules, "rule")}` : ""}` : "No critical or high findings" },
-    { key: "admin", bad: d.cards.admins.total > 0, open: () => c.nav("rules", { part: "admins" }), text: plural(d.cards.admins.total, "admin holder") },
-    ...(unread(c.meta, "users") ? [] : [{ key: "stale", bad: d.protection.dormant > 0, open: () => c.nav("rules", { rule: "7" }),
-      text: `${d.protection.dormant.toLocaleString()} dormant or disabled ${d.protection.dormant === 1 ? "person reads" : "people read"} sensitive data` }]),
-    ...(unread(c.meta, "policies") ? [] : [{ key: "mask", bad: d.protection.unmasked_columns > 0, open: () => c.nav("rules", { rule: "6" }),
-      text: `${plural(d.protection.unmasked_columns, "sensitive column")} not masked` }])];
+  const tiles = attention(d, (k) => !!unread(c.meta, k));
+  if (!tiles.length) return null;
   return (
-    <p className="ae-home-verdict" aria-label="At a glance">
-      {parts.map((x, i) => <span key={x.key}>{i > 0 && <span className="ae-muted" aria-hidden> · </span>}
-        <button type="button" className={`ae-link${x.bad ? " ae-tone-bad" : ""}`} onClick={x.open}>{x.text}</button></span>)}
-    </p>
+    <section className="ae-home-sec" aria-labelledby="ae-attn-h">
+      <h2 id="ae-attn-h" className="ae-home-sec-h">Needs attention</h2>
+      <div className="ae-attn">
+        {tiles.map((t) => (
+          <button type="button" key={t.key} className={`ae-attn-tile${t.tone ? ` ae-tone-${t.tone}` : ""}`} onClick={() => c.nav(t.page, t.params)}>
+            <span className="ae-attn-l">{t.label}</span>
+            <span className="ae-attn-n">{t.n.toLocaleString()}</span>
+            <span className="ae-attn-t">{t.text}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
-const TOP = 3; // names a card lists; the rest open on the full list
-
-/** Home's area cards (shared view): each a number, one chart, its first names as links and a way into the page. */
-function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, number>; k: HomeCards; prot: NonNullable<HomePage["protection"]> }) {
+/** Home's shared view below the hero: attention tiles, act first and findings, the three risk cards, the account at
+ * a glance, What changed last. */
+function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, number>; k: HomeCards; prot: NonNullable<HomePage["protection"]> }) {
   const c = useApp();
   const total = Object.values(risks).reduce((a, b) => a + b, 0);
   const ad = k.admins;
@@ -217,68 +232,142 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
   const nr = (n: ReturnType<typeof off>, v: number) => (n ? <span className="ae-muted ae-hc-unit" title={`${n.title}: ${n.meaning}`}>not read</span> : v.toLocaleString());
   const funcTech = (k.roles.functional ?? 0) + (k.roles.technical ?? 0);
   const [big, setBig] = useState<"schemas" | "databases">("schemas");
-  const who = (n: { people: number; roles: number }) => [n.people && plural(n.people, "person", "people"), n.roles && plural(n.roles, "role")].filter(Boolean).join(", ");
+  const who = (n: { people: number; roles: number }) => [n.people && plural(n.people, "person", "people"), n.roles && plural(n.roles, "role")].filter(Boolean).join(" · ");
+  const ruleN = Object.values(d.per_rule ?? {}).filter(Boolean).length;
+  const stale = statusParts(k.stale.by_status);
+  const people = statusParts(k.people.by_status, true);
   return (
-    <div className="ae-hcards">
-      <Card title="Findings by area" sub="Worst severity first; a bar opens that area on the Rules list.">
-        <Areas ruleSev={d.rule_sev ?? {}} />
-      </Card>
-      <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>}
-        sub="An admin role, or an account privilege not given to everyone through PUBLIC."
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { part: "admins" })}>Open</button>}>
-        <HBars rows={ad.by_role.map((r) => ({ key: r.role, label: r.role, n: r.people, cls: "high" }))
-          .concat(ad.account_only ? [{ key: "acct", label: "Account privilege only", n: ad.account_only, cls: "medium" }] : [])} />
-        <p className="ae-muted">{ad.service.toLocaleString()} of them service users.</p>
-        <NameList items={ad.names.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.total} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
-      </Card>
-      <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{nr(usersOff ?? grantsOff, k.stale.total)}</b></>}
-        sub="Only people who still hold roles (rules 8 and 16): service users that are dormant or never logged in are left out, so People shows more."
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { part: "stale" })}>Open</button>}>
-        {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <>
-          <StackBar parts={statusParts(k.stale.by_status)} />
-          <p className="ae-muted">{statusParts(k.stale.by_status).map((p) => `${p.label} ${p.value.toLocaleString()} of ${(k.stale.of_status[p.key] ?? 0).toLocaleString()}`).join(" · ")}</p>
-        </>}
-        <NameList items={k.stale.names.map(open)} total={k.stale.total} max={TOP} onMore={() => c.nav("rules", { part: "stale" })} />
-      </Card>
-      <Card title={<>Sensitive data <b className="ae-hc-n">{nr(tagsOff, d.counts.sensitive)}</b></>} sub={tagsOff ? `${tagsOff.title}: sensitivity unknown` : "objects with a sensitive tag"}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("sensitive", {})}>Open</button>}>
-        {polOff ? <p className="ae-muted">{polOff.title}: masked or not is unknown.</p>
-          : <StackBar label="Sensitive columns" parts={[{ key: "u", label: "Not masked", value: prot.unmasked_columns, cls: "high" }, { key: "m", label: "Masked", value: prot.masked, cls: "low" }]} />}
-        <ul className="ae-hc-facts">
-          {!polOff && <li><button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "6" })}>{prot.unmasked_columns.toLocaleString()} columns not masked</button></li>}
-          <li><button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "7" })}>{prot.dormant.toLocaleString()} dormant or disabled people read it</button></li>
-          <li><button type="button" className="ae-link" onClick={() => c.nav("sensitive", { show: "rows" })} disabled={!prot.row_tables}>{prot.row_tables.toLocaleString()} tables with row policies</button></li>
-          <li><button type="button" className="ae-link" onClick={() => c.nav("flow", {})}>Where it flows: people → roles → objects</button></li>
-        </ul>
-      </Card>
-      <Card title={<>People <b className="ae-hc-n">{d.counts.users.toLocaleString()}</b></>} sub={`${k.people.service.toLocaleString()} service users`}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("access", {})}>Find one</button>}>
-        {usersOff ? <p className="ae-muted">{usersOff.title}: who is active, dormant or disabled is unknown.</p> : <StackBar parts={statusParts(k.people.by_status, true)} />}
-      </Card>
-      <Card title={<>Roles <b className="ae-hc-n">{d.counts.roles.toLocaleString()}</b></>}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { rule: "13" })}>Orphan roles</button>}>
-        {!funcTech && d.counts.roles > 50
-          ? <p className="ae-warn-word">No role starts with {c.meta.prefixes.func} / {c.meta.prefixes.tech}: set ROLE_PREFIXES to this account's naming. Rules 1 and 2 did not run.</p>
-          : <HBars rows={Object.entries(k.roles).sort((x, y) => y[1] - x[1]).map(([kind, n]) => ({ key: kind, label: KIND_WORD[kind] ?? kind, n, cls: kind === "admin" ? "high" : "low" }))} />}
-      </Card>
-      <Card title={<>Objects <b className="ae-hc-n">{d.counts.objects.toLocaleString()}</b></>}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("object", {})}>Find one</button>}>
-        <HBars rows={k.objects.by_type.map((t) => ({ key: t.type, label: t.type.toLowerCase().replace(/_/g, " "), n: t.n, cls: "low" }))} />
-      </Card>
-      <DepthCard k={k} />
-      <Card title={`Biggest ${big}`}
-        sub={`${plural(k.biggest.n_schemas, "schema")} · ${plural(k.biggest.n_databases, "database")}`}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("object", k.biggest[big][0] ? { name: k.biggest[big][0].name } : {})}>Open</button>}>
-        <FilterChips label="Count by" value={big} onPick={(v) => setBig(v as typeof big)} items={[{ key: "schemas", label: "Schemas" }, { key: "databases", label: "Databases" }]} />
-        <HBars rows={k.biggest[big].map((x) => ({ key: x.name, label: x.name, n: x.n, cls: "low" }))} />
-        <p className="ae-muted">Objects in each, schemas and databases themselves not counted.</p>
-      </Card>
-      <Card title={<>Activity {k.activity.ok && <b className="ae-hc-n">{k.activity.users.toLocaleString()}</b>}</>} sub={k.activity.ok ? "people with queries on objects" : undefined}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { area: "Activity", show: "list" })}>Rules 24–28</button>}>
-        {k.activity.ok ? <DayBars days={k.activity.daily} /> : <p className="ae-muted">Not read: {k.activity.reason}</p>}
-        {d.per_rule && k.activity.ok && <p className="ae-muted">{["24", "25", "26", "27", "28"].map((n) => `rule ${n}: ${(d.per_rule![n] ?? 0).toLocaleString()}`).join(" · ")}</p>}
-      </Card>
-      <ObjUseCard u={k.objuse} />
+    <>
+      <Attention d={d} />
+      <div className="ae-home-two">
+        <Card title="Act first" sub="Critical, then high. Within each, the rarest first: small lists are quick wins."
+          right={<button type="button" className="ae-link" onClick={() => c.nav("rules", {})}>All {grantsOff ? "" : `${total.toLocaleString()} `}findings</button>}>
+          {d.act_first && d.act_first.length > 0 ? (
+            <div className="ae-act" aria-label="Act first">
+              {d.act_first.map((r) => (
+                <div key={`${r.severity}${r.num}`} className="ae-act-row">
+                  <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
+                  <div className="ae-act-main">
+                    <button type="button" className="ae-link ae-act-t" onClick={() => c.nav("rules", { rule: r.num, sev: r.severity })}><span className="ae-muted">#{r.num}</span> {r.title}</button>
+                    <span className="ae-act-names"><NameList items={r.names.map((x) => ({ key: x.id, label: x.id.replace(/ \(user\)$/, ""), open: () => openNode(c.nav, x.id, x.kind) }))}
+                      total={r.subjects} max={TOP} onMore={() => c.nav("rules", { rule: r.num, sev: r.severity })} /></span>
+                  </div>
+                  <span className="ae-act-n"><b>{r.findings.toLocaleString()}</b> {r.findings === 1 ? "finding" : "findings"}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p className="ae-muted">No critical or high findings.</p>}
+        </Card>
+        <Card title="All findings by severity" sub={grantsOff ? `${grantsOff.title}: not read` : `${plural(total, "finding")} in ${plural(ruleN, "rule")}`}>
+          {d.subjects && (
+            <div className="ae-sevrows" aria-label="People and roles per severity">
+              {SEVERITIES.filter((s) => risks[s]).map((s) => (
+                <button type="button" key={s} className="ae-sevrow" onClick={() => c.nav("rules", { sev: s })}>
+                  <span className={`ae-sevpill ae-sev-${s}`}>{s}</span>
+                  <span className="ae-muted">{who(d.subjects![s]) || "objects only"}</span>
+                  <b className="ae-area-n">{risks[s].toLocaleString()}</b>
+                </button>
+              ))}
+            </div>
+          )}
+          <StackBar label={`Findings: ${sevParts(risks).map((p) => `${p.label} ${p.value}`).join(", ")}`} parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
+          <div className="ae-home-sub">
+            <h4>By area <span className="ae-muted ae-hc-unit">bar length on a √ scale</span></h4>
+            <Areas ruleSev={d.rule_sev ?? {}} />
+          </div>
+          {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
+        </Card>
+      </div>
+
+      <div className="ae-home-grid">
+        <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>}
+          sub={`An admin role, or an account privilege not given to everyone through PUBLIC. ${plural(ad.service, "is a service user", "are service users")}.`}>
+          <HBars label="Admin holders per admin role" rows={ad.by_role.map((r) => ({ key: r.role, label: r.role, n: r.people, cls: "high" }))
+            .concat(ad.account_only ? [{ key: "acct", label: "Account privilege only", n: ad.account_only, cls: "medium" }] : [])} />
+          <div className="ae-home-sub">
+            <h4>Riskiest first</h4>
+            <NameList items={ad.names.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.names.length} max={TOP} />
+          </div>
+          {(ad.service_names?.length ?? 0) > 0 && (
+            <div className="ae-home-sub">
+              <h4>Service users with admin</h4>
+              <NameList items={ad.service_names!.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.service} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
+            </div>
+          )}
+          <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("rules", { part: "admins" })}>All {plural(ad.total, "holder")} →</button>
+        </Card>
+        <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{nr(usersOff ?? grantsOff, k.stale.total)}</b></>}
+          sub="People who still hold roles (rules 8 and 16). Dormant service users are left out, so People shows more.">
+          {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <>
+            <StackBar parts={stale} legend={false} />
+            <ul className="ae-keyrows">
+              {stale.map((p) => (
+                <li key={p.key}><span className={`ae-dot2 ae-bar-${p.cls}`} /><span>{p.label} <span className="ae-muted">· {p.value.toLocaleString()} of {(k.stale.of_status[p.key] ?? 0).toLocaleString()}</span></span><b>{p.value.toLocaleString()}</b></li>
+              ))}
+            </ul>
+          </>}
+          <div className="ae-home-sub"><NameList items={k.stale.names.map(open)} total={k.stale.total} max={TOP} onMore={() => c.nav("rules", { part: "stale" })} /></div>
+        </Card>
+        <Card title={<>Sensitive data <b className="ae-hc-n">{nr(tagsOff, d.counts.sensitive)}</b> {!tagsOff && <span className="ae-muted ae-hc-unit">objects</span>}</>}
+          sub={tagsOff ? `${tagsOff.title}: sensitivity unknown` : "Objects with a sensitive tag, and how their columns are protected."}>
+          {polOff ? <p className="ae-muted">{polOff.title}: masked or not is unknown.</p>
+            : <StackBar label={`Sensitive columns: ${prot.unmasked_columns} not masked, ${prot.masked} masked`} parts={[{ key: "u", label: "Not masked", value: prot.unmasked_columns, cls: "high" }, { key: "m", label: "Masked", value: prot.masked, cls: "low" }]} />}
+          <div className="ae-linerows">
+            {!polOff && <button type="button" className="ae-linerow" onClick={() => c.nav("rules", { rule: "6" })}><span>Columns not masked</span><b className={prot.unmasked_columns ? "ae-tone-bad" : ""}>{prot.unmasked_columns.toLocaleString()}</b></button>}
+            <button type="button" className="ae-linerow" onClick={() => c.nav("rules", { rule: "7" })}><span>Dormant or disabled people read it</span><b className={prot.dormant ? "ae-tone-bad" : ""}>{prot.dormant.toLocaleString()}</b></button>
+            <button type="button" className="ae-linerow" onClick={() => c.nav("sensitive", { show: "rows" })} disabled={!prot.row_tables}><span>Tables with row policies</span><b>{prot.row_tables.toLocaleString()}</b></button>
+          </div>
+          <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("flow", {})}>Where it flows: people → roles → objects</button>
+          <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("sensitive", {})}>Open Sensitive data →</button>
+        </Card>
+      </div>
+
+      <section className="ae-home-sec" aria-labelledby="ae-glance-h">
+        <h2 id="ae-glance-h" className="ae-home-sec-h">Your Snowflake at a glance</h2>
+        <div className="ae-home-grid">
+          <Card title={<>People <b className="ae-hc-n">{d.counts.users.toLocaleString()}</b></>}
+            right={<button type="button" className="ae-btn" onClick={() => c.nav("access", {})}>Find one</button>}>
+            {usersOff ? <p className="ae-muted">{usersOff.title}: who is active, dormant or disabled is unknown.</p> : <>
+              <StackBar parts={people} />
+              <p className="ae-muted ae-home-say">{peopleTakeaway(k.people.by_status, k.people.service)}</p>
+            </>}
+          </Card>
+          <Card title={<>Roles <b className="ae-hc-n">{d.counts.roles.toLocaleString()}</b></>}
+            right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { rule: "13" })}>Orphan roles</button>}>
+            {!funcTech && d.counts.roles > 50
+              ? <p className="ae-warn-word">No role starts with {c.meta.prefixes.func} / {c.meta.prefixes.tech}: set ROLE_PREFIXES to this account's naming. Rules 1 and 2 did not run.</p>
+              : <HBars label="Roles by kind" rows={Object.entries(k.roles).sort((x, y) => y[1] - x[1]).map(([kind, n]) => ({ key: kind, label: KIND_WORD[kind] ?? kind, n, cls: kind === "admin" ? "high" : "low" }))} />}
+          </Card>
+          <Card title={<>Objects <b className="ae-hc-n">{d.counts.objects.toLocaleString()}</b></>}
+            right={<button type="button" className="ae-btn" onClick={() => c.nav("object", {})}>Find one</button>}>
+            <HBars label="Objects by type" rows={k.objects.by_type.map((t) => ({ key: t.type, label: t.type.toLowerCase().replace(/_/g, " "), n: t.n, cls: "low" }))} />
+          </Card>
+          <DepthCard k={k} />
+          <Card title={`Biggest ${big}`}
+            sub={`${plural(k.biggest.n_schemas, "schema")} · ${plural(k.biggest.n_databases, "database")}`}
+            right={<button type="button" className="ae-btn" onClick={() => c.nav("object", k.biggest[big][0] ? { name: k.biggest[big][0].name } : {})}>Open</button>}>
+            <FilterChips label="Count by" value={big} onPick={(v) => setBig(v as typeof big)} items={[{ key: "schemas", label: "Schemas" }, { key: "databases", label: "Databases" }]} />
+            <HBars mono label={`Objects per ${big === "schemas" ? "schema" : "database"}`} rows={k.biggest[big].map((x) => ({ key: x.name, label: x.name, n: x.n, cls: "low" }))} />
+            <p className="ae-muted">Objects in each; the schemas and databases themselves are not counted.</p>
+          </Card>
+          <Card title={<>Activity {k.activity.ok && <><b className="ae-hc-n">{k.activity.users.toLocaleString()}</b> <span className="ae-muted ae-hc-unit">people queried</span></>}</>}
+            right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { area: "Activity", show: "list" })}>Rules 24–28</button>}>
+            {k.activity.ok ? <DayBars days={k.activity.daily} /> : <p className="ae-muted">Not read: {k.activity.reason}</p>}
+            {d.per_rule && k.activity.ok && (
+              <div className="ae-home-sub">
+                <div className="ae-ruletiles" role="group" aria-label="Findings from the activity rules, 24 to 28">
+                  {["24", "25", "26", "27", "28"].map((n) => (
+                    <button type="button" key={n} className="ae-ruletile" onClick={() => c.nav("rules", { rule: n })} title={c.meta.rules.find((r) => r.num === n)?.title}>
+                      <span className="ae-muted">Rule {n}</span><b>{(d.per_rule![n] ?? 0).toLocaleString()}</b></button>
+                  ))}
+                </div>
+                <p className="ae-muted">Findings from the activity rules.</p>
+              </div>
+            )}
+          </Card>
+          <ObjUseCard u={k.objuse} />
+        </div>
+      </section>
 
       {k.changes && (k.changes.counts ? (
         <Card title={<>What changed <b className="ae-hc-n">{k.changes.counts.all.toLocaleString()}</b></>} sub={`since ${k.changes.before}`}
@@ -287,39 +376,14 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
           <p className="ae-muted">{k.changes.counts.risk.toLocaleString()} with a new finding · {k.changes.counts.sensitive.toLocaleString()} on sensitive data · {k.changes.high.toLocaleString()} new high findings</p>
         </Card>
       ) : (
-        <Card title="What changed" sub={k.changes.reason ? "No earlier read kept" : "Not compared yet"}
-          right={!k.changes.reason && <button type="button" className="ae-btn" onClick={() => c.nav("changes", {})}>Compare with the read before</button>}>
-          <p className="ae-muted">{k.changes.reason ?? "The read before is kept: comparing takes a moment, then What changed opens."}</p>
-        </Card>
+        <div className="ae-home-changes">
+          <Card title="What changed" sub={k.changes.reason ? "No earlier read kept" : "Not compared yet"}
+            right={!k.changes.reason && <button type="button" className="ae-btn" onClick={() => c.nav("changes", {})}>Compare with the read before</button>}>
+            <p className="ae-muted">{k.changes.reason ?? "The read before is kept: comparing takes a moment, then What changed opens."}</p>
+          </Card>
+        </div>
       ))}
-      <Card title={<>Risks <b className="ae-hc-n">{nr(grantsOff, total)}</b> {!grantsOff && <span className="ae-muted ae-hc-unit">findings</span>}</>}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", {})}>Risks & fixes</button>}>
-        {d.act_first && d.act_first.length > 0 && (
-          <div className="ae-act" aria-label="Act first">
-            <div className="ae-muted ae-areas-h">Act first: critical, then high, rarest first</div>
-            {d.act_first.map((r) => (
-              <div key={`${r.severity}${r.num}`} className="ae-act-row">
-                <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
-                <button type="button" className="ae-link ae-act-t" onClick={() => c.nav("rules", { rule: r.num, sev: r.severity })}>#{r.num} {r.title}</button>
-                <span className="ae-muted">{plural(r.findings, "finding")}</span>
-                <span className="ae-act-names"><NameList items={r.names.map((x) => ({ key: x.id, label: x.id.replace(/ \(user\)$/, ""), open: () => openNode(c.nav, x.id, x.kind) }))}
-                  total={r.subjects} max={TOP} onMore={() => c.nav("rules", { rule: r.num, sev: r.severity })} /></span>
-              </div>
-            ))}
-          </div>
-        )}
-        {d.subjects && (
-          <ul className="ae-act-who" aria-label="People and roles per severity">
-            {SEVERITIES.filter((s) => risks[s]).map((s) => (
-              <li key={s}><button type="button" className="ae-link" onClick={() => c.nav("rules", { sev: s })}>
-                <span className={`ae-sevpill ae-sev-${s}`}>{s}</span> {who(d.subjects![s]) || plural(risks[s], "finding")}</button></li>
-            ))}
-          </ul>
-        )}
-        <StackBar label="Findings" parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
-        {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
-      </Card>
-    </div>
+    </>
   );
 }
 
@@ -331,14 +395,14 @@ const statusParts = (n: Record<string, number>, active = false): BarPart[] => [
   { key: "never", label: "Never logged in", value: n.never ?? 0, cls: "low" }];
 
 /** Ranked bars on a square-root scale, so 4,000 next to 3 still shows both; the real number is printed. */
-function HBars({ rows }: { rows: { key: string; label: string; n: number; cls: string }[] }) {
+function HBars({ rows, label, mono }: { rows: { key: string; label: string; n: number; cls: string }[]; label: string; mono?: boolean }) {
   const max = Math.sqrt(Math.max(1, ...rows.map((r) => r.n)));
   if (!rows.length) return <p className="ae-muted">None.</p>;
   return (
-    <div className="ae-hbars">
+    <div className="ae-hbars" role="img" aria-label={`${label}: ${rows.map((r) => `${r.label} ${r.n}`).join(", ")}`}>
       {rows.map((r) => (
         <div key={r.key} className="ae-hbar">
-          <span className="ae-area-name" title={r.label}>{r.label}</span>
+          <span className={`ae-area-name${mono ? " ae-mono" : ""}`} title={r.label}>{r.label}</span>
           <span className="ae-area-track" style={{ width: `${(100 * Math.sqrt(r.n)) / max}%` }}><span className={`ae-bar-${r.cls}`} style={{ flex: 1 }} /></span>
           <b className="ae-area-n">{r.n.toLocaleString()}</b>
         </div>
@@ -350,22 +414,31 @@ function HBars({ rows }: { rows: { key: string; label: string; n: number; cls: s
 const DEPTH: { key: keyof HomeCards["depth"]; label: string }[] = [
   { key: "users", label: "Users" }, { key: "objects", label: "Objects" }, { key: "schemas", label: "Schemas" }, { key: "databases", label: "Databases" }];
 
-/** How many roles deep access goes (a.depth_counts): each user, object, schema or database at its deepest chain. */
+/** How many roles deep access goes (a.depth_counts): one column per depth, the depth with the most in full ink. */
 function DepthCard({ k }: { k: HomeCards }) {
   const c = useApp();
   const [on, setOn] = useState<keyof HomeCards["depth"]>("users");
-  const got = k.depth[on];
-  const ds = Object.keys(got).map(Number);
-  const lo = Math.min(...ds), hi = Math.max(...ds);
-  // Every depth from shortest to deepest, so a depth with none shows as 0, not as a missing row.
-  const rows = ds.length ? Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
-    .map((d) => ({ key: String(d), label: `Depth ${d}`, n: got[d] ?? 0, cls: "low" })) : [];
+  const rows = depthRows(k.depth[on]);
+  const what = DEPTH.find((x) => x.key === on)!.label.toLowerCase();
+  const top = rows.length ? rows.reduce((a, b) => (b.n > a.n ? b : a)) : null;
+  const max = Math.sqrt(Math.max(1, ...rows.map((r) => r.n)));
   return (
-    <Card title={<>Chain depth {ds.length > 0 && <span className="ae-muted ae-hc-unit">shortest {lo} · deepest {hi}</span>}</>}
+    <Card title={<>Role chain depth {rows.length > 0 && <span className="ae-muted ae-hc-unit">shortest {rows[0].d} · deepest {rows[rows.length - 1].d}</span>}</>}
       sub="Roles from the role granted to a user to the grant holder, holder included; each counted at its deepest. Users include service users."
       right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { rule: "14" })}>Deep chains</button>}>
       <FilterChips label="Count" value={on} onPick={(v) => setOn(v as typeof on)} items={DEPTH} />
-      <HBars rows={rows} />
+      {rows.length ? <>
+        <div className="ae-cols" role="img" aria-label={`${DEPTH.find((x) => x.key === on)!.label} by chain depth: ${rows.map((r) => `depth ${r.d} ${r.n}`).join(", ")}; most at depth ${top!.d}`}>
+          {rows.map((r) => (
+            <div key={r.d} className="ae-col">
+              <span className="ae-col-n">{r === top ? <b>{r.n.toLocaleString()}</b> : r.n.toLocaleString()}</span>
+              <span className={`ae-col-bar${r === top ? " top" : ""}`} style={{ height: `${r.n ? Math.max(3, (100 * Math.sqrt(r.n)) / max) : 0}%` }} />
+            </div>
+          ))}
+        </div>
+        <div className="ae-col-x" aria-hidden>{rows.map((r) => <span key={r.d}>{r.d}</span>)}</div>
+        <p className="ae-muted ae-home-say">{depthTakeaway(rows, what)} Column height on a √ scale.</p>
+      </> : <p className="ae-muted">None.</p>}
     </Card>
   );
 }
@@ -378,27 +451,28 @@ function ObjUseCard({ u }: { u: HomeCards["objuse"] }) {
       right={<button type="button" className="ae-btn" onClick={() => c.nav("objuse", {})}>Open</button>}>
       {u.notes.map((n) => <p key={n} className="ae-muted">Not read: {n}</p>)}
       <AgeBars types={u.types} onPick={(t) => c.nav("objuse", { type: t })} />
-      {u.ok && <ul className="ae-hc-facts">
-        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "read_only" })}>{plural(u.read_only, "table")} read, never written</button></li>
-        <li><button type="button" className="ae-link" onClick={() => c.nav("objuse", { tab: "write_only" })}>{plural(u.write_only, "table")} written, never read</button></li>
-      </ul>}
+      {u.ok && <div className="ae-linerows">
+        <button type="button" className="ae-linerow" onClick={() => c.nav("objuse", { tab: "read_only" })}><span>Tables read, never written</span><b>{u.read_only.toLocaleString()}</b></button>
+        <button type="button" className="ae-linerow" onClick={() => c.nav("objuse", { tab: "write_only" })}><span>Tables written, never read</span><b>{u.write_only.toLocaleString()}</b></button>
+      </div>}
       {u.nodata.length > 0 && <p className="ae-muted">No activity data for {u.nodata.map((t) => t.toLowerCase()).join(", ")}.</p>}
     </Card>
   );
 }
 
-/** Queries per day, weekends lighter; the busiest day named. */
+/** Queries per day: weekdays in full colour, weekends lighter, the busiest day in ink and named. */
 function DayBars({ days }: { days: { day: string; queries: number }[] }) {
-  if (!days.length) return <p className="ae-muted">No queries in this window.</p>;
-  const max = Math.max(1, ...days.map((x) => x.queries));
-  const top = days.reduce((a, b) => (b.queries > a.queries ? b : a));
-  const wkend = (d: string) => [0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay());
+  const top = busiest(days);
+  if (!top) return <p className="ae-muted">No queries in this window.</p>;
+  const max = Math.max(1, top.queries);
+  const from = days[0].day, to = days[days.length - 1].day;
   return (
     <>
-      <div className="ae-daybars" role="img" aria-label={`Queries per day, ${days[0].day} to ${days[days.length - 1].day}`}>
-        {days.map((x) => <span key={x.day} className={wkend(x.day) ? "we" : ""} style={{ height: `${Math.max(2, (100 * x.queries) / max)}%` }} title={`${x.day}: ${x.queries.toLocaleString()} queries`} />)}
+      <div className="ae-daybars" role="img" aria-label={`Queries per day, ${from} to ${to}, busiest ${top.day} with ${top.queries.toLocaleString()} queries, weekends lighter`}>
+        {days.map((x) => <span key={x.day} className={x === top ? "top" : weekend(x.day) ? "we" : ""} style={{ height: `${Math.max(2, (100 * x.queries) / max)}%` }} title={`${x.day}: ${x.queries.toLocaleString()} queries`} />)}
       </div>
-      <p className="ae-muted">{days[0].day} to {days[days.length - 1].day} · busiest {top.day}, {top.queries.toLocaleString()} queries · weekends lighter</p>
+      <div className="ae-dayx"><span>{from}</span><span>busiest {top.day} · {top.queries.toLocaleString()} queries</span><span>{to}</span></div>
+      <div className="ae-bar-legend" aria-hidden><span><span className="ae-dot2 ae-day-wd" />Weekday</span><span><span className="ae-dot2 ae-day-we" />Weekend</span><span><span className="ae-dot2 ae-day-top" />Busiest</span></div>
     </>
   );
 }
@@ -436,25 +510,28 @@ export function areaCounts(rules: { num: string; area: string }[], ruleSev: Part
   return [...out].map(([area, n]) => ({ area, n, total: Object.values(n).reduce((a, b) => a + b, 0) }));
 }
 
-/** One small bar per rule area, worst severity first (a few critical findings above thousands of medium ones); a
+/** One small bar per rule area (length on a square-root scale), worst severity first (a few critical findings above thousands of medium ones); a
  * click opens that area on the Rules list. */
 function Areas({ ruleSev }: { ruleSev: Partial<Record<Severity, Record<string, number>>> }) {
   const c = useApp();
   const worst = (n: Record<string, number>) => SEVERITIES.findIndex((s) => n[s]);
   const rows = areaCounts(c.meta.rules, ruleSev).filter((r) => r.total).sort((x, y) => worst(x.n) - worst(y.n) || y.total - x.total);
-  const max = Math.max(1, ...rows.map((r) => r.total));
+  const max = Math.sqrt(Math.max(1, ...rows.map((r) => r.total))); // square-root scale: 9 next to 146,000 still shows
   if (!rows.length) return <p className="ae-muted">None.</p>;
   return (
+    <>
     <div className="ae-areas" aria-label="Findings by area">
       {rows.map((r) => (
         <button type="button" key={r.area} className="ae-area" onClick={() => c.nav("rules", { show: "list", area: r.area })} title={`Open ${r.area} on the Rules list`}>
           <span className="ae-area-name">{r.area}</span>
-          <span className="ae-area-track" style={{ width: `${(100 * r.total) / max}%` }}>
+          <span className="ae-area-track" style={{ width: `${(100 * Math.sqrt(r.total)) / max}%` }}>
             {sevParts(r.n).map((p) => p.value > 0 && <span key={p.key} className={`ae-bar-${p.cls}`} style={{ flex: p.value }} />)}
           </span>
-          <b className="ae-area-n">{r.total}</b>
+          <b className="ae-area-n">{r.total.toLocaleString()}</b>
         </button>
       ))}
     </div>
+    <p className="ae-muted ae-home-say">{areaTakeaway(rows)}</p>
+    </>
   );
 }
