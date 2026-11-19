@@ -900,8 +900,10 @@ def mine(query, db):
         notes["database_roles"] = (f"{len(bad)} database roles not readable, held but their grants unknown: "
                                    + " | ".join(bad[:10]))
     src["grants"] = "SHOW GRANTS TO ROLE" if isinstance(au_g, Exception) else "ACCOUNT_USAGE"
-    # objects the grant reads miss (Streamlit apps, notebooks, ...): the inventory's SHOW reads, those your roles own
-    steps, bad, have = [x for x in inventory_sql() if x[2].startswith("SHOW")], [], set(roles) | {g["GRANTEE_ROLE"] for g in grants}
+    # objects the grant reads miss (Streamlit apps, notebooks, ...): the inventory's kinds with no ACCOUNT_USAGE view,
+    # by SHOW, those your roles own
+    steps = [(name, kind, s) for name, _, sql, _, show in inventory_sql() if sql is None for s, kind in show]
+    bad, have = [], set(roles) | {g["GRANTEE_ROLE"] for g in grants}
     seen = inventory_seen((g.get("OBJECT_NAME"), g.get("GRANTED_ON"), g.get("PRIVILEGE")) for g in grants)
     for (name, kind, _), got in zip(steps, each(query, [x[2] for x in steps], what="Object inventory")):
         if isinstance(got, Exception):
@@ -910,9 +912,9 @@ def mine(query, db):
         grants += [dict(GRANTEE_ROLE=who, PRIVILEGE="OWNERSHIP", GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False)
                    for who, k, o in inventory_rows(seen, kind, [{c.lower(): v for c, v in x.items()} for x in got])
                    if who in have]
-    src["objects"], why = inventory_note(steps, bad, [])
-    if why:
-        notes["objects"] = why
+    src["objects"] = "SHOW" if len(bad) < len(steps) else "UNAVAILABLE"
+    if bad:
+        notes["objects"] = f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])
     # SNOWFLAKE last: without IMPORTED PRIVILEGES the user can't even see it, any usable database works
     dbs = list(dict.fromkeys(([db] if db else []) + [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE"]
                              + ["SNOWFLAKE"]))
@@ -988,46 +990,71 @@ STREAMS_SQL = f"""SELECT STREAM_CATALOG || '.' || STREAM_SCHEMA || '.' || STREAM
 
 def inventory_sql():
     """The object inventory: every object the account lists, also those with no grant row (a Streamlit app or notebook
-    GRANTS_TO_ROLES does not list). (step, kind, sql), one read per source, so a refused one loses only its own kind;
-    kind None: the row's KIND. ACCOUNT_USAGE views where they exist (DELETED IS NULL), SHOW ... IN ACCOUNT for kinds with
-    none (only what the role can see). Each read gives DATABASE_NAME, SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE, as
-    SHOW does. Kinds as GRANTS_TO_ROLES names them (underscores). The same text is in access.py and SP_ACCESS_SNAPSHOT
-    (sql/1_setup.sql). to verify: GRANTED_ON of hybrid and Iceberg tables (an object already granted keeps its kind)."""
-    def au(view, kind, pre, name=None, owner=None, more="", where=""):  # a view with <pre>_CATALOG, _SCHEMA, _NAME, _OWNER
-        return (view, kind, f"""SELECT {pre}_CATALOG AS DATABASE_NAME, {pre}_SCHEMA AS SCHEMA_NAME, {name or pre + '_NAME'} AS NAME,
+    GRANTS_TO_ROLES does not list). (step, kind, sql, info, show), read level by level by inventory_read(), so a refused
+    read loses only its own kind; kind None: the row's KIND. sql: the ACCOUNT_USAGE view (DELETED IS NULL; None: none
+    exists), info: the same columns from one database's INFORMATION_SCHEMA ({db} its quoted name; None: no view there;
+    the DATABASES one lists every database), show: [(SHOW ... IN ACCOUNT, kind)] (only what the role can see; empty: no
+    SHOW names the owner). Each read gives DATABASE_NAME, SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE, as SHOW does (NULL
+    where INFORMATION_SCHEMA has no OWNER_ROLE_TYPE: read as a role). Kinds as GRANTS_TO_ROLES names them (underscores).
+    The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql). to verify: GRANTED_ON of hybrid and Iceberg
+    tables (an object already granted keeps its kind); owner and owner_role_type in SHOW SEQUENCES / TASKS / TAGS /
+    MASKING POLICIES / ROW ACCESS POLICIES / STREAMS / DATABASES."""
+    def au(view, pre, name=None, owner=None, more="", where=""):  # a view with <pre>_CATALOG, _SCHEMA, _NAME, _OWNER
+        return f"""SELECT {pre}_CATALOG AS DATABASE_NAME, {pre}_SCHEMA AS SCHEMA_NAME, {name or pre + '_NAME'} AS NAME,
                    {owner or pre + '_OWNER'} AS OWNER, OWNER_ROLE_TYPE{more}
-            FROM {AU}.{view} WHERE DELETED IS NULL{where}""")
-    return [
-        ("DATABASES", "DATABASE", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, DATABASE_NAME AS NAME,
-                   DATABASE_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.DATABASES WHERE DELETED IS NULL"""),
-        ("SCHEMATA", "SCHEMA", f"""SELECT CATALOG_NAME AS DATABASE_NAME, NULL AS SCHEMA_NAME, SCHEMA_NAME AS NAME,
-                   SCHEMA_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.SCHEMATA
-            WHERE DELETED IS NULL AND SCHEMA_NAME <> 'INFORMATION_SCHEMA'"""),
-        # views too; a temporary table lives only in its session
-        au("TABLES", None, "TABLE", more=""",
+            FROM {AU}.{view} WHERE DELETED IS NULL{where}"""
+
+    def info(view, pre, name=None, typed=False, more="", where=""):  # the same from {db}.INFORMATION_SCHEMA.<view>
+        return f"""SELECT {pre}_CATALOG AS DATABASE_NAME, {pre}_SCHEMA AS SCHEMA_NAME, {name or pre + '_NAME'} AS NAME,
+                   {pre}_OWNER AS OWNER, {'' if typed else 'NULL AS '}OWNER_ROLE_TYPE{more}
+            FROM {{db}}.INFORMATION_SCHEMA.{view} WHERE {pre}_SCHEMA <> 'INFORMATION_SCHEMA'{where}"""
+    kind = """,
                    CASE WHEN IS_DYNAMIC = 'YES' THEN 'DYNAMIC_TABLE' WHEN IS_ICEBERG = 'YES' THEN 'ICEBERG_TABLE'
                         WHEN IS_HYBRID = 'YES' THEN 'HYBRID_TABLE' WHEN TABLE_TYPE = 'BASE TABLE' THEN 'TABLE'
-                        ELSE REPLACE(TABLE_TYPE, ' ', '_') END AS KIND""", where=" AND TABLE_TYPE <> 'TEMPORARY TABLE'"),
-        au("FUNCTIONS", "FUNCTION", "FUNCTION", "FUNCTION_NAME || ARGUMENT_SIGNATURE"),
-        au("PROCEDURES", "PROCEDURE", "PROCEDURE", "PROCEDURE_NAME || ARGUMENT_SIGNATURE"),
-        au("STAGES", "STAGE", "STAGE"),
-        au("PIPES", "PIPE", "PIPE"),
-        au("SEQUENCES", "SEQUENCE", "SEQUENCE"),
-        au("FILE_FORMATS", "FILE_FORMAT", "FILE_FORMAT"),
-        au("STREAMS", "STREAM", "STREAM", owner="OWNER"),
+                        ELSE REPLACE(TABLE_TYPE, ' ', '_') END AS KIND"""
+    fn, pr = "FUNCTION_NAME || ARGUMENT_SIGNATURE", "PROCEDURE_NAME || ARGUMENT_SIGNATURE"
+    return [  # DATABASES first: database_list reads it, the other kinds per database it names
+        ("DATABASES", "DATABASE", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, DATABASE_NAME AS NAME,
+                   DATABASE_OWNER AS OWNER, OWNER_ROLE_TYPE, TYPE FROM {AU}.DATABASES WHERE DELETED IS NULL""",
+         """SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, DATABASE_NAME AS NAME, DATABASE_OWNER AS OWNER,
+                   OWNER_ROLE_TYPE, TYPE FROM {db}.INFORMATION_SCHEMA.DATABASES""", [("SHOW DATABASES", "DATABASE")]),
+        ("SCHEMATA", "SCHEMA", f"""SELECT CATALOG_NAME AS DATABASE_NAME, NULL AS SCHEMA_NAME, SCHEMA_NAME AS NAME,
+                   SCHEMA_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.SCHEMATA
+            WHERE DELETED IS NULL AND SCHEMA_NAME <> 'INFORMATION_SCHEMA'""",
+         """SELECT CATALOG_NAME AS DATABASE_NAME, NULL AS SCHEMA_NAME, SCHEMA_NAME AS NAME, SCHEMA_OWNER AS OWNER,
+                   NULL AS OWNER_ROLE_TYPE FROM {db}.INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME <> 'INFORMATION_SCHEMA'""",
+         [("SHOW SCHEMAS IN ACCOUNT", "SCHEMA")]),
+        # views too; a temporary table lives only in its session
+        ("TABLES", None, au("TABLES", "TABLE", more=kind, where=" AND TABLE_TYPE <> 'TEMPORARY TABLE'"),
+         info("TABLES", "TABLE", more=kind, where=" AND TABLE_TYPE <> 'TEMPORARY TABLE'"),
+         [("SHOW TABLES IN ACCOUNT", "TABLE"), ("SHOW VIEWS IN ACCOUNT", "VIEW")]),
+        ("FUNCTIONS", "FUNCTION", au("FUNCTIONS", "FUNCTION", fn), info("FUNCTIONS", "FUNCTION", fn), []),
+        ("PROCEDURES", "PROCEDURE", au("PROCEDURES", "PROCEDURE", pr), info("PROCEDURES", "PROCEDURE", pr, True), []),
+        ("STAGES", "STAGE", au("STAGES", "STAGE"), info("STAGES", "STAGE"), [("SHOW STAGES IN ACCOUNT", "STAGE")]),
+        ("PIPES", "PIPE", au("PIPES", "PIPE"), info("PIPES", "PIPE"), [("SHOW PIPES IN ACCOUNT", "PIPE")]),
+        ("SEQUENCES", "SEQUENCE", au("SEQUENCES", "SEQUENCE"), info("SEQUENCES", "SEQUENCE"),
+         [("SHOW SEQUENCES IN ACCOUNT", "SEQUENCE")]),
+        ("FILE_FORMATS", "FILE_FORMAT", au("FILE_FORMATS", "FILE_FORMAT"), info("FILE_FORMATS", "FILE_FORMAT"),
+         [("SHOW FILE FORMATS IN ACCOUNT", "FILE_FORMAT")]),
+        ("STREAMS", "STREAM", au("STREAMS", "STREAM", owner="OWNER"), None, [("SHOW STREAMS IN ACCOUNT", "STREAM")]),
         ("TASKS", "TASK", f"""SELECT TASK_DATABASE AS DATABASE_NAME, TASK_SCHEMA AS SCHEMA_NAME, TASK_NAME AS NAME,
-                   TASK_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TASKS WHERE DELETED IS NULL"""),
+                   TASK_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TASKS WHERE DELETED IS NULL""", None,
+         [("SHOW TASKS IN ACCOUNT", "TASK")]),
         ("TAGS", "TAG", f"""SELECT TAG_DATABASE AS DATABASE_NAME, TAG_SCHEMA AS SCHEMA_NAME, TAG_NAME AS NAME,
-                   TAG_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TAGS WHERE DELETED IS NULL"""),
-        au("MASKING_POLICIES", "MASKING_POLICY", "POLICY"),
-        au("ROW_ACCESS_POLICIES", "ROW_ACCESS_POLICY", "POLICY"),
+                   TAG_OWNER AS OWNER, OWNER_ROLE_TYPE FROM {AU}.TAGS WHERE DELETED IS NULL""", None,
+         [("SHOW TAGS IN ACCOUNT", "TAG")]),
+        ("MASKING_POLICIES", "MASKING_POLICY", au("MASKING_POLICIES", "POLICY"), None,
+         [("SHOW MASKING POLICIES IN ACCOUNT", "MASKING_POLICY")]),
+        ("ROW_ACCESS_POLICIES", "ROW_ACCESS_POLICY", au("ROW_ACCESS_POLICIES", "POLICY"), None,
+         [("SHOW ROW ACCESS POLICIES IN ACCOUNT", "ROW_ACCESS_POLICY")]),
         ("INTEGRATIONS", "INTEGRATION", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE
-            FROM {AU}.INTEGRATIONS WHERE DELETED IS NULL"""),
-        ("SHOW STREAMLITS", "STREAMLIT", "SHOW STREAMLITS IN ACCOUNT"),
-        ("SHOW NOTEBOOKS", "NOTEBOOK", "SHOW NOTEBOOKS IN ACCOUNT"),
-        ("SHOW ALERTS", "ALERT", "SHOW ALERTS IN ACCOUNT"),
-        ("SHOW WAREHOUSES", "WAREHOUSE", "SHOW WAREHOUSES"),
-        ("SHOW COMPUTE POOLS", "COMPUTE_POOL", "SHOW COMPUTE POOLS")]
+            FROM {AU}.INTEGRATIONS WHERE DELETED IS NULL""", None, []),
+        ("COMPUTE_POOLS", "COMPUTE_POOL", f"""SELECT NULL AS DATABASE_NAME, NULL AS SCHEMA_NAME, NAME, OWNER, OWNER_ROLE_TYPE
+            FROM {AU}.COMPUTE_POOLS WHERE DELETED IS NULL""", None, [("SHOW COMPUTE POOLS", "COMPUTE_POOL")]),
+        ("STREAMLITS", "STREAMLIT", None, None, [("SHOW STREAMLITS IN ACCOUNT", "STREAMLIT")]),
+        ("NOTEBOOKS", "NOTEBOOK", None, None, [("SHOW NOTEBOOKS IN ACCOUNT", "NOTEBOOK")]),
+        ("ALERTS", "ALERT", None, None, [("SHOW ALERTS IN ACCOUNT", "ALERT")]),
+        ("WAREHOUSES", "WAREHOUSE", None, None, [("SHOW WAREHOUSES", "WAREHOUSE")])]
 
 
 def inventory_seen(grants):
@@ -1051,7 +1078,7 @@ def inventory_rows(seen, kind, found):
     for x in found:
         db, sc, n = ((x.get(c) or "").replace('"', "") for c in ("database_name", "schema_name", "name"))
         k = kind or x.get("kind")
-        if not n or not k:
+        if not n or not k or "INFORMATION_SCHEMA" in (sc, n):  # SHOW SCHEMAS / VIEWS IN ACCOUNT list it too
             continue
         name = ".".join(p for p in (db, sc, n) if p)
         got = seen.get(name.split("(", 1)[0])
@@ -1065,17 +1092,136 @@ def inventory_rows(seen, kind, found):
     return out
 
 
-def inventory_note(steps, bad, added):
-    """(source, note) of the inventory: steps read (inventory_sql), bad: "step: error" of the failed ones, added:
-    inventory_rows of the others."""
-    ok = {"SHOW" if s.startswith("SHOW") else "ACCOUNT_USAGE" for n, _, s in steps if not any(b.startswith(n + ":") for b in bad)}
-    note = [f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])] * bool(bad)  # only failures: a note means incomplete
-    return " + ".join(sorted(ok)) or "UNAVAILABLE", "; ".join(note) or None
+def unseen(e):
+    """A database or object this role cannot see ("does not exist or not authorized"): ACCOUNT_USAGE lists every
+    database, SHOW and INFORMATION_SCHEMA only those the role sees, so such a read is skipped without a note."""
+    return "does not exist or not authorized" in str(e)
 
+
+def standard(x):  # a database of this account, not a share or application; no type said: standard
+    return (x.get("type") or x.get("kind") or "STANDARD") == "STANDARD"
+
+
+def database_list(many, home, au, text):
+    """Every database, for the per-database reads: ACCOUNT_USAGE.DATABASES (au True: may be read, else why it is not; lags
+    up to 3 h and lists databases this role may not see), else INFORMATION_SCHEMA.DATABASES from the first database of
+    home that answers, else SHOW DATABASES. The inventory's DATABASES read (inventory_sql), so inventory_read takes its
+    rows. many(sqls): rows (lower-case keys) or the exception of each, in order; text(e): an error as one line. ->
+    (source, rows: name, owner, owner_role_type, type (SHOW: kind), why a lower level was used)."""
+    top, why = inventory_sql()[0], [] if au is True else [au]
+    if au is True:
+        r = many([top[2]])[0]
+        if isinstance(r, list):
+            return "ACCOUNT_USAGE", r, None
+        why.append(f"{AU}.DATABASES: {text(r)}")
+    tried = many([top[3].format(db=ident(h)) for h in home[:5]])
+    found = next((r for r in tried if isinstance(r, list)), None)
+    if found is not None:
+        return "INFORMATION_SCHEMA", found, "; ".join(why) or None
+    why.append("INFORMATION_SCHEMA.DATABASES: " + (text(tried[0]) if tried else "no database to read it from"))
+    r = many(["SHOW DATABASES"])[0]
+    if isinstance(r, list):
+        return "SHOW", r, "; ".join(why)
+    return "UNAVAILABLE", [], "; ".join(why + [f"SHOW DATABASES: {text(r)}"])
+
+
+def show_kind(x, k):  # SHOW TABLES names Iceberg and hybrid tables TABLE, SHOW VIEWS a materialized view VIEW
+    flag = lambda c: str(x.get(c)).upper() in ("Y", "TRUE")  # noqa: E731
+    return "ICEBERG_TABLE" if flag("is_iceberg") else "HYBRID_TABLE" if flag("is_hybrid") else (
+        "MATERIALIZED_VIEW" if flag("is_materialized") else k)
+
+
+def inventory_read(many, dbl, au, text):
+    """The inventory (inventory_sql), level by level per kind: ACCOUNT_USAGE (au as in database_list), else
+    INFORMATION_SCHEMA per database (where a view exists; not when the database list came from SHOW), else SHOW; one
+    level per kind, the first that answers. Per database at most, every level one wave; about one query per kind and
+    database at the INFORMATION_SCHEMA level. DATABASES: the rows of database_list (dbl), which also names the
+    databases. many, text: as database_list. -> ([(step, kind, rows)], source, note): source the levels used
+    ("ACCOUNT_USAGE + SHOW"), note why a lower level was used and which kinds no level read."""
+    steps, (how, dbs, dwhy) = inventory_sql(), dbl
+    first = [s for s in steps[1:] if s[2] and au is True]
+    got = dict(zip([s[0] for s in first], many([s[2] for s in first])))
+    out, used = [], {}
+    why = {name: [] if au is True else [au] for name, *_ in steps}
+    why["DATABASES"] = [dwhy] if dwhy else []
+    if how != "UNAVAILABLE":
+        out.append(("DATABASES", "DATABASE", dbs))
+        used["DATABASES"] = how
+    for name, kind, *_ in steps[1:]:
+        r = got.get(name)
+        if isinstance(r, list):
+            out.append((name, kind, r))
+            used[name] = "ACCOUNT_USAGE"
+        elif r is not None:
+            why[name].append(f"{AU}.{name}: {text(r)}")
+    names = [x["name"] for x in dbs if x.get("name") and standard(x)]
+    per = [s for s in steps if s[0] not in used and s[3]]
+    if per and how in ("SHOW", "UNAVAILABLE"):  # INFORMATION_SCHEMA.DATABASES refused: no per-database tries
+        for s in per:
+            why[s[0]].append(f"INFORMATION_SCHEMA: skipped, database list from {how}")
+        per = []
+    res = many([s[3].format(db=ident(x)) for s in per for x in names])
+    for i, (name, kind, *_) in enumerate(per):
+        part = res[i * len(names):(i + 1) * len(names)]
+        bad = [(x, r) for x, r in zip(names, part) if isinstance(r, Exception)]
+        if any(isinstance(r, list) for r in part):  # a refused database skips only itself, one it cannot see silently
+            out.append((name, kind, [x for r in part if isinstance(r, list) for x in r]))
+            used[name] = "INFORMATION_SCHEMA"
+            bad = [(x, r) for x, r in bad if not unseen(r)]
+        if bad:
+            why[name].append(f"INFORMATION_SCHEMA.{name} in {len(bad)} of {len(part)} databases: "
+                             + " | ".join(f"{x}: {text(r)}" for x, r in bad[:5]))
+    plan = [(name, sql, k) for name, _, _, _, show in steps if name not in used for sql, k in show]
+    for (name, sql, k), r in zip(plan, many([p[1] for p in plan])):
+        if isinstance(r, list):  # SHOW TABLES also lists this session's temporary tables
+            out.append((name, None, [dict(x, kind=show_kind(x, k)) for x in r if x.get("kind") != "TEMPORARY"]))
+            used[name] = "SHOW"
+        else:
+            why[name].append(f"{sql}: {text(r)}")
+    lower = [f"{n}: {used[n]} ({'; '.join(why[n])})" for n in used if why[n]]
+    unread = [f"{n}: " + ("; ".join(why[n]) or "no view or SHOW names its owner") for n, *_ in steps if n not in used]
+    note = ([f"{len(unread)} of {len(steps)} kinds unread: " + " | ".join(unread[:20])] * bool(unread)
+            + ["read with a fallback: " + " | ".join(lower[:20])] * bool(lower))
+    return out, " + ".join(sorted(set(used.values()))) or "UNAVAILABLE", "; ".join(note) or None
+
+
+def schema_list(many, dbl, au, text):
+    """The standard databases of database_list (dbl; no shares or applications) and their schemas, for SHOW FUTURE GRANTS
+    (future grants have no view): ACCOUNT_USAGE.SCHEMATA (au as in database_list; lags up to 2 h), else
+    INFORMATION_SCHEMA.SCHEMATA per database (not when the database list came from SHOW), else SHOW SCHEMAS per
+    database; a database this role cannot see is left out. many, text: as database_list. -> (source, {database: [schema]
+    or the exception of its read}, why a lower level was used or why none worked)."""
+    how, dbs, dwhy = dbl
+    if how == "UNAVAILABLE":
+        return "UNAVAILABLE", {}, dwhy
+    names, why = [x["name"] for x in dbs if x.get("name") and standard(x)], [] if au is True else [au]
+    if au is True:
+        r = many([f"""SELECT CATALOG_NAME AS DB, SCHEMA_NAME AS SC FROM {AU}.SCHEMATA
+            WHERE DELETED IS NULL AND SCHEMA_NAME <> 'INFORMATION_SCHEMA' ORDER BY 1, 2"""])[0]
+        if isinstance(r, list):
+            out = {x: [] for x in names}
+            for x in r:
+                if x.get("db") in out and x.get("sc"):
+                    out[x["db"]].append(x["sc"])
+            return "ACCOUNT_USAGE", out, None
+        why.append(f"{AU}.SCHEMATA: {text(r)}")
+    if how == "SHOW":
+        why.append("INFORMATION_SCHEMA: skipped, database list from SHOW")
+    levels = ((lambda x: f"SELECT SCHEMA_NAME AS NAME FROM {ident(x)}.INFORMATION_SCHEMA.SCHEMATA "
+               "WHERE SCHEMA_NAME <> 'INFORMATION_SCHEMA'", "INFORMATION_SCHEMA.SCHEMATA", "INFORMATION_SCHEMA"),
+              (lambda x: f"SHOW SCHEMAS IN DATABASE {ident(x)}", "SHOW SCHEMAS", "SHOW"))
+    for sql, what, level in levels[how == "SHOW":]:  # INFORMATION_SCHEMA.DATABASES refused: no per-database tries
+        got = many([sql(x) for x in names])
+        if not names or any(isinstance(r, list) for r in got):  # a refused database skips only itself
+            out = {x: r if isinstance(r, Exception) else [s["name"] for s in r if s.get("name") not in (None, "INFORMATION_SCHEMA")]
+                   for x, r in zip(names, got) if not (isinstance(r, Exception) and unseen(r))}
+            return level, out, "; ".join(why) or None
+        why.append(f"{what}: {text(got[0])}")
+    return "UNAVAILABLE", {}, "; ".join(why)
 
 def live(query, old=None, old_use=None):
     """The whole account, read now with the caller's role, kept in memory: what SP_ACCESS_SNAPSHOT('AUTO') writes to the
-    tables, for accounts where procedures can't be created. ACCOUNT_USAGE where readable, else SHOW / INFORMATION_SCHEMA
+    tables, for accounts where procedures can't be created. ACCOUNT_USAGE where readable, else INFORMATION_SCHEMA, else SHOW
     (keep in step with sql/1_setup.sql). Writes nothing. query(sql) -> list of dicts; same dict as snapshot().
     old / old_use: ACTIVITY / OBJECT_USE rows of an earlier read, so only the days / weeks they lack are read."""
     def rows(sql):  # lower-case keys: SHOW columns are lower case, views upper case
@@ -1126,7 +1272,8 @@ def live(query, old=None, old_use=None):
         return sql
 
     # two waves instead of one statement after another: every probe at once, then every ACCOUNT_USAGE read that passed
-    views = ("GRANTS_TO_ROLES", "GRANTS_TO_USERS", "USERS", "QUERY_HISTORY", "TAG_REFERENCES", "POLICY_REFERENCES") + (
+    views = ("GRANTS_TO_ROLES", "GRANTS_TO_USERS", "USERS", "QUERY_HISTORY", "TAG_REFERENCES", "POLICY_REFERENCES",
+             "DATABASES") + (
         "ACCESS_HISTORY", "SESSIONS") * ACTIVITY_ON
     probes = each(query, [f"SELECT 1 FROM {AU}.{v} LIMIT 1" for v in views], what="ACCOUNT_USAGE views")
     bad = next((r for r in probes if isinstance(r, Exception) and lost(r)), None)
@@ -1139,6 +1286,7 @@ def live(query, old=None, old_use=None):
         say(unread[v])
     if not ACTIVITY_ON:
         unread |= {"ACCESS_HISTORY": SKIP_ACTIVITY, "SESSIONS": SKIP_ACTIVITY}
+    au = unread["DATABASES"] or True  # the object views: not read when the probe failed, the note says why
     sqls = {}
     if not (unread["GRANTS_TO_ROLES"] or unread["GRANTS_TO_USERS"]):  # NAME holds only the object's own name; DATABASE
         # rows may repeat it in TABLE_CATALOG; a database role grantee is a bare name: qualified with the database of what
@@ -1215,12 +1363,22 @@ def live(query, old=None, old_use=None):
         else:
             res["OBJECT_USE"], res["ACTIVITY"] = history_rows(h)
 
+    dbl = []  # database_list, read once: the database roles, the schema list and the inventory share it
+
+    def databases():
+        if not dbl:  # INFORMATION_SCHEMA.DATABASES lists every database from any one: the current, a granted, SNOWFLAKE
+            home = list(dict.fromkeys([x for x in [db] if x] + sorted(
+                g["OBJECT_NAME"] for g in d["GRANT"] if g.get("GRANTED_ON") == "DATABASE"
+                and isinstance(g.get("OBJECT_NAME"), str) and g["OBJECT_NAME"]) + ["SNOWFLAKE"]))
+            dbl.append(database_list(lambda s: many(s, "Database list"), home, au, line))
+        return dbl[0]
+
     def take(k):  # a wave-2 result; a failed read raises its error here, at the step it belongs to
         if isinstance(res[k], Exception):
             raise res[k]
         return res[k]
 
-    why, shown = unread["GRANTS_TO_ROLES"] or unread["GRANTS_TO_USERS"], None  # shown: SHOW DATABASES, read once
+    why = unread["GRANTS_TO_ROLES"] or unread["GRANTS_TO_USERS"]
     if why is None:
         try:
             d["GRANT"], d["USER_ROLE"] = take("GRANT"), take("USER_ROLE")
@@ -1253,16 +1411,16 @@ def live(query, old=None, old_use=None):
                            for x in to if x.get("granted_to") in ("ROLE", None)]
             d["USER_ROLE"] += [dict(USER_NAME=x.get("grantee_name"), ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
                                for x in of if x.get("granted_to") == "USER"]
-        try:  # refused: no database roles here; the future grants below note it too
-            dbs = shown = [x["name"] for x in rows("SHOW DATABASES") if x.get("name") and x.get("kind", "STANDARD") == "STANDARD"]
-        except Exception as e:
-            dbs = []
-            skipped.append(f"database roles: SHOW DATABASES: {line(e)}")
+        how, found, dwhy = databases()  # none listed: no database roles here; the future grants below note it too
+        dbs = [x["name"] for x in found if x.get("name") and standard(x)]
+        if how == "UNAVAILABLE":
+            skipped.append(f"database roles: {dwhy}")
         qs = []  # database roles: per database, their grants under DB.ROLE
         for name, got in zip(dbs, many([f"SHOW DATABASE ROLES IN DATABASE {ident(x)}" for x in dbs],
                                        "SHOW DATABASE ROLES")):
             if isinstance(got, Exception):
-                skipped.append(f"database roles in {name}: {line(got)}")
+                if not unseen(got):
+                    skipped.append(f"database roles in {name}: {line(got)}")
             else:
                 qs += [(name, f"{name}.{clean(r.get('name'))}") for r in got if r.get("name")]
         for (name, q), got in zip(qs, many([f"SHOW GRANTS TO DATABASE ROLE {db_ident(q)}" for _, q in qs],
@@ -1277,24 +1435,19 @@ def live(query, old=None, old_use=None):
         note("grants", "SHOW", why + (f"; {len(skipped)} roles skipped: " + " | ".join(skipped[:20]) if skipped else ""))
     note("user_roles", src["grants"], notes.get("grants"))
 
-    skipped = []  # future grants: no ACCOUNT_USAGE view; shares and applications: their grants are not ours
-    try:  # SHOW only: when even SHOW DATABASES is refused, the rest still loads and the note says so
-        dbs = shown if shown is not None else [
-            x["name"] for x in rows("SHOW DATABASES") if x.get("name") and x.get("kind", "STANDARD") == "STANDARD"]
-    except Exception as e:
-        dbs, nodb = [], f"SHOW DATABASES: {line(e)}"
-    else:
-        nodb = None
+    skipped = []  # future grants: no view, SHOW FUTURE GRANTS per database and schema; shares and applications: not ours
+    how, listed, why = schema_list(lambda s: many(s, "Schema list"), databases(), au, line)
+    note("schemas", how, why)
     places, failed = [], set()
-    for name, got in zip(dbs, many([f"SHOW SCHEMAS IN DATABASE {ident(x)}" for x in dbs], "SHOW SCHEMAS")):
+    for name, got in listed.items():
         if isinstance(got, Exception):
             skipped.append(f"{name}: {line(got)}")
             continue
-        places += [(name, f"DATABASE {ident(name)}")] + [
-            (name, f"SCHEMA {ident(name)}.{ident(s['name'])}") for s in got if s.get("name") not in (None, "INFORMATION_SCHEMA")]
-    for (name, p), got in zip(places, many([f"SHOW FUTURE GRANTS IN {p}" for _, p in places], "SHOW FUTURE GRANTS")):
+        places += [(name, f"DATABASE {ident(name)}")] + [(name, f"SCHEMA {ident(name)}.{ident(s)}") for s in got]
+    futures = many([f"SHOW FUTURE GRANTS IN {p}" for _, p in places], "SHOW FUTURE GRANTS")
+    for (name, p), got in zip(places, futures):
         if isinstance(got, Exception):
-            if name not in failed:  # one note per database
+            if name not in failed and not unseen(got):  # one note per database; one this role cannot see: none
                 failed.add(name)
                 skipped.append(f"{name}: {line(got)}")
             continue
@@ -1303,8 +1456,9 @@ def live(query, old=None, old_use=None):
                             GRANTED_ON=f.get("grant_on"), OBJECT_NAME=clean(f.get("name")), IS_FUTURE=True,
                             GRANT_OPTION=str(f.get("grant_option")).lower() == "true", GRANTED_BY=None)
                        for f in got if f.get("grant_to") in ("ROLE", "DATABASE_ROLE")]
-    if nodb:
-        note("future_grants", "UNAVAILABLE", nodb)
+    if how == "UNAVAILABLE" or (places and all(isinstance(x, Exception) for x in futures)):  # nothing read
+        note("future_grants", "UNAVAILABLE", why if how == "UNAVAILABLE" else
+             "SHOW FUTURE GRANTS: " + (" | ".join(skipped[:20]) or line(futures[0])))
     else:
         note("future_grants", "SHOW", f"{len(skipped)} databases skipped: " + " | ".join(skipped[:20]) if skipped else None)
 
@@ -1487,16 +1641,14 @@ def live(query, old=None, old_use=None):
         note("streams", "UNAVAILABLE", line(e))
 
     # every object the account lists, an OWNERSHIP row for each the grants lack (as SP_ACCESS_SNAPSHOT's objects())
-    seen, steps, bad, added = inventory_seen((g.get("OBJECT_NAME"), g.get("GRANTED_ON"), g.get("PRIVILEGE"))
-                                             for g in d["GRANT"] if not g.get("IS_FUTURE")), inventory_sql(), [], []
-    for (name, kind, _), got in zip(steps, many([s for _, _, s in steps], "Object inventory")):
-        if isinstance(got, Exception):
-            bad.append(f"{name}: {line(got)}")
-        else:
-            added += inventory_rows(seen, kind, got)
+    seen, added = inventory_seen((g.get("OBJECT_NAME"), g.get("GRANTED_ON"), g.get("PRIVILEGE"))
+                                 for g in d["GRANT"] if not g.get("IS_FUTURE")), []
+    found, how, why = inventory_read(lambda s: many(s, "Object inventory"), databases(), au, line)
+    for _, kind, got in found:
+        added += inventory_rows(seen, kind, got)
     d["GRANT"] += [dict(GRANTEE_ROLE=who, PRIVILEGE="OWNERSHIP", GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False,
                         GRANT_OPTION=False, GRANTED_BY=None) for who, k, o in added]
-    note("objects", *inventory_note(steps, bad, added))
+    note("objects", how, why)
     if lone := sum(1 for who, _, _ in added if not who):  # an app owns them, or the read named no owner: listed, no holder
         say(f"Object inventory: {lone:,} objects without an owner role, listed with no holder")
     say(f"done in {took(t0)}")

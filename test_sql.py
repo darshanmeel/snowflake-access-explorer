@@ -394,7 +394,7 @@ def test_show_fallback():
     sent = []  # statements started as async child jobs (many()); a refusal comes from result(), as in Snowpark
 
     def sql(text, params=None):
-        if text.lstrip().upper().startswith("SHOW") or "ACCOUNT_USAGE" in text:
+        if text.lstrip().upper().startswith("SHOW") or "ACCOUNT_USAGE" in text or ".INFORMATION_SCHEMA." in text:
             got = lambda **k: [SimpleNamespace(as_dict=lambda r=r: r) for r in answer(text)]  # noqa: E731
             return SimpleNamespace(collect=got, collect_nowait=lambda **k: sent.append(text) or SimpleNamespace(result=got))
         return duck_sql(text, params)
@@ -414,7 +414,9 @@ def test_show_fallback():
     assert f"{bad}: " in str(live["run"].get("NOTES"))
     assert f"{half}: Insufficient privileges" in out["grants"][1] and not any(k[0] == half for k in proc)
     assert not any(r == half for _, r in proc_users)
-    src, why = ns["future"](session, "run-10")  # one refused place skips only itself, as in live()
+    got = ns["future"](session, "run-10", "AUTO")  # one refused place skips only itself, as in live()
+    (src, why), schemas = got["future_grants"], got["schemas"]
+    assert schemas[0] == "SHOW" and "ACCOUNT_USAGE.SCHEMATA" in schemas[1] and "database list from SHOW" in schemas[1]
     fut = Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                   for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-10'"))
     same(fut, Counter((g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"])
@@ -431,7 +433,7 @@ def test_show_fallback():
     show_before = show
     show = lambda q: show_before(q) + ([dict(grant_to="ROLE", grantee_name=None, privilege="SELECT", grant_on="TABLE",  # noqa: E731
                                              name="X.Y.<TABLE>")] if q.startswith("SHOW FUTURE GRANTS IN DATABASE") else [])
-    src, why = ns["future"](session, "run-12")
+    src, why = ns["future"](session, "run-12", "SHOW")["future_grants"]
     assert src == "SHOW" and re.fullmatch(r"[1-9]\d* future grant rows? without a name left out", why or ""), why
 
     def refused(text, params=None):  # SOURCE=direct inside Snowflake when even SHOW DATABASES is refused
@@ -440,8 +442,28 @@ def test_show_fallback():
         return sql(text, params)
 
     session.sql = refused
-    src, why = ns["future"](session, "run-9")
-    assert src == "UNAVAILABLE" and "not allowed" in why  # the run goes on, as access.live() does
+    src, why = ns["future"](session, "run-13", "SHOW")["future_grants"]
+    assert src == "UNAVAILABLE" and "not allowed" in why and why.startswith("P_SOURCE = SHOW: ACCOUNT_USAGE not read"), why  # the run goes on, as access.live() does
+    session.sql = sql  # the schema list from ACCOUNT_USAGE, else INFORMATION_SCHEMA: the same future grants, no SHOW SCHEMAS
+    for au, info, want in ((True, False, "ACCOUNT_USAGE"), (False, True, "INFORMATION_SCHEMA")):
+        show, _ = test_access.fake_snowflake(d, au, info)
+        sent[:] = []
+        got = ns["future"](session, f"run-{want}", "AUTO")
+        assert got["schemas"][0] == want and got["future_grants"] == ("SHOW", None), got
+        assert not [x for x in sent if x.startswith("SHOW SCHEMAS") or x.startswith("SHOW DATABASES")], sent
+        same(Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
+                     for r in query(con, f"SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-{want}'")), fut, f"future grants, schemas from {want}")
+    got = ns["future"](session, "run-x", "SHOW")["schemas"]  # P_SOURCE = SHOW: no ACCOUNT_USAGE, the note says so
+    assert got == ("INFORMATION_SCHEMA", "P_SOURCE = SHOW: ACCOUNT_USAGE not read"), got
+    hidden = {"SHOW FUTURE GRANTS IN DATABASE \"SALES\"", "SHOW FUTURE GRANTS IN SCHEMA \"SALES\".\"CORE\""}
+    show_au = show  # a database this role cannot see (ACCOUNT_USAGE lists it): left out, no note
+
+    def show(q):
+        if " ".join(q.split()) in hidden:
+            raise RuntimeError("Database 'SALES' does not exist or not authorized.")
+        return show_au(q)
+    got = ns["future"](session, "run-y", "AUTO")
+    assert got["schemas"][0] == "INFORMATION_SCHEMA" and got["future_grants"] == ("SHOW", None), got
 
 
 def test_objects():
@@ -449,7 +471,7 @@ def test_objects():
     OWNERSHIP row of its owner, one already owned in the grant read adds nothing, one no role owns is kept with no
     grantee, a refused read leaves a note and the rest still loads."""
     import inspect
-    for f in (a.inventory_sql, a.inventory_seen, a.inventory_rows, a.inventory_note):
+    for f in (a.inventory_sql, a.inventory_seen, a.inventory_rows, a.inventory_read, a.schema_list):
         assert inspect.getsource(f) in SETUP, f.__name__
     con = load(a.fake(), build=False)
     for c, k in (("GRANT_OPTION", "BOOLEAN"), ("GRANTED_BY", "VARCHAR")):
@@ -459,33 +481,72 @@ def test_objects():
                 "('run-9', 'R_USE', 'USAGE', 'STREAMLIT', 'D.S.APP', FALSE)")
     ns, session = snapshot_proc(), fake_session(con)
     duck_sql = session.sql
-    answers = {
-        "FUNCTIONS": [dict(DATABASE_NAME="D", SCHEMA_NAME="S", NAME="FN(X NUMBER)", OWNER="R_OWN", OWNER_ROLE_TYPE="ROLE")],
-        "SHOW STREAMLITS": [dict(database_name="D", schema_name="S", name="APP", owner="R_APP", owner_role_type="ROLE")],
-        "SHOW NOTEBOOKS": [dict(database_name="D", schema_name="S", name="NB", owner="DBR", owner_role_type="DATABASE_ROLE"),
-                           dict(database_name="D", schema_name="S", name="NB2", owner=None, owner_role_type=None)],
-        "SHOW WAREHOUSES": [dict(name="WH_NEW", owner="R_WH")]}
+    steps = ns["inventory_sql"]()
+    au = {q: n for n, _, q, _, _ in steps if q}
+    shows = {q: n for n, *_, show in steps for q, _ in show}
+    answers = {  # (level, step) -> rows; a missing one is refused
+        ("AU", "FUNCTIONS"): [dict(DATABASE_NAME="D", SCHEMA_NAME="S", NAME="FN(X NUMBER)", OWNER="R_OWN", OWNER_ROLE_TYPE="ROLE")],
+        ("IS", "DATABASES"): [dict(DATABASE_NAME=None, SCHEMA_NAME=None, NAME="D", OWNER="R_DB", OWNER_ROLE_TYPE="ROLE",
+                                   TYPE="STANDARD"), dict(NAME="SHARED", OWNER=None, TYPE="IMPORTED DATABASE")],
+        ("IS", "TABLES"): [dict(DATABASE_NAME="D", SCHEMA_NAME="S", NAME="T_NEW", OWNER="R_T", OWNER_ROLE_TYPE=None, KIND="TABLE")],
+        ("SHOW", "SHOW STREAMLITS IN ACCOUNT"): [dict(database_name="D", schema_name="S", name="APP", owner="R_APP",
+                                                      owner_role_type="ROLE")],
+        ("SHOW", "SHOW NOTEBOOKS IN ACCOUNT"): [
+            dict(database_name="D", schema_name="S", name="NB", owner="DBR", owner_role_type="DATABASE_ROLE"),
+            dict(database_name="D", schema_name="S", name="NB2", owner=None, owner_role_type=None)],
+        ("SHOW", "SHOW WAREHOUSES"): [dict(name="WH_NEW", owner="R_WH")],
+        ("SHOW", "SHOW VIEWS IN ACCOUNT"): [dict(database_name="D", schema_name="S", name="V_SHOW", owner="R_V"),
+                                            dict(database_name="D", schema_name="S", name="MV", owner="R_V", is_materialized="true"),
+                                            dict(database_name="D", schema_name="INFORMATION_SCHEMA", name="TABLES", owner="")],
+        ("SHOW", "SHOW TABLES IN ACCOUNT"): [dict(database_name="D", schema_name="S", name="T_SHOW", owner="R_T", kind="TABLE"),
+                                             dict(database_name="D", schema_name="S", name="T_ICE", owner="R_T", kind="TABLE",
+                                                  is_iceberg="Y", is_hybrid="N"),
+                                             dict(database_name="D", schema_name="S", name="T_TMP", owner="R_T", kind="TEMPORARY")]}
+    sent = []
 
     def sql(text, params=None):
-        name = next((n for n, _, q in ns["inventory_sql"]() if q == text), None)
-        if name is None:
+        if text in au:
+            key = ("AU", au[text])
+        elif ".INFORMATION_SCHEMA." in text:  # one database's INFORMATION_SCHEMA: DATABASES once, the others per database
+            key = ("IS", re.search(r"INFORMATION_SCHEMA\.(\w+)", text)[1])
+            assert key[1] == "DATABASES" or text.startswith("SELECT") and '"D".' in text, text  # never the shared database
+        elif text in shows:
+            key = ("SHOW", text)
+        else:
             return duck_sql(text, params)
+        sent.append(key)
 
         def got(**k):
-            if name not in answers:
+            if key not in answers:
                 raise RuntimeError("Object does not exist or not authorized.")
-            return [Row(r) for r in answers[name]]
+            return [Row(r) for r in answers[key]]
         return SimpleNamespace(collect=got, collect_nowait=lambda **k: SimpleNamespace(result=got))
 
+    def owned(run):
+        return sorted(((r["GRANTEE_ROLE"], r["GRANTED_ON"], r["OBJECT_NAME"]) for r in query(
+            con, f"SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = '{run}' AND GRANTEE_ROLE IS DISTINCT FROM 'R_USE' "
+                 "AND GRANTEE_ROLE IS DISTINCT FROM 'R_OWN'")), key=str)
     session.sql = sql
-    src, note = ns["objects"](session, "run-9", "AUTO")
-    assert src == "ACCOUNT_USAGE + SHOW" and "TABLES: Object does not exist" in note and "owner role" not in note, note  # only failures
-    got = sorted(((r["GRANTEE_ROLE"], r["GRANTED_ON"], r["OBJECT_NAME"]) for r in query(
-        con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-9' AND GRANTEE_ROLE IS DISTINCT FROM 'R_USE' "
-             "AND GRANTEE_ROLE IS DISTINCT FROM 'R_OWN'")), key=str)
-    assert got == sorted([("R_APP", "STREAMLIT", "D.S.APP"), ("D.DBR", "NOTEBOOK", "D.S.NB"), (None, "NOTEBOOK", "D.S.NB2"),
-                          ("R_WH", "WAREHOUSE", "WH_NEW")], key=str), got  # the function is owned already: no second row
-    assert ns["objects"](session, "run-10", "SHOW")[0] == "SHOW"  # P_SOURCE = SHOW: the SHOW reads only
+    src, note = ns["objects"](session, "run-9", "AUTO")  # functions from ACCOUNT_USAGE, tables from INFORMATION_SCHEMA
+    assert src == "ACCOUNT_USAGE + INFORMATION_SCHEMA + SHOW" and "owner role" not in note, note
+    assert "TABLES: INFORMATION_SCHEMA (SNOWFLAKE.ACCOUNT_USAGE.TABLES: Object does not exist" in note, note  # why lower
+    assert "INTEGRATIONS: SNOWFLAKE.ACCOUNT_USAGE.INTEGRATIONS: Object does not exist" in note, note  # no lower level
+    assert ("SHOW", "SHOW TABLES IN ACCOUNT") not in sent and ("IS", "FUNCTIONS") not in sent  # one level each
+    app = [("R_APP", "STREAMLIT", "D.S.APP"), ("D.DBR", "NOTEBOOK", "D.S.NB"), (None, "NOTEBOOK", "D.S.NB2"),
+           ("R_WH", "WAREHOUSE", "WH_NEW")]
+    dbs = [("R_DB", "DATABASE", "D"), (None, "DATABASE", "SHARED")]  # every database is an object, a share too
+    assert owned("run-9") == sorted(app + dbs + [("R_T", "TABLE", "D.S.T_NEW")], key=str), owned("run-9")  # the function: no 2nd row
+    sent.clear()
+    src, note = ns["objects"](session, "run-10", "SHOW")  # P_SOURCE = SHOW: no ACCOUNT_USAGE, the note says why
+    assert src == "INFORMATION_SCHEMA + SHOW" and "TABLES: INFORMATION_SCHEMA (P_SOURCE = SHOW: ACCOUNT_USAGE not read)" in note, note
+    assert not [k for k in sent if k[0] == "AU"] and owned("run-10") == owned("run-9")
+    for k in [k for k in answers if k[0] == "IS"]:  # INFORMATION_SCHEMA refused too: SHOW, without temporary tables
+        answers.pop(k)
+    src, note = ns["objects"](session, "run-11", "SHOW")
+    assert src == "SHOW" and "INFORMATION_SCHEMA.DATABASES: Object does not exist" in note, note
+    assert owned("run-11") == sorted(app + [("R_T", "TABLE", "D.S.T_SHOW"), ("R_V", "VIEW", "D.S.V_SHOW"),  # kinds as
+                                            ("R_T", "ICEBERG TABLE", "D.S.T_ICE"), ("R_V", "MATERIALIZED VIEW", "D.S.MV")],
+                                     key=str), owned("run-11")  # ACCOUNT_USAGE names them
 
 
 def snapshot_proc():
@@ -514,7 +575,8 @@ def test_run_overlap():
 
     session.sql = sql
     step = lambda *x: ("SHOW", None)  # noqa: E731
-    ns.update({k: step for k in ("future", "users", "tags", "policies", "streams")})
+    ns.update({k: step for k in ("users", "tags", "policies", "streams", "objects")})
+    ns["future"] = lambda *x: {"schemas": ("SHOW", None), "future_grants": ("SHOW", None)}
     ns.update({k: lambda *x: lambda: ("SHOW", None) for k in ("usage", "object_use", "activity")})  # wait() of a job
 
     def grants(session, run_id, mode):
@@ -704,7 +766,8 @@ def test_proc_settings():
         re.sub(r"DATEADD\((\w+), (-?\d+), CURRENT_TIMESTAMP\(\)\)", r"(current_timestamp + INTERVAL (\2) \1)", text)
         .replace("CURRENT_TIMESTAMP()", "current_timestamp"), params))
     ns, seen = snapshot_proc(), []
-    ns.update({k: lambda *x: ("SHOW", None) for k in ("future", "users", "tags", "policies", "streams")})
+    ns.update({k: lambda *x: ("SHOW", None) for k in ("users", "tags", "policies", "streams", "objects")})
+    ns["future"] = lambda *x: {"schemas": ("SHOW", None), "future_grants": ("SHOW", None)}
     ns["usage"] = lambda *x: lambda: ("SHOW", None)
     ns["grants"] = lambda *x: {"grants": ("SHOW", None), "user_roles": ("SHOW", None)}
     ns["fallback"] = lambda *x: seen.append(x[1]) or None

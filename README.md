@@ -395,7 +395,7 @@ The app logs in like on a shared server: give the service `SNOWFLAKE_ACCOUNT`, `
 Only metadata, never table data: `ACCOUNT_USAGE` grants, users, query history, tags and policies (then INFORMATION_SCHEMA, then `SHOW`, when
 `ACCOUNT_USAGE` is not readable). The object inventory lists objects no grant names: `ACCOUNT_USAGE` DATABASES, SCHEMATA, TABLES,
 FUNCTIONS, PROCEDURES, STAGES, PIPES, SEQUENCES, FILE_FORMATS, STREAMS, TASKS, TAGS, MASKING_POLICIES, ROW_ACCESS_POLICIES,
-INTEGRATIONS, and `SHOW` STREAMLITS / NOTEBOOKS / ALERTS / WAREHOUSES / COMPUTE POOLS (names and owners only; each read may fail on its own). Granted vs used also reads `ACCOUNT_USAGE.ACCESS_HISTORY` (Enterprise edition),
+INTEGRATIONS, COMPUTE_POOLS, and `SHOW` STREAMLITS / NOTEBOOKS / ALERTS / WAREHOUSES (names and owners only; each read may fail on its own). Granted vs used also reads `ACCOUNT_USAGE.ACCESS_HISTORY` (Enterprise edition),
 aggregated per user, object and week (180 days, `USE_DAYS`, in whole weeks; a new read copies the weeks the last one has
 and reads only its last two weeks again); without it that screen explains why it is empty. The Activity tabs (object, person,
 role) and rules 24-28 read `ACCESS_HISTORY` with `QUERY_HISTORY` (role, statement type) and `SESSIONS` (client; only sessions opened from a week before the first day read, so Snowflake does not scan a year of them) for the
@@ -406,6 +406,14 @@ per UTC hour (`HOURS`): query metadata, never query text. Off-hours are worked o
 The app leaves its own queries out: locally they carry the query tag `QUERY_TAG` (default `access-explorer`), inside Snowflake the app's
 Streamlit name `STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`), and the procedure's reads and writes of the `TBL_ACCESS_` tables are skipped. Snowflake does not log result downloads from Snowsight or drivers. The full table, with the fallbacks,
 is in [README.html](README.html) > Data sources.
+
+Each read takes the first level that answers, and the run's SOURCES / NOTES say which one and why:
+- Object inventory, per kind: `ACCOUNT_USAGE` view, else `INFORMATION_SCHEMA` DATABASES (once), SCHEMATA, TABLES, FUNCTIONS, PROCEDURES, STAGES, PIPES, SEQUENCES, FILE_FORMATS per database, else `SHOW ... IN ACCOUNT`.
+- Compute pools: `ACCOUNT_USAGE.COMPUTE_POOLS`, else `SHOW COMPUTE POOLS`.
+- Database list (read once, for database roles, the schema list and the inventory): `ACCOUNT_USAGE.DATABASES` (up to 3 h behind; a database it lists that the role cannot see is skipped without a note), else `INFORMATION_SCHEMA.DATABASES`, else `SHOW DATABASES`.
+- Schema list for future grants: `ACCOUNT_USAGE.SCHEMATA` (up to 2 h behind: a schema made since then is missed), else `INFORMATION_SCHEMA.SCHEMATA` per database, else `SHOW SCHEMAS` per database.
+- The `INFORMATION_SCHEMA` level costs about one query per kind and database (against one `SHOW` per kind), so it runs only when `INFORMATION_SCHEMA.DATABASES` answered.
+- Grants, users, streams, future grants: no `INFORMATION_SCHEMA` view gives them whole, so `ACCOUNT_USAGE`, else `SHOW`.
 
 ## Use the queries without the app
 Only want the answers, not the app? [`access_queries/`](access_queries/README.md) holds plain SQL over `SNOWFLAKE.ACCOUNT_USAGE`. The app's **SQL** button shows the ones behind the page you are on, already filled in for the user, role or object on screen:

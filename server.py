@@ -621,6 +621,8 @@ def note_info(k, source, view):
                           "or SOURCE=objects (the procedure reads them).") if source == "UNAVAILABLE" else
                          ("Future grants partly read", "Future grants of the databases in the error are missing.",
                           "MANAGE GRANTS, or ownership of those schemas."),
+        "schemas": ("Schema list from a fallback", "Future grants are read per schema of this list: schemas this role "
+                    "can't see are missing.", f"{IP}."),
         "streams": ("Streams unread", "The stream rule (22) can't run.", f"{IP}."),
         "objects": ("Object list partly read", "Objects of the kinds in the error show only where a grant names them.",
                     f"{IP}; for SHOW kinds (Streamlit apps, notebooks, ...) MONITOR or USAGE on them."),
