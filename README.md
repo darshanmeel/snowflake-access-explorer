@@ -410,7 +410,9 @@ is in [README.html](README.html) > Data sources.
 Each read takes the first level that answers, and the run's SOURCES / NOTES say which one and why:
 - Object inventory, per kind: `ACCOUNT_USAGE` view, else `INFORMATION_SCHEMA` DATABASES (once), SCHEMATA, TABLES, FUNCTIONS, PROCEDURES, STAGES, PIPES, SEQUENCES, FILE_FORMATS per database, else `SHOW ... IN ACCOUNT`.
 - Compute pools: `ACCOUNT_USAGE.COMPUTE_POOLS`, else `SHOW COMPUTE POOLS`.
-- Schema list for future grants: `ACCOUNT_USAGE` DATABASES + SCHEMATA, else `INFORMATION_SCHEMA` DATABASES + SCHEMATA per database, else `SHOW DATABASES` / `SHOW SCHEMAS`.
+- Database list (read once, for database roles, the schema list and the inventory): `ACCOUNT_USAGE.DATABASES` (up to 3 h behind; a database it lists that the role cannot see is skipped without a note), else `INFORMATION_SCHEMA.DATABASES`, else `SHOW DATABASES`.
+- Schema list for future grants: `ACCOUNT_USAGE.SCHEMATA` (up to 2 h behind: a schema made since then is missed), else `INFORMATION_SCHEMA.SCHEMATA` per database, else `SHOW SCHEMAS` per database.
+- The `INFORMATION_SCHEMA` level costs about one query per kind and database (against one `SHOW` per kind), so it runs only when `INFORMATION_SCHEMA.DATABASES` answered.
 - Grants, users, streams, future grants: no `INFORMATION_SCHEMA` view gives them whole, so `ACCOUNT_USAGE`, else `SHOW`.
 
 ## Use the queries without the app

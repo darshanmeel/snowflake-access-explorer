@@ -416,7 +416,7 @@ def test_show_fallback():
     assert not any(r == half for _, r in proc_users)
     got = ns["future"](session, "run-10", "AUTO")  # one refused place skips only itself, as in live()
     (src, why), schemas = got["future_grants"], got["schemas"]
-    assert schemas[0] == "SHOW" and "ACCOUNT_USAGE.DATABASES / SCHEMATA" in schemas[1] and "INFORMATION_SCHEMA.DATABASES" in schemas[1]
+    assert schemas[0] == "SHOW" and "ACCOUNT_USAGE.SCHEMATA" in schemas[1] and "database list from SHOW" in schemas[1]
     fut = Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                   for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-10'"))
     same(fut, Counter((g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"])
@@ -442,8 +442,8 @@ def test_show_fallback():
         return sql(text, params)
 
     session.sql = refused
-    src, why = ns["future"](session, "run-9", "SHOW")["future_grants"]
-    assert src == "UNAVAILABLE" and "not allowed" in why  # the run goes on, as access.live() does
+    src, why = ns["future"](session, "run-13", "SHOW")["future_grants"]
+    assert src == "UNAVAILABLE" and "not allowed" in why and why.startswith("P_SOURCE = SHOW: ACCOUNT_USAGE not read"), why  # the run goes on, as access.live() does
     session.sql = sql  # the schema list from ACCOUNT_USAGE, else INFORMATION_SCHEMA: the same future grants, no SHOW SCHEMAS
     for au, info, want in ((True, False, "ACCOUNT_USAGE"), (False, True, "INFORMATION_SCHEMA")):
         show, _ = test_access.fake_snowflake(d, au, info)
@@ -453,7 +453,17 @@ def test_show_fallback():
         assert not [x for x in sent if x.startswith("SHOW SCHEMAS") or x.startswith("SHOW DATABASES")], sent
         same(Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                      for r in query(con, f"SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-{want}'")), fut, f"future grants, schemas from {want}")
-    assert ns["future"](session, "run-x", "SHOW")["schemas"][0] == "INFORMATION_SCHEMA"  # P_SOURCE = SHOW: no ACCOUNT_USAGE
+    got = ns["future"](session, "run-x", "SHOW")["schemas"]  # P_SOURCE = SHOW: no ACCOUNT_USAGE, the note says so
+    assert got == ("INFORMATION_SCHEMA", "P_SOURCE = SHOW: ACCOUNT_USAGE not read"), got
+    hidden = {"SHOW FUTURE GRANTS IN DATABASE \"SALES\"", "SHOW FUTURE GRANTS IN SCHEMA \"SALES\".\"CORE\""}
+    show_au = show  # a database this role cannot see (ACCOUNT_USAGE lists it): left out, no note
+
+    def show(q):
+        if " ".join(q.split()) in hidden:
+            raise RuntimeError("Database 'SALES' does not exist or not authorized.")
+        return show_au(q)
+    got = ns["future"](session, "run-y", "AUTO")
+    assert got["schemas"][0] == "INFORMATION_SCHEMA" and got["future_grants"] == ("SHOW", None), got
 
 
 def test_objects():
@@ -486,8 +496,11 @@ def test_objects():
             dict(database_name="D", schema_name="S", name="NB2", owner=None, owner_role_type=None)],
         ("SHOW", "SHOW WAREHOUSES"): [dict(name="WH_NEW", owner="R_WH")],
         ("SHOW", "SHOW VIEWS IN ACCOUNT"): [dict(database_name="D", schema_name="S", name="V_SHOW", owner="R_V"),
+                                            dict(database_name="D", schema_name="S", name="MV", owner="R_V", is_materialized="true"),
                                             dict(database_name="D", schema_name="INFORMATION_SCHEMA", name="TABLES", owner="")],
         ("SHOW", "SHOW TABLES IN ACCOUNT"): [dict(database_name="D", schema_name="S", name="T_SHOW", owner="R_T", kind="TABLE"),
+                                             dict(database_name="D", schema_name="S", name="T_ICE", owner="R_T", kind="TABLE",
+                                                  is_iceberg="Y", is_hybrid="N"),
                                              dict(database_name="D", schema_name="S", name="T_TMP", owner="R_T", kind="TEMPORARY")]}
     sent = []
 
@@ -524,13 +537,16 @@ def test_objects():
     dbs = [("R_DB", "DATABASE", "D"), (None, "DATABASE", "SHARED")]  # every database is an object, a share too
     assert owned("run-9") == sorted(app + dbs + [("R_T", "TABLE", "D.S.T_NEW")], key=str), owned("run-9")  # the function: no 2nd row
     sent.clear()
-    assert ns["objects"](session, "run-10", "SHOW")[0] == "INFORMATION_SCHEMA + SHOW"  # P_SOURCE = SHOW: no ACCOUNT_USAGE
+    src, note = ns["objects"](session, "run-10", "SHOW")  # P_SOURCE = SHOW: no ACCOUNT_USAGE, the note says why
+    assert src == "INFORMATION_SCHEMA + SHOW" and "TABLES: INFORMATION_SCHEMA (P_SOURCE = SHOW: ACCOUNT_USAGE not read)" in note, note
     assert not [k for k in sent if k[0] == "AU"] and owned("run-10") == owned("run-9")
     for k in [k for k in answers if k[0] == "IS"]:  # INFORMATION_SCHEMA refused too: SHOW, without temporary tables
         answers.pop(k)
     src, note = ns["objects"](session, "run-11", "SHOW")
     assert src == "SHOW" and "INFORMATION_SCHEMA.DATABASES: Object does not exist" in note, note
-    assert owned("run-11") == sorted(app + [("R_T", "TABLE", "D.S.T_SHOW"), ("R_V", "VIEW", "D.S.V_SHOW")], key=str), owned("run-11")
+    assert owned("run-11") == sorted(app + [("R_T", "TABLE", "D.S.T_SHOW"), ("R_V", "VIEW", "D.S.V_SHOW"),  # kinds as
+                                            ("R_T", "ICEBERG TABLE", "D.S.T_ICE"), ("R_V", "MATERIALIZED VIEW", "D.S.MV")],
+                                     key=str), owned("run-11")  # ACCOUNT_USAGE names them
 
 
 def snapshot_proc():

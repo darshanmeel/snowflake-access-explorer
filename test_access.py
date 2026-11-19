@@ -438,8 +438,11 @@ def fake_snowflake(d, au, info=False):
         if "ACCOUNT_USAGE" in s:
             if not au:
                 raise RuntimeError("Object does not exist or not authorized.")
-            if "ACCOUNT_USAGE.DATABASES D" in s:  # the schema list for SHOW FUTURE GRANTS
-                return [dict(DB=x, SC=c) for x in dbs for c in schemas[x] or [None]]
+            if "ACCOUNT_USAGE.DATABASES " in s + " ":  # database_list: every database, a share too
+                return [dict(NAME=x, OWNER=None, OWNER_ROLE_TYPE=None, TYPE="STANDARD") for x in dbs] + [
+                    dict(NAME="SNOWFLAKE", TYPE="IMPORTED DATABASE")]
+            if "ACCOUNT_USAGE.SCHEMATA " in s + " " and " AS DB," in s:  # the schema list for SHOW FUTURE GRANTS
+                return [dict(DB=x, SC=c) for x in dbs for c in schemas[x]]
             if "LIMIT 1" in s:
                 return [{"1": 1}]
             if "'USE' AS PART" in s:  # history_sql: object use and activity in one read, the other part's columns NULL
@@ -621,8 +624,11 @@ def test_live():
         assert src["schemas"] == level and any(c.startswith("SHOW SCHEMAS IN DATABASE") for c in calls) == (level == "SHOW")
         assert (level in src["objects"].split(" + ")) and any(".INFORMATION_SCHEMA.TABLES" in c for c in calls) == info, src
         assert ("TABLES: INFORMATION_SCHEMA (" in (s["run"]["NOTES"].get("objects") or "")) == info  # why the lower level
-        if level != "ACCOUNT_USAGE":  # the schema list says why it is not from ACCOUNT_USAGE
-            assert "ACCOUNT_USAGE.DATABASES / SCHEMATA" in s["run"]["NOTES"]["schemas"]
+        if level != "ACCOUNT_USAGE":  # the schema list says why it is not from ACCOUNT_USAGE; the probe saves the reads
+            assert s["run"]["NOTES"]["schemas"].startswith("SNOWFLAKE.ACCOUNT_USAGE.DATABASES not readable")
+            assert not [c for c in calls if "ACCOUNT_USAGE." in c and "LIMIT 1" not in c], calls
+        n = sum("INFORMATION_SCHEMA.DATABASES" in c for c in calls)  # one wave over at most 5 databases, shared
+        assert src["objects"].startswith("ACCOUNT_USAGE") == au and (n == 0 if au else 0 < n <= 5), (src, n)
         assert not [c for c in calls if re.match(r"\s*(INSERT|CREATE|UPDATE|DELETE|MERGE|DROP|ALTER|GRANT|CALL)", c, re.I)]
         src = s["run"]["SOURCES"]
         assert src["grants"] == src["users"] == ("ACCOUNT_USAGE" if au else "SHOW") and src["future_grants"] == "SHOW"
@@ -722,6 +728,14 @@ def test_live_inside():
     assert src["grants"] == src["users"] == src["tags"] == src["policies"] == "ACCOUNT_USAGE"
     assert src["future_grants"] == src["streams"] == "UNAVAILABLE" and "SHOW FUTURE GRANTS" in notes["future_grants"]
     assert src["schemas"] == "ACCOUNT_USAGE" and not [c for c in calls if c.startswith("SHOW SCHEMAS")]  # no SHOW needed
+    hidden = {'SHOW FUTURE GRANTS IN DATABASE "SALES"', 'SHOW FUTURE GRANTS IN SCHEMA "SALES"."CORE"'}
+
+    def unseen(sql):  # SHOW runs, one database ACCOUNT_USAGE lists is not visible to this role: left out, no note
+        if " ".join(sql.split()) in hidden or (sql.startswith("SHOW FUTURE GRANTS IN SCHEMA") and '"SALES"' in sql):
+            raise RuntimeError("Database 'SALES' does not exist or not authorized.")
+        return show(sql)
+    u = a.live(unseen)["run"]
+    assert u["SOURCES"]["future_grants"] == "SHOW" and "future_grants" not in u["NOTES"], u["NOTES"]
     assert "streams" in notes and not s["STREAM"] and not [g for g in s["GRANT"] if g["IS_FUTURE"]]
     a.build(s)
     assert (sorted(a.role_grants), sorted(a.user_grants), a.users) == want  # every role link and user still there
@@ -763,7 +777,7 @@ def test_inventory():
     assert max(own.values()) == 1, [o for o, n in own.items() if n > 1]  # no duplicates with the real grants
     assert any("ACCOUNT_USAGE.TABLES" in c for c in calls) and "SHOW STREAMLITS IN ACCOUNT" in calls
     src, notes = s["run"]["SOURCES"]["objects"], s["run"]["NOTES"]["objects"]
-    assert src == "ACCOUNT_USAGE + SHOW" and "DATABASES: " in notes and "owner role" not in notes, notes  # only failures
+    assert src == "ACCOUNT_USAGE + SHOW" and "SCHEMATA: " in notes and "owner role" not in notes, notes  # only failures
     a.build(s)
     try:
         for o, k, r in (("SALES.PIPELINE.ST_ORDER_BOARD", "STREAMLIT", "PIPELINE"), ("SALES.PIPELINE.NB_CHURN", "NOTEBOOK", "PIPELINE"),
