@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
-import { Banner, Card, EmptyState, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
+import { Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
@@ -216,36 +216,12 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
   const grantsOff = off("grants", "user_roles"), usersOff = off("users"), tagsOff = off("tags"), polOff = off("policies");
   const nr = (n: ReturnType<typeof off>, v: number) => (n ? <span className="ae-muted ae-hc-unit" title={`${n.title}: ${n.meaning}`}>not read</span> : v.toLocaleString());
   const funcTech = (k.roles.functional ?? 0) + (k.roles.technical ?? 0);
+  const [big, setBig] = useState<"schemas" | "databases">("schemas");
   const who = (n: { people: number; roles: number }) => [n.people && plural(n.people, "person", "people"), n.roles && plural(n.roles, "role")].filter(Boolean).join(", ");
   return (
     <div className="ae-hcards">
-      <Card title={<>Risks <b className="ae-hc-n">{nr(grantsOff, total)}</b> {!grantsOff && <span className="ae-muted ae-hc-unit">findings</span>}</>}
-        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", {})}>Risks & fixes</button>}>
-        {d.act_first && d.act_first.length > 0 && (
-          <div className="ae-act" aria-label="Act first">
-            <div className="ae-muted ae-areas-h">Act first: critical, then high, rarest first</div>
-            {d.act_first.map((r) => (
-              <div key={`${r.severity}${r.num}`} className="ae-act-row">
-                <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
-                <button type="button" className="ae-link ae-act-t" onClick={() => c.nav("rules", { rule: r.num, sev: r.severity })}>#{r.num} {r.title}</button>
-                <span className="ae-muted">{plural(r.findings, "finding")}</span>
-                <span className="ae-act-names"><NameList items={r.names.map((x) => ({ key: x.id, label: x.id.replace(/ \(user\)$/, ""), open: () => openNode(c.nav, x.id, x.kind) }))}
-                  total={r.subjects} max={TOP} onMore={() => c.nav("rules", { rule: r.num, sev: r.severity })} /></span>
-              </div>
-            ))}
-          </div>
-        )}
-        {d.subjects && (
-          <ul className="ae-act-who" aria-label="People and roles per severity">
-            {SEVERITIES.filter((s) => risks[s]).map((s) => (
-              <li key={s}><button type="button" className="ae-link" onClick={() => c.nav("rules", { sev: s })}>
-                <span className={`ae-sevpill ae-sev-${s}`}>{s}</span> {who(d.subjects![s]) || plural(risks[s], "finding")}</button></li>
-            ))}
-          </ul>
-        )}
-        <StackBar label="Findings" parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
-        {d.rule_sev && <Areas ruleSev={d.rule_sev} />}
-        {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
+      <Card title="Findings by area" sub="Worst severity first; a bar opens that area on the Rules list.">
+        <Areas ruleSev={d.rule_sev ?? {}} />
       </Card>
       <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>}
         sub="An admin role, or an account privilege not given to everyone through PUBLIC."
@@ -256,9 +232,12 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
         <NameList items={ad.names.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.total} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
       </Card>
       <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{nr(usersOff ?? grantsOff, k.stale.total)}</b></>}
-        sub="Still holding roles (rules 8 and 16); those reading sensitive data first."
+        sub="Only people who still hold roles (rules 8 and 16): service users that are dormant or never logged in are left out, so People shows more."
         right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { part: "stale" })}>Open</button>}>
-        {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <StackBar parts={statusParts(k.stale.by_status)} />}
+        {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <>
+          <StackBar parts={statusParts(k.stale.by_status)} />
+          <p className="ae-muted">{statusParts(k.stale.by_status).map((p) => `${p.label} ${p.value.toLocaleString()} of ${(k.stale.of_status[p.key] ?? 0).toLocaleString()}`).join(" · ")}</p>
+        </>}
         <NameList items={k.stale.names.map(open)} total={k.stale.total} max={TOP} onMore={() => c.nav("rules", { part: "stale" })} />
       </Card>
       <Card title={<>Sensitive data <b className="ae-hc-n">{nr(tagsOff, d.counts.sensitive)}</b></>} sub={tagsOff ? `${tagsOff.title}: sensitivity unknown` : "objects with a sensitive tag"}
@@ -286,6 +265,14 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
         right={<button type="button" className="ae-btn" onClick={() => c.nav("object", {})}>Find one</button>}>
         <HBars rows={k.objects.by_type.map((t) => ({ key: t.type, label: t.type.toLowerCase().replace(/_/g, " "), n: t.n, cls: "low" }))} />
       </Card>
+      <DepthCard k={k} />
+      <Card title={`Biggest ${big}`}
+        sub={`${plural(k.biggest.n_schemas, "schema")} · ${plural(k.biggest.n_databases, "database")}`}
+        right={<button type="button" className="ae-btn" onClick={() => c.nav("object", k.biggest[big][0] ? { name: k.biggest[big][0].name } : {})}>Open</button>}>
+        <FilterChips label="Count by" value={big} onPick={(v) => setBig(v as typeof big)} items={[{ key: "schemas", label: "Schemas" }, { key: "databases", label: "Databases" }]} />
+        <HBars rows={k.biggest[big].map((x) => ({ key: x.name, label: x.name, n: x.n, cls: "low" }))} />
+        <p className="ae-muted">Objects in each, schemas and databases themselves not counted.</p>
+      </Card>
       <Card title={<>Activity {k.activity.ok && <b className="ae-hc-n">{k.activity.users.toLocaleString()}</b>}</>} sub={k.activity.ok ? "people with queries on objects" : undefined}
         right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { area: "Activity", show: "list" })}>Rules 24–28</button>}>
         {k.activity.ok ? <DayBars days={k.activity.daily} /> : <p className="ae-muted">Not read: {k.activity.reason}</p>}
@@ -303,6 +290,33 @@ function Cards({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numbe
           <p className="ae-muted">{k.changes.reason ?? "The read before is kept: comparing takes a moment, then What changed opens."}</p>
         </Card>
       ))}
+      <Card title={<>Risks <b className="ae-hc-n">{nr(grantsOff, total)}</b> {!grantsOff && <span className="ae-muted ae-hc-unit">findings</span>}</>}
+        right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", {})}>Risks & fixes</button>}>
+        {d.act_first && d.act_first.length > 0 && (
+          <div className="ae-act" aria-label="Act first">
+            <div className="ae-muted ae-areas-h">Act first: critical, then high, rarest first</div>
+            {d.act_first.map((r) => (
+              <div key={`${r.severity}${r.num}`} className="ae-act-row">
+                <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
+                <button type="button" className="ae-link ae-act-t" onClick={() => c.nav("rules", { rule: r.num, sev: r.severity })}>#{r.num} {r.title}</button>
+                <span className="ae-muted">{plural(r.findings, "finding")}</span>
+                <span className="ae-act-names"><NameList items={r.names.map((x) => ({ key: x.id, label: x.id.replace(/ \(user\)$/, ""), open: () => openNode(c.nav, x.id, x.kind) }))}
+                  total={r.subjects} max={TOP} onMore={() => c.nav("rules", { rule: r.num, sev: r.severity })} /></span>
+              </div>
+            ))}
+          </div>
+        )}
+        {d.subjects && (
+          <ul className="ae-act-who" aria-label="People and roles per severity">
+            {SEVERITIES.filter((s) => risks[s]).map((s) => (
+              <li key={s}><button type="button" className="ae-link" onClick={() => c.nav("rules", { sev: s })}>
+                <span className={`ae-sevpill ae-sev-${s}`}>{s}</span> {who(d.subjects![s]) || plural(risks[s], "finding")}</button></li>
+            ))}
+          </ul>
+        )}
+        <StackBar label="Findings" parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
+        {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
+      </Card>
     </div>
   );
 }
@@ -328,6 +342,25 @@ function HBars({ rows }: { rows: { key: string; label: string; n: number; cls: s
         </div>
       ))}
     </div>
+  );
+}
+
+const DEPTH: { key: keyof HomeCards["depth"]; label: string }[] = [
+  { key: "users", label: "Users" }, { key: "objects", label: "Objects" }, { key: "schemas", label: "Schemas" }, { key: "databases", label: "Databases" }];
+
+/** How many roles deep access goes (a.depth_counts): each user, object, schema or database at its deepest chain. */
+function DepthCard({ k }: { k: HomeCards }) {
+  const c = useApp();
+  const [on, setOn] = useState<keyof HomeCards["depth"]>("users");
+  const rows = Object.entries(k.depth[on]).map(([d, n]) => ({ key: d, label: `Depth ${d}`, n, cls: "low" }));
+  const ds = rows.map((r) => Number(r.key));
+  return (
+    <Card title={<>Chain depth {ds.length > 0 && <span className="ae-muted ae-hc-unit">shortest {Math.min(...ds)} · deepest {Math.max(...ds)}</span>}</>}
+      sub="Roles from the role granted to a user to the grant holder, holder included; each counted at its deepest."
+      right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { rule: "14" })}>Deep chains</button>}>
+      <FilterChips label="Count" value={on} onPick={(v) => setOn(v as typeof on)} items={DEPTH} />
+      <HBars rows={rows} />
+    </Card>
   );
 }
 
@@ -387,10 +420,9 @@ function Areas({ ruleSev }: { ruleSev: Partial<Record<Severity, Record<string, n
   const worst = (n: Record<string, number>) => SEVERITIES.findIndex((s) => n[s]);
   const rows = areaCounts(c.meta.rules, ruleSev).filter((r) => r.total).sort((x, y) => worst(x.n) - worst(y.n) || y.total - x.total);
   const max = Math.max(1, ...rows.map((r) => r.total));
-  if (!rows.length) return null;
+  if (!rows.length) return <p className="ae-muted">None.</p>;
   return (
     <div className="ae-areas" aria-label="Findings by area">
-      <div className="ae-muted ae-areas-h">Findings by area</div>
       {rows.map((r) => (
         <button type="button" key={r.area} className="ae-area" onClick={() => c.nav("rules", { show: "list", area: r.area })} title={`Open ${r.area} on the Rules list`}>
           <span className="ae-area-name">{r.area}</span>

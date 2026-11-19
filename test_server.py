@@ -836,6 +836,16 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     assert k["admins"]["total"] == side["admins"] > 0 and k["stale"]["total"] == side["stale"] > 0
     assert sum(k["people"]["by_status"].values()) == h["counts"]["users"] and sum(k["roles"].values()) == h["counts"]["roles"]
     assert sum(t["n"] for t in k["objects"]["by_type"]) == h["counts"]["objects"] and k["activity"]["ok"] and k["activity"]["daily"]
+    assert k["stale"]["of_status"] == k["people"]["by_status"]  # "<n> of <all with that status>"
+    assert all(k["stale"]["by_status"][s] <= k["stale"]["of_status"][s] for s in k["stale"]["by_status"])
+    dep = k["depth"]  # each counted once, at its deepest chain; rule 14 flags the deepest
+    assert set(dep) == {"users", "objects", "schemas", "databases"} and all(dep.values())
+    assert max(map(int, dep["users"])) == max(map(int, dep["objects"])) > a.MAX_DEPTH_RULE
+    assert sum(dep["users"].values()) <= h["counts"]["users"] and sum(dep["databases"].values()) <= k["biggest"]["n_databases"]
+    assert max(map(int, dep["databases"])) == max(map(int, dep["schemas"])) == max(map(int, dep["objects"]))
+    b = k["biggest"]
+    assert b["schemas"][0] == dict(name="HR.PAYROLL", n=15) and len(b["schemas"]) == server.TOP_BIG
+    assert [x["n"] for x in b["databases"]] == sorted((x["n"] for x in b["databases"]), reverse=True) and b["n_schemas"] == 17
     r = js("/api/rules", ["stale", "stale_total", "stale_split"])
     assert k["stale"]["names"] == [x["user"] for x in r["stale"]][:server.NAMES] and r["stale_total"] == sum(r["stale_split"].values()) == side["stale"]
     assert [x["sensitive"] for x in r["stale"]] == sorted((x["sensitive"] for x in r["stale"]), reverse=True)  # rule 7 first
