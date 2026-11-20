@@ -246,6 +246,14 @@ def test_big_lanes():
     assert len(get(f"/api/privs.csv?name={r}&of=role&tab=all").text.strip().splitlines()) == pv["total"] + 1
 
 
+def test_crowded_lane():  # a lane over MAX_LANE people folds into one box even when the graph is small (276 users once)
+    us = [f"PERSON_{i:03}" for i in range(server.MAX_LANE + 6)]
+    g = server.build_graph("t", [("Users", us), ("Role", ["F_X"])], [(u, "F_X") for u in us], sizes=dict.fromkeys(us, 1),
+                           selected="F_X")
+    ids = [n["id"] for n in g["nodes"]]
+    assert len(ids) < 5 and not set(us) & set(ids), ids  # the people box and the role, not 30 boxes
+
+
 def test_access_type():  # Access list: object type filter, the types present with counts
     d = js("/api/access?user=ENGINEER_01")
     ts = {t["type"]: t["n"] for t in d["types"]}

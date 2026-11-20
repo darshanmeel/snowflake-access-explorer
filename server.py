@@ -861,8 +861,8 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
     info = hits(lanes, edges, info)
     big = bool(src) and sum(len(x["members"]) for x in gx.values()) + sum(len(ns) for _, ns in lanes) > LAZY
     lazy = big and only is None
-    if big:
-        lanes, edges, gx, kinds = fold_lanes(lanes, edges, gx, kinds, info, {selected, start, focus}, sizes)
+    if big or any(len(ns) > MAX_LANE for _, ns in lanes):  # a crowded lane folds even in a small graph:
+        lanes, edges, gx, kinds = fold_lanes(lanes, edges, gx, kinds, info, {selected, start, focus}, sizes)  # 276 people
     lane_of = {n: i for i, (_, ns) in enumerate(lanes) for n in ns}
 
     def action(n, gk):
