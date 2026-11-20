@@ -17,6 +17,6 @@ export { TAB_ORDER, TAB_LABEL, privTab, tabList, tabRows, tabRoles, byObject } f
 export { buckets, combine, edgeTip, expand, fold, foldRoles, legendOf, normKind, pathGraph, related, MAX_BOXES } from "./graphs";
 export { tabGraph, tabPaths } from "./tabgraph";
 export { cellText, CsvOn, filterRows, sortRows, toCsv, useCsv } from "./table";
-export { AccessPill, CodeOutput, copyText, EmptyState, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, MaskDots, MiniBar, NameList, PathChips, SensitiveCell, StackBar, Toggle, Waiting, type Art, type BarPart, type FilterItem, type NameItem } from "./kit";
+export { AccessPill, CodeOutput, copyText, EmptyState, RiskStrip, RISK_WORD, type RiskLine, FilterChips, FindingChip, IdentityCard, LEVEL_WORD, ListToolbar, MaskDots, MiniBar, NameList, PathChips, SensitiveCell, StackBar, Toggle, Waiting, type Art, type BarPart, type FilterItem, type NameItem } from "./kit";
 export { AGE, AgeBars, CutPath, DayStack, GrantLink, Overlap } from "./visuals";
 export { expiryOf, newRoleOf, sqlOf, terraformOf, ticketOf, type Change, type Note } from "./codegen";

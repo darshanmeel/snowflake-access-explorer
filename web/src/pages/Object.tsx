@@ -5,7 +5,7 @@ import { download as saveCsv, useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole, WhoState } from "../api/types";
 import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
-import { col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Sel, StateTag, Tog } from "./common";
+import { col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Risks, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { remember } from "./Home";
@@ -74,6 +74,7 @@ function Who({ d }: { d: WhoPage }) {
         </div>
         {csvOn && <button type="button" className="ae-btn" onClick={save}>Export CSV</button>}
       </div>
+      <Risks list={d.risks} />
       <For d={d} />
       {d.app && <AppNote app={d.app} />}
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[

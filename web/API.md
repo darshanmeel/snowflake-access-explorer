@@ -115,7 +115,20 @@ computed once per build key.
 // a banner
 {"tone": "info" | "warn" | "bad", "title": "Dormant user: no login for 120 days", "lines": ["..."],
  "links": [{"label": "Rule 16", "page": "rules", "params": {"rule": "16"}}]}
+// a risk strip line (access, role, who, check: `risks`, worst first; [] = "No risks found")
+{"severity": "bad" | "warn", "text": "Holds 1 admin role: SYSADMIN directly", "n": 1,
+ "link": {"label": "Admin holders", "page": "rules", "params": {"part": "admins"}}}
 ```
+
+Risk strip: `server.subject_risks` (person or role: admin roles held and through which role, account privileges not
+from PUBLIC, sensitive objects read unmasked, rule findings by severity with the 3 worst rules, default role an admin
+role, disabled / dormant / never logged in while holding roles, very broad access = reads at least 25% of the
+account's data objects and at least 20, secondary roles ALL with more than one granted role) and `server.object_risks`
+(sensitive columns without masking, PUBLIC grants, people who can change a sensitive object, disabled or dormant
+readers, rule findings, only admin roles reach it, not used in 90 days yet at least 3 users can read it; people
+without USAGE on its database or schema are not counted). Both
+from the grants and lists the pages already have, once per data set; Can they? sends both, each line prefixed with
+its name.
 
 ### Graph
 

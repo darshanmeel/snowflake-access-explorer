@@ -1884,6 +1884,49 @@ def test_answer_first():  # each screen's answer: the grant on Can they?, one re
     assert any(len(u["lost_rows"]) < u["objects"] for u in one)
 
 
+def test_risks():  # the risk strip at the top of Access Overview, Role paths, Who has access and Can they?
+    def ok(xs):
+        assert all(set(x) == {"severity", "text", "n", "link"} and x["severity"] in ("bad", "warn") and x["n"] > 0
+                   and x["link"]["page"] in server.PAGES for x in xs), xs
+        sev = [x["severity"] for x in xs]
+        assert sev == sorted(sev, key=lambda s: s != "bad"), sev  # worst first
+        return [x["text"] for x in xs]
+
+    t = ok(js("/api/access?user=OPS_01")["risks"])  # admin default role, admin role held, Critical finding
+    assert t[0] == "Holds 1 admin role: SYSADMIN directly" and "Default role is admin role SYSADMIN" in t[-1], t
+    assert any(x.startswith("3 rule findings (1 Critical, 2 High)") for x in t), t
+    f = next(x for x in js("/api/access?user=ANALYST_02")["risks"] if x["link"]["page"] == "rules" and "grantee" in x["link"]["params"])
+    q = "&".join(f"{k}={v}" for k, v in f["link"]["params"].items())
+    assert js(f"/api/rules?{q}")["total"] == f["n"] == 7  # the link lists every one of them
+    t = ok(js("/api/access?user=FIN_14")["risks"])  # disabled, reads sensitive: bad before warn
+    assert t == ["Reads 2 sensitive objects unmasked", t[1], "Disabled, still holds 1 role"] and "1 Critical" in t[1], t
+    assert js("/api/access?user=FIN_14")["counts"]["sensitive"] == 2  # the same count as the Access page
+    t = ok(js("/api/access?user=SVC_DEPLOY")["risks"])
+    assert t[-1].startswith("Very broad access: reads 20 of the account's 40"), t  # BROAD: 25% and at least 20
+    t = ok(js("/api/access?user=ADMIN_01")["risks"])
+    assert t[0] == "Holds 2 admin roles: SECURITYADMIN directly; SYSADMIN via F_SECURITY" and "1 account privilege: MANAGE GRANTS" in t
+    assert t[-1].startswith("Secondary roles ALL"), t
+    for clean in ("/api/access?user=DW_BI_01", "/api/role?name=GRP_DW_READERS", "/api/access?role=GRP_DW_READERS"):
+        assert js(clean)["risks"] == [], clean  # the page says "No risks found"
+    r = js(f"/api/role?name={a.FUNC}ENGINEER")["risks"]
+    assert ok(r) == ok(js(f"/api/access?role={a.FUNC}ENGINEER")["risks"])  # one function, both pages
+    assert [x["link"] for x in r[:2]] == [{"label": "Account powers", "page": "access", "params": {"role": a.FUNC + "ENGINEER", "show": "detail"}},
+                                          {"label": "What they see", "page": "see", "params": {"role": a.FUNC + "ENGINEER"}}]
+    assert ok(js("/api/role?name=SYSADMIN")["risks"])[0].startswith("Is admin role SYSADMIN")
+    t = ok(js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["risks"])
+    assert t[:3] == ["2 sensitive columns without masking (BIRTH_DATE, PHONE): in clear for the 6 users who can read it",
+                     "1 person can change this sensitive object", "1 disabled or dormant user can still read it"], t
+    f = js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["risks"][-1]
+    assert f["text"].startswith("8 rule findings (1 Critical, 1 High") and f["link"]["params"] == {"q": "SALES.CORE.TBL_CUSTOMER", "sev": "all"}
+    assert js(f"/api/rules?q=SALES.CORE.TBL_CUSTOMER&sev=all")["total"] == f["n"]  # the link lists those findings
+    assert ok(js("/api/who?name=WH_SALES_XS")["risks"])[1] == "Granted to PUBLIC (every user): USAGE"
+    assert ok(js("/api/who?name=DW.CORE.TBL_CORE_01")["risks"]) == ["Not used in 90 days, yet 3 users can read it"]
+    assert js("/api/who?name=HR.PAYROLL.TBL_PAY_00")["risks"] == [] and js("/api/who?preset=admin")["risks"] is None
+    t = ok(js("/api/check?name=ANALYST_02&obj=SALES.CORE.TBL_CUSTOMER")["risks"])
+    assert t[0] == "ANALYST_02: Reads 2 sensitive objects unmasked" and any(x.startswith("SALES.CORE.TBL_CUSTOMER: ") for x in t), t
+    assert js("/api/check?name=DW_BI_01&obj=HR.PAYROLL.TBL_PAY_00")["risks"] == []  # no strip
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

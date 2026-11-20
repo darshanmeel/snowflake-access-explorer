@@ -8,7 +8,7 @@ import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
-import { Load, Pick, PickFirst, Sel, unread } from "./common";
+import { Load, Pick, PickFirst, Risks, Sel, unread } from "./common";
 import { ladderParts, recent, remember } from "./Home";
 import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
@@ -112,6 +112,7 @@ function Body({ d }: { d: AccessPage }) {
       {show === "activity" && <ActivityTab what={user ? "user" : "role"} name={w.name} />}
       {show === "history" && <ChangeFeed subject={w.id} />}
       {show === "overview" && <>
+      <Risks list={d.risks} />
       {adminRole ? <p className="ae-answer">
         <span className="ae-mono">{w.name}</span> <b className="ae-bad">is an admin role: it can do everything below it, not listed here.</b>
         {" "}Only its own account powers are listed. <button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button>

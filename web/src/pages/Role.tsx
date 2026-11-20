@@ -3,7 +3,7 @@ import { useApi } from "../api/client";
 import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
 import { Banner, Card, DataTable, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, ScopePick, Sel, Tog } from "./common";
+import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Risks, ScopePick, Sel, Tog } from "./common";
 import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -95,6 +95,7 @@ export function RolePageView() {
       {!name && <p className="ae-muted">Pick a role above, or search in the top bar.</p>}
       {name && <Load s={s}>{(d) => (
         <>
+          {!c.inside && <Risks list={d.risks} />}{/* inside: the Access page's Diagram tab, its Overview has the strip */}
           <Banners list={d.banners} />
           <KpiRow items={[
             { label: "Kind", value: d.role.kind.replace("_", " "), caption: d.role.owner.length ? `owner ${d.role.owner.join(", ")}` : undefined, tone: d.role.admin ? "bad" : null },
