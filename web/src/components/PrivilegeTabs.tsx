@@ -20,6 +20,8 @@ export interface PrivilegeTabsProps {
   active?: TabKey;
   onTab?: (t: TabKey) => void;
   onNodeClick?: (n: GraphNode) => void;
+  onOnly?: (id: string | null) => void; // a server diagram: Show only this / Whole graph (focus=)
+  focus?: string | null; // its focused box (the page keeps it apart from its own graph's)
   onOpen?: (id: string) => void; // a name clicked in a table or path
   theme?: ThemeName;
   max?: number;
@@ -36,9 +38,9 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
   const [own, setOwn] = useState<TabKey>(tabs.some((t) => t.key === "all") ? "all" : tabs[0]?.key ?? "all"); // the full table first
   const want = p.active ?? own;
   const active = tabs.some((t) => t.key === want) ? want : tabs[0]?.key ?? "all";
-  const pick = (k: string) => { setOwn(k as TabKey); p.onTab?.(k as TabKey); };
+  const pick = (k: string) => { setOwn(k as TabKey); p.onTab?.(k as TabKey); if (p.focus) p.onOnly?.(null); }; // a box of one tab is not in the next
   const local = !p.server || active === "account" || active === "granted" || active === "database_roles";
-  const sg = useApi<G | null>(local ? null : "graph", { ...p.server, of: p.server?.of === "role" ? "role-tab" : "user-tab", tab: active });
+  const sg = useApi<G | null>(local ? null : "graph", { ...p.server, of: p.server?.of === "role" ? "role-tab" : "user-tab", tab: active, focus: p.focus });
   const graph = useMemo(
     () => (local ? p.graphs?.[active] ?? tabGraph({ tab: active, rows, roles, account, refs, max: p.max }) : sg.data),
     [local, sg.data, p.graphs, active, rows, roles, account, refs, p.max],
@@ -51,7 +53,7 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
       <div className="ae-privtab-body">
         {active === "account" && <AccountList account={account} rows={tabRows(rows, "account")} kinds={kinds} onOpen={p.onOpen} />}
         {graph && graph.nodes.length > 1
-          ? <Graph graph={graph} theme={theme} onNodeClick={p.onNodeClick} maxHeight={420} />
+          ? <Graph graph={graph} theme={theme} onNodeClick={p.onNodeClick} onOnly={local ? undefined : p.onOnly} maxHeight={420} />
           : !local && sg.error ? <p className="ae-muted" role="alert">{sg.error.message}</p>
           : !local && sg.loading ? <p className="ae-muted">Loading the diagram…</p>
           : <p className="ae-muted">Nothing in {TAB_LABEL[active]}.</p>}
@@ -59,7 +61,7 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
           ? <RoleTable rows={tabRoles(roles, active)} kinds={kinds} onOpen={p.onOpen} csv={`${p.csvName ?? "privileges"}_${active}.csv`} />
           : active !== "account" && (
             <PrivTable rows={tabRows(rows, active)} kinds={kinds} onOpen={p.onOpen} csv={`${p.csvName ?? "privileges"}_${active}.csv`}
-              server={p.server && { path: "privs", params: { ...p.server, tab: active } }} />
+              server={p.server && { path: "privs", params: { ...p.server, tab: active, focus: undefined } }} />
           )}
       </div>
     </div>

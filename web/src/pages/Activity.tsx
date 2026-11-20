@@ -54,7 +54,7 @@ const initials = (n?: string | null) => { const w = (n ?? "").split(/[_\s.]+/).f
 
 export function ActivityTab({ what, name, user }: { what: "object" | "user" | "role"; name: string; user?: string }) {
   const c = useApp();
-  const s = useApi<ActivityPage>("activity", { view: c.view, [what === "object" ? "name" : what]: name, as: user });
+  const s = useApi<ActivityPage>("activity", { view: c.view, [what === "object" ? "name" : what]: name, as: user, focus: c.params.afocus });
   return <Load s={s}>{(d) => <>{d.user && <Only d={d} />}<Activity d={d} /></>}</Load>;
 }
 
@@ -830,7 +830,7 @@ function Paths({ d }: { d: ActivityPage }) {
   if (!d.graph && !d.gone!.length) return null;
   return (
     <>
-      {d.graph && <GraphCard g={d.graph} refs={d.refs} />}
+      {d.graph && <GraphCard g={d.graph} refs={d.refs} param="afocus" />}
       {d.gone!.length > 0 && (
         <Sec title="Used, but with no grant path now" sub="An admin role, or the grant was removed after the query: worth a look.">
           <DataTable rows={d.gone!} csv={`${d.name}_activity_no_path.csv`} rowTone={() => "warn"} filter={false} columns={[

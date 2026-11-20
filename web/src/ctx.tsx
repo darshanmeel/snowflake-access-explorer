@@ -12,7 +12,8 @@ export interface Ctx {
   meta: Meta;
   theme: ThemeName;
   nav: (page: Page, params?: Params) => void; // another page (keeps data=)
-  set: (patch: Record<string, string | null | undefined>) => void; // same page, merge params
+  // same page, merge params; push: a step Back returns from (graph focus), stay: no scroll to the top (a graph click)
+  set: (patch: Record<string, string | null | undefined>, o?: { push?: boolean; stay?: boolean }) => void;
   inside?: boolean; // a page shown inside another (Access shows User / Role paths): its tabs nest one level deeper
 }
 
@@ -20,7 +21,8 @@ export const AppCtx = createContext<Ctx>(null as unknown as Ctx);
 export const useApp = () => useContext(AppCtx);
 
 /** API params of the page: the URL params plus view. */
-export const apiParams = (c: Ctx) => ({ ...c.params, view: c.view });
+// tfocus / afocus narrow one graph that asks on its own (a Privileges tab diagram, Activity): not the page's call
+export const apiParams = (c: Ctx) => ({ ...c.params, tfocus: undefined, afocus: undefined, view: c.view });
 
 const base = (id: string) => id.replace(/ \(user\)$/, "");
 

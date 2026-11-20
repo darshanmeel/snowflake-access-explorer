@@ -1,18 +1,20 @@
 // Screen 4: Access graph. Start from a table, a role or a person; columns by step, line colour by what the line ends
-// up granting, same-path people stacked, built-ins folded; a click on a box traces everything through it.
+// up granting, same-path people stacked, built-ins folded; a click on a box traces everything through it, Show only
+// this draws just those lines (focus=), and database or schema, object type and access filters narrow it on the server.
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { Graph as G, GraphNode, ListItem, MapNode, MapPage } from "../api/types";
 import { Card, EmptyState, Graph, LEVEL_WORD, Tabs, Toggle } from "../components";
 import { apiParams, useApp } from "../ctx";
-import { GraphCard, Load, Pick, PickFirst } from "./common";
+import { GraphCard, Load, Pick, PickFirst, ScopePick, Sel } from "./common";
 import { riskIds, startOf } from "./screens";
 import { WhatIfButton } from "./Whatif";
 
 const MODES = [["object", "Table", "table"], ["role", "Role", "role"], ["user", "Person", "user"]] as const;
 const KIND_WORD: Record<string, string> = {
   user: "Person", functional: "Functional role", technical: "Technical role", group: "Group role", database_role: "Database role",
-  admin: "Admin role", object: "Object", fold: "Folded group",
+  admin: "Admin role", object: "Object", fold: "Folded group", database_group: "Objects of a database", schema_group: "Objects of a schema",
+  type_group: "Objects of one type", lane_group: "Roles of one step",
 };
 
 export function GraphPageView() {
@@ -50,13 +52,13 @@ export function GraphPageView() {
           ))}
         </div>
       </div>
-      {!(mine && mode === "user") && (
-        <div className="ae-controls">
+      <div className="ae-controls">
+        {!(mine && mode === "user") &&
           <Pick label={MODES.find((x) => x[0] === mode)![1]} value={shown} what={what} params={mode === "object" ? { type: "TABLE" } : undefined}
-            onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />
-        </div>
-      )}
-      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k })} tabs={[
+            onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />}
+        {mode !== "object" && !none && <Filters trace={tab === "trace"} />}
+      </div>
+      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k, focus: null, sel: null })} tabs={[
         { key: "diagram", label: "Role hierarchy, by depth" },
         { key: "trace", label: "Trace graph" },
       ]} />
@@ -71,7 +73,8 @@ export function GraphPageView() {
 /** The diagram the person, role or object page draws (kept: the default tab). */
 function OldDiagram({ mode, name }: { mode: string; name: string }) {
   const c = useApp();
-  const g = useApi<G>("graph", { of: mode, name: name || null, view: c.view, ...(c.params.builtin ? { builtin: c.params.builtin } : {}) });
+  const g = useApi<G>("graph", { of: mode, name: name || null, view: c.view, builtin: c.params.builtin, focus: c.params.focus,
+    ...(mode !== "object" ? { schema: c.params.schema, otype: c.params.otype } : {}) });
   return <Load s={g}>{(x) => (x ? <GraphCard g={x} /> : <EmptyState title="Nothing to draw" />)}</Load>;
 }
 
@@ -84,6 +87,7 @@ function Trace({ d }: { d: MapPage }) {
   const x = node ? d.detail[node.id] ?? more.data?.detail[node.id] ?? null : null;
   const sel = node && x ? node.id : null;
   const risky = c.params.risky === "1";
+  const filtered = !!(c.params.schema || c.params.otype || c.params.access);
   const hi = useMemo(() => (risky ? riskIds(d.risky, d.risky_nodes) : undefined), [risky, d]);
   return (
     <>
@@ -97,8 +101,10 @@ function Trace({ d }: { d: MapPage }) {
         <Card title="Click a box to trace everything through it" right={sel && <button type="button" className="ae-btn" onClick={() => c.set({ sel: null })}>Clear trace</button>}>
           {d.graph.nodes.length > 1 ? (
             <Graph graph={d.graph} theme={c.theme} focus={sel} hi={hi} flow maxHeight={760} minZoom={0.6}
-              onNodeClick={(n) => { setPicked(n); c.set({ sel: n.id === c.params.sel ? null : n.id }); }} />
-          ) : <EmptyState title="Nobody reaches it">No role or person has a grant on it.</EmptyState>}
+              onPick={(n) => { setPicked(n); c.set({ sel: n.id }, { stay: true }); }}
+              onOnly={(id) => c.set({ focus: id, sel: id }, { push: true, stay: true })} />
+          ) : filtered ? <EmptyState title="Nothing matches the filters">Change the database, type or access above.</EmptyState>
+            : <EmptyState title="Nobody reaches it">No role or person has a grant on it.</EmptyState>}
         </Card>
         <div className="ae-whoside">
           <Card title={node ? node.label : "Details"}>
@@ -133,7 +139,7 @@ function Detail({ d, n, x }: { d: MapPage; n: GraphNode; x: MapNode }) {
   const open = () => (n.kind === "user" ? c.nav("access", { user: n.name }) : n.kind === "object" ? c.nav("object", { name: n.id }) : c.nav("access", { role: n.id }));
   const chips = (xs: string[], kind: string, more: number) => (
     <div className="ae-gchips">
-      {xs.map((v) => <button type="button" key={v} className={`ae-chip ae-chip-${kind}`} onClick={() => c.set(startOf(kind, v))} title={`${v}: make it the start`}>{d.refs.labels[v] ?? v.split(".").pop()}</button>)}
+      {xs.map((v) => <button type="button" key={v} className={`ae-chip ae-chip-${kind}`} onClick={() => c.set(startOf(kind, v))} title={`${v}: make it the start`}>{d.refs.labels[v] ?? (kind === "user" ? v : v.split(".").pop())}</button>)}
       {more > xs.length && <span className="ae-muted">+{more - xs.length} more</span>}
     </div>
   );
@@ -154,5 +160,22 @@ function Detail({ d, n, x }: { d: MapPage; n: GraphNode; x: MapNode }) {
         {n.kind === "fold" && <button type="button" className="ae-btn" onClick={() => c.set({ builtin: "1", sel: null })}>Unfold the built-ins</button>}
       </div>
     </div>
+  );
+}
+
+const ACCESS: [string, string][] = [["", "Any"], ["read", "Read"], ["write", "Write"], ["own", "Own"]];
+
+/** Above the access graph: a database or schema, an object type and, on the Trace graph, the step a line carries
+ * (the line colours). The server narrows the graph (schema=, otype=, access=); they stay in the URL. */
+function Filters({ trace }: { trace: boolean }) {
+  const c = useApp();
+  const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
+  return (
+    <>
+      <ScopePick />
+      <Sel label="Object type" value={c.params.otype ?? ""} onPick={(v) => c.set({ otype: v || null, focus: null, sel: null })}
+        options={[["", "Every type"], ...(types.data?.items ?? []).map((t): [string, string] => [t.id, t.id.toLowerCase()])]} />
+      {trace && <Sel label="Access" value={c.params.access ?? ""} onPick={(v) => c.set({ access: v || null, focus: null, sel: null })} options={ACCESS} />}
+    </>
   );
 }

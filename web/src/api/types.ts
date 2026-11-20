@@ -136,6 +136,7 @@ export interface Graph {
   edges: GraphEdge[];
   groups: Record<string, GraphGroup>;
   src?: Record<string, string> | null; // graph endpoint params of this graph when its boxes are lazy
+  focus?: { id: string; label: string } | null; // focus=<box>: only the lines through it are drawn
   legend: { kinds: NodeKind[]; edges: EdgeCls[]; marks: Mark[]; rules: boolean; back?: boolean }; // back: a dotted "also deeper" line is drawn
 }
 

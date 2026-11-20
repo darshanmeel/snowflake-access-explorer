@@ -12,7 +12,7 @@ export const byName = <T extends Pick<AccessObject, "object">>(xs: T[]) => [...x
 
 /** URL params that make a graph box the start: a table, a role or a person. */
 export function startOf(kind: NodeKind | string, id: string): Record<string, string | null> {
-  const none = { table: null, role: null, user: null, sel: null };
+  const none = { table: null, role: null, user: null, sel: null, focus: null }; // a new start: the whole graph
   if (kind === "user") return { ...none, user: id.replace(/ \(user\)$/, "") };
   if (kind === "object") return { ...none, table: id };
   return { ...none, role: id };

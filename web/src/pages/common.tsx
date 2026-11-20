@@ -164,7 +164,9 @@ export function Head({ title, sub, right }: { title: ReactNode; sub?: ReactNode;
 }
 
 /** The page's main graph. Over-big summaries offer "draw all"; schema / type filters show as a removable chip row. */
-export function GraphCard({ g, title, refs }: { g: G | null; title?: string; refs?: Refs }) {
+/** A page's graph with its Show only this; param: the URL param of its focus (a page with two graphs: one each, so a
+ * focus in one never narrows the other), sent to the server as focus=. */
+export function GraphCard({ g, title, refs, param = "focus" }: { g: G | null; title?: string; refs?: Refs; param?: string }) {
   const c = useApp();
   const o = useOpen(refs);
   if (!g) return null;
@@ -180,7 +182,8 @@ export function GraphCard({ g, title, refs }: { g: G | null; title?: string; ref
         </div>
       )}
       {g.note && <p className="ae-graph-note">{g.note}</p>}
-      <Graph graph={g} theme={c.theme} onNodeClick={o.node} onRules={(id) => c.nav("rules", { grantee: id.replace(/ \(user\)$/, "") })} />
+      <Graph graph={g} theme={c.theme} onNodeClick={o.node} onOnly={(id) => c.set({ [param]: id }, { push: true, stay: true })}
+        onRules={(id) => c.nav("rules", { grantee: id.replace(/ \(user\)$/, "") })} />
     </Card>
   );
 }
@@ -199,6 +202,9 @@ export function NameLink({ id, refs, label }: { id: string; refs: Refs; label?: 
   return <button className={`ae-link ae-k-${k}`} onClick={() => o.open(id)} title={id}>{label ?? id}</button>;
 }
 
+// a new scope: a focused or picked box may not be in it
+const UNFOCUS = { focus: null, sel: null, tfocus: null, afocus: null };
+
 const SCOPE: [string, string][] = [["on", "object"], ["priv", "privilege"]]; // schema / otype: the graph card shows them
 
 /** Database or schema filter of a person's or role's privileges (schema=: a database name or DB.SCHEMA), every tab. */
@@ -206,8 +212,8 @@ export function ScopePick() {
   const c = useApp();
   return (
     <>
-      <Pick label="Database or schema" value={c.params.schema ?? ""} what="databases,objects" params={{ type: "SCHEMA" }} onPick={(v) => c.set({ schema: v })} />
-      {c.params.schema && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ schema: null })}>any database ×</button>}
+      <Pick label="Database or schema" value={c.params.schema ?? ""} what="databases,objects" params={{ type: "SCHEMA" }} onPick={(v) => c.set({ schema: v, ...UNFOCUS })} />
+      {c.params.schema && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ schema: null, ...UNFOCUS })}>any database ×</button>}
     </>
   );
 }

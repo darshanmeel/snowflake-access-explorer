@@ -6,7 +6,7 @@ const counts = { objects: 4, sensitive: 3, columns: 5, clear: 5, masked: 0, unkn
 
 describe("access graph, what they see, compare", () => {
   it("makes a box the start", () => {
-    expect(startOf("user", "ENGINEER_01 (user)")).toEqual({ table: null, role: null, user: "ENGINEER_01", sel: null });
+    expect(startOf("user", "ENGINEER_01 (user)")).toEqual({ table: null, role: null, user: "ENGINEER_01", sel: null, focus: null });
     expect(startOf("object", "DB.S.T")).toMatchObject({ table: "DB.S.T", user: null });
     expect(startOf("database_role", "HR.SC_R")).toMatchObject({ role: "HR.SC_R" });
   });

@@ -5,6 +5,7 @@ import json
 import os
 import re
 from contextlib import contextmanager
+from urllib.parse import quote
 
 os.environ["FAKE"] = "1"
 
@@ -903,6 +904,64 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     g = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}
     assert g["home"] == "home" and g["access"] == g["object"] == "access" and g["check"] == "ask" and g["rules"] == "risk"
     assert g["review"] == g["changes"] == "govern"
+
+
+def test_graph_focus():  # focus=<box>: only the lines through it, on every graph; the access graph's filters
+    ids = lambda g: {n["id"] for n in g["nodes"]}
+    whole = js("/api/map")["graph"]
+    assert whole.get("focus") is None
+    f = js(f"/api/map?focus={a.FUNC}ANALYST")["graph"]
+    graph_ok(f)
+    assert f["focus"] == dict(id=f"{a.FUNC}ANALYST", label=f"{a.FUNC}ANALYST") and len(f["nodes"]) < len(whole["nodes"])
+    assert {server.DEMO_USER, f"{a.FUNC}ANALYST", f"{a.TECH}SALES_CORE_READ"} <= ids(f) and f"{a.FUNC}ENGINEER" not in ids(f)
+    assert all(e["source"] in ids(f) and e["target"] in ids(f) for e in f["edges"])
+    box = next(n["id"] for n in whole["nodes"] if n["id"].startswith("SALES ·"))  # a database box opens into its objects
+    b = js("/api/map?focus=" + quote(box))["graph"]
+    graph_ok(b)
+    objs = [n for n in b["nodes"] if n["kind"] == "object"]
+    assert b["focus"]["label"] == "SALES" and box not in ids(b) and objs and all(n["id"].startswith("SALES.") for n in objs)
+    assert "HR.PEOPLE.TBL_EMPLOYEE" not in ids(b) and len(b["nodes"]) < len(whole["nodes"]) + 9
+    assert js("/api/map?node=" + quote(box))["detail"][box]["leads_count"] >= 3  # the side panel of a box
+    miss = js("/api/map?focus=NOPE")["graph"]
+    assert miss["focus"] is None and "not in this graph" in miss["note"] and len(miss["nodes"]) == len(whole["nodes"])
+    lazy = js(f"/api/map?role={a.FUNC}ENGINEER&focus={a.TECH}SALES_CORE_READ")["graph"]
+    assert f"{a.FUNC}ANALYST" not in ids(lazy) and {f"{a.FUNC}ENGINEER", f"{a.TECH}SALES_CORE_READ"} <= ids(lazy)
+    hr = js("/api/map?schema=HR")["graph"]  # filters: a database, a type, the step a line carries
+    assert all(n["id"].startswith("HR.") for n in hr["nodes"] if n["kind"] == "object") and len(hr["nodes"]) < len(whole["nodes"])
+    assert server.DEMO_USER in ids(hr) and f"{a.FUNC}ANALYST" not in ids(hr)
+    wh = js("/api/map?otype=WAREHOUSE")["graph"]
+    assert [n["id"] for n in wh["nodes"] if n["kind"] == "object"] == ["WH_SALES_XS"]
+    own = js("/api/map?access=own")["graph"]
+    objs = {n["id"] for n in own["nodes"] if n["kind"] == "object"}
+    assert objs and all(e["cls"] == "own" for e in own["edges"] if e["target"] in objs)
+    assert ids(js("/api/map?schema=NOPE")["graph"]) == {server.DEMO_USER}  # nothing matches: the start alone
+    get("/api/map?access=delete", 400)
+    for url, key in (("/api/user?name=ENGINEER_01", f"{a.TECH}SALES_CORE_READ"), (f"/api/role?name={a.FUNC}ENGINEER", f"{a.TECH}SALES_CORE_READ"),
+                     ("/api/object?name=SALES.CORE.TBL_CUSTOMER", f"{a.FUNC}ANALYST")):
+        w, n = js(url)["graph"], js(f"{url}&focus={key}")["graph"]  # the same param on the User, Role and Object graphs
+        graph_ok(n)
+        assert n["focus"]["id"] == key and key in ids(n) and len(n["nodes"]) < len(w["nodes"]), url
+    sc = js("/api/user?name=ENGINEER_01&focus=SALES.CORE")["graph"]  # a schema box: its objects, nothing else
+    assert sc["focus"]["label"] == "SALES.CORE" and {n["id"] for n in sc["nodes"] if n["kind"] == "object"} and all(
+        n["id"].startswith("SALES.CORE") for n in sc["nodes"] if n["kind"] == "object")
+    t = js(f"/api/graph?of=user-tab&name=ENGINEER_01&tab=all&focus={a.TECH}SALES_CORE_READ")
+    assert t["focus"]["id"] == f"{a.TECH}SALES_CORE_READ"
+    assert js(f"/api/graph?of=user&name=ENGINEER_01&focus={a.FUNC}ANALYST")["focus"]["id"] == f"{a.FUNC}ANALYST"
+    m = js("/api/map?focus=SALES.CORE")["graph"]  # a member of the SALES box (picked in the opened box): it alone
+    assert m["focus"]["id"] == "SALES.CORE" and not m["note"] and "SALES.CORE" in ids(m) and len(m["nodes"]) < len(whole["nodes"])
+    assert not any(n["id"].startswith("SALES.") and n["id"] != "SALES.CORE" for n in m["nodes"])
+    e = js(f"/api/role?name={a.FUNC}ENGINEER&focus=HR.PEOPLE.TBL_EMPLOYEE")["graph"]
+    assert e["focus"]["id"] == "HR.PEOPLE.TBL_EMPLOYEE" and "HR.PEOPLE.TBL_EMPLOYEE" in ids(e) and not e["note"]
+    dw = js("/api/user?name=DW_DEV_01&focus=DW.SC_R_CORE")["graph"]  # what the role leads to, not its ancestors' grants
+    assert [n["id"] for n in dw["groups"]["DW.CORE"]["nodes"]] == [f"DW.CORE.TBL_CORE_0{i}" for i in (1, 2, 3)]
+    fold = next(n["id"] for n in whole["nodes"] if n["kind"] == "fold")  # the built-ins box: what PUBLIC brings
+    assert js("/api/map?node=" + quote(fold))["detail"][fold]["leads_count"] > 0
+    assert "With the filters: 3 roles, 1 object." in hr["header"]
+    lanes = [("User", ["U"]), ("Granted roles", ["R"]), ("Roles between", ["F"]), ("Grant holders", ["H1", "H2"])]
+    es, gx = [("U", "R"), ("R", "F"), ("F", "H1"), ("F", "H2")], {"F": dict(members=["X", "Y"], edges=[("R", "H1")])}
+    for f in ("F", "X"):  # a summary fold whose lines miss its members: the box itself, never 3 boxes without lines
+        ls, out, _, _, _, label, note = server.narrow(lanes, es, {}, {"F": "fold"}, gx, f)
+        assert label == "F" and not note and {n for _, ns in ls for n in ns} == {"U", "R", "F", "H1", "H2"} and len(out) == 4
 
 
 def test_graph_see_compare():  # screens 4, 7, 9

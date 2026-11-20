@@ -1,8 +1,10 @@
 // Lane graph: ELK lays it out (one lane per depth, left to right, orthogonal bundled lines), React Flow draws it.
 // Crowded lanes fold (database roles per database, group roles); folded and combined boxes open on click, big ones
 // by schema / type first. Hover (or keyboard focus, or a first tap on a touch screen) shows what a box or line is in
-// words and lights up every path through it; Enter / Space or a second tap opens it. A tall drawing starts centred
-// on the selected box; up to 6 lanes it is shrunk to fit when that keeps the labels readable.
+// words and lights up every path through it; Enter / Space or a second tap opens it. With onOnly / onPick a click (or
+// Enter) picks any box, combined ones too, instead, and a bar above offers Show only this (the server redraws the lines
+// through it; the keyboard lands on Whole graph), Open and Whole graph (Escape). A tall drawing starts centred on the selected box; up to 6 lanes it is shrunk to fit when
+// that keeps the labels readable.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BaseEdge, EdgeLabelRenderer, Handle, Position, ReactFlow, Controls, getSmoothStepPath,
@@ -28,6 +30,10 @@ export interface GraphProps {
   focus?: string | null; // a picked box: everything not on a path through it fades (as on hover)
   hi?: Set<string>; // node and edge ids drawn red (risky paths)
   flow?: boolean; // line width grows with edge.count (people flowing through it)
+  // a click (or Enter) picks a box instead of opening it: a bar offers Show only this (onOnly(id): the page asks the
+  // server again with focus=<id>), Open for a combined box, Open its page (onNodeClick); onOnly(null): the whole graph
+  onOnly?: (id: string | null) => void;
+  onPick?: (n: GraphNode) => void; // a box picked (the access graph's side panel)
 }
 
 const SEV = ["Critical", "High", "Medium", "Low"] as const;
@@ -55,13 +61,18 @@ export function startView(lay: { width: number; height: number; lanes: unknown[]
   return { view: { x, y, zoom }, height };
 }
 
-export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8, focus = null, hi, flow = false }: GraphProps) {
+export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = true, maxHeight = 640, minZoom = 0.8, focus = null, hi, flow = false, onOnly, onPick }: GraphProps) {
   const t = TOKENS[theme];
   const [open, setOpen] = useState<Map<string, string>>(new Map()); // opened box -> its label (for the chips)
   const [got, setGot] = useState<Record<string, GraphGroup>>({}); // lazy boxes fetched: graph.src + group=<box>
   const [fetching, setFetching] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  useEffect(() => { setOpen(new Map()); setGot({}); setFailed(null); }, [graph]);
+  const [pick, setPick] = useState<GraphNode | null>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  const whole = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false); // Show only this removed its own button: the focused graph puts the keyboard on Whole graph
+  useEffect(() => { if (refocus.current && graph.focus) { refocus.current = false; whole.current?.focus({ preventScroll: true }); } }, [graph]);
+  useEffect(() => { setOpen(new Map()); setGot({}); setFailed(null); setPick(null); }, [graph]);
   const full = useMemo(() => (Object.keys(got).length ? { ...graph, groups: { ...graph.groups, ...got } } : graph), [graph, got]);
   const folded = useMemo(() => foldRoles(full), [full]);
   const shown = useMemo(() => expand(folded, new Set(open.keys())), [folded, open]);
@@ -86,10 +97,11 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
 
   const [hover, setHover] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
-  const lit = hover ?? (focus && shown.nodes.some((n) => n.id === focus) ? focus : null);
+  const mark = focus ?? pick?.id ?? null;
+  const lit = hover ?? (mark && shown.nodes.some((n) => n.id === mark) ? mark : null);
   const hot = useMemo(() => (lit ? related(shown, lit) : null), [shown, lit]);
   const byId = useMemo(() => new Map(shown.nodes.map((n) => [n.id, n])), [shown]);
-  const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot, focus, hi, flow), [shown, lay, t, hot, focus, hi, flow]);
+  const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot, mark, hi, flow), [shown, lay, t, hot, mark, hi, flow]);
 
   // the panel is as tall as the drawing; a resize keeps the reader's pan and zoom once they moved it
   const sel = useMemo(() => { // the picked box, else the start of the walk (the one box of the first lane)
@@ -108,8 +120,22 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   const touch = useRef(false); // the last pointer was a finger: a first tap explains, a second one opens
   const tapped = useRef<string | null>(null);
 
-  const click = (n: GraphNode) => {
-    if (n.action?.kind === "expand" || (shown.groups[n.id] && isBox(n))) {
+  // ids the server knows (focus= takes them); boxes made here (folded roles, buckets of an opened box) only open
+  const known = useMemo(() => new Set([...graph.nodes.map((n) => n.id), ...Object.keys(full.groups),
+    ...Object.values(full.groups).flatMap((g) => g.nodes.map((n) => n.id))]), [graph, full]);
+  const opens = (n: GraphNode) => n.action?.kind === "expand" || (!!shown.groups[n.id] && isBox(n));
+  const click = (n: GraphNode, key = false) => {
+    if (onOnly || onPick) {
+      setPick(n);
+      if (known.has(n.id)) onPick?.(n);
+      if (key) requestAnimationFrame(() => (bar.current?.querySelector<HTMLElement>(".ae-btn-primary")
+        ?? bar.current?.querySelector("button"))?.focus()); // the keyboard goes on to the bar
+      return;
+    }
+    act(n);
+  };
+  const act = (n: GraphNode) => {
+    if (opens(n)) {
       const label = n.sub ? `${n.label} · ${n.sub}` : n.label;
       setHover(null);
       setTip(null);
@@ -139,7 +165,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     return [n.name === n.label || isBox(n) ? n.label : n.name, isBox(n) ? n.sub : KIND_LABEL[n.kind] ?? n.raw_kind ?? n.kind,
       n.badge && isBox(n) ? `By grants: ${n.badge}` : "", isBox(n) ? "" : n.tip,
       n.rules.length ? ["Rules broken (click the badge):", ...n.rules.map((r) => `  ${r.num} · ${r.severity} · ${r.title}`)].join("\n") : "",
-      grp ? `Click to open${buckets(grp.nodes) ? ", grouped" : ""}` : ""]
+      grp ? (onOnly || onPick ? "Click to pick: Show only this or Open the box" : `Click to open${buckets(grp.nodes) ? ", grouped" : ""}`) : ""]
       .filter(Boolean).join("\n");
   };
   const tapOrClick = (ev: React.MouseEvent, n: GraphNode) => {
@@ -151,7 +177,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     const el = (ev.target as HTMLElement).closest?.(".react-flow__node");
     const n = el && byId.get(el.getAttribute("data-id") ?? "");
     if (!n || !box.current) return;
-    if (open) { ev.preventDefault(); click(n); return; }
+    if (open) { ev.preventDefault(); click(n, true); return; }
     const r = el.getBoundingClientRect(), b = box.current.getBoundingClientRect();
     setHover(n.id);
     const x = r.right - b.left + 8;
@@ -163,12 +189,36 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     return c;
   });
 
+  const escape = () => {
+    setHover(null);
+    setTip(null);
+    if (pick) setPick(null); else if (graph.focus) onOnly?.(null);
+  };
+  const word = (n: GraphNode) => (isBox(n) ? n.sub ?? "combined box" : KIND_LABEL[n.kind] ?? n.kind);
+
   return (
     <div className="ae-graph-wrap">
+      {(pick || (graph.focus && onOnly)) && (
+        <div className="ae-graph-bar" ref={bar} role="toolbar" aria-label="Picked box" onKeyDown={(e) => { if (e.key === "Escape") escape(); }}>
+          {graph.focus && onOnly && <>
+            <span>Only the lines through <b className="ae-mono">{graph.focus.label}</b></span>
+            <button type="button" className="ae-btn" ref={whole} onClick={() => onOnly(null)} title="Back to the whole graph (Escape)">Whole graph</button>
+          </>}
+          {pick && <>
+            <span className="ae-graph-bar-pick"><b className="ae-mono">{pick.name === pick.label || isBox(pick) ? pick.label : pick.name}</b> <span className="ae-muted">{word(pick)}</span></span>
+            {onOnly && known.has(pick.id) && pick.id !== graph.focus?.id &&
+              <button type="button" className="ae-btn ae-btn-primary" onClick={() => { refocus.current = true; setPick(null); onOnly(pick.id); }}>Show only this</button>}
+            {opens(pick) && <button type="button" className="ae-btn" onClick={() => { setPick(null); act(pick); }}>Open the box</button>}
+            {!opens(pick) && onNodeClick && pick.action &&
+              <button type="button" className="ae-btn" onClick={() => onNodeClick(pick)}>{pick.action.kind === "full" ? "Draw the full chain" : "Open its page"}</button>}
+            <button type="button" className="ae-link" onClick={() => setPick(null)} aria-label="Close">×</button>
+          </>}
+        </div>
+      )}
       <div className="ae-graph" ref={box} style={{ height, background: t.panel }} aria-busy={busy}
         onMouseLeave={() => { setHover(null); setTip(null); }}
         onPointerDown={(e) => { touch.current = e.pointerType === "touch"; }}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") keyNode(e, true); else if (e.key === "Escape") { setHover(null); setTip(null); } }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") keyNode(e, true); else if (e.key === "Escape") escape(); }}
         onFocus={(e) => keyNode(e, false)}>
         {lay && start && (
           <ReactFlow
