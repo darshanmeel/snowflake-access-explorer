@@ -180,7 +180,8 @@ export function GraphCard({ g, title, refs }: { g: G | null; title?: string; ref
         </div>
       )}
       {g.note && <p className="ae-graph-note">{g.note}</p>}
-      <Graph graph={g} theme={c.theme} onNodeClick={o.node} onRules={(id) => c.nav("rules", { grantee: id.replace(/ \(user\)$/, "") })} />
+      <Graph graph={g} theme={c.theme} onNodeClick={o.node} onOnly={(id) => c.set({ focus: id }, { push: true, stay: true })}
+        onRules={(id) => c.nav("rules", { grantee: id.replace(/ \(user\)$/, "") })} />
     </Card>
   );
 }

@@ -760,19 +760,94 @@ def fold_lanes(lanes, edges, gx, kinds, info, keep, sizes=None):
     return out, new + [k if len(k) == 2 else (*k, None, len(m))[:4] + (len(m),) for k, m in per.items()], gx, kinds
 
 
+def through(edges, ids):
+    """ids and every node on a line through them: what leads to them and what they lead to."""
+    ins, outs = {}, {}
+    for e in edges:
+        ins.setdefault(e[1], []).append(e[0])
+        outs.setdefault(e[0], []).append(e[1])
+    keep = set(ids)
+    for nxt in (ins, outs):
+        todo, seen = list(ids), set(ids)
+        while todo:
+            for y in nxt.get(todo.pop(), ()):
+                if y not in seen:
+                    seen.add(y)
+                    todo.append(y)
+        keep |= seen
+    return keep
+
+
+def cut(lanes, edges, keep):
+    """The lanes and edges of the nodes in keep; empty lanes go."""
+    lanes = [(lab, [n for n in ns if n in keep]) for lab, ns in lanes]
+    return [x for x in lanes if x[1]], [e for e in edges if e[0] in keep and e[1] in keep]
+
+
+def scope_key(o):
+    """DB.SCHEMA of an object (its database when it has no schema): a focused box's objects box again by it."""
+    db, sc, _ = a.split_name(o)
+    return f"{db}.{sc}" if sc else db or o
+
+
+def narrow(lanes, edges, notes, kinds, gx, focus, later=None):
+    """build_graph focus=: only the lines through one box. A combined box opens into its members first (objects over
+    MAX_BOX box again per schema); the other boxes keep the members on those lines. later: the boxes fold_lanes
+    makes afterwards (a folded lane: its members are drawn here). A box not drawn: the whole graph and a note.
+    Returns lanes, edges, notes, kinds, gx, label of the focus or None, note."""
+    lane = (later or {}).get(focus)
+    if focus not in {n for _, ns in lanes for n in ns} and not lane:
+        return lanes, edges, notes, kinds, gx, None, f"{focus} is not in this graph: all of it is shown."
+    gx, kinds = dict(gx), dict(kinds)  # often a cached graph's own: never changed in place
+    label, ids, box = a.node_name(focus), {focus}, gx.get(focus)
+    if lane:
+        label, ids = f"{lane['count']} {lane['noun']}", set(lane["members"])
+    if box:
+        mem = box["members"]
+        label = focus.split(" · ")[0].strip("⋯ ")
+        lanes = [(lab, [m for n in ns for m in (mem if n == focus else [n])]) for lab, ns in lanes]
+        edges = [e for e in edges if focus not in e[:2]] + list(box.get("edges") or [])
+        gx, kinds, ids = {k: v for k, v in gx.items() if k != focus}, {k: v for k, v in kinds.items() if k != focus}, set(mem)
+    keep = through(edges, ids)
+    for k, x in list(gx.items()):  # a box on these lines keeps only its members on them
+        if k in keep and x.get("edges"):
+            on = {e[1] for e in x["edges"] if e[0] in keep} | {e[0] for e in x["edges"] if e[1] in keep}
+            ms = [m for m in x["members"] if m in on]
+            if ms and len(ms) < len(x["members"]):
+                gx[k] = x | dict(members=ms, count=len(ms))
+    lanes, edges = cut(lanes, edges, keep)
+    gx = {k: v for k, v in gx.items() if k in keep}
+    notes = {k: v for k, v in notes.items() if k in keep}
+    objs = [m for m in ids if m in keep and nk(m) == "object"]
+    if box and len(objs) > MAX_BOX and len({scope_key(o) for o in objs}) > 1:
+        at = next(i for i, (_, ns) in enumerate(lanes) if objs[0] in ns)
+        lanes, edges, notes, kinds, more = combine_tab(lanes, edges, notes, kinds, at=at, key=scope_key, kind="schema")
+        gx |= more
+    return lanes, edges, notes, kinds, gx, label, None
+
+
 def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected=None, header="", level="object",
                 note=None, full=False, bad=(), start=None, check=False, types=None, gx=None, src=None, only=None,
-                sizes=None):
+                sizes=None, focus=None):
     """Graph JSON from access.py's (lanes, edges, notes): nodes with kinds, marks, rule hits and click actions, merged
     edges, and the expansion payload of every combined box (gx: {box: dict(members, edges, drill, ...)}). src: the
     graph endpoint's params that draw this graph again; with it, over LAZY members the boxes go out empty (lazy), and
-    only=<box> answers that box alone, members included. sizes: as fold_lanes."""
+    only=<box> answers that box alone, members included. sizes: as fold_lanes. focus=<box>: only the lines through it
+    (narrow), done before anything is folded, so a big account sends only those."""
     notes, kinds, types, gx = notes or {}, kinds or {}, types or {}, gx or {}
+    shows = None
+    if focus:
+        later = None
+        if src and focus.startswith("lane:") and gx.get(focus) is None:  # a folded lane of the big graph
+            later = fold_lanes(lanes, edges, gx, kinds, hits(lanes, edges, info), {selected, start}, sizes)[2]
+        lanes, edges, notes, kinds, gx, shows, miss = narrow(lanes, edges, notes, kinds, gx, focus, later)
+        note = " ".join(x for x in (note, miss) if x) or None
+        src = src and src | dict(focus=focus)
     info = hits(lanes, edges, info)
     big = bool(src) and sum(len(x["members"]) for x in gx.values()) + sum(len(ns) for _, ns in lanes) > LAZY
     lazy = big and only is None
     if big:
-        lanes, edges, gx, kinds = fold_lanes(lanes, edges, gx, kinds, info, {selected, start}, sizes)
+        lanes, edges, gx, kinds = fold_lanes(lanes, edges, gx, kinds, info, {selected, start, focus}, sizes)
     lane_of = {n: i for i, (_, ns) in enumerate(lanes) for n in ns}
 
     def action(n, gk):
@@ -800,7 +875,7 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
                 db, _, sc = scope.partition(".")
             elif gk in ("schema", "database"):
                 db, _, sc = n.split(" · ")[0].partition(".")  # a tab box id is "DB · 19 objects": the count is the sub
-            label = n.strip("⋯ ").join(["⋯ ", " ⋯"]) if gk == "fold" else n.split(" · ")[0] if gk == "database" else n
+            label = n.strip("⋯ ").join(["⋯ ", " ⋯"]) if gk == "fold" else n.split(" · ")[0] if gk in ("database", "schema") else n
             if gk == "lane_group":
                 label, sub = sub, lanes[i][0]
         elif kind == "object":
@@ -872,7 +947,7 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
     eds = edge_list(edges, lane_of, info)
     allnodes = nodes + [n for g in groups.values() for n in g["nodes"]]
     return dict(
-        title=title, header=header, level=level, note=note, full=full, selected=selected,
+        title=title, header=header, level=level, note=note, full=full, selected=selected, focus=shows and dict(id=focus, label=shows),
         lanes=[dict(index=i, label=lab, depth=lane_depth(lab)) for i, (lab, _) in enumerate(lanes)],
         nodes=nodes, edges=eds, groups=groups, src=src if lazy else None,
         legend=dict(kinds=list(dict.fromkeys(n["kind"] for n in nodes)),
@@ -959,18 +1034,18 @@ def drawn_input(start, user, rows, schema, otype, default_only, limit, full):
     return dict(g=g, gx=gx, note=note, level=level, full=drawn)
 
 
-def combine_tab(lanes, edges, notes, kinds, at=None):
+def combine_tab(lanes, edges, notes, kinds, at=None, key=None, kind="database"):
     """Tab diagram with many boxes: objects over MAX_BOX become one box per database (the graph component folds crowded
     role lanes: database roles per database, group roles, then the rest). at: the objects lane (default: the lanes
-    labelled Object / Objects). An edge (a, b, cls, privilege, n) keeps its count n (the access graph's people).
-    Returns lanes, edges, notes, kinds, gx."""
+    labelled Object / Objects). key, kind: another box per object (scope_key, "schema"). An edge (a, b, cls,
+    privilege, n) keeps its count n (the access graph's people). Returns lanes, edges, notes, kinds, gx."""
     gx, to = {}, {}  # to: member -> its box
     lanes = [(lab, list(ns)) for lab, ns in lanes]
     for i, (lab, ns) in enumerate(lanes):
         if (i == at if at is not None else lab in ("Object", "Objects")) and len(ns) > MAX_BOX:
             by = {}
             for o in ns:  # account-level objects and drawn boxes (every object, the built-ins) stay single
-                by.setdefault((a.split_name(o)[0] or o) if o in a.kinds else o, []).append(o)
+                by.setdefault(((key or (lambda x: a.split_name(x)[0] or x))(o)) if o in a.kinds else o, []).append(o)
             ids = []
             for k, os_ in by.items():
                 if len(os_) == 1:
@@ -978,7 +1053,7 @@ def combine_tab(lanes, edges, notes, kinds, at=None):
                     continue
                 gid = f"{k} · {len(os_)} objects"
                 gx[gid] = dict(members=os_, count=len(os_), noun="objects", drill=dict(kind="drill", schema=k))
-                kinds[gid] = "database"
+                kinds[gid] = kind
                 to.update({o: gid for o in os_})
                 ids.append(gid)
             lanes[i] = (lab, ids)
@@ -1010,7 +1085,7 @@ def combine_tab(lanes, edges, notes, kinds, at=None):
     return lanes, new, notes, kinds, gx
 
 
-def tab_graph(start, user, rows, walked=(), what="privileges", full_title="Graph", src=None, only=None):
+def tab_graph(start, user, rows, walked=(), what="privileges", full_title="Graph", src=None, only=None, focus=None):
     """A Privileges tab's own diagram: start, the roles on the way, the objects of just these rows (walked: role paths).
     Over MAX_OBJECTS rows only the shortest path of each row is drawn. src, only: as build_graph."""
     big = len(rows) > a.MAX_OBJECTS
@@ -1023,7 +1098,7 @@ def tab_graph(start, user, rows, walked=(), what="privileges", full_title="Graph
     n = len(rows) or len(walked)
     return build_graph(full_title, lanes, edges, notes, kinds=kinds, header=f"{n} {what}" + (" · shortest path each" if big else ""),
                        level="database" if any(k == "database" for k in kinds.values()) else "object",
-                       start=start, check=user, gx=gx, src=src, only=only)
+                       start=start, check=user, gx=gx, src=src, only=only, focus=focus)
 
 
 # ---------- privilege rows, tabs, account ----------
@@ -1213,12 +1288,12 @@ def user_graph(p, c, only=None):
     if c["on"] or c["pv"]:
         g = a.down_graph(u, rows, user=True)
         return g and build_graph("Role hierarchy, by depth", g[0], g[1], g[2], header=f"{len(rows)} privileges shown",
-                                 start=u, check=True)
+                                 start=u, check=True, focus=p.get("focus"))
     ig = input_graph(u, True, c["every"], c["scope"] or None, c["otype"], c["default_only"], c["limit"], flag(p, "full"))
     return ig and build_graph("Role hierarchy, by depth", ig["g"]["lanes"], ig["g"]["edges"], ig["g"]["notes"],
                               ig["g"]["info"], ig["g"]["kinds"], header=ig["g"]["header"], level=ig["level"],
                               note=ig["note"], full=ig["full"], start=u, check=True, types=ig["g"].get("types"),
-                              gx=ig["gx"], src=gsrc(p, of="user", name=u), only=only)
+                              gx=ig["gx"], src=gsrc(p, of="user", name=u), only=only, focus=p.get("focus"))
 
 
 def gsrc(p, **extra):
@@ -1782,7 +1857,7 @@ def role_graph(p, c, up, ro, only=None):
         kinds, gx, types, header, level, note = g["kinds"], ig["gx"], g.get("types"), g["header"], ig["level"], ig["note"]
     return build_graph("Held by (up) and holds (down)", lanes, edges, notes, info, kinds, selected=r, header=header,
                        level=level, note=note, full=bool(ig and ig["full"]), bad={x["holder"] for x in ro}, types=types,
-                       gx=gx, src=gsrc(p, of="role", name=r), only=only)
+                       gx=gx, src=gsrc(p, of="role", name=r), only=only, focus=p.get("focus"))
 
 
 MAX_HELD = 50  # Role page, held by: rows of each kind sent with the page (its small diagram); the table pages them
@@ -2024,7 +2099,8 @@ def object_graph(p, c, only=None):
     roles on the way, the object; boxes opened through graph?of=object&group=."""
     og = a.cached(("object_graph", c["key"]), lambda: a.object_graph(c["o"], c["t"], c["shown"], c["users"]))
     return og and build_graph("Paths into the object", og[0], og[1], og[2],
-                              src=gsrc(p, of="object", name=c["o"], **{k: p[k] for k in ("active",) if p.get(k)}), only=only)
+                              src=gsrc(p, of="object", name=c["o"], **{k: p[k] for k in ("active",) if p.get(k)}), only=only,
+                              focus=p.get("focus"))
 
 
 RANK = {k: i for i, k in enumerate(("use", "read", "manage", "write", "own", "admin"))}  # Grantees.tsx RANK
@@ -2438,7 +2514,7 @@ def check_page(p, view):
         use_role=r["use_role"], warehouse=r["warehouse"], read=read,
         blocked=[dict(type=t, name=c) for t, c in gaps], unblock=dict(iac=r["unblock"][0], sql=r["unblock"][1]) if gaps else None,
         warehouses=dict(names=whs[:MAX_WH], total=len(whs), admin=bool(wa)),
-        graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None, capped=sorted(a.capped))
+        graph=g and build_graph("Paths combined", g[0], g[1], g[2], focus=p.get("focus")) or None, capped=sorted(a.capped))
 
 
 INSIDE_PAGE = 100  # Can they? on a database or schema: objects per page
@@ -2500,6 +2576,30 @@ RISK = {"admin": "leads to an admin role or an account privilege", "public": "th
         "writes": "a read role that writes"}
 
 
+MAP_ACCESS = ("read", "write", "own")  # the access graph's Access filter: lines that carry that step
+
+
+def map_filters(p):
+    """(scope, object type, access) of the access graph: schema= a database or DB.SCHEMA, otype=, access=."""
+    acc = p.get("access") or None
+    if acc and acc not in MAP_ACCESS:
+        raise ApiError(400, "bad_param", "access must be read, write or own")
+    return p.get("schema") or None, p.get("otype") or None, acc
+
+
+def map_cut(g, scope, otype, acc):
+    """The access graph's lanes and edges with only the objects in scope, of otype, reached by an acc line, and the
+    roles and people on the lines to them (the start stays)."""
+    if not (scope or otype or acc):
+        return g["lanes"], g["edges"]
+    objs = set(g["lanes"][-1][1])
+    ok = lambda o: (o in a.kinds and (not otype or a.kinds[o] == otype)
+                    and (not scope or scope in (a.split_name(o)[0], scope_key(o))))
+    es = [e for e in g["edges"] if e[1] not in objs or ok(e[1]) and (not acc or e[2] == acc)]
+    # objects lead nowhere: through them is what leads to them, not every other branch of a kept role
+    return cut(g["lanes"], es, through(es, {e[1] for e in es if e[1] in objs}) | {g["start"]})
+
+
 def map_graph(p, view, only=None):
     """The access graph of map_page, drawn: over MAX_BOX objects one box per database, crowded people and role lanes
     folded (big accounts: the boxes go out empty and open through graph?of=map&group=). Returns dict(g (a.access_graph,
@@ -2520,16 +2620,21 @@ def map_graph(p, view, only=None):
     header = {"object": f"Everyone who reaches {name}: {folk}, {plural(mid, 'role')} in between.",
               "role": f"Who holds {name} (left) and everything it opens up (right): {folk}, {plural(objs, 'object')}.",
               "user": f"Every role {name} holds, and every object those roles reach: {plural(mid, 'role')}, {plural(objs, 'object')}."}[start]
-    lanes, edges, _, kinds, gx = a.cached(  # 450k grant lines of a big user roll up in seconds: once per data set
-        ("map_combined", start, name, same, adm), lambda: combine_tab(
-            g["lanes"], g["edges"], {}, {k: "fold" for k, v in g["kinds"].items() if v == "fold"}, at=len(g["lanes"]) - 1))
-    src = {k: p[k] for k in ("view", "builtin", "table", "role", "user", "same", "admin") if p.get(k)} | dict(of="map")
+    f = map_filters(p) if start != "object" else (None, None, None)
+    def combined():
+        ls, es = map_cut(g, *f)
+        at = next((i for i, (lab, _) in enumerate(ls) if lab == g["lanes"][-1][0]), len(ls))
+        return combine_tab(ls, es, {}, {k: "fold" for k, v in g["kinds"].items() if v == "fold"}, at=at)
+    # 450k grant lines of a big user roll up in seconds: once per data set and filters
+    lanes, edges, _, kinds, gx = a.cached(("map_combined", start, name, same, adm, f), combined)
+    src = {k: p[k] for k in ("view", "builtin", "table", "role", "user", "same", "admin", "schema", "otype", "access")
+           if p.get(k)} | dict(of="map")
     graph = build_graph("Access graph", lanes, edges, kinds=kinds, selected=g["start"], header=header, gx=gx, src=src,
-                        only=only, sizes={s: len(us) for s, us in g["stacks"].items()})
+                        only=only, sizes={s: len(us) for s, us in g["stacks"].items()}, focus=p.get("focus"))
     bi = a.builtin_info()
     for n in graph["nodes"]:
         dress(n, g, bi)
-    return dict(g=g, graph=graph, name=name, start=start, bi=bi)
+    return dict(g=g, graph=graph, name=name, start=start, bi=bi, gx=gx)
 
 
 def dress(n, g, bi):
@@ -2549,10 +2654,17 @@ def dress(n, g, bi):
         n.update(kind="admin", label="Account", sub="account privileges")
 
 
-def map_detail(g, n):
-    """Who comes through a box of the access graph, what it leads to, its step and why it is risky."""
-    ps, ls = g["people"].get(n, ()), g["leads"].get(n, ())
-    return dict(level=g["levels"].get(n), people=heapq.nsmallest(30, ps), people_count=len(ps),
+def map_detail(g, n, members=None):
+    """Who comes through a box of the access graph, what it leads to, its step and why it is risky. members: a
+    combined box's members (all of theirs, the highest step)."""
+    if members is None:
+        ps, ls, lv = g["people"].get(n, ()), g["leads"].get(n, ()), g["levels"].get(n)
+    else:
+        ps = set().union(*(g["people"].get(m, ()) for m in members))
+        ls = set().union(*(g["leads"].get(m) or ({m} if m in a.kinds else ()) for m in members))
+        lv = max((g["levels"][m] for m in members if g["levels"].get(m)), default=None,
+                 key=lambda v: a.OBJ_LEVELS.index(v) if v in a.OBJ_LEVELS else len(a.OBJ_LEVELS))
+    return dict(level=lv, people=heapq.nsmallest(30, ps), people_count=len(ps),
                 leads=heapq.nsmallest(30, ls), leads_count=len(ls), risk=g["risky_nodes"].get(n),
                 members=g["stacks"].get(n))
 
@@ -2564,8 +2676,12 @@ def map_page(p, view):
     x = map_graph(p, view)
     g, graph = x["g"], x["graph"]
     if p.get("node"):
-        need(p["node"] in g["people"] or p["node"] in g["leads"], f"{p['node']} is not in this graph")
-        return dict(detail={p["node"]: map_detail(g, p["node"])})
+        n, grp = p["node"], graph["groups"].get(p["node"])
+        if n in g["people"] or n in g["leads"]:
+            return dict(detail={n: map_detail(g, n)})
+        mem = (x["gx"].get(n) or {}).get("members") or grp and (grp.get("ids") or [m["id"] for m in grp["nodes"]])
+        need(mem, f"{n} is not in this graph")  # a combined box: what its members bring together
+        return dict(detail={n: map_detail(g, n, mem)})
     for grp in graph["groups"].values():
         for n in grp["nodes"]:
             dress(n, g, x["bi"])
@@ -2649,7 +2765,7 @@ def activity_page(p, view):
         total=len(x["rows"]), rows=x["rows"][:MAX_ACTIVITY], gone=gone,
         graph=g and build_graph("Who used it, through which grant", g[0], g[1], g[2],
                                 header=f"Role used, then the grant path it has now · top {a.MAX_OBJECTS} objects"
-                                if what != "object" else "User, role used, then the grant path it has now"),
+                                if what != "object" else "User, role used, then the grant path it has now", focus=p.get("focus")),
         sensitive=a.activity_sensitive(name, what, x["rows"]), query_sql=a.query_sql(name, what, x["first"], x["last"]),
         section_sql={k: a.activity_section_sql(name, what, x["first"], x["last"], k)["sql"] for k in a.ACT_SECTIONS},
         objects={o: dict(kind=(a.kinds.get(o) or "").lower() or "gone", sensitive=o in a.sens)
@@ -3658,13 +3774,13 @@ def graph_page(p, view):
         t = p.get("tab", "all")
         rows, walked = tab_rows(c["rows"], c["hidden"], c["reach"], t)
         return tab_graph(c["u"], True, rows, walked, "roles held" if walked else "privileges",
-                         src=gsrc(p, of=of, name=c["u"], tab=t), only=only)
+                         src=gsrc(p, of=of, name=c["u"], tab=t), only=only, focus=p.get("focus"))
     if of == "role-tab":
         c = role_ctx(p, view)
         t = p.get("tab", "all")
         rows, walked = tab_rows(c["eff"], [], c["held"], t)
         return tab_graph(c["r"], False, rows, walked, "roles held" if walked else "privileges",
-                         src=gsrc(p, of=of, name=c["r"], tab=t), only=only)
+                         src=gsrc(p, of=of, name=c["r"], tab=t), only=only, focus=p.get("focus"))
     raise ApiError(400, "bad_param", "of must be user, role, object, check, map, user-tab or role-tab")
 
 

@@ -130,10 +130,10 @@ function url(l: Loc) {
 function useLoc() {
   const [loc, setLoc] = useState<Loc>(read);
   useEffect(() => { const f = () => setLoc(read()); addEventListener("popstate", f); return () => removeEventListener("popstate", f); }, []);
-  const go = useCallback((n: Loc, replace = false) => {
+  const go = useCallback((n: Loc, replace = false, stay = false) => {
     history[replace ? "replaceState" : "pushState"](null, "", url(n));
     setLoc(n);
-    scrollTo(0, 0);
+    if (!stay) scrollTo(0, 0);
   }, []);
   return [loc, go] as const;
 }
@@ -401,10 +401,10 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const poll = useCallback(() => peek<Progress>("progress"), []);
 
   const nav = useCallback((page: Page, params: Params = {}) => go({ page, params, mine: loc.mine }), [go, loc.mine]);
-  const set = useCallback((patch: Record<string, string | null | undefined>) => {
+  const set = useCallback((patch: Record<string, string | null | undefined>, o: { push?: boolean; stay?: boolean } = {}) => {
     const params = { ...loc.params };
     for (const [k, v] of Object.entries(patch)) { if (v) params[k] = v; else delete params[k]; }
-    go({ ...loc, params }, true);
+    go({ ...loc, params }, !o.push, o.stay);
   }, [go, loc]);
   const setView = (mine: boolean) => go({ page: viewPage(loc.page, mine), params: {}, mine });
 

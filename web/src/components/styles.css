@@ -134,6 +134,9 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-graph-hint { position: absolute; left: 10px; bottom: 6px; font-size: 11px; pointer-events: none; }
 .ae-graph-open { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--ae-muted); margin-top: 6px; }
 .ae-graph-note { font-size: 12px; color: var(--ae-muted); margin-top: 6px; }
+.ae-graph-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; padding: 6px 10px;
+  border: 1px solid var(--ae-line); border-radius: 8px; background: var(--ae-panel); }
+.ae-graph-bar-pick { min-width: 0; overflow-wrap: anywhere; }
 
 /* legend */
 .ae-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; margin-top: 8px; }

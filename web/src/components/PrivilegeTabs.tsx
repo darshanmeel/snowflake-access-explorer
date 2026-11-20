@@ -20,6 +20,7 @@ export interface PrivilegeTabsProps {
   active?: TabKey;
   onTab?: (t: TabKey) => void;
   onNodeClick?: (n: GraphNode) => void;
+  onOnly?: (id: string | null) => void; // a server diagram: Show only this / Whole graph (focus=)
   onOpen?: (id: string) => void; // a name clicked in a table or path
   theme?: ThemeName;
   max?: number;
@@ -51,7 +52,7 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
       <div className="ae-privtab-body">
         {active === "account" && <AccountList account={account} rows={tabRows(rows, "account")} kinds={kinds} onOpen={p.onOpen} />}
         {graph && graph.nodes.length > 1
-          ? <Graph graph={graph} theme={theme} onNodeClick={p.onNodeClick} maxHeight={420} />
+          ? <Graph graph={graph} theme={theme} onNodeClick={p.onNodeClick} onOnly={local ? undefined : p.onOnly} maxHeight={420} />
           : !local && sg.error ? <p className="ae-muted" role="alert">{sg.error.message}</p>
           : !local && sg.loading ? <p className="ae-muted">Loading the diagram…</p>
           : <p className="ae-muted">Nothing in {TAB_LABEL[active]}.</p>}

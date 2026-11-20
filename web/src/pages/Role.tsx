@@ -128,7 +128,8 @@ export function RolePageView() {
           {part === "privs" && <Card title="Effective privileges and roles held" sub="Split by what they allow">
             <PrivilegeTabs rows={[]} roles={d.roles} account={d.account} refs={d.refs} tabs={d.tabs} theme={c.theme}
               server={{ ...apiParams(c), name: d.role.name, of: "role" }}
-              csvName={`${d.role.name}_privileges`} onNodeClick={o.node} onOpen={o.open} />
+              csvName={`${d.role.name}_privileges`} onNodeClick={o.node} onOpen={o.open}
+              onOnly={(id) => c.set({ focus: id }, { push: true, stay: true })} />
           </Card>}
           {part === "held" && <Card title="Held by" sub="Every user and role that gets this role, through which chain, and what a revoke would take away">
             <HeldBy d={d} />

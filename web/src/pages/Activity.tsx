@@ -54,7 +54,7 @@ const initials = (n?: string | null) => { const w = (n ?? "").split(/[_\s.]+/).f
 
 export function ActivityTab({ what, name, user }: { what: "object" | "user" | "role"; name: string; user?: string }) {
   const c = useApp();
-  const s = useApi<ActivityPage>("activity", { view: c.view, [what === "object" ? "name" : what]: name, as: user });
+  const s = useApi<ActivityPage>("activity", { view: c.view, [what === "object" ? "name" : what]: name, as: user, focus: c.params.focus });
   return <Load s={s}>{(d) => <>{d.user && <Only d={d} />}<Activity d={d} /></>}</Load>;
 }
 
