@@ -21,7 +21,8 @@ export const AppCtx = createContext<Ctx>(null as unknown as Ctx);
 export const useApp = () => useContext(AppCtx);
 
 /** API params of the page: the URL params plus view. */
-export const apiParams = (c: Ctx) => ({ ...c.params, view: c.view });
+// tfocus / afocus narrow one graph that asks on its own (a Privileges tab diagram, Activity): not the page's call
+export const apiParams = (c: Ctx) => ({ ...c.params, tfocus: undefined, afocus: undefined, view: c.view });
 
 const base = (id: string) => id.replace(/ \(user\)$/, "");
 

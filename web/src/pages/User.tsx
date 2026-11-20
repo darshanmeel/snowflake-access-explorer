@@ -36,7 +36,7 @@ export function UserPage() {
         const privs = <Card title="Privileges" sub="Read, Write, Own or Usage from the grants, each tab with its diagram and table. Tab counts are grants; the table has one row per object.">
           <PrivilegeTabs rows={[]} roles={d.roles} account={d.account} server={{ ...apiParams(c), name }}
             refs={d.refs} tabs={d.tabs} theme={c.theme} csvName={`${u.name}_privileges`} onNodeClick={o.node} onOpen={o.open}
-            onOnly={(id) => c.set({ focus: id }, { push: true, stay: true })} />
+            focus={c.params.tfocus} onOnly={(id) => c.set({ tfocus: id }, { push: true, stay: true })} />
         </Card>;
         if (pane === "privs") return <><Banners list={d.banners} />{privs}</>;
         const parts = [

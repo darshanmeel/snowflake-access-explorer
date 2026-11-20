@@ -792,29 +792,43 @@ def scope_key(o):
 
 def narrow(lanes, edges, notes, kinds, gx, focus, later=None):
     """build_graph focus=: only the lines through one box. A combined box opens into its members first (objects over
-    MAX_BOX box again per schema); the other boxes keep the members on those lines. later: the boxes fold_lanes
-    makes afterwards (a folded lane: its members are drawn here). A box not drawn: the whole graph and a note.
-    Returns lanes, edges, notes, kinds, gx, label of the focus or None, note."""
+    MAX_BOX box again per schema), a member of one (picked inside an opened box) opens it with only that member on;
+    a box whose own lines do not reach its members (a summary fold) stays one box. The other boxes keep the members
+    on those lines. later: the boxes fold_lanes makes afterwards (a folded lane: its members are drawn here). A box
+    not drawn: the whole graph and a note. Returns lanes, edges, notes, kinds, gx, label of the focus or None, note."""
     lane = (later or {}).get(focus)
+    at = focus  # the drawn box: the focus, or the combined box that holds it
     if focus not in {n for _, ns in lanes for n in ns} and not lane:
-        return lanes, edges, notes, kinds, gx, None, f"{focus} is not in this graph: all of it is shown."
+        at = next((k for k, x in gx.items() if focus in x["members"]), None)
+        if at is None:
+            return lanes, edges, notes, kinds, gx, None, f"{focus} is not in this graph: all of it is shown."
     gx, kinds = dict(gx), dict(kinds)  # often a cached graph's own: never changed in place
-    label, ids, box = a.node_name(focus), {focus}, gx.get(focus)
+    box = gx.get(at)
+    ids = ({focus} if at != focus else set(box["members"])) if box else {focus}
+    if box and not any(e[0] in ids or e[1] in ids for e in box.get("edges") or ()):
+        box, ids = None, {at}
+    blabel = lambda k: k.split(" · ")[0].strip("⋯ ")
+    label = a.node_name(focus) if box and at != focus or at not in gx else blabel(at)
     if lane:
         label, ids = f"{lane['count']} {lane['noun']}", set(lane["members"])
     if box:
         mem = box["members"]
-        label = focus.split(" · ")[0].strip("⋯ ")
-        lanes = [(lab, [m for n in ns for m in (mem if n == focus else [n])]) for lab, ns in lanes]
-        edges = [e for e in edges if focus not in e[:2]] + list(box.get("edges") or [])
-        gx, kinds, ids = {k: v for k, v in gx.items() if k != focus}, {k: v for k, v in kinds.items() if k != focus}, set(mem)
-    keep = through(edges, ids)
-    for k, x in list(gx.items()):  # a box on these lines keeps only its members on them
-        if k in keep and x.get("edges"):
-            on = {e[1] for e in x["edges"] if e[0] in keep} | {e[0] for e in x["edges"] if e[1] in keep}
-            ms = [m for m in x["members"] if m in on]
-            if ms and len(ms) < len(x["members"]):
-                gx[k] = x | dict(members=ms, count=len(ms))
+        lanes = [(lab, [m for n in ns for m in (mem if n == at else [n])]) for lab, ns in lanes]
+        edges = [e for e in edges if at not in e[:2]] + list(box.get("edges") or [])
+        gx, kinds = {k: v for k, v in gx.items() if k != at}, {k: v for k, v in kinds.items() if k != at}
+    # the walk takes the members' own lines in place of their box's: a box keeps a member only if a line through the
+    # focus reaches it, not one an ancestor's other grants reach (a box id can be a member's name: DW.CORE)
+    inner = {k for k, x in gx.items() if any(e[0] in x["members"] or e[1] in x["members"] for e in x.get("edges") or ())}
+    keep = through([e for e in edges if e[0] not in inner and e[1] not in inner]
+                   + [e for k in inner for e in gx[k]["edges"]], ids)
+    for k in inner:
+        x = gx[k]
+        ms = [m for m in x["members"] if m in keep]
+        if ms:
+            keep.add(k)
+        if ms and len(ms) < len(x["members"]):
+            gx[k] = x | dict(members=ms, count=len(ms)) | (
+                dict(label=f"{blabel(k)} · {len(ms)} {x.get('noun') or 'objects'}") if " · " in k else {})
     lanes, edges = cut(lanes, edges, keep)
     gx = {k: v for k, v in gx.items() if k in keep}
     notes = {k: v for k, v in notes.items() if k in keep}
@@ -838,8 +852,9 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
     shows = None
     if focus:
         later = None
-        if src and focus.startswith("lane:") and gx.get(focus) is None:  # a folded lane of the big graph
-            later = fold_lanes(lanes, edges, gx, kinds, hits(lanes, edges, info), {selected, start}, sizes)[2]
+        if src and focus.startswith("lane:") and gx.get(focus) is None:  # a folded lane of the big graph, once per graph
+            later = a.cached(("later", tuple(sorted(src.items())), selected, start), lambda: fold_lanes(
+                lanes, edges, gx, kinds, hits(lanes, edges, info), {selected, start}, sizes)[2])
         lanes, edges, notes, kinds, gx, shows, miss = narrow(lanes, edges, notes, kinds, gx, focus, later)
         note = " ".join(x for x in (note, miss) if x) or None
         src = src and src | dict(focus=focus)
@@ -863,7 +878,7 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
     def node(n, i, kd):
         gk = kd.get(n)
         kind = GKIND[gk] if gk else nk(n)
-        name = n if gk else a.node_name(n)
+        name = (gx.get(n) or {}).get("label", n) if gk else a.node_name(n)  # a box narrowed by focus: its new count
         gi = info.get(n, {})
         label, sub, typ, db, sc = name, None, None, None, None
         if gk:
@@ -934,7 +949,7 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
         gi = info.get(gid, {})
         classes = x.get("classes") or [c for c in a.CLS_ORDER if c in {e[2] for e in es if len(e) > 2}]
         groups[gid] = dict(
-            kind=GKIND[kinds[gid]], label=gid, noun=x.get("noun") or gi.get("noun") or "objects",
+            kind=GKIND[kinds[gid]], label=x.get("label", gid), noun=x.get("noun") or gi.get("noun") or "objects",
             count=x.get("count") or gi.get("count") or len(mem), sensitive=x.get("sensitive", gi.get("sensitive", sens)),
             findings=x.get("findings", gi.get("findings", 0)), classes=classes,
             nodes=[node(n, gl, {}) for n in shown], edges=[] if lazy else edge_list(es, lo, hits([("", shown)], es)),
@@ -1089,12 +1104,15 @@ def tab_graph(start, user, rows, walked=(), what="privileges", full_title="Graph
     """A Privileges tab's own diagram: start, the roles on the way, the objects of just these rows (walked: role paths).
     Over MAX_OBJECTS rows only the shortest path of each row is drawn. src, only: as build_graph."""
     big = len(rows) > a.MAX_OBJECTS
-    g = a.down_graph(start, [r | dict(paths=r["paths"][:1]) for r in rows] if big else rows, walked, user)
-    if not g:
+
+    def drawn():
+        g = a.down_graph(start, [r | dict(paths=r["paths"][:1]) for r in rows] if big else rows, walked, user)
+        return g and combine_tab([x for x in g[0] if x[1]], g[1], g[2], {})
+    # a big user's tab takes seconds: once per data set and params (src draws it again), so a focus only narrows
+    got = a.cached(("tab_graph", start, user, what, tuple(sorted(src.items()))), drawn) if src else drawn()
+    if not got:
         return None
-    lanes, edges, notes = [x for x in g[0] if x[1]], g[1], g[2]
-    kinds = {}
-    lanes, edges, notes, kinds, gx = combine_tab(lanes, edges, notes, kinds)
+    lanes, edges, notes, kinds, gx = got
     n = len(rows) or len(walked)
     return build_graph(full_title, lanes, edges, notes, kinds=kinds, header=f"{n} {what}" + (" · shortest path each" if big else ""),
                        level="database" if any(k == "database" for k in kinds.values()) else "object",
@@ -2627,6 +2645,11 @@ def map_graph(p, view, only=None):
         return combine_tab(ls, es, {}, {k: "fold" for k, v in g["kinds"].items() if v == "fold"}, at=at)
     # 450k grant lines of a big user roll up in seconds: once per data set and filters
     lanes, edges, _, kinds, gx = a.cached(("map_combined", start, name, same, adm, f), combined)
+    if any(f) and lanes:  # the counts above are before the filters
+        last = lanes[-1][1] if lanes[-1][0] == g["lanes"][-1][0] else []
+        mid = sum(len(ns) for _, ns in lanes[1:len(lanes) - bool(last)])
+        objs = sum((gx.get(n) or {}).get("count", 1) for n in last)
+        header += f" With the filters: {plural(mid, 'role')}, {plural(objs, 'object')}."
     src = {k: p[k] for k in ("view", "builtin", "table", "role", "user", "same", "admin", "schema", "otype", "access")
            if p.get(k)} | dict(of="map")
     graph = build_graph("Access graph", lanes, edges, kinds=kinds, selected=g["start"], header=header, gx=gx, src=src,
@@ -2664,6 +2687,9 @@ def map_detail(g, n, members=None):
         ls = set().union(*(g["leads"].get(m) or ({m} if m in a.kinds else ()) for m in members))
         lv = max((g["levels"][m] for m in members if g["levels"].get(m)), default=None,
                  key=lambda v: a.OBJ_LEVELS.index(v) if v in a.OBJ_LEVELS else len(a.OBJ_LEVELS))
+    if g["kinds"].get(n) == "fold" and not ls:  # the built-ins box: what PUBLIC brings, the grants build() left out
+        on = a.ROLE_ON + ("APPLICATION_ROLE",)
+        ls = {x["OBJECT_NAME"] for x in a.hidden if x["GRANTED_ON"] not in on}
     return dict(level=lv, people=heapq.nsmallest(30, ps), people_count=len(ps),
                 leads=heapq.nsmallest(30, ls), leads_count=len(ls), risk=g["risky_nodes"].get(n),
                 members=g["stacks"].get(n))

@@ -947,6 +947,21 @@ def test_graph_focus():  # focus=<box>: only the lines through it, on every grap
     t = js(f"/api/graph?of=user-tab&name=ENGINEER_01&tab=all&focus={a.TECH}SALES_CORE_READ")
     assert t["focus"]["id"] == f"{a.TECH}SALES_CORE_READ"
     assert js(f"/api/graph?of=user&name=ENGINEER_01&focus={a.FUNC}ANALYST")["focus"]["id"] == f"{a.FUNC}ANALYST"
+    m = js("/api/map?focus=SALES.CORE")["graph"]  # a member of the SALES box (picked in the opened box): it alone
+    assert m["focus"]["id"] == "SALES.CORE" and not m["note"] and "SALES.CORE" in ids(m) and len(m["nodes"]) < len(whole["nodes"])
+    assert not any(n["id"].startswith("SALES.") and n["id"] != "SALES.CORE" for n in m["nodes"])
+    e = js(f"/api/role?name={a.FUNC}ENGINEER&focus=HR.PEOPLE.TBL_EMPLOYEE")["graph"]
+    assert e["focus"]["id"] == "HR.PEOPLE.TBL_EMPLOYEE" and "HR.PEOPLE.TBL_EMPLOYEE" in ids(e) and not e["note"]
+    dw = js("/api/user?name=DW_DEV_01&focus=DW.SC_R_CORE")["graph"]  # what the role leads to, not its ancestors' grants
+    assert [n["id"] for n in dw["groups"]["DW.CORE"]["nodes"]] == [f"DW.CORE.TBL_CORE_0{i}" for i in (1, 2, 3)]
+    fold = next(n["id"] for n in whole["nodes"] if n["kind"] == "fold")  # the built-ins box: what PUBLIC brings
+    assert js("/api/map?node=" + quote(fold))["detail"][fold]["leads_count"] > 0
+    assert "With the filters: 3 roles, 1 object." in hr["header"]
+    lanes = [("User", ["U"]), ("Granted roles", ["R"]), ("Roles between", ["F"]), ("Grant holders", ["H1", "H2"])]
+    es, gx = [("U", "R"), ("R", "F"), ("F", "H1"), ("F", "H2")], {"F": dict(members=["X", "Y"], edges=[("R", "H1")])}
+    for f in ("F", "X"):  # a summary fold whose lines miss its members: the box itself, never 3 boxes without lines
+        ls, out, _, _, _, label, note = server.narrow(lanes, es, {}, {"F": "fold"}, gx, f)
+        assert label == "F" and not note and {n for _, ns in ls for n in ns} == {"U", "R", "F", "H1", "H2"} and len(out) == 4
 
 
 def test_graph_see_compare():  # screens 4, 7, 9

@@ -1,9 +1,9 @@
 // Lane graph: ELK lays it out (one lane per depth, left to right, orthogonal bundled lines), React Flow draws it.
 // Crowded lanes fold (database roles per database, group roles); folded and combined boxes open on click, big ones
 // by schema / type first. Hover (or keyboard focus, or a first tap on a touch screen) shows what a box or line is in
-// words and lights up every path through it; Enter / Space or a second tap opens it. With onOnly / onPick a click picks
-// any box, combined ones too, and a bar above offers Show only this (the server redraws the lines through it), Open
-// and Whole graph (Escape). A tall drawing starts centred on the selected box; up to 6 lanes it is shrunk to fit when
+// words and lights up every path through it; Enter / Space or a second tap opens it. With onOnly / onPick a click (or
+// Enter) picks any box, combined ones too, instead, and a bar above offers Show only this (the server redraws the lines
+// through it; the keyboard lands on Whole graph), Open and Whole graph (Escape). A tall drawing starts centred on the selected box; up to 6 lanes it is shrunk to fit when
 // that keeps the labels readable.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -69,6 +69,9 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   const [failed, setFailed] = useState<string | null>(null);
   const [pick, setPick] = useState<GraphNode | null>(null);
   const bar = useRef<HTMLDivElement>(null);
+  const whole = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false); // Show only this removed its own button: the focused graph puts the keyboard on Whole graph
+  useEffect(() => { if (refocus.current && graph.focus) { refocus.current = false; whole.current?.focus({ preventScroll: true }); } }, [graph]);
   useEffect(() => { setOpen(new Map()); setGot({}); setFailed(null); setPick(null); }, [graph]);
   const full = useMemo(() => (Object.keys(got).length ? { ...graph, groups: { ...graph.groups, ...got } } : graph), [graph, got]);
   const folded = useMemo(() => foldRoles(full), [full]);
@@ -162,7 +165,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     return [n.name === n.label || isBox(n) ? n.label : n.name, isBox(n) ? n.sub : KIND_LABEL[n.kind] ?? n.raw_kind ?? n.kind,
       n.badge && isBox(n) ? `By grants: ${n.badge}` : "", isBox(n) ? "" : n.tip,
       n.rules.length ? ["Rules broken (click the badge):", ...n.rules.map((r) => `  ${r.num} · ${r.severity} · ${r.title}`)].join("\n") : "",
-      grp ? `Click to open${buckets(grp.nodes) ? ", grouped" : ""}` : ""]
+      grp ? (onOnly || onPick ? "Click to pick: Show only this or Open the box" : `Click to open${buckets(grp.nodes) ? ", grouped" : ""}`) : ""]
       .filter(Boolean).join("\n");
   };
   const tapOrClick = (ev: React.MouseEvent, n: GraphNode) => {
@@ -199,12 +202,12 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
         <div className="ae-graph-bar" ref={bar} role="toolbar" aria-label="Picked box" onKeyDown={(e) => { if (e.key === "Escape") escape(); }}>
           {graph.focus && onOnly && <>
             <span>Only the lines through <b className="ae-mono">{graph.focus.label}</b></span>
-            <button type="button" className="ae-btn" onClick={() => onOnly(null)} title="Back to the whole graph (Escape)">Whole graph</button>
+            <button type="button" className="ae-btn" ref={whole} onClick={() => onOnly(null)} title="Back to the whole graph (Escape)">Whole graph</button>
           </>}
           {pick && <>
             <span className="ae-graph-bar-pick"><b className="ae-mono">{pick.name === pick.label || isBox(pick) ? pick.label : pick.name}</b> <span className="ae-muted">{word(pick)}</span></span>
             {onOnly && known.has(pick.id) && pick.id !== graph.focus?.id &&
-              <button type="button" className="ae-btn ae-btn-primary" onClick={() => { setPick(null); onOnly(pick.id); }}>Show only this</button>}
+              <button type="button" className="ae-btn ae-btn-primary" onClick={() => { refocus.current = true; setPick(null); onOnly(pick.id); }}>Show only this</button>}
             {opens(pick) && <button type="button" className="ae-btn" onClick={() => { setPick(null); act(pick); }}>Open the box</button>}
             {!opens(pick) && onNodeClick && pick.action &&
               <button type="button" className="ae-btn" onClick={() => onNodeClick(pick)}>{pick.action.kind === "full" ? "Draw the full chain" : "Open its page"}</button>}

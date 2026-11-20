@@ -58,7 +58,7 @@ export function GraphPageView() {
             onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />}
         {mode !== "object" && !none && <Filters trace={tab === "trace"} />}
       </div>
-      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k })} tabs={[
+      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k, focus: null, sel: null })} tabs={[
         { key: "diagram", label: "Role hierarchy, by depth" },
         { key: "trace", label: "Trace graph" },
       ]} />
