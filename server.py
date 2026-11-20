@@ -726,6 +726,20 @@ def lane_depth(label):
     return int(m.group(1)) if m else None
 
 
+LEVEL_WORD = {"names": "see its names", "use": "use it", "read": "read", "change": "change", "own": "own", "admin": "through an admin role"}
+
+
+def focus_access(o):
+    """Who has access to a focused database, schema or object, as the Object page's Who tab counts it (a.who_has):
+    people per level, most first, and the roles on the way; None for a role or a box."""
+    if o not in a.kinds:
+        return None
+    w = a.cached(("who_has", o), lambda: a.who_has(o, a.kinds[o]))
+    n = Counter(x["level"] for x in w["people"])
+    return dict(type=a.kinds[o], people=len(w["people"]), roles=len(w["roles"]),
+                levels=[dict(level=k, word=LEVEL_WORD.get(k, k), n=n[k]) for k in a.OBJ_LEVELS[::-1] if n[k]])
+
+
 def fold_lanes(lanes, edges, gx, kinds, info, keep, sizes=None):
     """A big graph's crowded lanes (over MAX_LANE roles or people) as one box each, "lane:<i>" for its roles and
     "lane:<i>:people" for its people (PUBLIC brings every user), as the graph component folds role lanes (graphs.ts
@@ -962,7 +976,7 @@ def build_graph(title, lanes, edges, notes=None, info=None, kinds=None, selected
     eds = edge_list(edges, lane_of, info)
     allnodes = nodes + [n for g in groups.values() for n in g["nodes"]]
     return dict(
-        title=title, header=header, level=level, note=note, full=full, selected=selected, focus=shows and dict(id=focus, label=shows),
+        title=title, header=header, level=level, note=note, full=full, selected=selected, focus=shows and dict(id=focus, label=shows, access=focus_access(focus)),
         lanes=[dict(index=i, label=lab, depth=lane_depth(lab)) for i, (lab, _) in enumerate(lanes)],
         nodes=nodes, edges=eds, groups=groups, src=src if lazy else None,
         legend=dict(kinds=list(dict.fromkeys(n["kind"] for n in nodes)),

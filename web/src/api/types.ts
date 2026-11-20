@@ -124,6 +124,9 @@ export interface GraphGroup {
   ids?: string[] | null; // a lazy folded role lane ("lane:<i>"): its role names, so other boxes' lines can end at it
 }
 
+/** Who has access to a focused database, schema or object (the Object page's Who tab counts). */
+export interface FocusAccess { type: string; people: number; roles: number; levels: { level: string; word: string; n: number }[] }
+
 export interface Graph {
   title: string;
   header: string;
@@ -136,7 +139,7 @@ export interface Graph {
   edges: GraphEdge[];
   groups: Record<string, GraphGroup>;
   src?: Record<string, string> | null; // graph endpoint params of this graph when its boxes are lazy
-  focus?: { id: string; label: string } | null; // focus=<box>: only the lines through it are drawn
+  focus?: { id: string; label: string; access?: FocusAccess | null } | null; // focus=<box>: only the lines through it are drawn
   legend: { kinds: NodeKind[]; edges: EdgeCls[]; marks: Mark[]; rules: boolean; back?: boolean }; // back: a dotted "also deeper" line is drawn
 }
 

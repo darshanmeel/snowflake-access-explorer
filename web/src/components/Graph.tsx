@@ -125,13 +125,13 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     ...Object.values(full.groups).flatMap((g) => g.nodes.map((n) => n.id))]), [graph, full]);
   const opens = (n: GraphNode) => n.action?.kind === "expand" || (!!shown.groups[n.id] && isBox(n));
   const click = (n: GraphNode, key = false) => {
-    if (onOnly || onPick) {
-      setPick(n);
-      if (known.has(n.id)) onPick?.(n);
-      if (key) requestAnimationFrame(() => (bar.current?.querySelector<HTMLElement>(".ae-btn-primary")
-        ?? bar.current?.querySelector("button"))?.focus()); // the keyboard goes on to the bar
+    if (onOnly && known.has(n.id) && n.id !== graph.focus?.id) {  // a click shows only the lines through it, at once
+      onPick?.(n);
+      refocus.current = key;
+      onOnly(n.id);
       return;
     }
+    if (onPick && known.has(n.id)) { onPick(n); if (!opens(n)) return; }
     act(n);
   };
   const act = (n: GraphNode) => {
@@ -192,27 +192,18 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   const escape = () => {
     setHover(null);
     setTip(null);
-    if (pick) setPick(null); else if (graph.focus) onOnly?.(null);
+    if (graph.focus) onOnly?.(null);
   };
   const word = (n: GraphNode) => (isBox(n) ? n.sub ?? "combined box" : KIND_LABEL[n.kind] ?? n.kind);
 
   return (
     <div className="ae-graph-wrap">
-      {(pick || (graph.focus && onOnly)) && (
-        <div className="ae-graph-bar" ref={bar} role="toolbar" aria-label="Picked box" onKeyDown={(e) => { if (e.key === "Escape") escape(); }}>
-          {graph.focus && onOnly && <>
-            <span>Only the lines through <b className="ae-mono">{graph.focus.label}</b></span>
-            <button type="button" className="ae-btn" ref={whole} onClick={() => onOnly(null)} title="Back to the whole graph (Escape)">Whole graph</button>
-          </>}
-          {pick && <>
-            <span className="ae-graph-bar-pick"><b className="ae-mono">{pick.name === pick.label || isBox(pick) ? pick.label : pick.name}</b> <span className="ae-muted">{word(pick)}</span></span>
-            {onOnly && known.has(pick.id) && pick.id !== graph.focus?.id &&
-              <button type="button" className="ae-btn ae-btn-primary" onClick={() => { refocus.current = true; setPick(null); onOnly(pick.id); }}>Show only this</button>}
-            {opens(pick) && <button type="button" className="ae-btn" onClick={() => { setPick(null); act(pick); }}>Open the box</button>}
-            {!opens(pick) && onNodeClick && pick.action &&
-              <button type="button" className="ae-btn" onClick={() => onNodeClick(pick)}>{pick.action.kind === "full" ? "Draw the full chain" : "Open its page"}</button>}
-            <button type="button" className="ae-link" onClick={() => setPick(null)} aria-label="Close">×</button>
-          </>}
+      {graph.focus && onOnly && (
+        <div className="ae-graph-bar" ref={bar} role="toolbar" aria-label="Shown box" onKeyDown={(e) => { if (e.key === "Escape") escape(); }}>
+          <span>Only the lines through <b className="ae-mono">{graph.focus.label}</b>
+            {graph.focus.access && <span className="ae-muted"> · {graph.focus.access.people} {graph.focus.access.people === 1 ? "person has" : "people have"} access: {graph.focus.access.levels.map((l) => `${l.n} ${l.word}`).join(" · ")}</span>}</span>
+          {graph.focus.access && onNodeClick && <button type="button" className="ae-link" onClick={() => onNodeClick({ id: graph.focus!.id, label: graph.focus!.label, kind: "object", action: { kind: "page", page: "object", params: { name: graph.focus!.id } } } as unknown as GraphNode)}>Who has access →</button>}
+          <button type="button" className="ae-btn ae-btn-primary" ref={whole} onClick={() => onOnly(null)} title="Back to the whole graph (Escape)">Show all</button>
         </div>
       )}
       <div className="ae-graph" ref={box} style={{ height, background: t.panel }} aria-busy={busy}
