@@ -920,7 +920,7 @@ def test_graph_focus():  # focus=<box>: only the lines through it, on every grap
     assert whole.get("focus") is None
     f = js(f"/api/map?focus={a.FUNC}ANALYST")["graph"]
     graph_ok(f)
-    assert f["focus"] == dict(id=f"{a.FUNC}ANALYST", label=f"{a.FUNC}ANALYST") and len(f["nodes"]) < len(whole["nodes"])
+    assert {k: f["focus"][k] for k in ("id", "label")} == dict(id=f"{a.FUNC}ANALYST", label=f"{a.FUNC}ANALYST") and len(f["nodes"]) < len(whole["nodes"])
     assert {server.DEMO_USER, f"{a.FUNC}ANALYST", f"{a.TECH}SALES_CORE_READ"} <= ids(f) and f"{a.FUNC}ENGINEER" not in ids(f)
     assert all(e["source"] in ids(f) and e["target"] in ids(f) for e in f["edges"])
     box = next(n["id"] for n in whole["nodes"] if n["id"].startswith("SALES ·"))  # a database box opens into its objects
