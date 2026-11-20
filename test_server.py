@@ -245,6 +245,14 @@ def test_big_lanes():
     assert len(get(f"/api/privs.csv?name={r}&of=role&tab=all").text.strip().splitlines()) == pv["total"] + 1
 
 
+def test_access_type():  # Access list: object type filter, the types present with counts
+    d = js("/api/access?user=ENGINEER_01")
+    ts = {t["type"]: t["n"] for t in d["types"]}
+    assert ts["VIEW"] >= 1 and sum(ts.values()) == d["total"]
+    v = js("/api/access?user=ENGINEER_01&otype=VIEW")
+    assert v["total"] == ts["VIEW"] and {o["type"] for o in v["objects"]} == {"VIEW"}
+
+
 def test_check_narrow():  # No: a Streamlit app asks USAGE; the narrowest grant first, the ways to own it apart
     d = js("/api/check?name=ANALYST_01&obj=SALES.MART.ST_CUSTOMER_LOOKUP&near=1")
     assert d["verdict"] == "no" and d["ask_priv"] == "USAGE" and "USAGE" in d["privileges"]

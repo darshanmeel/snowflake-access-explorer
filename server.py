@@ -1494,14 +1494,15 @@ def group_of(o, by):
 
 def access_list(p, objs):
     """The Access list entries the page asks for: data (usage=1: with database / schema USAGE), filter=read|change|own|
-    multi, q= in the name, cell=<schema>&min=read|change|own|sensitive (a heat cell), sort=risk|name, group=schema|type
+    multi, q= in the name, otype= one object type, cell=<schema>&min=read|change|own|sensitive (a heat cell), sort=risk|name, group=schema|type
     (kept together, in that order)."""
     lvl, q, cell, low = p.get("filter", "all"), p.get("q", "").lower(), p.get("cell", ""), p.get("min", "")
+    otype = p.get("otype", "")
     usage = flag(p, "usage")
     step = lambda x, k: not x["label"] and (x["level"] in (k,) if k in ("read", "change") else at_least(x, "own") if k == "own" else False)
     keep = lambda x: (lvl == "all" or (x["ways"] > 1 if lvl == "multi" else step(x, lvl) if lvl in ("read", "change", "own")
                                        else True)) \
-        and (not q or q in x["object"].lower()) \
+        and (not q or q in x["object"].lower()) and (not otype or x["type"] == otype) \
         and (not cell or (group_of(x, "schema") == cell and (x["sensitive"] if low == "sensitive" else step(x, low))))
     xs = [x for x in objs if (x["category"] == "data" or (usage and x["category"] == "names")) and keep(x)]
     if p.get("sort") == "name":
@@ -1565,7 +1566,9 @@ def access_page(p, view):
     out = lambda o: {k: v for k, v in o.items() if k != "holders"}
     hq = p.get("hq", "").lower()
     heat = [h for h in x["heat"] if hq in h["schema"].lower()]
+    types = Counter(o["type"] for o in objs if o["category"] == "data" or (usage and o["category"] == "names")).most_common()
     return dict(view=view, who=who, counts=x["counts"], objects=[out(o) for o in page], total=len(xs),
+                types=[dict(type=t, n=n) for t, n in types],
                 data=sum(o["category"] == "data" or (usage and o["category"] == "names") for o in objs),
                 offset=off, limit=lim, groups=groups, runs=[out(o) for o in runs[:PAGE]], runs_total=len(runs),
                 powers=[out(o) for o in powers[:PAGE]], powers_total=len(powers), heat=heat[:HEAT],

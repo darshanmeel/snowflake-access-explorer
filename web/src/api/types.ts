@@ -1071,6 +1071,7 @@ export interface AccessPage {
   view: View;
   who: Who;
   counts: LadderCounts & { sensitive: number; schemas: number };
+  types?: { type: string; n: number }[]; // object types in the list, most first (the Type filter)
   objects: AccessObject[]; // one page (offset, limit) of the list filters asked for; total: all that match
   total: number;
   data: number; // entries in the list before the filters (data, plus names with usage=1)

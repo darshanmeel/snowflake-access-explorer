@@ -8,7 +8,7 @@ import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { RolePageView } from "./Role";
 import { UserPage } from "./User";
-import { Load, Pick, PickFirst, unread } from "./common";
+import { Load, Pick, PickFirst, Sel, unread } from "./common";
 import { ladderParts, recent, remember } from "./Home";
 import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
@@ -56,6 +56,7 @@ function Body({ d }: { d: AccessPage }) {
   const [usage, setUsage] = useState(false);
   const [group, setGroup] = useState<GroupBy>("none");
   const [sort, setSort] = useState("risk");
+  const [otype, setOtype] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [cell, setCell] = useState<{ schema: string; min: string } | null>(null);
   const [sq, setSq] = useState(""); // q as sent, a moment after the last key
@@ -66,7 +67,7 @@ function Body({ d }: { d: AccessPage }) {
   useEffect(() => { const t = setTimeout(() => setSq2(hq), 250); return () => clearTimeout(t); }, [hq]);
   const hs = useApi<AccessPage>(sq2 ? "access" : null, { ...subjectOf(c), hq: sq2 });
   const heat = sq2 ? hs.data ?? d : d;
-  useEffect(() => setPage(0), [lvl, sq, usage, group, sort, cell]);
+  useEffect(() => setPage(0), [lvl, sq, usage, group, sort, cell, otype]);
   const w = d.who, n = d.counts, user = w.kind === "user";
   const adm = d.admin_roles ?? [], adminRole = !user && adm.includes(w.name); // admin role links are dropped: zero would read as safe
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
@@ -74,7 +75,7 @@ function Body({ d }: { d: AccessPage }) {
   const show = asked === "privs" && !user ? "detail" : asked; // a role has no Privileges tab: picking one from a person's keeps show
   // the list is filtered, sorted and paged on the server: a big user has 100k+ objects
   const ask = { ...subjectOf(c), filter: lvl === "all" ? null : lvl, q: sq || null, usage: usage ? "1" : null, group: group === "none" ? null : group,
-    sort: sort === "risk" ? null : sort, cell: cell?.schema, min: cell?.min, offset: page ? String(page * d.limit) : null };
+    sort: sort === "risk" ? null : sort, otype: otype || null, cell: cell?.schema, min: cell?.min, offset: page ? String(page * d.limit) : null };
   const first = Object.entries(ask).every(([k, v]) => v == null || k === "view" || k === "user" || k === "role");
   const l = useApi<AccessPage>(first ? null : "access", ask);
   const list = first ? d : l.data ?? d;
@@ -132,7 +133,7 @@ function Body({ d }: { d: AccessPage }) {
         <div className="ae-tile ae-tile-sens" title={tagsOff ? `${tagsOff.title}: sensitivity unknown` : undefined}><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{tagsOff ? "not read" : n.sensitive}</span></div>
         <button type="button" className="ae-tile" onClick={() => document.getElementById("runs")?.scrollIntoView()}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
       </div>
-      <div className="ae-two">
+      <div>
         <Card title="Where the access is" sub={`Objects per schema, each at the most they can do; riskiest ${d.heat_total > HEAT_MIN ? `${heat.heat.length} of ${d.heat_total} ` : ""}schemas first. Click a cell to filter the list.`}>
           {d.heat_total > HEAT_MIN && <input className="ae-input" placeholder={`Search ${d.heat_total} schemas`} value={hq} onChange={(e) => setHq(e.target.value)} aria-label="Search schemas" />}
           {heat.heat.length ? (
@@ -140,7 +141,7 @@ function Body({ d }: { d: AccessPage }) {
               <div role="row" className="ae-heat-h"><span>Schema</span><span>Read only</span><span>Change</span><span>Own</span><span>Sensitive</span></div>
               {heat.heat.map((h) => (
                 <div role="row" key={h.schema}>
-                  <span className="ae-mono">{h.schema}</span>
+                  <span className="ae-mono" title={h.schema}>{h.schema}</span>
                   {(["read", "change", "own", "sensitive"] as const).map((k) => (
                     <button type="button" key={k} disabled={!h[k]} className={`ae-heat-c ${h[k] ? (k === "sensitive" ? "ae-sens-tag" : `ae-lvl-${k}`) : ""}${cell?.schema === h.schema && cell.min === k ? " on" : ""}`}
                       onClick={() => { setCell({ schema: h.schema, min: k }); c.set({ show: "summary" }); }}>{h[k] || "·"}</button>
@@ -183,6 +184,8 @@ function Body({ d }: { d: AccessPage }) {
             { key: "all", label: "All", count: list.data }, { key: "read", label: "Read only" }, { key: "change", label: "Can change" },
             { key: "own", label: "Owns" }, { key: "multi", label: "More than one way" }]} />
           <Toggle label={`Show ${n.usage} database/schema USAGE grants`} on={usage} onPick={setUsage} />
+          <Sel label="Type" value={otype} onPick={setOtype}
+            options={[["", "Every type"], ...(list.types ?? d.types ?? []).map((t): [string, string] => [t.type, `${t.type.toLowerCase()} (${t.n})`])]} />
           <FilterChips label="Group by" value={group} onPick={(k) => setGroup(k as GroupBy)} items={[{ key: "none", label: "No groups" }, { key: "schema", label: "Schema" }, { key: "type", label: "Type" }]} />
           <FilterChips label="Sort" value={sort} onPick={setSort} items={[{ key: "risk", label: "Riskiest first" }, { key: "name", label: "Name" }]} />
           {cell && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setCell(null)}>{cell.schema} · {cell.min} ×</button>}
