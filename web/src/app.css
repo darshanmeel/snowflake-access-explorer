@@ -902,7 +902,9 @@ div.ae-tile { cursor: default; }
 .ae-ruletile .ae-muted { font-size: 11px; white-space: nowrap; }
 .ae-ruletile:hover { border-color: var(--ae-ink); } .ae-ruletile:focus-visible { outline: 2px solid var(--ae-accent); }
 
-.ae-lines { display: grid; gap: 1px; } .ae-lines .ae-plain { color: var(--ae-ink); } .ae-lines .ae-tone-bad { color: var(--ae-bad_ink); font-weight: 600; }
+.ae-lines { display: grid; gap: 2px; margin: 0; padding-left: 16px; max-width: 280px; }
+.ae-lines li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line each: the full name on hover */
+.ae-lines .ae-lines-more { list-style: none; margin-left: -16px; } .ae-lines .ae-plain { color: var(--ae-ink); } .ae-lines .ae-tone-bad { color: var(--ae-bad_ink); font-weight: 600; }
 .ae-hc-unit { font-size: 12px; font-weight: 400; }
 .ae-act { display: grid; margin: -4px -16px 0; }
 .ae-act-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 16px; border-top: 1px solid var(--ae-line); }

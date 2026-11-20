@@ -169,20 +169,24 @@ export const RISK_WORD = { bad: "Risk", warn: "Check" } as const;
 
 /** What needs attention at the top of a page, worst first as the server sends it: the word (never colour alone), the
  * count, one line and a link to the detail. Nothing risky: one quiet line. */
-export function RiskStrip({ items, onOpen }: { items: RiskLine[]; onOpen: (l: RiskLine["link"]) => void }) {
+export function RiskStrip({ items, onOpen, top = 3 }: { items: RiskLine[]; onOpen: (l: RiskLine["link"]) => void; top?: number }) {
+  const [all, setAll] = useState(false);
   if (!items.length) return <p className="ae-risk-none">No risks found</p>;
+  const shown = all ? items : items.slice(0, top); // the most severe first; the rest behind +N more
   return (
     <section className="ae-risks" aria-label="Risks">
       <ul>
-        {items.map((x) => (
+        {shown.map((x) => (
           <li key={x.text} className={`ae-risk ae-tone-${x.severity}`}>
             <span className="ae-risk-word">{RISK_WORD[x.severity]}</span>
             <b className="ae-risk-n">{x.n.toLocaleString()}</b>
-            <span className="ae-risk-text">{x.text}</span>
+            <span className="ae-risk-text" title={x.text}>{x.text}</span>
             <button type="button" className="ae-link ae-risk-link" onClick={() => onOpen(x.link)}>{x.link.label} →</button>
           </li>
         ))}
       </ul>
+      {items.length > top && <button type="button" className="ae-link ae-risk-more" onClick={() => setAll(!all)}>
+        {all ? "show fewer" : `+${items.length - top} more risk${items.length - top === 1 ? "" : "s"}`}</button>}
     </section>
   );
 }

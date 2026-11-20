@@ -237,14 +237,19 @@ function StaleTable({ d }: { d: RulesPage }) {
 }
 
 /** One item per line, the strong ones in red; over 4 the rest fold into "+N more". */
+const TOP_LINES = 3; // a cell lists this many, one per line, then "+N more"
+
+/** A short bulleted list: the strong (red) ones first, TOP_LINES of them, each on one line, the rest behind +N more. */
 function Lines({ items, strong }: { items: string[]; strong: string[] }) {
   const [all, setAll] = useState(false);
-  const shown = all ? items : items.slice(0, 4);
+  const xs = [...items].sort((a, b) => Number(strong.includes(b)) - Number(strong.includes(a)));
+  const shown = all ? xs : xs.slice(0, TOP_LINES);
   return (
-    <div className="ae-lines">
-      {shown.map((x) => <div key={x} className={strong.includes(x) ? "ae-tone-bad" : "ae-plain"}>{x}</div>)}
-      {items.length > 4 && <button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `+${items.length - 4} more`}</button>}
-    </div>
+    <ul className="ae-lines">
+      {shown.map((x) => <li key={x} title={x} className={strong.includes(x) ? "ae-tone-bad" : "ae-plain"}>{x}</li>)}
+      {xs.length > TOP_LINES && <li className="ae-lines-more"><button type="button" className="ae-link" onClick={() => setAll(!all)}>
+        {all ? "show fewer" : `+${xs.length - TOP_LINES} more`}</button></li>}
+    </ul>
   );
 }
 
