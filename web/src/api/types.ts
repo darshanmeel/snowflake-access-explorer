@@ -47,6 +47,14 @@ export interface LinkTo {
   params: Record<string, string>;
 }
 
+/** One line of the risk strip (server.subject_risks / object_risks), worst first. */
+export interface RiskItem {
+  severity: "bad" | "warn";
+  text: string;
+  n: number;
+  link: LinkTo;
+}
+
 export interface Banner {
   tone: Tone;
   title: string;
@@ -473,6 +481,7 @@ export interface HeldRow {
 
 export interface RolePage {
   view: View;
+  risks: RiskItem[];
   role: { id: string; name: string; kind: NodeKind; owner: string[]; admin: boolean };
   filters: {
     depth: number | null;
@@ -672,6 +681,7 @@ export interface Inside {
 }
 
 export interface CheckPage {
+  risks: RiskItem[]; // the subject's and the object's, each line prefixed with its name; [] = no strip
   verdict: "yes" | "partly" | "no" | "blocked"; // blocked: the privilege is held, USAGE on its database or schema is not
   subject: Subject;
   layers: { step: string; ok: boolean; result: string; reason: string }[] | null;
@@ -1074,6 +1084,7 @@ export interface Who {
 export interface AccessPage {
   view: View;
   who: Who;
+  risks: RiskItem[];
   counts: LadderCounts & { sensitive: number; schemas: number };
   types?: { type: string; n: number }[]; // object types in the list, most first (the Type filter)
   objects: AccessObject[]; // one page (offset, limit) of the list filters asked for; total: all that match
@@ -1179,6 +1190,7 @@ export interface WhoPage {
     id: string | null; preset: "admin" | null; type: string; database: string | null; schema: string | null; name: string;
     sensitive: boolean; tags: string[]; columns: number; masking: string[]; row_policies: string[]; owners: string[]; owner_note: string;
   };
+  risks: RiskItem[] | null; // null for the admin preset
   people: WhoPerson[]; // the first 200 matching q= (plus as= and sel=); shown counts every match
   shown: { people: number; roles: number; groups: number }; // with q= and st=
   st: WhoState | ""; // people of one state only, filtered before the cap

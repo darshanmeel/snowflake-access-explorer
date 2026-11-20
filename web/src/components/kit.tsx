@@ -164,6 +164,29 @@ export function EmptyState({ title, children, art = "empty" }: { title: ReactNod
   return <div className={`ae-empty ae-empty-${art}`}><EmptyArt art={art} /><b>{title}</b>{children && <p>{children}</p>}</div>;
 }
 
+export interface RiskLine { severity: "bad" | "warn"; text: string; n: number; link: { label: string; page: string; params: Record<string, string> } }
+export const RISK_WORD = { bad: "Risk", warn: "Check" } as const;
+
+/** What needs attention at the top of a page, worst first as the server sends it: the word (never colour alone), the
+ * count, one line and a link to the detail. Nothing risky: one quiet line. */
+export function RiskStrip({ items, onOpen }: { items: RiskLine[]; onOpen: (l: RiskLine["link"]) => void }) {
+  if (!items.length) return <p className="ae-risk-none">No risks found</p>;
+  return (
+    <section className="ae-risks" aria-label="Risks">
+      <ul>
+        {items.map((x) => (
+          <li key={x.text} className={`ae-risk ae-tone-${x.severity}`}>
+            <span className="ae-risk-word">{RISK_WORD[x.severity]}</span>
+            <b className="ae-risk-n">{x.n.toLocaleString()}</b>
+            <span className="ae-risk-text">{x.text}</span>
+            <button type="button" className="ae-link ae-risk-link" onClick={() => onOpen(x.link)}>{x.link.label} →</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export interface BarPart { key: string; label: string; value: number; cls: string } // cls: an ae-bar-* colour
 
 /** One stacked bar with its legend: parts sized by value. onPick makes each part (and its legend entry) a filter. */

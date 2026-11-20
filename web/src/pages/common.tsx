@@ -1,8 +1,8 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
 import { useEffect, useState, type ReactNode } from "react";
 import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
-import type { Banner as B, ListItem, Meta, Note, Sees, Finding, Graph as G, Refs, Severity, StateWhy, UsageCard } from "../api/types";
-import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, Waiting, type Column } from "../components";
+import type { Banner as B, ListItem, Meta, Note, Page, RiskItem, Sees, Finding, Graph as G, Refs, Severity, StateWhy, UsageCard } from "../api/types";
+import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, RiskStrip, Waiting, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
@@ -54,6 +54,13 @@ export function CutBanner({ capped, no }: { capped: string[]; no?: boolean }) {
   if (!capped.length) return null;
   return <Banner tone="warn" title={no ? "Not conclusive: some walks were cut" : "Some walks were cut"}
     lines={[`Chains longer than ${c.meta.limits.max_hops} hops were stopped: ${capped.slice(0, 5).join(", ")}${capped.length > 5 ? ` and ${capped.length - 5} more` : ""}`]} />;
+}
+
+/** The risk strip at the top of a page; quiet: no "No risks found" line (Can they? shows it only when there is one). */
+export function Risks({ list, quiet = false }: { list: RiskItem[] | null | undefined; quiet?: boolean }) {
+  const c = useApp();
+  if (!list || (quiet && !list.length)) return null;
+  return <RiskStrip items={list} onOpen={(l) => c.nav(l.page as Page, l.params)} />;
 }
 
 export function Banners({ list }: { list: B[] }) {

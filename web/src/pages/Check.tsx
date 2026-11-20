@@ -8,7 +8,7 @@ import type { CheckPage, Inside, ListItem, Path, Refs } from "../api/types";
 import { Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, NameList, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine, warehouseNote } from "./verdict";
-import { col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Sel, StateTag } from "./common";
+import { col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Risks, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
 export function CheckPageView() {
@@ -49,6 +49,7 @@ function Body({ d }: { d: CheckPage }) {
   const at = tabs.some((t) => t.key === show) ? show : "answer";
   return (
     <>
+      <Risks list={d.risks} quiet />
       <section className={`ae-verdict ae-verdict-${d.verdict}`} aria-label="Answer">
         <div className="ae-verdict-head">
           <span className="ae-verdict-mark" aria-hidden>{MARK[d.verdict]}</span>
