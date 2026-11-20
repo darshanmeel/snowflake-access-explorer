@@ -1625,18 +1625,19 @@ def live(query, old=None, old_use=None):
         note("activity", "SKIPPED" if why == SKIP_ACTIVITY else "UNAVAILABLE", line(e))
 
     try:  # streams: ACCOUNT_USAGE.STREAMS when ACCOUNT_USAGE is read (one query), else SHOW (what this role can see)
+        streams_au = src.get("grants") == "ACCOUNT_USAGE"
         try:
-            if src.get("grants") != "ACCOUNT_USAGE":
-                raise LookupError("ACCOUNT_USAGE not read")
+            if not streams_au:
+                raise RuntimeError("ACCOUNT_USAGE not read")
             d["STREAM"] = [dict(STREAM_NAME=x["STREAM"], SOURCE_NAME=clean(x.get("TABLE_NAME")), SOURCE_TYPE=blank(x.get("SOURCE_TYPE")))
                            for x in say("ACCOUNT_USAGE.STREAMS…") or rows(STREAMS_SQL)]
-            how = "ACCOUNT_USAGE"
-        except Exception:
+            how, why = "ACCOUNT_USAGE", None
+        except Exception as e:
             d["STREAM"] = [dict(STREAM_NAME=f"{x['database_name']}.{x['schema_name']}.{clean(x['name'])}",
                                 SOURCE_NAME=clean(x.get("table_name")), SOURCE_TYPE=blank(x.get("source_type")))
                            for x in say("SHOW STREAMS IN ACCOUNT…") or rows("SHOW STREAMS IN ACCOUNT")]
-            how = "SHOW"
-        note("streams", how, None)
+            how, why = "SHOW", f"ACCOUNT_USAGE.STREAMS: {line(e)}; SHOW lists only the streams this role sees" if streams_au else None
+        note("streams", how, why)
     except Exception as e:
         note("streams", "UNAVAILABLE", line(e))
 
