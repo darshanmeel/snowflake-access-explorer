@@ -843,6 +843,16 @@ def narrow(lanes, edges, notes, kinds, gx, focus, later=None):
         if ms and len(ms) < len(x["members"]):
             gx[k] = x | dict(members=ms, count=len(ms)) | (
                 dict(label=f"{blabel(k)} · {len(ms)} {x.get('noun') or 'objects'}") if " · " in k else {})
+    ins = {}
+    for e in edges:
+        ins.setdefault(e[1], []).append(e[0])
+    fed = {e[1] for e in edges if e[0] in keep and e[1] in keep}
+    todo = [n for n in keep if n not in fed and ins.get(n)]  # a holder fed only through a summary fold's own line: the
+    while todo:  # members' walk misses it, so the way in comes back from the drawn lines (upstream only)
+        for x in ins.get(todo.pop(), ()):
+            if x not in keep:
+                keep.add(x)
+                todo.append(x)
     lanes, edges = cut(lanes, edges, keep)
     gx = {k: v for k, v in gx.items() if k in keep}
     notes = {k: v for k, v in notes.items() if k in keep}

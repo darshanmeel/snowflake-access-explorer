@@ -246,6 +246,16 @@ def test_big_lanes():
     assert len(get(f"/api/privs.csv?name={r}&of=role&tab=all").text.strip().splitlines()) == pv["total"] + 1
 
 
+def test_focus_keeps_way_in():  # focus on an object: a holder fed only through a summary fold keeps its way in
+    lanes = [("User", ["U"]), ("Granted roles", ["G"]), ("Roles between", ["F"]), ("Grant holders", ["H"]), ("Objects", ["D.S.T"])]
+    edges = [("U", "G"), ("G", "F"), ("F", "H"), ("H", "D.S.T", "read", "SELECT")]
+    gx = {"F": dict(members=["M1"], edges=[("G", "M1")], noun="roles", count=1)}  # its members' own lines stop inside
+    lanes, edges, _, _, _, label, note = server.narrow(lanes, edges, {}, {"F": "fold"}, gx, "D.S.T")
+    drawn = {n for _, ns in lanes for n in ns}
+    assert note is None and {"U", "G", "F", "H", "D.S.T"} <= drawn, lanes
+    assert {(e[0], e[1]) for e in edges} >= {("U", "G"), ("G", "F"), ("F", "H"), ("H", "D.S.T")}, edges
+
+
 def test_crowded_lane():  # a lane over MAX_LANE people folds into one box even when the graph is small (276 users once)
     us = [f"PERSON_{i:03}" for i in range(server.MAX_LANE + 6)]
     g = server.build_graph("t", [("Users", us), ("Role", ["F_X"])], [(u, "F_X") for u in us], sizes=dict.fromkeys(us, 1),
