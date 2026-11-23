@@ -116,7 +116,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <h1>Snowflake access explorer</h1>
 <ul class="lead">
   <li><b>Who has what:</b> everything a person or role can reach, and everyone who can reach an object, with the role path that gives it, at any depth.</li>
-  <li><b>Can they?</b> One person or role, one privilege, one object: Yes, Partly or No, every path, where to cut it, and the nearest way in with the request text.</li>
+  <li><b>Can they?</b> One person or role, one privilege, one object: Yes, Partly, Blocked or No, every path, where to cut it, and the nearest way in with the request text.</li>
   <li><b>What is wrong:</b> 29 rule checks with a change plan, what people did on tables (Activity), who reads sensitive data and whether it is masked, a review grid to sign off, granted against used, and what changed since the last snapshot.</li>
 </ul>
 <nav class="toc">
@@ -184,11 +184,11 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li><b>Incomplete · N sources</b> (side menu): what could not be read, why, and the grant that fixes it.</li>
       <li><b>Data from &lt;time&gt;</b> (side menu): where the data came from, how long it is kept, and the file and schema of its <a href="#duckdb">SQL copy</a> (or why there is none).</li>
     </ul></div>
-    <div><h3>Side menu and tabs</h3><ul>
-      <li><b>Answers</b>: Home, A person or role, Who has access to an object, Can they?, Access graph, What they see, Compare, Request access.</li>
-      <li><b>Admin</b>: Risks &amp; fixes (badge: High findings), What if, Review &amp; sign-off, Sensitive data, Sensitive data flow, Granted vs used, What changed.</li>
-      <li><b>Detail</b>: User paths and Role paths, the full detail pages.</li>
-      <li>Every screen splits into tabs. The first tab keeps the detailed diagram or table; the newer views are the tabs next to it.</li>
+    <div><h3>Left nav</h3><ul>
+      <li><b>Home</b> first, then <b>Access</b>: A person or role, Who has access to an object, What they see.</li>
+      <li><b>Ask</b>: Can they?, Access graph, Compare, Request access, What if.</li>
+      <li><b>Risk</b>: Risks &amp; fixes (badge: rules at the worst severity), Sensitive data, Sensitive data flow, Granted vs used, Object activity. <b>Govern</b>: Review &amp; sign-off, What changed.</li>
+      <li>A screen's sections are entries under it in the nav, their sub-sections one level deeper. With the menu hidden (<b>«</b>) or a window up to 1000 px wide they show as a tab bar on the page. User paths and Role paths open from links only.</li>
       <li>Every view is a link (<code>?page=check&amp;role=F_MARKETING&amp;obj=…</code>), so you can share it. Older links (<code>?page=user&amp;part=sees</code>, <code>?page=catalog</code>, …) open the screen that now shows that part.</li>
       <li>Change plan, rule On/Off and mutes, review decisions and watched questions are saved in this browser only.</li>
     </ul></div>
@@ -237,19 +237,19 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <section class="card screen" id="home">
   <header><h2>Home</h2><span class="q">?page=home</span></header>
   <p class="answers"><b>Answers</b>Where do I start, what can I reach, and how risky is the account?</p>
-  <figure><img src="docs/img/redesign/home.png" alt="Home: search, what needs attention, findings, risk cards and the account at a glance"><figcaption>Search first, then what needs attention, findings, risk cards and the account at a glance.</figcaption></figure>
+  <figure><img src="docs/img/redesign/home.png" alt="Home: search, what needs attention, findings, risk cards and the account at a glance"><figcaption>Search first, then Risks, At a glance and Changes.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>Search a person, role, table or screen, or type a question: <code>can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER</code> (a role works too: <code>can F_MARKETING read …</code>). Press <b>/</b> to jump to it.</li>
       <li>Each hit has a one-line answer (what a person or role reaches, who reaches an object); warehouses are their own group; matching screens are listed too.</li>
       <li>The shared data names no person until one is picked; My access shows your own ladder (Read only, Read + change, Owns).</li>
-      <li><b>Findings by area</b>: one bar per rule area, coloured by severity; a click opens the Rules list at that area.</li>
+      <li><b>Findings by area</b>: behind <b>By area</b>, one bar per rule area, coloured by severity; a click opens the Rules list at that area.</li>
       <li>The rows stay whole at a zoomed browser: the three risk cards and the tiles fit side by side, names are links.</li>
     </ul></div>
     <div><h3>Sections</h3><dl class="nums">
-      <dt>Needs attention</dt><dd><b>Act first</b>: the Critical, then High rules, fewest findings first (a rare rule is not buried under a frequent one), each with the first people and roles as links; all findings by severity with the people and roles they reach; findings by area</dd>
-      <dt>Risk cards</dt><dd><b>Admin holders</b> per admin role, account privilege only, riskiest first, service users with admin; <b>Dormant &amp; disabled</b> of all with that status; <b>Sensitive data</b>: columns not masked, dormant or disabled people reading it, tables with row policies, where it flows</dd>
-      <dt>Your Snowflake at a glance</dt><dd>People by status and type, roles by kind, objects by type, chain depth (every depth from shortest to deepest, 0 where none), the biggest schemas and databases, daily queries, Object activity (not used in 90 days, read but never written and the reverse) and What changed (once compared)</dd>
+      <dt>Risks</dt><dd><b>Act first</b>: the Critical, then High rules, fewest findings first (a rare rule is not buried under a frequent one), each with the first people and roles as links; all findings by severity with the people and roles they reach, by area on a click; <b>Admin holders</b> per admin role, account privilege only, riskiest first, service users with admin; <b>Dormant &amp; disabled</b> of all with that status; <b>Sensitive data</b>: columns not masked, dormant or disabled people reading it, tables with row policies, where it flows</dd>
+      <dt>At a glance</dt><dd>People by status and type, roles by kind, objects by type, chain depth (every depth from shortest to deepest, 0 where none), the biggest schemas and databases, daily queries, Object activity (not used in 90 days, read but never written and the reverse)</dd>
+      <dt>Changes</dt><dd>What changed (once compared)</dd>
     </dl></div>
   </div>
 </section>
@@ -257,23 +257,25 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 <section class="card screen" id="access">
   <header><h2>A person or role</h2><span class="q">?page=access&amp;user=ENGINEER_01 · ?page=access&amp;role=F_ENGINEER</span></header>
   <p class="answers"><b>Answers</b>What can this person or role reach, through every role, at any depth?</p>
-  <figure><img src="docs/img/redesign/access.png" alt="A person or role: header, sentence, tiles and the role hierarchy diagram"><figcaption>ENGINEER_01: roles in use, the sentence, the ladder tiles and the first tab.</figcaption></figure>
+  <figure><img src="docs/img/redesign/access.png" alt="A person or role: header, sentence, tiles and the role hierarchy diagram"><figcaption>ENGINEER_01: roles in use, the sentence and the ladder tiles.</figcaption></figure>
   <div class="two">
     <figure><img src="docs/img/redesign/access_rows.png" alt="One row per object"><figcaption>One row per object, at the most it allows.</figcaption></figure>
     <figure><img src="docs/img/redesign/access_history.png" alt="History tab"><figcaption>History: what changed for this person.</figcaption></figure>
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>One picker for a person or a role, with recently viewed chips next to it. The header shows the profile and the roles in use (default, secondary, PUBLIC).</li>
-      <li>Buttons: Can they?, Show as graph, What they see, Compare with…, Granted vs used.</li>
+      <li>One picker for a person or a role, with recently viewed chips next to it. The header shows the profile (a person: default role, secondary roles, default warehouse; a role: its owner and who holds it) and the roles in use (default, secondary, PUBLIC).</li>
+      <li>Buttons on Overview: Can they?, Show as graph; under More: What they see, Compare with…, Granted vs used.</li>
       <li>The sentence and tiles: can read, can change, owns, sensitive unmasked, can run (warehouses, tasks, functions, procedures). A tile opens the matching rows.</li>
-      <li>The risk strip on top lists what needs a look first: admin roles held and the role on the way, account privileges, sensitive objects read unmasked, findings per severity, an admin default role, dormant or disabled, very broad access, secondary roles ALL. Lists show the first 3, then +N; each line links to where to act.</li>
+      <li>The risk strip on top lists what needs a look first: admin roles held and the role on the way, account privileges, sensitive objects read unmasked, findings per severity, an admin default role, dormant or disabled, very broad access, secondary roles ALL. Lists show the first 3, then +N. A click on a line that lists items opens them as a small table (the first 10, then +N more); <b>Open all</b> goes to the screen with every one.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>Overview</dt><dd>The risk strip, the ladder counts and where the access is (per schema, long names cut), stacked</dd>
-      <dt>Objects</dt><dd>Each object at the most it allows, with the role it comes through. Chips All / Read only / Can change / Owns / More than one way; filter by object type, database or schema; Group by Schema or Type; sort Riskiest first or Name</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Overview</dt><dd>The risk strip, the answer sentence, the ladder counts and why they have it (the first 3 roles, then +N more)</dd>
+      <dt>Objects</dt><dd>Where the access is: a row per database and schema with counts per level (a click filters the list). Then each object at the most it allows, with the role it comes through. Chips All / Read only / Can change / Owns / More than one way; filter by object type, database or schema; Group by Schema or Type; sort Riskiest first or Name</dd>
       <dt>Privileges</dt><dd>The privilege tabs of the detail page (<a href="#detail">User / Role paths</a>), opening on All</dd>
-      <dt>Diagram</dt><dd>The role hierarchy by depth; for a role, held by &amp; holds</dd>
+      <dt>Paths</dt><dd>The role hierarchy by depth; for a role, held by &amp; holds</dd>
+      <dt>Held by, What it holds, All protected, Read-only writes</dt><dd>A role only, each when it has rows</dd>
+      <dt>Can run</dt><dd>Warehouses, tasks, functions and procedures, and powers over the account</dd>
       <dt>Activity</dt><dd>The tables this person or role used in the last 60 days, with the role and client used: the same access log as the object page (see Who has access to an object), here by table; the "Change object" picker is left out. Needs Enterprise edition</dd>
       <dt>History</dt><dd>The <a href="#changes">What changed</a> feed for this subject</dd>
     </dl></div>
@@ -281,25 +283,25 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
 </section>
 
 <section class="card screen" id="object">
-  <header><h2>Who has access to an object</h2><span class="q">?page=object&amp;name=SALES.CORE.TBL_CUSTOMER&amp;show=who</span></header>
+  <header><h2>Who has access to an object</h2><span class="q">?page=object&amp;name=SALES.CORE.TBL_CUSTOMER&amp;show=people</span></header>
   <p class="answers"><b>Answers</b>Who can touch this table, view, warehouse or schema, how, and what does each of them see of it?</p>
   <figure><img src="docs/img/redesign/object_who.png" alt="Who has access, grouped by level"><figcaption>Who has access: a bar per level, people grouped by level, the side panel for one person.</figcaption></figure>
   <div class="two">
-    <figure><img src="docs/img/redesign/object.png" alt="Diagram, paths and users"><figcaption>Diagram, paths &amp; users (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/object.png" alt="Diagram, paths and users"><figcaption>Overview: counts and the paths diagram.</figcaption></figure>
     <figure><img src="docs/img/redesign/object_admin.png" alt="Admin holders"><figcaption>Admin holders (<code>preset=admin</code>).</figcaption></figure>
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Above the tabs: breadcrumb, name, tags (type, sensitive columns, masking and row policies, owner) and <b>Access for [person]</b>: that person's level on this object.</li>
+      <li>Above the sections: breadcrumb, name, tags (type, sensitive columns, masking and row policies, owner; the first 3, then +N more) and the risk strip. <b>Access for [person]</b>, on People › By level: that person's level on this object.</li>
       <li>Levels: Admin, Owns, Can change, Read only, Can use, Can see names. Disabled and dormant rows are tinted; "N disabled still hold access" is called out.</li>
       <li>Click a row: <b>How X gets in</b> lists all paths (to Can they?) and What if revoked?. <b>Group people with the same path</b> (on for warehouses) reads "23 people via PUBLIC (everyone)".</li>
       <li>A red banner lists users who reach it only through admin roles.</li>
       <li>The <b>Access for</b> strip also shows what that person used: "Used: N queries in 60 days as ROLE (clients), last DATE" or "Not used in 60 days". Picking a person narrows the Activity tab to their use (<code>&amp;as=</code> in the address); by default it shows all users.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>Summary</dt><dd>The risk strip (sensitive columns without masking that readers see in clear, grants to PUBLIC, people who can change a sensitive object, stale readers, findings, reached only through admin roles, not used in 90 days yet readable by many), counts, admin reach (one line per admin role, the first 3 users, paths on demand) and the paths diagram. The sub-tabs sit in the side menu under the object</dd>
-      <dt>Diagram, paths &amp; users</dt><dd>Paths into the object graph, KPIs (people, admin, read / write / own, roles on the way, longest chain) and sub-tabs Who has access, Users × privileges (links the review grid), What each role sees, Sensitivity (tags and their origin, masking per column, policy text)</dd>
-      <dt>Who has access</dt><dd>People or Roles, grouped by level, with status, last login, path chips, privileges and path count</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Overview</dt><dd>Counts, admin reach (one line per admin role, the first 3 users, paths on demand) and the paths diagram. The risk strip above every section: sensitive columns without masking that readers see in clear, grants to PUBLIC, people who can change a sensitive object, stale readers, findings, reached only through admin roles, not used in 90 days yet readable by many</dd>
+      <dt>People</dt><dd><b>By level</b>: people or roles, grouped by level, with status, last login, path chips, privileges and path count. <b>By path</b>: who comes in through which chain. <b>Users × privileges</b>: one row per user</dd>
+      <dt>Columns</dt><dd><b>Sensitivity</b>: tags and their origin, masking per column, policy text. <b>By role</b>: what each role sees (tables and views with policies or sensitive columns)</dd>
       <dt>Activity</dt><dd>One access log of stacked sections, not sub-tabs, for the last 60 days: query metadata from ACCESS_HISTORY, QUERY_HISTORY and SESSIONS, never query text (Enterprise edition; without it the tab says why). A bar at the top holds a "Change object" picker and the business-time slider. Findings of rules 24–29 for the object show under "Checks on this tab". A table, view or Streamlit app shows the one-object sections: tiles (reads, writes, DDL, clients), queries by client, role or user, statement kinds, the role-by-client grid, queries by statement type per day, queries per day by user, who used it, sensitive data, grant paths, DDL changes, every query, checks. A database, schema, person or role adds the overview sections: off-hours use by people; who touched what (rows users, roles, clients or objects; across objects, roles, clients, statements or days; the last 30 days or all; sensitive or all objects; all queries or only off-hours); hours of use (queries per hour of the day, business hours shaded, the on-hours and off-hours split and off-hours per one on-hours query); objects, busiest first, with the detail of the one you pick (queries by client, role, user and action, statement kinds, a grid of role by client, DML / Read / DDL, statement or the last 30 days, queries by statement type with a per-day chart, the busiest or the selected day, the average a day and the active days, and queries per day by user, role, client, statement, R / W / DDL or object kind, top 4 and Other, also as a table); who used it (Person, Service or System, with statements, queries, off-hours and active days); what each user and role sees of the sensitive columns (and, for an untagged table, SQL, Terraform and ticket text to tag it, which the app never runs); grant paths (user → role used → the grant path that role has now → table; uses with no grant path now are listed apart); DDL changes; "Every query, one by one", SQL to copy and run in Snowflake for the query ids and times, no query text, never run by the app. Business hours are <code>WORK_HOURS</code> (default 7–19, local time), Monday to Friday; a business-time slider (UTC−12 to UTC+14) moves them from UTC, and the tab then puts every query on its local day and hour, so per-day charts, active and busiest days, weekends and off-hours all follow it (the <code>&lt;/&gt;</code> SQL gets the same <code>TZ_HOURS</code>). The log follows the object type. <b>Streamlit app:</b> who opened it, who can, who can open it but never did, who saw data they cannot read themselves, who opened it without access now, and the tables it read for its viewers; opening an app without a table query leaves no row. <b>Database or schema:</b> everything in it, rolled up. <b>Warehouse:</b> who ran queries on it in the last 30 days (query history) and who can use it but did not. The app's own queries are left out; Snowflake does not log result downloads from Snowsight or drivers</dd>
       <dt>Streamlit app</dt><dd>A Streamlit app runs with its owner's rights, so everyone who can open it sees what the owner role reads. On the object page of an app a banner says so, lists the sensitive tables the owner reads and who sees more than they may. Rule 29 flags it per app and role holding USAGE on it. Fix: revoke the app's USAGE from that role, use a caller's-rights connection, or give the app a narrower owner role</dd>
       <dt>History</dt><dd>What changed on this object</dd>
@@ -313,22 +315,23 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <figure><img src="docs/img/redesign/check_role.png" alt="Can they? Partly for role F_MARKETING on FINANCE.REPORT.TBL_REVENUE"><figcaption>A role as the subject: Partly for F_MARKETING on FINANCE.REPORT.TBL_REVENUE. SELECT is granted, but the row policy returns no rows.</figcaption></figure>
   <div class="two">
     <figure><img src="docs/img/redesign/check_yes.png" alt="Can they? Yes for a person"><figcaption>Yes for a person, with the privilege row.</figcaption></figure>
-    <figure><img src="docs/img/redesign/check_role_nearest.png" alt="Nearest ways in for a role"><figcaption>No for F_MARKETING: the nearest ways in, missing link dashed red.</figcaption></figure>
+    <figure><img src="docs/img/redesign/check_role_nearest.png" alt="Nearest ways in for a role"><figcaption>No for F_MARKETING: Ways in, missing link dashed red.</figcaption></figure>
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>The question is a sentence: Can [person or role] [privilege] [object]? The privilege can be one privilege or "do anything to".</li>
-      <li>Verdict: <b>Yes</b>, <b>Partly</b> (granted, but the row policy returns no rows or columns are masked), <b>Blocked</b> (granted, but no role reached has USAGE on the database or schema, which Snowflake checks first; the smallest fix is shown) or <b>No</b>, with each privilege held or struck through and the USAGE chips of the database and schema.</li>
+      <li>The question is a sentence: Can [person or role] [privilege] [object]? The privilege can be "do anything to" or any privilege Snowflake has on the object's type, also one nobody holds. <b>USAGE</b> on an object without one of its own asks USAGE on its database and schema.</li>
+      <li>Verdict: <b>Yes</b>, <b>Partly</b> (granted, but the row policy returns no rows or columns are masked), <b>Blocked</b> (granted, but no role reached has USAGE on the database or schema, which Snowflake checks first; one line per fact, Has or Missing, then one + Add line per grant that fixes it, with the SQL) or <b>No</b>, with each privilege held or struck through and the USAGE chips of the database and schema.</li>
       <li>The risk strip on top joins the subject's and the object's risks. Changing the person or role keeps the object.</li>
       <li>A database or schema: each table and view inside, for read (SELECT), DML (SELECT, INSERT, UPDATE, DELETE, TRUNCATE) or DDL (OWNERSHIP), which they can and cannot use, what is missing and what blocks it, filtered by Can / Cannot and a name, 100 at a time; plus the CREATE privileges on the schema for new objects.</li>
       <li>A person: every granted role counts (secondary roles ALL), no depth limit. A role: its own grants plus the roles it inherits; routes start at the role, "held by N people" is the blast radius, and No reads "Neither R nor any of its N roles".</li>
       <li>A database role: ways in only from database roles of its own database, and no USE ROLE line (USE ROLE can't take a database role). An admin role answers Yes through itself.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>Answer &amp; diagram</dt><dd>The banner, KPIs (privileges, paths, shortest depth), paths combined as a graph, every path with What if revoked?, where to cut and What they see with the USE ROLE line</dd>
-      <dt>Routes &amp; where to cut</dt><dd>One lane per distinct route; roles on every route are places to cut, with side effects (people who lose it, other privileges lost), Simulate (What if) and the revoke as SQL / Terraform / ticket</dd>
-      <dt>Nearest ways in</dt><dd>On No: first the narrowest grant (the privilege alone on the object, to the smallest role they already reach that has USAGE on its schema, so nothing else comes with it), then the fewest grants that would give it and the fewest people who would get it too, with the GRANT text, the too broad and rule 1 warnings, Request and What it brings. For "do anything to": the ways to use it first, the ways to own it apart</dd>
-      <dt>Rows &amp; columns</dt><dd>1 Grant, 2 Rows, 3 Columns, each with its result and the reason from the policy text</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Inside</dt><dd>A database or schema (first there): each table and view inside</dd>
+      <dt>Answer</dt><dd>The graph of how the access gets there; on No the narrowest grant and the nearest way in; on Blocked why, as lines</dd>
+      <dt>Routes</dt><dd><b>Routes</b>: one lane per distinct route. <b>Where to cut</b>: roles on every route, with side effects (people who lose it, other privileges lost), Simulate (What if) and the revoke as SQL / Terraform / ticket. <b>Table</b>: one row per route and privilege with What if revoked?, admin routes and ownership</dd>
+      <dt>Ways in</dt><dd>On No: first the narrowest grant (the privilege alone on the object, to the smallest role they already reach that has USAGE on its schema, so nothing else comes with it), then the fewest grants that would give it and the fewest people who would get it too, with the GRANT text, the too broad and rule 1 warnings, Request and What it brings. For "do anything to": the ways to use it first, the ways to own it apart</dd>
+      <dt>Rows &amp; columns</dt><dd>1 Grant, 2 Rows, 3 Columns, each with its result and the reason from the policy text; What they see with the USE ROLE line</dd>
     </dl></div>
   </div>
 </section>
@@ -340,7 +343,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>For (person or role), object, then <b>Read it</b> or <b>Change it</b>: the privileges that needs.</li>
-      <li>Suggested roles: the smallest existing functional role first, with its holders and what else it brings (sensitive columns it shows included); the role picked on Can they? is offered too. <b>None of these</b> writes a commented skeleton for a new role, for the owner to decide.</li>
+      <li>Suggested roles: the smallest existing functional role first (the first 3, then +N more roles), with its holders and what else it brings (sensitive columns it shows included); the role picked on Can they? is offered too. <b>None of these</b> writes a commented skeleton for a new role, for the owner to decide.</li>
       <li>For a person: <code>GRANT ROLE x TO USER u</code>. For a role: <code>GRANT ROLE x TO ROLE r</code>, with the too broad (it also reaches the people holding r) and rule 1 warnings; a role that already holds r (a loop) is never offered.</li>
       <li>For a database role: a skeleton for a new database role in its own database (<code>GRANT DATABASE ROLE … TO DATABASE ROLE …</code>), or why it can't be done when the object is in another database.</li>
     </ul></div>
@@ -357,7 +360,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <header><h2>Access graph</h2><span class="q">?page=graph&amp;table=… | role=… | user=…&amp;show=trace</span></header>
   <p class="answers"><b>Answers</b>How does access flow from a table, role or person through the role graph, and which paths are risky?</p>
   <div class="two">
-    <figure><img src="docs/img/redesign/graph_diagram.png" alt="Role hierarchy by depth"><figcaption>Role hierarchy, by depth (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/graph_diagram.png" alt="Role hierarchy by depth"><figcaption>Hierarchy, by depth.</figcaption></figure>
     <figure><img src="docs/img/redesign/graph_person_risky.png" alt="Trace graph with risky paths"><figcaption>Trace graph from a person, risky paths in red.</figcaption></figure>
   </div>
   <div class="two">
@@ -368,9 +371,9 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li>Filters above the graph keep one database or schema, an object type or an access level (read, write, own), with the roles and people on the lines to them.</li>
       <li>Click a box: only the lines through it are drawn (Show all returns); the side panel lists the people through it and what it leads to, with Open its page, What if removed? and Make it the start.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>Role hierarchy, by depth</dt><dd>The diagram of the person, role or object page</dd>
-      <dt>Trace graph</dt><dd>Columns by shortest step, colour by grant, focus on click</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Hierarchy</dt><dd>The diagram of the person, role or object page</dd>
+      <dt>Trace</dt><dd>Columns by shortest step, colour by grant, focus on click</dd>
     </dl></div>
   </div>
 </section>
@@ -380,41 +383,44 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <p class="answers"><b>Answers</b>Which columns does this person or role see in clear or masked, which rows, and why?</p>
   <div class="two">
     <figure><img src="docs/img/redesign/see_cards.png" alt="Column by column cards"><figcaption>Column by column: one card per object.</figcaption></figure>
-    <figure><img src="docs/img/redesign/see_tables.png" alt="What they see tables"><figcaption>What they see · tables (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/see_tables.png" alt="What they see tables"><figcaption>The table of all protected objects.</figcaption></figure>
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
+      <li>The risk strip of the person or role on top, as on A person or role.</li>
       <li>Each card: the rows chip (all, filtered, no rows, unknown) and each column visible or masked, with the reason from the policy text.</li>
       <li><b>Add masking →</b> (rule 6) on a sensitive column without a policy. Only sensitive or All protected objects (<code>all=1</code>).</li>
       <li>Policies are read from their text, not evaluated: role listed = all rows / clear; role not listed and the body ignores the argument columns = no rows; role check AND argument condition = filtered; anything else = unknown. <code>IS_ROLE_IN_SESSION</code> counts inherited roles, <code>CURRENT_ROLE()</code> only the primary role.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>What they see · tables</dt><dd>What they see, Sensitive data they can see, Role usage</dd>
-      <dt>Column by column</dt><dd>The sentence, the cards and role usage bars</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Column by column</dt><dd>The sentence and one card per object</dd>
+      <dt>All protected</dt><dd>One table of every protected object</dd>
+      <dt>Sensitive reach</dt><dd>A person: the sensitive objects they reach and through which granted roles</dd>
+      <dt>Role usage</dt><dd>A person: queries per granted role. A role: how many holders used it, and who did not</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="compare">
-  <header><h2>Compare</h2><span class="q">?page=compare&amp;a=…&amp;b=…&amp;scope=sensitive|all|db&amp;show=diff</span></header>
+  <header><h2>Compare</h2><span class="q">?page=compare&amp;a=…&amp;b=…&amp;scope=sensitive|all|db&amp;tab=plan&amp;plan=equal|match|extras</span></header>
   <p class="answers"><b>Answers</b>How do two people or roles differ, and what text would make them match?</p>
   <figure><img src="docs/img/redesign/compare_diff.png" alt="Compare: differences"><figcaption>Differences first, the same ones folded.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Two overlapping circles: only A, only B, and in the overlap both but different and the same; a click opens the differences. Scope: sensitive data, everything or one database.</li>
-      <li><b>Make B match A</b> or <b>Remove A's extras</b> writes SQL / Terraform / ticket text; <b>Simulate</b> runs it on What if.</li>
+      <li>Two overlapping circles with the full names under them: only A, only B, and in the overlap both but different and the same; a click opens the differences. The answer says what B is missing and what it reaches extra. Scope: sensitive data, everything or one database.</li>
+      <li><b>Make B equal to A</b> (grants what only A has, revokes what only B has), <b>Give B what A has</b> (grants only) or <b>Remove what only A has</b> write SQL / Terraform / ticket text; <b>Simulate the revokes on What if</b> runs the revokes there. Nothing runs in Snowflake.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>What each sees</dt><dd>Side by side, per object</dd>
-      <dt>Differences</dt><dd>The differences and the plan to fix them</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Differences</dt><dd>Differences first, the same ones folded; All / Only A / Only B / Both</dd>
+      <dt>Plan</dt><dd>The three plans above; left out when there is nothing to plan</dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="rules">
-  <header><h2>Risks &amp; fixes</h2><span class="q">?page=rules · &amp;show=fixes&amp;sev=High&amp;by=rule|person|object|grid · &amp;show=list&amp;area=…</span></header>
+  <header><h2>Risks &amp; fixes</h2><span class="q">?page=rules · &amp;show=fixes&amp;sev=High&amp;by=rule|person|object|grid · &amp;show=list&amp;area=… · &amp;part=admins|stale</span></header>
   <p class="answers"><b>Answers</b>Where does the role model break its own rules, what is the fix, and what happens if I apply it?</p>
-  <figure><img src="docs/img/redesign/risks.png" alt="Risks and change plan"><figcaption>Risks &amp; change plan: severity tiles, rules by people affected, the change plan on the right.</figcaption></figure>
+  <figure><img src="docs/img/redesign/risks.png" alt="Risks and change plan"><figcaption>Change plan: severity tiles, rules by people affected, the change plan on the right.</figcaption></figure>
   <div class="two">
     <figure><img src="docs/img/redesign/risks_person.png" alt="Risks grouped by person"><figcaption>Grouped by person.</figcaption></figure>
     <figure><img src="docs/img/redesign/rules.png" alt="Rules list"><figcaption>Rules: by area, a severity bar per area, with On/Off.</figcaption></figure>
@@ -422,14 +428,16 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <figure><img src="docs/img/redesign/risks_grid.png" alt="Heat grid of grantees by rule"><figcaption>Heat grid: one row per grantee, one column per rule, coloured by severity, the number of findings in each cell.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Severity tiles filter (click the active one again for all); the Admin holders tile opens the object screen's admin preset.</li>
+      <li>On Change plan the severity tiles filter (click the active one again for all). Admin holders is its own section, with a link to the object screen's admin preset.</li>
       <li>Group by rule, person or object, or show the <b>Heat grid</b> (grantee x rule; a cell opens that rule's findings); rule rows are sorted by people affected. Open one: why it matters, findings with chain chips, <b>Add fix to plan</b>, See on the graph, Rule settings, Mute with a reason.</li>
       <li>The <b>Change plan</b> panel: items, impact tiles (people lose, keep it another way, findings fixed, new findings), who loses what (a lose-vs-keep bar and people who lose the same thing as one row, the removed link crossed out), SQL / Terraform / ticket text, Open full what-if. Simulation only.</li>
       <li>Findings without a grant to revoke show their fix as text.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>Rule checks</dt><dd>Findings with severity tabs (one row per rule and fix, detail, path, fix as infrastructure-as-code text + SQL, CSV), Admin holders with the chain (privileges and roles: the first 3, then +N), Dormant &amp; disabled (people still holding roles, rules 8 and 16), Rules</dd>
-      <dt>Risks &amp; change plan</dt><dd>The view above</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Findings</dt><dd>In the nav each severity opens to its rules. One group per rule (a picked rule: per role or user), one aligned row per finding: role or user, what was found, what a fix takes away (N users lose access, names on a click), with the fix as infrastructure-as-code text + SQL; CSV</dd>
+      <dt>Change plan</dt><dd>The view above</dd>
+      <dt>Admin holders</dt><dd>Users with an admin role or account privilege and the chain (the first 3, then +N)</dd>
+      <dt>Dormant &amp; disabled</dt><dd>People still holding roles (rules 8 and 16)</dd>
       <dt>Rules</dt><dd>The 29 rules by area with severity counts, a findings link and On/Off; expand for What it checks and How to fix</dd>
     </dl></div>
   </div>
@@ -443,18 +451,18 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <header><h2>What if</h2><span class="q">?page=whatif&amp;changes=… · &amp;show=plan&amp;by=people|objects|roles|findings</span></header>
   <p class="answers"><b>Answers</b>If we revoke this, who loses what, who keeps it another way, and which findings go or appear?</p>
   <div class="two">
-    <figure><img src="docs/img/redesign/whatif_plan.png" alt="Change plan"><figcaption>Change plan: the form, plan chips and impact tiles.</figcaption></figure>
-    <figure><img src="docs/img/redesign/whatif.png" alt="Changes and impact tables"><figcaption>Changes &amp; impact tables (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/whatif_plan.png" alt="Change plan"><figcaption>Plan: the form, plan chips and impact tiles.</figcaption></figure>
+    <figure><img src="docs/img/redesign/whatif.png" alt="Changes and impact tables"><figcaption>Impact.</figcaption></figure>
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>One line: [Revoke role | Drop role | Revoke privilege | Empty PUBLIC] [role] from [user or role] [Add to plan]. After you pick a role, only the users or roles that reach it are offered, direct ones first.</li>
-      <li>Seven impact tiles; a bar of privileges lost against kept another way; people who lose the same thing are one row, with the path and the removed link crossed out (open a row for the names; one row per person below). Objects left unreached and roles left empty are listed.</li>
+      <li>One line: [Revoke role | Drop role | Revoke privilege | Empty PUBLIC] [role] from [user or role] [Add to plan]. After you pick a role, only the users or roles that reach it are offered, direct ones first. A picked user or role stays when the role changes, as does a picked object; when the user or role does not hold the new role a line says so and Add stays off.</li>
+      <li>Three impact tiles (users who lose access, objects nobody reaches, new findings, the other counts under them); people who lose the same thing are one row, with the path and the removed link crossed out (open a row for the names; one row per person below). A bar shows privileges lost against kept another way. Objects left unreached and roles left empty are listed.</li>
       <li>The same plan as Risks &amp; fixes, saved in this browser. A simulation: it prints REVOKE text for your infrastructure as code and never runs it.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>Changes &amp; impact tables</dt><dd>Users, Objects, Roles, Findings, Text to apply (CSV)</dd>
-      <dt>Change plan</dt><dd>Group by People / Objects / Roles / Findings, CodeOutput (SQL / Terraform / ticket)</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Impact</dt><dd>Who loses, Objects, Roles, Findings, Text to apply (CSV from the page header)</dd>
+      <dt>Plan</dt><dd>Group by People / Objects / Roles / Findings, CodeOutput (SQL / Terraform / ticket)</dd>
     </dl></div>
   </div>
 </section>
@@ -464,18 +472,18 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <p class="answers"><b>Answers</b>Who can reach what, as a list or a grid to keep or revoke and sign off?</p>
   <figure><img src="docs/img/redesign/review_grid.png" alt="Review grid and sign-off"><figcaption>Review grid: people × objects, the ladder colour in each cell, Keep / Revoke per row.</figcaption></figure>
   <div class="two">
-    <figure><img src="docs/img/redesign/review.png" alt="Access review list"><figcaption>Access review (the first tab).</figcaption></figure>
+    <figure><img src="docs/img/redesign/review.png" alt="Access review list"><figcaption>Rows / CSV.</figcaption></figure>
     <figure><img src="docs/img/redesign/review_privileges.png" alt="People by privileges of one object"><figcaption>One object: people × its privileges.</figcaption></figure>
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>Scope chips: Sensitive data, Database X, Everything; People only, Only dormant / disabled, Hide USAGE. Hover a cell for the path and privileges.</li>
+      <li>Scope (entries in the nav up to 8, else a database picker): Sensitive data, Database X, Everything; People only, Only dormant / disabled, Hide USAGE. Hover a cell for the path and privileges.</li>
       <li>Dormant, disabled and never-logged-in people are tinted with "Suggested: revoke" (service users never are).</li>
       <li>Footer: decided count; <b>Test revokes in the change plan</b> simulates them on What if; <b>Sign off</b> downloads a CSV with the reviewer, the decisions and a UTC timestamp, in the browser.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
-      <dt>Access review</dt><dd>One row per user and object (Sensitive objects / All), KPIs, shortest path, CSV with blank Reviewer and Keep/Revoke columns</dd>
-      <dt>Review grid &amp; sign-off</dt><dd>The grid above; <code>object=…&amp;columns=privileges</code> for one object</dd>
+    <div><h3>Sections</h3><dl class="nums">
+      <dt>Review grid &amp; sign-off</dt><dd>The grid above (first); <code>object=…&amp;columns=privileges</code> for one object</dd>
+      <dt>Rows / CSV</dt><dd>One row per user and object (Sensitive / All), KPIs, shortest path, CSV with blank Reviewer and Keep/Revoke columns</dd>
     </dl></div>
   </div>
 </section>
@@ -484,28 +492,29 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <header><h2>Sensitive data</h2><span class="q">?page=sensitive · &amp;show=catalog</span></header>
   <p class="answers"><b>Answers</b>Which objects hold sensitive data, who can read them, and how well is each one protected?</p>
   <figure><img src="docs/img/redesign/catalog.png" alt="Sensitive objects catalog"><figcaption>Catalog: most exposed first, column chips red (unmasked) and green (masked).</figcaption></figure>
-  <figure><img src="docs/img/redesign/sensitive.png" alt="Sensitive objects"><figcaption>Sensitive objects (the first tab).</figcaption></figure>
+  <figure><img src="docs/img/redesign/sensitive.png" alt="Sensitive objects"><figcaption>Sensitive objects.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>Sensitive = a tag in <code>SENSITIVE_TAGS</code> on a column, the object, its schema or database.</li>
       <li>Catalog filters: All, Not protected (a sensitive column without masking), PII / identifiers (<code>PII_TAGS</code>), Confidential (<code>CONFIDENTIAL_TAGS</code>).</li>
       <li>Status: Not protected, Partly ("1 of 3 columns masked"), Protected, or Whole object (row policy). Readers counted (+ admins); Who → opens the object screen.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
+    <div><h3>Sections</h3><dl class="nums">
       <dt>Sensitive objects</dt><dd>Tagged objects, most reached first, masked count</dd>
-      <dt>Who can read them</dt><dd>People and roles, admin holders last</dd>
-      <dt>Compare two roles</dt><dd>Two roles side by side on sensitive data; <a href="#compare">Compare</a> does the same for people too</dd>
+      <dt>Users who can read them</dt><dd>People, admin holders last</dd>
       <dt>Catalog</dt><dd>The protection view above</dd>
+      <dt>Row policies</dt><dd>Tables with a row access policy. Two roles side by side: <a href="#compare">Compare</a></dd>
     </dl></div>
   </div>
 </section>
 
 <section class="card screen" id="dataflow">
-  <header><h2>Sensitive data flow</h2><span class="q">?page=flow&amp;sel=…</span></header>
+  <header><h2>Sensitive data flow</h2><span class="q">?page=flow · &amp;show=roles · &amp;show=graph&amp;sel=…</span></header>
   <p class="answers"><b>Answers</b>Which groups of people reach sensitive data, through which roles, and are the dormant or disabled among them?</p>
   <figure><img src="docs/img/redesign/flow.png" alt="Sensitive data flow"><figcaption>People → granted role → sensitive object; box height and line width = people.</figcaption></figure>
   <div class="two">
     <div><h3>How to read</h3><ul>
+      <li>Sections: <b>Objects</b> (a table), <b>Roles</b> (each granted role that leads there, the people holding it), <b>Graph</b> (below).</li>
       <li>People are grouped Active, Dormant or disabled, Admins, Service. The object subtitle is red when columns are unmasked.</li>
       <li>Click a box to follow it: only its people and their links stay, with the headline sentence and a panel (people, Who has access / Open the role, Review these people). Default: Dormant or disabled; <code>sel=none</code> shows everyone.</li>
       <li>Over 12 roles the smallest fold into "Other roles (N)". Shared snapshot only.</li>
@@ -523,11 +532,11 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>One row per table or view reached: granted level, used level or Not used, weekly bars, last used, and Keep / Remove INSERT never used / Remove all. Chips All, Not used, Partly used, Keep, Sensitive.</li>
+      <li>One row per table or view reached: granted level, used level or Not used, weekly bars, last used, and Keep / Remove INSERT never used / Remove all. Sub-sections All, Not used, Partly used, Keep, Sensitive.</li>
       <li><b>Trim to what is used: N grants</b> adds the revokes, at the roles that hold them, to the change plan (ownership is never revoked).</li>
       <li>Reads <code>ACCOUNT_USAGE.ACCESS_HISTORY</code> (Enterprise edition), aggregated per user, object and week: query metadata, never table data. Without it the screen says why and which grant enables it.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
+    <div><h3>Sections</h3><dl class="nums">
       <dt>Granted vs used</dt><dd>The rows, over 30, 90 or 180 days</dd>
       <dt>Trim to what is used</dt><dd>SQL / Terraform / ticket text</dd>
     </dl></div>
@@ -544,7 +553,7 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
       <li>New or changed objects (DDL in the activity window) are marked, so a fresh object does not pass for a dead one. Days count like the bucket, so a row never contradicts itself.</li>
       <li>Shared data only (My access reads no ACCESS_HISTORY); without Enterprise edition it says why and which grant enables it. Home's Object activity card opens it. CSV exports the tab.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
+    <div><h3>Sections</h3><dl class="nums">
       <dt>Not used</dt><dd>No use in the window, never used included, oldest first</dd>
       <dt>Read, never written</dt><dd>Tables read and not written in the window (a view is never written)</dd>
       <dt>Written, never read</dt><dd>The reverse</dd>
@@ -563,10 +572,10 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   <div class="two">
     <div><h3>How to read</h3><ul>
       <li>Compares the current snapshot with the previous one, which the local version keeps in <code>.cache/</code> as <code>&lt;name&gt;.prev.pkl</code> when a new read replaces it. A refresh makes the comparison while the replaced data is still built and keeps it in <code>&lt;name&gt;.diff.pkl</code>, so the page opens at once. The feed comes one page at a time. Each change names its first 200 people and objects, and a feed about one person or object says when some may be missing. Inside Snowflake, with <code>CACHE_HOURS=0</code> or before a second read, the screen says why it is empty.</li>
-      <li>A strip of new findings against fixed ones, per severity. Each grant gained or lost is drawn as two boxes and a + or crossed-out link (click a box to open it), with who gains or loses what, people turned dormant or disabled, new and fixed findings, and <code>GRANTED_BY</code>. Filters All, Gained access, Lost access, New findings, Sensitive only.</li>
+      <li>A strip of new findings against fixed ones, per severity. Each grant gained or lost is drawn as two boxes and a + or crossed-out link (click a box to open it), with who gains or loses what, people turned dormant or disabled, new and fixed findings, and <code>GRANTED_BY</code>. Sub-sections All, Gained access, Lost access, New findings, Sensitive only.</li>
       <li>Watched questions (Can [person] read [object]? / Who can read [object]? / Who holds admin roles?) are saved in this browser and asked again on each snapshot. Notify is text only; nothing is sent. Shared snapshot only.</li>
     </ul></div>
-    <div><h3>Tabs</h3><dl class="nums">
+    <div><h3>Sections</h3><dl class="nums">
       <dt>Changes</dt><dd>The feed with icons, impact, finding chips and links</dd>
       <dt>Watched questions</dt><dd>Your questions and how their answer moved</dd>
     </dl></div>
@@ -582,19 +591,17 @@ table.set td:nth-child(2){font-family:var(--mono);font-size:12px;word-break:brea
   </div>
   <div class="two">
     <div><h3>How to read</h3><ul>
-      <li>The same pages as the first tab of <a href="#access">A person or role</a>. Filters: Roles (all granted roles, as secondary roles ALL, or the default role only), Max depth, Data only (hides USAGE on databases and schemas), Only on object, Only privilege.</li>
+      <li>Their parts are sections of <a href="#access">A person or role</a>; the pages open from links, not the nav. Filters: Roles (all granted roles, as secondary roles ALL, or the default role only), Max depth, Data only (hides USAGE on databases and schemas), Only on object, Only privilege.</li>
       <li>Rule findings by severity (show opens them); a red box for account privileges and admin roles, with the chain.</li>
-      <li>Privilege tabs: Account, Granted roles, Database roles, Usage, Warehouses, Execute, Read, Write, Own, Manage, All, each with its own diagram. Then Reached more than one way, What they see, Sensitive data they can see, Role usage.</li>
-      <li>Role paths: Held by (users, roles, with <b>Only via</b> and If revoked from), What it holds (one table per object type: granted, inherited, owner, lacks), What it sees.</li>
+      <li>Privilege tabs: Account, Granted roles, Database roles, Usage, Warehouses, Execute, Read, Write, Own, Manage, All, each with its own diagram. Then Reached more than one way, All protected, Sensitive reach, Role usage.</li>
+      <li>Role paths: Held by (users, roles, with <b>Only via</b> and If revoked from), What it holds (one table per object type: granted, inherited, owner, lacks), All protected, Read-only writes.</li>
     </ul></div>
     <div><h3>Numbers</h3><dl class="nums">
       <dt>Privileges</dt><dd>Privilege-on-object pairs reached, on N objects</dd>
-      <dt>Paths</dt><dd>All chains summed; N reached more than one way survive removing one role</dd>
       <dt>Roles</dt><dd>Roles the walk reaches; N granted directly</dd>
-      <dt>Deepest chain</dt><dd>Largest depth of any privilege</dd>
       <dt>Sensitive objects</dt><dd>Sensitive objects it can read (<code>READ_PRIVS</code>)</dd>
       <dt>Admin roles · Account privileges</dt><dd>Admin roles reached; account-level privileges</dd>
-      <dt>Role: Effective privileges</dt><dd>Own plus inherited ("all" for an admin role); held by roles, users, farthest user</dd>
+      <dt>Role: Effective privileges</dt><dd>Own plus inherited ("all" for an admin role); users, with held by roles and the farthest user under it</dd>
     </dl></div>
   </div>
 </section>

@@ -116,18 +116,19 @@ computed once per build key.
 {"tone": "info" | "warn" | "bad", "title": "Dormant user: no login for 120 days", "lines": ["..."],
  "links": [{"label": "Rule 16", "page": "rules", "params": {"rule": "16"}}]}
 // a risk strip line (RiskItem): server.subject_risks(name, user) / object_risks(obj), worst first, [] = no strip
-{"severity": "bad" | "warn", "text": "Holds 1 admin role: SYSADMIN via F_PLATFORM", "n": 1,
- "link": {"label": "Admin holders", "page": "rules", "params": {"part": "admins"}}}
+{"severity": "bad" | "warn", "text": "Holds 2 admin roles: SECURITYADMIN directly; SYSADMIN via F_SECURITY", "n": 2,
+ "link": {"label": "Admin holders", "page": "rules", "params": {"part": "admins"}},
+ "table": {"cols": ["Admin role", "Path"], "rows": [["SECURITYADMIN", "ADMIN_01 > SECURITYADMIN"], ["SYSADMIN", "ADMIN_01 > F_SECURITY > SYSADMIN"]], "total": 2}}  // null: nothing to list
 ```
 
-**Risk strip** (`risks` on `access`, `role`, `who` and `check`): what needs a look first, one line each, lists cut to
+**Risk strip** (`risks` on `access`, `role`, `who`, `see` and `check`): what needs a look first, one line each, lists cut to
 the first 3 names then `+N` (`RISK_TOP`). A person or role: admin roles held (with the first role on the way), account
 privileges not through PUBLIC, sensitive objects read unmasked, their rule findings per severity, an admin default
 role, dormant or disabled while holding roles, very broad access (at least 20 data objects and 25% of the account),
 secondary roles ALL. An object: sensitive columns without masking that readers see in clear, grants to PUBLIC, people
 who can change a sensitive object, stale readers, its findings, reached only through admin roles, not used in 90 days
 yet readable by 3 or more users. Readers and writers leave out people Snowflake refuses (no USAGE on the database or
-schema). `check` merges both, each line prefixed with its name; `who` sends `null` for the admin preset.
+schema). `check` merges both, each line prefixed with its name; `who` sends `null` for the admin preset, `see` in My access. `table` is what a line opens in place: the first `RISK_ROWS` (10) rows, `total` all of them; `link` opens every one.
 
 ### Graph
 
@@ -245,9 +246,9 @@ kept in `.cache/`, else 0 (the My access card says where your access is kept).
   "sources": {"all": "fake data"},
   "notes": [{"key": "usage", "title": "query history: last 7 days only", "meaning": "...", "raw": "..."}],
   "mine": {"loaded": false, "user": null, "loaded_at": null, "expires_at": null},
-  "pages": [{"key": "user", "label": "User", "badge": null}, {"key": "rules", "label": "Rule checks", "badge": 6, "severity": "High",
+  "pages": [{"key": "user", "label": "User", "badge": null}, {"key": "rules", "label": "Risks & fixes", "badge": 6, "severity": "High",
              "title": "41 high findings in 6 rules"},
-            {"key": "sensitive", "label": "Sensitive data", "badge": 6}, {"key": "review", "label": "Access review", "badge": null}],
+            {"key": "sensitive", "label": "Sensitive data", "badge": 6}, {"key": "review", "label": "Review & sign-off", "badge": null}],
   "default_user": "ENGINEER_01",
   "prefixes": {"func": "F_", "tech": "T_"}, "admin_roles": ["ACCOUNTADMIN", "..."], "build_roles": ["F_DEPLOY"],
   "limits": {"max_paths": 200, "max_objects": 12, "max_hops": 50, "dormant_days": 90, "max_depth_rule": 5},
@@ -329,13 +330,13 @@ are listed on Sensitive data) and `cards`. `counts` (users, roles, objects, sens
 
 ### GET /api/access?view=&user=|role=&filter=&q=&otype=&usage=0&cell=&min=&hq=&sort=risk|name&group=none|schema|type&offset=0&limit=50
 
-A person or a role (My access with `view=mine`): `who` (name, kind, type, status, last login, default role, holders),
+A person or a role (My access with `view=mine`): `who` (name, kind, type, status, last login, default role, `default_warehouse`, a role's `owner` roles, holders),
 `counts` (read, change, own, runnable, account powers, admin, sensitive, schemas, usage), `objects` (one page of the
 data list, one row per object at its highest level: privileges, level, path and number of paths, holder role,
 sensitive columns, findings), `total` (rows that match the list filters), `data` (rows before them), `offset`,
 `limit`, `types` (object types in the list, most first: the Type filter), `groups` (`group=`: rows per group over
 every page), `runs` / `powers` (things they can run, powers over the account: the first 250 of `runs_total` /
-`powers_total`), `heat` (the riskiest schemas, `hq=` filters by name, with `heat_total`), `why` (the role tree that
+`powers_total`), `heat` (the riskiest schemas: `schema` `DB.SCHEMA`, its `database` and `name` apart, counts read / change / own / sensitive; `hq=` filters by name, with `heat_total`), `why` (the role tree that
 gives it, `kids` the first of `kids_total`; `why_more`: a role's holders past those listed), `roles`, `deepest`,
 `admin_roles` (admin roles held; a role: itself too), `risks` (the risk strip) and `refs`. An unknown role answers
 `404`.
@@ -491,7 +492,7 @@ the role (`server.subject_risks(r, False)`).
 ```
 
 Admin role: `admin: true`, no effective privileges or roles listed, a `bad` banner. An admin role nobody holds:
-`404 not_found` with `message` pointing to People with admin roles. The role's walks (`role_ctx`, held by, stats) are
+`404 not_found` with `message` pointing to People with admin roles on Risks & fixes. The role's walks (`role_ctx`, held by, stats) are
 kept once per data set and filters.
 
 ### GET /api/held?<the role page's params>&tab=users|roles|all&q=&sort=&dir=1|-1&offset=0&limit=50
@@ -570,6 +571,7 @@ Screen 2 (page key `object`): who has access to one object, or with `preset=admi
 ```
 { view, object: { id, preset, type, database, schema, name, sensitive, tags[], columns (sensitive count), masking[],
                   row_policies[], owners[], owner_note },
+  by_role,   // the Columns section has By role (sees on /api/object)
   people: [{ name, id, level: admin|own|change|read|use|names, privileges[], path, first, holder, ways, depth,
              admin[], status, service, days, login, mark, columns: [{ column, state, reason }] }],
   roles:  [{ name, kind, level, privileges[], path, first, holder, ways, depth, users }],
@@ -590,7 +592,7 @@ The subject is a user (`name=`, or `user=` as on the Access screen) or a role (`
 namespaces, so `role=` always means the role. A `name=` that is no user but a role is that role (Home's typed
 question). My access: always the signed-in user. For a role, every producer below runs with `is_user=False` /
 `user=False`: its own grants plus the roles it inherits, routes start at the role (depth 1 itself), where to cut counts
-the people holding it, nearest ways in grant a role to it (never one that holds it: a loop), `use_role` is the role.
+the people holding it, ways in grant a role to it (never one that holds it: a loop), `use_role` is the role.
 
 Can they? Producers: `a.can(u, priv, obj)`, `a.admin_can`, `a.login_days`, `a.is_dormant`, `a.usage_gaps` and
 `a.containers` (USAGE on the database and schema), `a.data_view(u, obj, True)` and `a.data_view(use_role, obj, False)`
@@ -601,7 +603,10 @@ reaches. A change of person or role keeps the object.
 - **USAGE first.** Snowflake checks USAGE on the database and schema before the privilege: `usage` lists both with
   `held`. The privilege held without that USAGE is `verdict: "blocked"` (`answer.how` `blocked`), `blocked` names what
   is missing and `unblock` the smallest fix (text only).
-- **No.** `nearest` is null until asked with `near=1` (the Nearest ways in tab: seconds on a big account); then the ways
+- **priv=USAGE** on an object without USAGE of its own (table, view, ...): `answer`, `paths`, `lanes` and `graph` are
+  about USAGE on its database and schema (`server.container_usage`); `verdict` is `yes` or `no`, `held` empty,
+  `cuts` / `nearest` / `options` empty, `layers` / `read` / `narrow` null. `focus=` narrows its graph too.
+- **No.** `nearest` is null until asked with `near=1` (the Ways in section: seconds on a big account); then the ways
   in, each with the GRANT text in `change` when one grant does it. `narrow`: the privilege alone on the object, granted
   to the smallest role the subject already reaches that has USAGE on its schema (else its database), so nothing else
   comes with it; its `holders` get it too. `do=any` (every privilege) also sends `nearest_own`: the ways to own it,
@@ -615,7 +620,7 @@ reaches. A change of person or role keeps the object.
 ```jsonc
 {
   "user": "ANALYST_01", "object": "SALES.CORE.TBL_CUSTOMER", "type": "TABLE", "priv": "SELECT",
-  "privileges": ["*", "OWNERSHIP", "SELECT"],     // * (every privilege held) + a.valid_privs(type), for the picker
+  "privileges": ["*", "OWNERSHIP", "SELECT", "INSERT", "..."],  // * (every privilege held) + a.ask_privs(type): also those nobody holds; USAGE added when it has a database or schema
   "verdict": "yes" | "partly" | "no" | "blocked",
   "answer": {"yes": true, "how": "paths" | "owner" | "admin" | "none" | "blocked", "title": "Yes, through 2 paths",
              "text": "ANALYST_01 can SELECT SALES.CORE.TBL_CUSTOMER.", "tone": null | "warn" | "low",
@@ -635,7 +640,7 @@ reaches. A change of person or role keeps the object.
   "read": {"summary": "can read: all rows, EMAIL masked", "rows": {}, "columns": [], "role_only": "..."},  // or null
   "graph": { /* Graph, focus= narrows it */ },
   "capped": [], "refs": {},
-  "held": [{"privilege": "SELECT", "held": true}],      // every privilege of the type; OWNERSHIP or an admin role: all
+  "held": [{"privilege": "SELECT", "held": true}],      // every privilege Snowflake has on the type; OWNERSHIP or an admin role: all
   "lanes": [{"path": ["..."], "privileges": ["SELECT"]}], "lanes_total": 2,   // a.lanes: one per distinct route (first 20)
   "cut": ["F_ENGINEER"],                                 // roles on every lane: a place to cut
   "cuts": [{"iac": "...", "sql": "...", "people": ["..."], "lost": 19, "edges": [{"grantee", "to", "priv", "user"}]}],  // a.cut_points, shared only
@@ -674,7 +679,7 @@ admin-reaching roles never), `a.approver`, `a.object_stats` owners.
 
 ### GET /api/map?view=&table=|role=|user=&same=1&admin=1&builtin=&schema=&otype=&access=read|write|own&focus=
 
-Screen 4, Access graph (page key `graph`; `show=trace` is its new tab, `sel=` the picked box, `risky=1` the highlight:
+Screen 4, Access graph (page key `graph`; `show=trace` is its Trace section, `sel=` the picked box, `risky=1` the highlight:
 none of these reach the server). `a.access_graph(start, name, same, admin)`: columns by shortest step, every line's
 `cls` the step it ends up granting (read / write / own / use; admin = bypass or account privilege), `count` the people
 flowing through it; same-path people stacked (node mark `stack`), admin people and roles (`admin=0` hides them), PUBLIC's
@@ -695,30 +700,34 @@ lines to them; the start stays.
 
 ### GET /api/see?view=&user=|role=
 
-Screen 7, What they see (page key `see`; `show=cards` the new tab, `part=sees|sens|usage` the old sub-tabs, `all=1` all
-protected objects). `a.seen` (cards, sentence counts), `a.data_views` (old table), `sens_reach` (Sensitive data they can
-see), `usage(u)` / `role_usage(r)`.
+Screen 7, What they see (page key `see`; `show=sees|sens|usage` the sections after Column by column, `part=` in old
+links; `all=1` all protected objects). `a.seen` (cards, sentence counts), `a.data_views` (All protected), `sens_reach`
+(Sensitive reach), `usage(u)` / `role_usage(r)`. `risks`: the risk strip of the person or role (null in My access).
+Cards come a page at a time (`c_offset=`, `limit=`).
 
 ```
-{ view, who: { kind, name, id, type, status, default_role, secondary_all, roles[] }, known,
+{ view, risks, who: { kind, name, id, type, status, default_role, secondary_all, roles[] }, known,
   cards: [{ object, type, sensitive, rows: { state, reason, policy }, columns: [{ column, sensitive, state, reason, policy, fix }] }],
-  counts: { objects, sensitive, columns, clear, masked, unknown, unprotected, rows } | null,
-  can_read: DataView[] | null, sensitive: { known, roles[], rows[] } | null, usage: UsageCard | null, role_usage | null, refs }
+  counts: { objects, sensitive, columns, clear, masked, unknown, unprotected, rows } | null, cards_total, cards_offset,
+  can_read: { rows, total, offset } | null, sensitive: { known, roles[], rows[] } | null, usage: UsageCard | null, role_usage | null, refs }
 ```
 
-### GET /api/compare?view=&a=&b=&scope=sensitive|all|db&db=
+### GET /api/compare?view=&a=&b=&scope=sensitive|all|db&db=&f=only_a|only_b|both&same=1&c_offset=&limit=
 
-Screen 9, Compare two people or roles (page key `compare`; `show=diff` the new tab, `plan=match|extras` the change
-text). `a.compare` (rows differences first, counts, `match` / `extras` as codegen changes; an admin side reaches every
-object), `pair_rows` (the old Compare two roles table over the sensitive objects). A side is a user (also `X (user)`),
-else a role. Default B: the person sharing most roles with A, not an admin.
+Screen 9, Compare two people or roles (page key `compare`; `tab=plan&plan=equal|match|extras` the change text, page
+state only). `a.compare`: rows differences first (one page; `f=` keeps one side, `same=1` adds the same ones), counts and
+the changes as text: `match` gives B what only A has, `extras` takes away what only A has, `trim` takes away what only
+B has; Make B equal to A is `match` + `trim`. An admin side reaches what its real links reach. A side is a user (also
+`X (user)`), else a role. Default B: the person sharing most roles with A, not an admin. `dbs` are not sent: the
+database picker searches `/api/list?what=databases`.
 
 ```
-{ view, a: { name, id, kind }, b, scope, db, dbs[], sensitive,
+{ view, a: { name, id, kind }, b, scope, db, sensitive,
   rows: [{ object, type, database, schema, name, diff: "only_a"|"only_b"|"different"|"same",
            a: { level, privileges[], sees } | null, b, extra_a[], extra_b[] }],
-  counts: { only_a, only_b, different, same }, match: Change[], extras: Change[],
-  old: { rows: [{ object, a, b }], diff[] } | null, refs }
+  rows_total, offset, any,                      // any: either reaches something in scope
+  counts: { only_a, only_b, different, same },
+  match: Change[], extras: Change[], trim: Change[], refs }
 ```
 
 ### GET /api/sensitive?view=&tag=&db=&people=0&a=&b=&o_offset=0&r_offset=0&limit=50
@@ -811,7 +820,7 @@ texts come from `/api/finding`. Filters and groups use `app.rule_index()`, built
   "hidden_off": 0, "areas": ["Role model", "Sensitive data"],
   "total": 12,                                     // after every filter
   "groups": [{"key": "10", "title": "...", "severity": "High", "findings": 4, "rules": 1, "people": 14, "kind": null}],
-  // people: by rule and object (null by person); title: by rule; kind: the grantee's, grid only
+  // people: by rule and object (null by person), everyone the findings affect; title: by rule; kind: the grantee's, grid only
   "groups_total": 7,
   "grid": null,  // by=grid: {"rules": ["5", "9"], "rows": [{"grantee": "PUBLIC", "kind": "group", "severity": "High",
                  //   "total": 3, "counts": {"9": 3}}]} (the first 200 rows)

@@ -7,10 +7,10 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   infrastructure as code; manual grants get removed by reconciliation.
 - The app writes nothing to Snowflake. Shared view: reads the `TBL_ACCESS_` tables and may CALL `SP_ACCESS_SNAPSHOT`
   (owner's rights). My-access view: read-only queries as the logged-in user. Locally the only thing written is
-  `.cache/` (git-ignored, `cache.py`: one file per account + source plus the previous one as `<key>.prev.pkl` for What changed and the comparison as `<key>.diff.pkl` (made by the refresh while the replaced data is still built, `server.compared`), one per user for My access, `CACHE_HOURS`=24, 0 = memory
+  `.cache/` (git-ignored, `cache.py`: `shared_data.pkl`, one per `CACHE_DIR`, fake data named by `cache.name()`, plus the previous one as `<key>.prev.pkl` for What changed and the comparison as `<key>.diff.pkl` (made by the refresh while the replaced data is still built, `server.compared`), `my_data.pkl` for My access; no expiry, kept until read again; `CACHE_HOURS=0` = memory
   only), plus the SQL copy `.cache/access.duckdb` (`cache.sql_copy`: the `TBL_ACCESS_` tables, same columns as
   `sql/1_setup.sql`, one schema per cache key, the read before as `TBL_ACCESS_*_PREV`; always on, `DUCKDB=1` also fake
-  data; skipped with a note without duckdb, which is in both requirements files); in memory 24 h per process. Inside Snowflake (SiS) memory only, no disk. Data needs no real time: the UI shows
+  data; skipped with a note without duckdb, which is in both requirements files); in memory until read again. Inside Snowflake (SiS) memory only, no disk. Data needs no real time: the UI shows
   "Data from <time>" and a refresh (Read Snowflake again) that reads again.
 - The app reads only the `TBL_ACCESS_` snapshot tables in the shared view. `SP_ACCESS_SNAPSHOT` (sql/1_setup.sql) fills them from
   ACCOUNT_USAGE, or SHOW when ACCOUNT_USAGE is not readable (ACCESS_HISTORY into `TBL_ACCESS_OBJECT_USE` and, with QUERY_HISTORY + SESSIONS, into `TBL_ACCESS_ACTIVITY` are optional may-fail steps; the activity read copies the days the last OK run has and reads only newer ones, `access.activity_start` does the same in Direct mode), and writes nothing else.
@@ -78,8 +78,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   `app.py` (page setup, runs `st_react.app`).
 - Snowflake side: names in `settings.local.sql` (template `settings.sql`), `sql/<n>_<step>.sql` with `-- name:` statements
   (`(may fail)`, `(expect N)`) plus `_verify.sql`, run by `run_sql.py` or SnowSQL. Use `&NAME`, never hard-code names.
-- Load the snapshot once per process and keep it with `cache.get` (memory, plus `.cache/` for `CACHE_HOURS`, 24 h by
-  default; memory only inside Snowflake; the key holds account, source, snapshot location, user and role). The app does its walks in Python; the rule checks over every user and role use the same counted walk in an in-memory DuckDB (`a.duck()`: role path counts per hop; `lose_all`, `read_shares`), equal to the Python walk (`test_duck_reach`), Python without duckdb or with a role loop. For use
+- Load the snapshot once per process and keep it with `cache.get` (memory, plus `.cache/` until read again;
+  memory only inside Snowflake; another account or role needs its own `CACHE_DIR`). The app does its walks in Python; the rule checks over every user and role use the same counted walk in an in-memory DuckDB (`a.duck()`: role path counts per hop; `lose_all`, `read_shares`), equal to the Python walk (`test_duck_reach`), Python without duckdb or with a role loop. For use
   without the app, `sql/1_setup.sql` also creates the table functions `TF_ACCESS_OF` / `TF_WHO_CAN` / `TF_CAN` and the
   procedure `SP_ACCESS_FINDINGS` (runs `access.py`); `test_sql.py` keeps them equal to `access.py`.
 - Walks give full paths: exact path counts without listing (count over the role graph), the shortest by BFS, every chain
@@ -95,8 +95,8 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   admin role / account privilege = red. Put the legend next to each graph.
 - Keep `FAKE=1` mode on the fake data in `access.py`, so it runs without Snowflake. Fake data keeps at least
   one finding per rule.
-- UI: sections are tabs, never stacked one under the other; a long page is split into tabs. One exception: the Activity
-  tab (`pages/Activity.tsx`) is one access log of stacked sections, shaped by the object's type. Small charts (bars, heat grid,
+- UI: a page's sections are sub-entries of its left-nav entry (`Tabs nav`, level 2+ nests; a tab bar only where the menu does not show), never stacked one under the other; long lists fold (first few, then +N more). One exception: the Activity
+  section (`pages/Activity.tsx`) is one access log of stacked sections, shaped by the object's type. Small charts (bars, heat grid,
   overlap circles, grant links, crossed-out cuts) are plain SVG / CSS in `components/kit.tsx` and `visuals.tsx`, colours from
   the `--ae-*` tokens (light and dark). Pickers search the server (`/api/list?q=&limit=`), never download every name.
 - Short names, comments only for the non-obvious "why", no extra error handling or logging.
