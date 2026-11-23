@@ -4197,6 +4197,33 @@ STANDARD = {"TABLE": {"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFER
             "STREAMLIT": {"USAGE"}, "NOTEBOOK": {"USAGE"}}
 
 
+# Every privilege Snowflake grants on a type, so Can they? can ask about one nobody holds yet.
+CREATES = {"CREATE " + x for x in ("TABLE", "VIEW", "MATERIALIZED VIEW", "DYNAMIC TABLE", "EXTERNAL TABLE", "ICEBERG TABLE",
+                                   "STAGE", "FILE FORMAT", "SEQUENCE", "FUNCTION", "PROCEDURE", "STREAM", "TASK", "PIPE",
+                                   "ALERT", "STREAMLIT", "NOTEBOOK", "TAG", "SECRET", "MASKING POLICY", "ROW ACCESS POLICY")}
+SNOWFLAKE_PRIVS = {
+    "TABLE": {"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "REBUILD", "EVOLVE SCHEMA", "APPLYBUDGET"},
+    "ICEBERG TABLE": {"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "EVOLVE SCHEMA", "APPLYBUDGET"},
+    "VIEW": {"SELECT", "REFERENCES"}, "MATERIALIZED VIEW": {"SELECT", "REFERENCES", "APPLYBUDGET"},
+    "EXTERNAL TABLE": {"SELECT", "REFERENCES"}, "DYNAMIC TABLE": {"SELECT", "OPERATE", "MONITOR"},
+    "WAREHOUSE": {"USAGE", "OPERATE", "MODIFY", "MONITOR", "APPLYBUDGET"},
+    "COMPUTE POOL": {"USAGE", "OPERATE", "MODIFY", "MONITOR"},
+    "TASK": {"OPERATE", "MONITOR", "APPLYBUDGET"}, "PIPE": {"OPERATE", "MONITOR", "APPLYBUDGET"},
+    "ALERT": {"OPERATE", "MONITOR"}, "STAGE": {"USAGE", "READ", "WRITE"}, "SECRET": {"USAGE", "READ"},
+    "STREAM": {"SELECT"}, "SEQUENCE": {"USAGE"}, "FUNCTION": {"USAGE"}, "PROCEDURE": {"USAGE"},
+    "FILE FORMAT": {"USAGE"}, "STREAMLIT": {"USAGE"}, "NOTEBOOK": {"USAGE"}, "INTEGRATION": {"USAGE"},
+    "TAG": {"APPLY"}, "MASKING POLICY": {"APPLY"}, "ROW ACCESS POLICY": {"APPLY"},
+    "SCHEMA": {"USAGE", "MONITOR", "MODIFY", "APPLYBUDGET", "ADD SEARCH OPTIMIZATION"} | CREATES,
+    "DATABASE": {"USAGE", "MONITOR", "MODIFY", "APPLYBUDGET", "CREATE SCHEMA", "CREATE DATABASE ROLE", "REFERENCE_USAGE"},
+}
+
+
+def ask_privs(kind):
+    """valid_privs, then every other privilege Snowflake has on the type: the choices of the Can they? question."""
+    v = valid_privs(kind)
+    return v + sorted(SNOWFLAKE_PRIVS.get(kind, set()) - set(v))
+
+
 def valid_privs(kind):
     """Privileges that exist on objects of this type (in the data, plus the standard ones of the type, so My access
     can ask about one it lacks), common ones first; OWNERSHIP always."""

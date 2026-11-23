@@ -298,6 +298,8 @@ def test_check():
     assert d["answer"]["yes"] and d["paths"]
     graph_ok(d["graph"])
     no = js("/api/check?name=ANALYST_01&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=DELETE")
+    assert {"REBUILD", "EVOLVE SCHEMA", "APPLYBUDGET"} <= set(no["privileges"]) and no["privileges"][:2] == ["*", "OWNERSHIP"]  # every table privilege
+    assert js("/api/check?name=ANALYST_01&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=REBUILD")["priv"] == "REBUILD"  # one nobody holds
     assert no["answer"]["how"] in ("none", "paths", "owner", "admin")
     for u in a.users:
         js(f"/api/check?name={u}", ["verdict", "held", "lanes", "cut", "cuts", "nearest", "layers", "roles_count"])

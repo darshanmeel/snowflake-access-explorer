@@ -24,8 +24,11 @@ export function CheckPageView() {
         <span className="ae-ask-w">Can</span>
         {mine ? <span className="ae-mono ae-ask-w">{s.data?.user ?? "you"}</span>
           : <Pick label="Person or role" value={name} user={!asked.role} what="users,roles" onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v]), obj: c.params.obj ?? s.data?.object ?? null })} />}
-        {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v, do: null })}
-          options={s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p])} />}
+        {/* "@<name>": USAGE on the object's database or schema, asked on that container */}
+        {s.data && <Sel label="Privilege" value={s.data.priv}
+          onPick={(v) => c.set(v.startsWith("@") ? { obj: v.slice(1), priv: "USAGE", do: null } : { priv: v, do: null })}
+          options={[...s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p]),
+            ...s.data.usage.map((u): [string, string] => [`@${u.name}`, `USAGE on ${u.type.toLowerCase()} ${u.name}`])]} />}
         <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, priv: null })} />
         <span className="ae-ask-w">?</span>
       </div>

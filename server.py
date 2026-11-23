@@ -2594,7 +2594,7 @@ def check_page(p, view):
     o = named(p.get("obj"), a.kinds, "objects") or (p.get("on") if p.get("on") in a.kinds else next(
         (r["object"] for r in mine_rows if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
     need(o in a.kinds, f"{o} is not in this snapshot")
-    opts = a.valid_privs(a.kinds[o])
+    opts = a.ask_privs(a.kinds[o])
     do = {"read": a.basic_priv(a.kinds[o]), "change": a.need_privs(a.kinds[o], "change")[0], "own": "OWNERSHIP"}
     pv = p.get("priv") if p.get("priv") in opts else do.get(p.get("do"), ALL)
     if pv == ALL:  # every privilege the user holds on o, each with its own paths
