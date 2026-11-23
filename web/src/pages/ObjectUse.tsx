@@ -47,7 +47,7 @@ function Body({ d }: { d: ObjUsePage }) {
           items={d.periods.map((x) => ({ key: String(x), label: `${x} days` }))} />
         <Sel label="Type" value={d.type} options={types} onPick={(v) => c.set({ type: v || null })} />
         <Pick label="Database or schema" value={d.scope} what="databases,objects" params={{ type: "SCHEMA" }} onPick={(v) => c.set({ scope: v })} />
-        {d.scope && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ scope: null })}>any database ×</button>}
+        {d.scope && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ scope: null })} aria-label="Clear database or schema">Clear ×</button>}
       </Controls>
       <Tabs nav active={tab} onChange={(k) => c.set({ tab: k === "unused" ? null : k })} tabs={[
         { key: "unused", label: "Not used", count: d.tabs.unused },

@@ -185,7 +185,7 @@ export function GraphCard({ g, title, refs, param = "focus" }: { g: G | null; ti
       {filters.length > 0 && (
         <div className="ae-graph-open">
           Showing
-          {filters.map((k) => <button key={k} className="ae-chip ae-chip-plain" onClick={() => c.set({ [k]: null })}>{k} {c.params[k]} ×</button>)}
+          {filters.map((k) => <button key={k} className="ae-chip ae-chip-plain" onClick={() => c.set({ [k]: null })}>{k === "otype" ? "type" : c.params[k]!.includes(".") ? "schema" : "database"} {c.params[k]} ×</button>)}
         </div>
       )}
       {g.note && <p className="ae-graph-note">{g.note}</p>}
@@ -220,7 +220,7 @@ export function ScopePick() {
   return (
     <>
       <Pick label="Database or schema" value={c.params.schema ?? ""} what="databases,objects" params={{ type: "SCHEMA" }} onPick={(v) => c.set({ schema: v, ...UNFOCUS })} />
-      {c.params.schema && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ schema: null, ...UNFOCUS })}>any database ×</button>}
+      {c.params.schema && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ schema: null, ...UNFOCUS })} aria-label="Clear database or schema">Clear ×</button>}
     </>
   );
 }
