@@ -877,6 +877,7 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     h = d["heat"]  # each object in one cell, riskiest schema first, as the filter chips count them
     assert sum(x["read"] + x["change"] + x["own"] for x in h) == n["read"] and [x["own"] + x["change"] + x["sensitive"] for x in h] == sorted((x["own"] + x["change"] + x["sensitive"] for x in h), reverse=True)
     for x in h:
+        assert x["schema"] == (f'{x["database"]}.{x["name"]}' if x["name"] else x["database"]), x  # database and schema in their own columns
         for k in ("read", "change", "own"):
             assert js(f"/api/access?user=ENGINEER_01&cell={x['schema']}&min={k}")["total"] == x[k], (x, k)
     assert sum(x["read"] for x in h) == js("/api/access?user=ENGINEER_01&filter=read")["total"]

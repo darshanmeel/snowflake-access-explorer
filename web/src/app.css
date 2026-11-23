@@ -158,8 +158,8 @@ div.ae-tile { cursor: default; }
 .ae-dot2 { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
 .ae-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
 .ae-heat { display: grid; gap: 4px; font-size: 13px; overflow-x: auto; }
-.ae-heat > div { display: grid; grid-template-columns: minmax(130px, 1.6fr) repeat(4, minmax(56px, 1fr)); gap: 4px; align-items: center; }
-.ae-heat > div > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* a long schema name stays in its column */
+.ae-heat > div { display: grid; grid-template-columns: minmax(110px, 1.3fr) minmax(90px, 1fr) repeat(4, minmax(56px, 1fr)); gap: 4px; align-items: center; }
+.ae-heat > div > span:nth-child(-n+2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* a long schema name stays in its column */
 .ae-heat-h { color: var(--ae-muted); font-size: 12px; }
 .ae-heat-c { font: inherit; font-weight: 600; min-height: 32px; border: 1px solid transparent; border-radius: 6px; background: var(--ae-sunk); color: var(--ae-muted); cursor: pointer; }
 .ae-heat-c:disabled { cursor: default; opacity: .7; }

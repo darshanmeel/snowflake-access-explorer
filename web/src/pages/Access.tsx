@@ -139,10 +139,11 @@ function Body({ d }: { d: AccessPage }) {
           {d.heat_total > HEAT_MIN && <input className="ae-input" placeholder={`Search ${d.heat_total} schemas`} value={hq} onChange={(e) => setHq(e.target.value)} aria-label="Search schemas" />}
           {heat.heat.length ? (
             <div className={`ae-heat${sq2 && hs.loading ? " ae-fade" : ""}`} role="table">
-              <div role="row" className="ae-heat-h"><span>Schema</span><span>Read only</span><span>Change</span><span>Own</span><span>Sensitive</span></div>
+              <div role="row" className="ae-heat-h"><span>Database</span><span>Schema</span><span>Read only</span><span>Change</span><span>Own</span><span>Sensitive</span></div>
               {heat.heat.map((h) => (
                 <div role="row" key={h.schema}>
-                  <span className="ae-mono" title={h.schema}>{h.schema}</span>
+                  <span className="ae-mono" title={h.database}>{h.database}</span>
+                  <span className="ae-mono" title={h.name}>{h.name || "·"}</span>
                   {(["read", "change", "own", "sensitive"] as const).map((k) => (
                     <button type="button" key={k} disabled={!h[k]} className={`ae-heat-c ${h[k] ? (k === "sensitive" ? "ae-sens-tag" : `ae-lvl-${k}`) : ""}${cell?.schema === h.schema && cell.min === k ? " on" : ""}`}
                       onClick={() => { setCell({ schema: h.schema, min: k }); c.set({ show: "summary" }); }}>{h[k] || "·"}</button>

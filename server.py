@@ -1601,7 +1601,8 @@ def access_entries(name, user, mine):
     heat = {}
     for o in data:
         k = f'{o["database"]}.{o["schema"]}' if o["schema"] else o["object"]
-        h = heat.setdefault(k, dict(schema=k, read=0, change=0, own=0, sensitive=0))
+        h = heat.setdefault(k, dict(schema=k, database=o["database"] or o["object"], name=o["schema"] or "",
+                                   read=0, change=0, own=0, sensitive=0))
         i = a.LEVELS.index(o["level"]) if o["level"] else 0
         h["read"] += i == 1  # each object in one cell, as the ladder bar and the filter chips count it
         h["change"] += i == 2

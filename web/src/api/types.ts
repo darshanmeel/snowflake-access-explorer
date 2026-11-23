@@ -1097,7 +1097,7 @@ export interface AccessPage {
   runs_total: number;
   powers: AccessObject[]; // powers over the account, the first PAGE of powers_total
   powers_total: number;
-  heat: { schema: string; read: number; change: number; own: number; sensitive: number }[]; // riskiest HEAT schemas (hq= filters), each object in one cell
+  heat: { schema: string; database: string; name: string; read: number; change: number; own: number; sensitive: number }[]; // riskiest HEAT schemas (hq= filters), each object in one cell
   heat_total: number;
   why: { role: string; kind: NodeKind; note: string; kids: string[]; kids_total: number }[]; // kids: the first KIDS
   why_more: number; // a role's holders past the HOLDERS listed
