@@ -922,3 +922,5 @@ div.ae-tile { cursor: default; }
 .ae-act-n { font-size: 13px; color: var(--ae-ink2); white-space: nowrap; text-align: right; }
 .ae-act-n b { font-size: 15px; color: var(--ae-ink); }
 @media (max-width: 520px) { .ae-act-row { grid-template-columns: minmax(0, 1fr) auto; } .ae-act-main { grid-column: 1 / -1; grid-row: 2; } .ae-hero { padding: 16px; } }
+.ae-unblock { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.ae-unblock li { display: flex; gap: 10px; align-items: baseline; overflow-wrap: anywhere; } .ae-unblock .ae-tag { flex: none; min-width: 76px; text-align: center; }

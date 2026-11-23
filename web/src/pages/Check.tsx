@@ -366,6 +366,27 @@ function RemoveOptions({ d }: { d: CheckPage }) {
   );
 }
 
+/** Why a held privilege is blocked: what is held, the USAGE missing, then one grant per line that fixes it. */
+export function Blocked({ d, fix }: { d: CheckPage; fix: { iac: string; sql: string } }) {
+  const has = [...new Set(d.paths.map((x) => x.privilege))].join(", ") || "OWNERSHIP";
+  const todo = fix.iac.split(/; (?=Add )/).map((x) => x.replace(/^Add in the infrastructure-as-code repo: /, ""));
+  return (
+    <>
+      <ul className="ae-unblock">
+        <li><span className="ae-tag ae-tag-ok">✓ Has</span> <span><strong>{has}</strong> on <span className="ae-mono">{d.object}</span></span></li>
+        {d.usage.map((x) => (
+          <li key={x.type}><span className={`ae-tag ae-tag-${x.held ? "ok" : "bad"}`}>{x.held ? "✓ Has" : "✕ Missing"}</span>{" "}
+            <span><strong>USAGE</strong> on {x.type.toLowerCase()} <span className="ae-mono">{x.name}</span></span></li>
+        ))}
+      </ul>
+      <h4>Smallest fix, in the infrastructure-as-code repo</h4>
+      <ul className="ae-unblock">{todo.map((x) => <li key={x}><span className="ae-tag ae-tag-warn">+ Add</span> <span>{x}</span></li>)}</ul>
+      <p className="ae-muted">The same as SQL (this app never runs it):</p>
+      <pre className="ae-code">{fix.sql.replace(/; (?=GRANT )/g, ";\n")}</pre>
+    </>
+  );
+}
+
 /** The answer tab: the nearest way in (No), why it is blocked, the graph of how the access gets there. Without
  * routes (no Routes tab) the table of routes and the ways to remove it stay here. */
 function Answer({ d }: { d: CheckPage }) {
@@ -376,8 +397,7 @@ function Answer({ d }: { d: CheckPage }) {
       {d.verdict === "no" && d.view !== "mine" && <NearestWays d={d} first />}
       {d.unblock && (
         <Card title="Why it is blocked" sub="USAGE on the database and schema is checked first.">
-          <p>{a.text}</p>
-          <pre className="ae-code">{d.unblock.iac}</pre><pre className="ae-code">{d.unblock.sql}</pre>
+          <Blocked d={d} fix={d.unblock} />
         </Card>
       )}
       <CutBanner capped={d.capped} no={d.verdict === "no"} />
