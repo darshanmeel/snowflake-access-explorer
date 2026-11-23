@@ -50,13 +50,13 @@ FLOW = {
     "call": mid(C1[1] + 70, 60, "step", "", "CALL the procedure", "2_snapshot.sql"),
     "busy": mid(C1[1] + 70, 200, "dec", "", "Run RUNNING,", "under 1 h old?", 80),
     "skip": mid(C1[0] + 70, 200, "step", "", "Return SKIPPED", "nothing written"),
-    "read": mid(C1[2] + 70, 200, "step", "", "Read sources", "ACCOUNT_USAGE or SHOW"),
+    "read": mid(C1[2] + 70, 200, "step", "", "Read sources", "ACCOUNT_USAGE first"),
     "ok": mid(C1[3] + 70, 200, "dec", "", "Every core", "dataset read?", 80),
     "fail": mid(C1[3] + 70, 320, "step", "", "FAILED run", "its rows deleted"),
     "run": mid(C1[4] + 70, 200, "data", "DATA", "OK run", "TBL_ACCESS_*"),
     "rebuild": mid(C1[1] + 70, 460, "step", "", "Rebuild snapshot", "button, top bar"),
     "reload": mid(C1[3] + 70, 460, "step", "", "Read again (↻)", "in the background"),
-    "load": mid(C1[4] + 70, 460, "step", "", "Load last OK run", "kept 24 h"),
+    "load": mid(C1[4] + 70, 460, "step", "", "Load last OK run", "until read again"),
     "open": mid(C1[4] + 70, 580, "actor", "", "Open a page", "or a shared link"),
 }
 FLOW_ARROWS = [

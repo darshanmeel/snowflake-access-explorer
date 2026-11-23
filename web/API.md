@@ -58,30 +58,30 @@ Switches (`cache.config()`):
 | not `1` | `objects` (or `ACCESS_SNAPSHOT` set) | `objects` | `a.snapshot(query, WHERE)`, WHERE = `ACCESS_SNAPSHOT` or `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA` | `a.mine(query, WHERE.split(".")[0])` |
 | not `1` | `direct` (default) | `direct` | `a.live(query)` | `a.mine(query, None)` |
 
-The data is read once a day (`cache.get`: memory 24 h, and `.cache/` for `CACHE_HOURS`); `meta.fetched_at` is when.
+The data is read once and kept until a refresh reads again (`cache.get`: memory, and locally a file in `CACHE_DIR`,
+default `.cache/`); `meta.fetched_at` is when.
 
 `query(sql)` runs on a fresh connection from `sf.connect()` per load, closed afterwards (as `app.with_query`).
 
-### Shared data: one copy, 24 hours
+### Shared data: one copy, until read again
 
-- In memory: `{"data": dict, "at": epoch}`, reused while younger than `TTL` (`cache.TTL`, 24 h); locally also a file in
-  `.cache/` kept for `CACHE_HOURS` (24, `0` = memory only; never on disk inside Snowflake). Expired: the next request
-  that needs it loads again; **↻** (`POST /api/reload`) reads now.
+- In memory: `{"data": dict, "at": epoch}`; locally also the file `shared_data.pkl` in `CACHE_DIR` (one shared copy per
+  folder: another account or role gets its own `CACHE_DIR`; fake data keeps `cache.name(...)`). No expiry: **↻**
+  (`POST /api/reload`) or Rebuild snapshot reads again. `CACHE_HOURS=0` keeps memory only, as inside Snowflake.
 - Build key: `("shared", run["RUN_ID"], str(run["FINISHED_AT"]))`.
 - A load error is kept for the request only (not cached): `503 shared_unreadable`, and the UI points to My access.
 
-### My access: per browser session, 24 hours
+### My access: per browser session, until read again
 
 - Cookie `ae_sid`: 32 random hex chars (`os.urandom(16).hex()`), set by `POST /api/mine/load`. `HttpOnly`,
   `SameSite=Strict`, `Path=/api`, `Max-Age` = `TTL` (86400). Not `Secure` locally (http://localhost).
 - Server dict `MINE = {sid: {"data": dict, "key": ("mine", <random hex>), "user": str, "at": epoch, "cache_key": str}}`.
   `key` is random, so two sessions never share `a.build` lookups or rule findings.
-- Every `view=mine` request: look up the cookie; missing, unknown or older than `TTL` -> `409 mine_not_loaded`
-  (expired entries are dropped on the way). Found -> `a.build(data, key)` and answer from memory: no Snowflake call per
-  click.
-- Locally the read is also kept in `.cache/` for `CACHE_HOURS`, one file per Snowflake user (`cache.name("mine", user,
-  WHERE)`), so a restart does not ask for another login; `POST /api/mine/load?fresh=1` drops it and reads again.
-  No other browser session sees it: its build key is random. Inside Snowflake My access is off.
+- Every `view=mine` request: look up the cookie; missing or unknown -> `409 mine_not_loaded`. Found -> `a.build(data,
+  key)` and answer from memory: no Snowflake call per click. An entry stays until Reload my access.
+- Locally the read is also kept as `my_data.pkl` in `CACHE_DIR`, so a restart does not ask for another login;
+  `POST /api/mine/load?fresh=1` drops it and reads again. No other browser session sees it: its build key is random.
+  Inside Snowflake My access is off.
 
 ### Answers
 
@@ -115,7 +115,19 @@ computed once per build key.
 // a banner
 {"tone": "info" | "warn" | "bad", "title": "Dormant user: no login for 120 days", "lines": ["..."],
  "links": [{"label": "Rule 16", "page": "rules", "params": {"rule": "16"}}]}
+// a risk strip line (RiskItem): server.subject_risks(name, user) / object_risks(obj), worst first, [] = no strip
+{"severity": "bad" | "warn", "text": "Holds 1 admin role: SYSADMIN via F_PLATFORM", "n": 1,
+ "link": {"label": "Admin holders", "page": "rules", "params": {"part": "admins"}}}
 ```
+
+**Risk strip** (`risks` on `access`, `role`, `who` and `check`): what needs a look first, one line each, lists cut to
+the first 3 names then `+N` (`RISK_TOP`). A person or role: admin roles held (with the first role on the way), account
+privileges not through PUBLIC, sensitive objects read unmasked, their rule findings per severity, an admin default
+role, dormant or disabled while holding roles, very broad access (at least 20 data objects and 25% of the account),
+secondary roles ALL. An object: sensitive columns without masking that readers see in clear, grants to PUBLIC, people
+who can change a sensitive object, stale readers, its findings, reached only through admin roles, not used in 90 days
+yet readable by 3 or more users. Readers and writers leave out people Snowflake refuses (no USAGE on the database or
+schema). `check` merges both, each line prefixed with its name; `who` sends `null` for the admin preset.
 
 ### Graph
 
@@ -168,6 +180,7 @@ computed once per build key.
     }
   },
   "src": null,                           // lazy boxes: the GET /api/graph params that draw this graph again
+  "focus": null,                         // focus=<box>: {"id", "label", "access": FocusAccess | null}, see Focus
   "legend": {"kinds": ["user", "functional", "technical", "database_role", "object", "schema_group"],
              "edges": ["inherit", "inherit_db", "read", "manage"], "marks": ["sensitive"], "rules": true}
 }
@@ -202,7 +215,19 @@ computed once per build key.
   its roles, and a lane over 24 people as `lane:<i>:people` (noun `people`; PUBLIC brings every user to the Object and
   Role pages) (lines of other boxes end at it, `graphs.ts expand`), lines into it counting them. Opening a lazy box asks
   `GET /api/graph?<src>&group=<box id>`, which answers that `GraphGroup` in full (`lazy: false`, at most 1000 members).
-  A big user's graph went from 19 MB (27k member nodes) to under 0.1 MB.
+  A big user's graph went from 19 MB (27k member nodes) to under 0.1 MB. A crowded lane folds on the server in any
+  graph, small ones too (276 people under PUBLIC), not only over 300 boxes.
+- **Focus** (`focus=<node id>` on `user`, `role`, `object`, `check`, `map`, `activity` and `graph`; `server.narrow`):
+  only the lines through one box, worked out before anything folds, so a big account sends only those. A combined box
+  opens into its members first (over 12 objects they box again per schema); a member picked inside an opened box opens
+  that box with only the member on it; a folded lane `lane:<i>` draws its members; a summary fold whose own lines do
+  not reach its members stays one box. Boxes on the way keep only the members those lines reach, and a role fed only
+  through a folded box keeps its way in. `graph.focus`: `{"id", "label", "access"}`, `access` = `server.focus_access`
+  for a database, schema or object (`{"type", "people", "roles", "levels": [{"level", "word", "n"}]}`, as the Object
+  page's Who tab counts, most first), null for a role or a box. A focus not drawn: the whole graph and a `note`. Lazy
+  boxes of a focused graph carry `focus` in `src`. In the web app the page URL keeps it as `focus=` (the page's main
+  graph), `tfocus=` (a Privileges tab diagram) or `afocus=` (the Activity graph); each is sent as `focus=` to the call
+  that draws that graph, never to the page's own call. Show all drops them.
 
 ## Endpoints
 
@@ -270,7 +295,7 @@ the same lines above the app (Python is busy then). Producer: `server.progress()
 ### POST /api/mine/load
 
 Reads the logged-in user's own access (see sessions; `?fresh=1` reads Snowflake again, else the cached copy), sets `ae_sid`. Answer: `{"loaded": true, "user": "ENGINEER_01",
-"loaded_at": "...", "expires_at": "...", "notes": [...]}`. Producer: `a.mine()` / `a.only()`.
+"loaded_at": "...", "expires_at": null, "notes": [...]}` (`expires_at` always null: kept until read again). Producer: `a.mine()` / `a.only()`.
 
 ### GET /api/mine
 
@@ -278,25 +303,44 @@ Reads the logged-in user's own access (see sessions; `?fresh=1` reads Snowflake 
 
 ### GET /api/home?view=
 
-Home: `me` (`user`: the default user, `DEMO_USER` when it exists, or the logged-in user for `view=mine`; `counts`: their
-read / change / own ladder), `risks` (rule findings per severity), `per_rule` (findings per rule number), `skipped`
-(rules that did not run, as on `/api/rules`; shared only), `counts`
-(users, roles, objects, sensitive objects) and `protection` (tagged, masked and unmasked sensitive objects with
-`unmasked_names`, row-policy tables `row_tables` / `row_list`, dormant users who reach sensitive data with
-`dormant_names`).
+Home. Shared data names no person until one is picked (`me` null); `view=mine`: `me` = the signed-in user with
+`counts` (their read / change / own ladder). Shared only (null in mine): `risks` (findings per severity),
+`per_rule` (findings per rule number), `rule_sev` (per severity, then rule), `subjects` (distinct people and roles per
+severity), `act_first` (Critical, then High rules, fewest findings first, the first 5: `num`, `severity`, `title`,
+`findings`, `subjects`, the first 20 `names` as `{id, kind}`), `skipped` (rules that did not run, as on `/api/rules`),
+`protection` (rule 6 findings `unmasked` with the distinct columns `unmasked_names` `[{object, column}]` and
+`unmasked_columns`, dormant readers `dormant` / `dormant_names`, `tagged`, `masked`, `row_tables`; the row-policy tables
+are listed on Sensitive data) and `cards`. `counts` (users, roles, objects, sensitive objects) in both.
 
-### GET /api/access?view=&user=|role=&filter=&q=&usage=0&cell=&min=&sort=risk|name&group=none|schema|type&offset=0&limit=50
+`cards` (`server.home_cards()`, once per data set, the first 20 names of each part):
+
+| Key | Holds |
+|---|---|
+| `admins` | admin holders: `total`, `service`, `by_role` `[{role, people}]`, `account_only` (account privileges, no admin role), `names` / `service_names` `[{user, role, login}]`, riskiest first |
+| `stale` | disabled, dormant or never logged in, still holding roles: `total`, `by_status`, `of_status` (all users per status), `names` |
+| `people` | users `by_status`, `service` |
+| `roles` | roles per kind |
+| `objects` | `by_type` `[{type, n}]`: the first 6 types, then `Other` |
+| `depth` | `a.depth_counts()`: users, objects, schemas and databases per deepest chain depth, 0 where none |
+| `biggest` | the 6 biggest `schemas` and `databases` by object count, `n_schemas`, `n_databases` |
+| `activity` | `ok`, `reason`, `users`, `daily` queries over the last 60 days |
+| `objuse` | Object activity at 90 days: `ok`, `notes`, `unused` (no use in 90 days), `new`, `unused_new`, `types` `[{type, buckets}]`, `nodata` (types with no history), `read_only`, `write_only` |
+| `changes` | What changed: `counts` (`all`, `gain`, `lose`, `risk`, `sensitive`) and `high` once a compare is made (Home never compares: `counts` null until then), `before`, or `reason` when no earlier snapshot is kept |
+
+### GET /api/access?view=&user=|role=&filter=&q=&otype=&usage=0&cell=&min=&hq=&sort=risk|name&group=none|schema|type&offset=0&limit=50
 
 A person or a role (My access with `view=mine`): `who` (name, kind, type, status, last login, default role, holders),
 `counts` (read, change, own, runnable, account powers, admin, sensitive, schemas, usage), `objects` (one page of the
 data list, one row per object at its highest level: privileges, level, path and number of paths, holder role,
 sensitive columns, findings), `total` (rows that match the list filters), `data` (rows before them), `offset`,
-`limit`, `groups` (`group=`: rows per group over every page), `runs` / `powers` (things they can run, powers over the
-account: the first 250 of `runs_total` / `powers_total`), `heat` (per schema: read / change / own / sensitive), `why`
-(the role tree that gives it), `roles`, `deepest`, `findings` with `findings_total`, and `refs`. An unknown role
-answers `404`.
+`limit`, `types` (object types in the list, most first: the Type filter), `groups` (`group=`: rows per group over
+every page), `runs` / `powers` (things they can run, powers over the account: the first 250 of `runs_total` /
+`powers_total`), `heat` (the riskiest schemas, `hq=` filters by name, with `heat_total`), `why` (the role tree that
+gives it, `kids` the first of `kids_total`; `why_more`: a role's holders past those listed), `roles`, `deepest`,
+`admin_roles` (admin roles held; a role: itself too), `risks` (the risk strip) and `refs`. An unknown role answers
+`404`.
 
-List filters (as the list's controls): `filter=read|change|own|multi`, `q` (in the name), `usage=1` (with database /
+List filters (as the list's controls): `filter=read|change|own|multi`, `q` (in the name), `otype` (one object type), `usage=1` (with database /
 schema USAGE), `cell=<DB.SCHEMA>&min=read|change|own|sensitive` (a heat cell), `sort=name` (else riskiest first),
 `group=schema|type` (rows of a group kept together). The whole list (entries, findings, counts, heat) is worked out
 once per data set and subject; each page picks from it. `GET /api/access.csv` with the same params: every matching row.
@@ -315,10 +359,13 @@ people with access.
             "type": "TABLE", "sensitive": true, "page": "object", "answer": "8 people have access"}], "total": 2}
 ```
 
-### GET /api/list?what=users|roles|objects|types|databases[,...]&type=&q=&limit=&view=
+### GET /api/list?what=users|roles|objects|types|databases|role_holders|user_holders|direct_holders[,...]&type=&role=&q=&limit=&view=
 
-Picker options. users: `a.users` (+ status); roles: `a.roles` (+ kind); objects: `a.objects` (filter by `type`,
-+ type); types: `sorted(set(a.kinds.values()))`; databases: database names of `a.objects` (review page).
+Picker options. users: `a.users` (+ type, status); roles: `a.roles` (+ kind); objects: `a.objects` (`type=` one
+object type, + type); types: `sorted(set(a.kinds.values()))`; databases: database names of `a.objects`, kept once per
+data set (the Compare and Review pickers search it, so those pages send only the one picked); role_holders /
+user_holders: roles or users that reach `role=`, direct first (What if); direct_holders: who holds `role=` by its own
+grant (the Role page's cut picker).
 `what` takes a comma list (`users,roles` for a person-or-role picker). `q` filters and ranks the items as Find does
 (`a.search`); `limit` caps the answer. The pickers search here as you type (50 at a time) instead of downloading
 every name. Answer: `{"items": [{"id", "name", "kind", "type", "status"}], "total": n}` (`total` before `limit`).
@@ -404,12 +451,13 @@ of the tab (as `components/tabs.ts byObject`: the strongest access, every grant,
 The Role page's Privileges tables use the same endpoint with `of=role` and the role page's params (`name`, `depth`,
 `schema`, `otype`, `sensitive`): one row per object the role reaches; `privs.csv?of=role` every row.
 
-### GET /api/role?view=&name=&depth=&users=0&sensitive=0&schema=&otype=&cut=&lacks=&full=
+### GET /api/role?view=&name=&depth=&users=0&sensitive=0&schema=&otype=&cut=&lacks=&full=&focus=
 
 Role page. Producers: `a.role_stats(r, limit)`, `a.holds_of(r)`, `a.held(r, limit)`, `a.grants(r)` (effective),
 `a.reach(r)` (roles held), `a.readonly_writes(r)`, `a.admin_paths(r)`, `a.account_privs(r)`, `a.has_lacks(r, o)`,
 `a.valid_privs(t)`, `a.loses(...)` and `a.fix_text([a.role_edge(...)])` for `cut`, `a.data_views(r, False)`; graph from
-`a.role_graph(r, up, ro)` merged with `a.graph_input(r, ...)` as `app.role_graph_card`.
+`a.role_graph(r, up, ro)` merged with `a.graph_input(r, ...)` as `app.role_graph_card`. `risks`: the risk strip of
+the role (`server.subject_risks(r, False)`).
 
 ```jsonc
 {
@@ -516,7 +564,8 @@ groupGrantees`), most users first; a group lists its first 100 users (`count` al
 ### GET /api/who?view=&name=|preset=admin
 
 Screen 2 (page key `object`): who has access to one object, or with `preset=admin` who holds an admin role.
-`access.who_has` / `admin_access` / `same_paths` / `column_view`.
+`access.who_has` / `admin_access` / `same_paths` / `column_view`. `risks`: the object's risk strip
+(`server.object_risks`), null for the admin preset.
 
 ```
 { view, object: { id, preset, type, database, schema, name, sensitive, tags[], columns (sensitive count), masking[],
@@ -535,7 +584,7 @@ exposed: {user: [sensitive objects they cannot read themselves]}}`. An app runs 
 it sees what the owner role reads; rule 29 is built from the same answer. The object page shows it as a banner.
 A user holding an admin role is `admin` and shown by its shortest path to the admin role. 404 for an unknown name.
 
-### GET /api/check?view=&name=|user=|role=&obj=&priv=SELECT|&do=read|change|own|any
+### GET /api/check?view=&name=|user=|role=&obj=&priv=SELECT|&do=read|change|own|any&near=1&focus=&inside=read|dml|ddl&show_in=all|can|cannot&in_q=&offset=
 
 The subject is a user (`name=`, or `user=` as on the Access screen) or a role (`role=`): users and roles are separate
 namespaces, so `role=` always means the role. A `name=` that is no user but a role is that role (Home's typed
@@ -543,36 +592,60 @@ question). My access: always the signed-in user. For a role, every producer belo
 `user=False`: its own grants plus the roles it inherits, routes start at the role (depth 1 itself), where to cut counts
 the people holding it, nearest ways in grant a role to it (never one that holds it: a loop), `use_role` is the role.
 
-Can they? Producers: `a.can(u, priv, obj)`, `a.admin_paths(u, True)`, `a.login_days`, `a.is_dormant`,
-`a.data_view(u, obj, True)` and `a.data_view(use_role, obj, False)` (read line), `a.priv_class`, the usage card
-(`a.used`), and the graph from `a.down_graph(u, [dict(privilege, type, object, paths)], user=True)`.
-`obj` default: `on`, else the first table or view the user reaches (as app.check_page).
+Can they? Producers: `a.can(u, priv, obj)`, `a.admin_can`, `a.login_days`, `a.is_dormant`, `a.usage_gaps` and
+`a.containers` (USAGE on the database and schema), `a.data_view(u, obj, True)` and `a.data_view(use_role, obj, False)`
+(read line), `a.cut_points`, `a.nearest`, `a.narrowest`, `a.inside_access`, and the graph from `a.down_graph(u,
+[dict(privilege, type, object, paths)], user=True)`. `obj` default: `on`, else the first table or view the user
+reaches. A change of person or role keeps the object.
+
+- **USAGE first.** Snowflake checks USAGE on the database and schema before the privilege: `usage` lists both with
+  `held`. The privilege held without that USAGE is `verdict: "blocked"` (`answer.how` `blocked`), `blocked` names what
+  is missing and `unblock` the smallest fix (text only).
+- **No.** `nearest` is null until asked with `near=1` (the Nearest ways in tab: seconds on a big account); then the ways
+  in, each with the GRANT text in `change` when one grant does it. `narrow`: the privilege alone on the object, granted
+  to the smallest role the subject already reaches that has USAGE on its schema (else its database), so nothing else
+  comes with it; its `holders` get it too. `do=any` (every privilege) also sends `nearest_own`: the ways to own it,
+  apart from the ways to use it. Shared only.
+- **A database or schema.** `inside`: each table and view in it, for `inside=read` (SELECT, default), `dml` (SELECT,
+  INSERT, UPDATE, DELETE, TRUNCATE) or `ddl` (OWNERSHIP, what ALTER and DROP need), with what the subject holds, what is
+  missing and the USAGE that blocks it; OWNERSHIP or an admin role's real links give everything. `show_in=can|cannot`
+  and `in_q=` (words in the name) filter, `offset=` pages 100 at a time; cannot first. `create`: the CREATE
+  privileges held on the schema itself, for new objects. Null for any other type.
 
 ```jsonc
 {
   "user": "ANALYST_01", "object": "SALES.CORE.TBL_CUSTOMER", "type": "TABLE", "priv": "SELECT",
-  "privileges": ["OWNERSHIP", "SELECT"],          // a.valid_privs(type), for the picker
-  "answer": {"yes": true, "how": "paths" | "owner" | "admin" | "none", "title": "Yes, through 2 paths",
+  "privileges": ["*", "OWNERSHIP", "SELECT"],     // * (every privilege held) + a.valid_privs(type), for the picker
+  "verdict": "yes" | "partly" | "no" | "blocked",
+  "answer": {"yes": true, "how": "paths" | "owner" | "admin" | "none" | "blocked", "title": "Yes, through 2 paths",
              "text": "ANALYST_01 can SELECT SALES.CORE.TBL_CUSTOMER.", "tone": null | "warn" | "low",
              "stats": [["Paths", 2], ["Shortest depth", 3]]},
+  "risks": [ /* RiskItem: the subject's and the object's, each text prefixed with its name */ ],
   "subject": {"kind": "user" | "functional" | ..., "name": "ANALYST_01", "id": "ANALYST_01", "user": true, "people": null},  // people: users holding a role
   "status": "active", "dormant_days": null,         // status null for a role
+  "usage": [{"type": "DATABASE", "name": "SALES", "held": true}, {"type": "SCHEMA", "name": "SALES.CORE", "held": true}],
+  "blocked": [], "unblock": null,                   // blocked: {"iac", "sql"}, never run
   "admin_paths": [],
-  "paths": [{"path": ["..."], "depth": 3, "holder": "T_SALES_CORE_READ", "how": "direct grant on T_SALES_CORE_READ"}],
-  "owner": [], "choke": ["GRP_ANALYSTS"], "closest": null,
-  "ask": [{"role": "F_ANALYST", "privileges": 14, "path": ["..."]}],   // only when no path; empty in mine
+  "paths": [{"path": ["..."], "depth": 3, "holder": "T_SALES_CORE_READ", "how": "direct grant on T_SALES_CORE_READ", "privilege": "SELECT"}],
+  "paths_total": 2,                                 // paths lists the first MAX_PATHS
+  "owner": [], "choke": ["GRP_ANALYSTS"],
   "options": [{"iac": "...", "sql": "REVOKE ...;", "affects": 3, "users": ["..."], "edges": 1}],  // shared only
   "use_role": "F_ANALYST", "warehouse": "WH_ANALYST",
+  "warehouses": {"names": ["WH_ANALYST"], "total": 1, "admin": false},  // first 10; admin: some only through an admin role
   "read": {"summary": "can read: all rows, EMAIL masked", "rows": {}, "columns": [], "role_only": "..."},  // or null
-  "graph": { /* Graph */ },
-  "usage": { /* as user */ }, "capped": [], "refs": {},
-  // screens 3 and 12 (redesign)
-  "verdict": "yes" | "partly" | "no",
+  "graph": { /* Graph, focus= narrows it */ },
+  "capped": [], "refs": {},
   "held": [{"privilege": "SELECT", "held": true}],      // every privilege of the type; OWNERSHIP or an admin role: all
   "lanes": [{"path": ["..."], "privileges": ["SELECT"]}], "lanes_total": 2,   // a.lanes: one per distinct route (first 20)
   "cut": ["F_ENGINEER"],                                 // roles on every lane: a place to cut
   "cuts": [{"iac": "...", "sql": "...", "people": ["..."], "lost": 19, "edges": [{"grantee", "to", "priv", "user"}]}],  // a.cut_points, shared only
-  "nearest": [{"path", "missing", "role", "to", "to_user", "cost", "people", "holders", "extra", "also", "rule1", "broad"}],  // a.nearest when No, shared only
+  "nearest": [{"path", "missing", "role", "to", "to_user", "cost", "people", "holders", "extra", "also", "rule1", "broad", "change"}] | null,
+  "nearest_own": [ /* as nearest */ ] | null,
+  "narrow": {"role": "T_SALES_CORE_READ", "holders": 4, "privilege": "SELECT", "change": {}} | null,
+  "inside": {"mode": "read", "show": "all", "total": 9, "can": 6, "cannot": 3, "blocked": 0, "matched": 9,
+             "offset": 0, "limit": 100, "create": [],
+             "rows": [{"object": "SALES.CORE.TBL_ORDER", "type": "TABLE", "ok": false, "has": ["USAGE"],
+                       "missing": ["SELECT"], "blocked": null}]} | null,
   "ask_priv": "SELECT", "roles_count": 11, "approver": "HR data owner" | null,   // a.approver: OWNER / DATA_OWNER tag
   "layers": [{"step": "Grant" | "Rows" | "Columns", "ok": true, "result": "No rows", "reason": "..."}] | null  // Partly: rows none or columns masked
 }
@@ -599,7 +672,7 @@ admin-reaching roles never), `a.approver`, `a.object_stats` owners.
 ```
 404 for an unknown user or object.
 
-### GET /api/map?view=&table=|role=|user=&same=1&admin=1&builtin=
+### GET /api/map?view=&table=|role=|user=&same=1&admin=1&builtin=&schema=&otype=&access=read|write|own&focus=
 
 Screen 4, Access graph (page key `graph`; `show=trace` is its new tab, `sel=` the picked box, `risky=1` the highlight:
 none of these reach the server). `a.access_graph(start, name, same, admin)`: columns by shortest step, every line's
@@ -608,7 +681,9 @@ flowing through it; same-path people stacked (node mark `stack`), admin people a
 built-ins as one fold box (`builtin=1` unfolds). Big accounts: over 12 objects one `database_group` per database,
 crowded people and role lanes folded, lazy boxes opened through `GET /api/graph?of=map&<these params>&group=<box>`;
 `detail` covers the boxes drawn, `node=<id>` answers `{"detail": {<id>: ...}}` for a box drawn later (`a.access_graph`
-is kept once per data set). The web asks for it only on the Trace tab.
+is kept once per data set). The web asks for it only on the Trace tab. Filters above the graph of a role or person (`server.map_cut`):
+`schema=` (a database or `DB.SCHEMA`), `otype=` and `access=` keep only those objects and the roles and people on the
+lines to them; the start stays.
 
 ```
 { view, start: "object" | "role" | "user", name, id (start node), graph (Graph),
@@ -908,6 +983,37 @@ that makes ACCESS_HISTORY readable) when the snapshot has no usage.
 
 `changes` are What if changes (`revoke_priv`, ownership never), for the change plan; nothing runs.
 
+### GET /api/objuse?view=&days=30|90|180&tab=unused|read_only|write_only|all&type=&scope=&q=&sort=&dir=1|-1&offset=0&limit=50
+
+Object activity (page key `objuse`, shared only: `view=mine` answers `available: false` with why). Every table, view,
+warehouse and Streamlit app by last use; procedures, functions and tasks are listed as "no activity data". Producer:
+`a.object_activity()`, once per data set: tables and views from `TBL_ACCESS_OBJECT_USE` (ACCESS_HISTORY, 180 days; a
+read through a view counts), warehouses from QUERY_HISTORY (`DAYS_USAGE`, 30), apps from `TBL_ACCESS_ACTIVITY` (60).
+An object not used in its type's history is `nodata` (older use unknown), not "not used". Windows count days as the
+bucket does, so a row never contradicts itself.
+
+- `days`: the window (default 90; anything else `400 bad_param`). `scope`: a database or `DB.SCHEMA`; the counts
+  follow it.
+- `tab`: `unused` (default: no use in the window, never used included; `nodata` and a window longer than the type's
+  history left out), `read_only` / `write_only` (tables read and not written in the window, or the reverse; a view is
+  never written), `all`. `type=`, `q=` (words in the name) filter the rows, `sort=` (`object`, `type`, `last_read`,
+  `last_write`, `days`, `bucket`, `read_q`, `write_q`, `readers`, `writers`; default per tab) and `dir=` order them.
+- `new`: DDL on it in the activity window, so a fresh object does not pass for a dead one.
+
+```jsonc
+{"view": "shared", "available": true, "reason": null, "enable": "ACCESS_HISTORY needs Enterprise edition ...",
+ "notes": [], "days": 90, "periods": [30, 90, 180], "tab": "unused", "type": "", "scope": "", "base_read": true,
+ "history": {"data": 180, "warehouse": 30, "app": 60},
+ "types": [{"type": "TABLE", "buckets": {"30": 12, "90": 3, "180": 1, "none": 4, "nodata": 0}, "total": 20}],
+ "tabs": {"unused": 5, "read_only": 7, "write_only": 1, "all": 31},
+ "patterns": {"read_only": 7, "write_only": 1, "both": 9, "none": 2}, "new": 2, "unused_new": 1,
+ "rows": [{"object": "SALES.CORE.TBL_OLD", "type": "TABLE", "database": "SALES", "schema": "CORE",
+           "last_read": "2026-06-01", "last_write": null, "days_since": 175, "readers": 0, "writers": 0,
+           "read_q": 0, "write_q": 0, "bucket": "180", "pattern": "none", "new": false, "history": 180, "sensitive": false}],
+ "total": 5, "offset": 0, "limit": 50, "source": "ACCOUNT_USAGE", "refs": {}}
+```
+`GET /api/objuse.csv` with the same params: every row of the tab.
+
 ### GET /api/changes?view=&subject=&f=&offset=&limit=
 
 What changed: `a.diff(prev)` between the loaded snapshot and the previous one (`cache.prev(key)`: the copy kept in
@@ -941,7 +1047,7 @@ boxes and a + or crossed-out link; `privilege` is `role` for a role grant). With
 `{"new": {"High": 4, ...}, "fixed": {...}}` for the strip of new against fixed findings (`null` with `subject`). Watched
 questions are kept in the browser (localStorage `ae-watch`) and asked again through `/api/check` and `/api/who`.
 
-### GET /api/activity?view=&name=|user=|role=&as=
+### GET /api/activity?view=&name=|user=|role=&as=&focus=
 
 Activity tab of an object (`name`), a person (`user`) or a role (`role`): use over the last `days` (60,
 `ACTIVITY_DAYS`) from `TBL_ACCESS_ACTIVITY` (ACCESS_HISTORY, QUERY_HISTORY, SESSIONS: query metadata, never query
@@ -1039,12 +1145,12 @@ role from QUERY_HISTORY and who can use it. `usage` adds the objects used per we
 sensitive tags; `rules`, `whatif`, `review` and `home` grants to PUBLIC, admin roles held by users and dormant or
 disabled users with roles.
 
-### GET /api/graph?view=&of=user|role|object|check|map|user-tab|role-tab&...&full=0&group=
+### GET /api/graph?view=&of=user|role|object|check|map|user-tab|role-tab&...&full=0&group=&focus=
 
 Graph alone (the page answers already hold their main graph; this one serves tab diagrams and `full=1` / filter
 changes without the rest of the page). Params: those of the page named by `of`, plus `tab` for `*-tab`.
 Answer: `Graph`; with `group=<box id>` (a lazy box opened, see Lazy boxes) that box alone as a `GraphGroup` with its
-members, `404` when the graph has no such box. Producers: as the pages; tab graphs `a.down_graph(start, rows_of_tab, walked)` with
+members, `404` when the graph has no such box; with `focus=<node id>` only the lines through that box (see Focus). Producers: as the pages; tab graphs `a.down_graph(start, rows_of_tab, walked)` with
 `walked = [x["path"] for x in reach rows of the tab]` for the Granted roles / Database roles tabs.
 
 ## Doubts

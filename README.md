@@ -18,9 +18,10 @@ Key: solid = calls · dashed = data moves · numbers = order.
 - **Who reads sensitive data.** It uses classification tags and masking or row access policies to show which columns each role sees in clear.
 - **Rule checks.** 29 checks of the role model and of what people did, such as a technical role granted to a person, an admin role held by a user, dormant users, PUBLIC grants, a person changing a table or a service user used from Snowsight. Each finding comes with the fix as infrastructure-as-code text and the matching SQL.
 - **What if.** Pick grants to take away (a role from a user or role, a privilege, a whole role, or everything on PUBLIC). See who loses what, who keeps it another way, which objects and roles are left behind, and which findings go away or appear. Fixes from the rule checks collect in one change plan. It is a simulation: it prints the REVOKE text for your infrastructure as code and never runs it.
-- **Readable graphs.** One lane per depth from the user, many database roles of one database folded into one box, huge boxes grouped by schema and type, crowded people and role lanes folded into one box that opens on click, hover explains each line in words, and each box shows its worst rule finding ("High · 3", click opens them). Snowflake's own built-in grants that every user gets through PUBLIC are one folded box, not findings.
+- **Risks first.** Access, Role paths, Who has access and Can they? open with a risk strip: admin roles held, account privileges, sensitive data read unmasked, findings, dormant logins, very broad access; for an object, unmasked sensitive columns, PUBLIC grants, stale readers and use. Each line links to where to act.
+- **Readable graphs.** One lane per depth from the user, many database roles of one database folded into one box, huge boxes grouped by schema and type, crowded people and role lanes folded into one box that opens on click, hover explains each line in words, and each box shows its worst rule finding ("High · 3", click opens them). A click on any box shows only the lines through it (**Show only this**; **Show all** returns), and the top line says who has access to it. Snowflake's own built-in grants that every user gets through PUBLIC are one folded box, not findings.
 - **SQL behind every page.** The **SQL** button in the top bar (or a right-click on the page; Shift + right-click keeps the browser menu) lists the read-only queries behind what the page shows, over `SNOWFLAKE.ACCOUNT_USAGE`, with the user, role or object already filled in. Copy one and run it in a worksheet with your own role; the app never runs them. Every card has a `</>` mark in its top-right corner (right-click works too): on the Activity tab it shows that section's own query (the panel's first one there, **Every section from one read**, reads the history views once and answers every section from `RESULT_SCAN` of that result), elsewhere it opens the panel with the queries closest to that card first. The panel finds every user, role and object the page names, whatever the parameter (Can they?, Compare, Request access, Access graph, ...).
-- **Read-only.** It only reads from Snowflake. It never runs GRANT, REVOKE, CREATE or ALTER and writes nothing to Snowflake. Locally it keeps a copy of what it read in `.cache/` (git-ignored) for a day; no passwords.
+- **Read-only.** It only reads from Snowflake. It never runs GRANT, REVOKE, CREATE or ALTER and writes nothing to Snowflake. Locally it keeps a copy of what it read in `.cache/` (git-ignored) until you read again; no passwords.
 - **Works with what you have.** It shows the whole account if your role can read it, and only your own access if not (My access).
 
 ## Questions it answers
@@ -28,20 +29,21 @@ Every screen keeps the detailed diagram or table of the earlier version as its f
 
 | Screen (`?page=`) | Question |
 |---|---|
-| Home (`home`) | Search a person, role, table or screen, or type "can X read Y". Your access, account risks, data protection. |
-| A person or role (`access`) | What can they reach, through every role? Role hierarchy diagram and privilege tabs first, then one row per object at the most it allows. An Activity tab shows which tables they used in the last 60 days, with which role and client. |
-| Who has access to an object (`object`) | Who can touch this table or view, and how? Diagram, paths and users first, then people grouped by level, and which columns are masked for whom. An Activity tab shows who used it in the last 60 days, with which role and client, and how much of it outside business hours; for a Streamlit app, who opened it and who saw data they can't read; for a warehouse, who ran queries on it. A Streamlit app runs with its owner's rights, so its page says whose data viewers see (rule 29). |
-| Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly or No, with every path, where to cut, the nearest ways in and rows / columns. For a database role: ways in only from database roles of its own database, and no USE ROLE line (a database role can't be activated). |
-| Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. |
+| Home (`home`) | Search a person, role, table or screen, or type "can X read Y". Then what needs attention first (Critical and High rules with their names), findings by area, risk cards (admin holders, dormant and disabled people, data protection) and the account at a glance: people, roles, objects by type, chain depth, biggest schemas, daily queries, object activity and what changed. |
+| A person or role (`access`) | What can they reach, through every role? Overview (risk strip, counts), Objects (one row per object at the most it allows, filtered by type, database or schema), Privileges and Diagram tabs. An Activity tab shows which tables they used in the last 60 days, with which role and client. |
+| Who has access to an object (`object`) | Who can touch this table or view, and how? A Summary tab (risk strip, counts, admin reach, paths diagram), then diagram, paths and users, then people grouped by level, and which columns are masked for whom. An Activity tab shows who used it in the last 60 days, with which role and client, and how much of it outside business hours; for a Streamlit app, who opened it and who saw data they can't read; for a warehouse, who ran queries on it. A Streamlit app runs with its owner's rights, so its page says whose data viewers see (rule 29). |
+| Can they? (`check`) | Can X (a person or a role) do SELECT, INSERT, ... on Y? Yes, Partly, Blocked (the grant is there, USAGE on its database or schema is not) or No, with every path, where to cut and rows / columns. A No shows the narrowest grant first, then the ways to use it, the ways to own it apart. On a database or schema: each table and view inside, for read, DML or DDL, which they can and cannot use. For a database role: ways in only from database roles of its own database, and no USE ROLE line (a database role can't be activated). |
+| Access graph (`graph`) | The role graph from a table, role or person, by depth, and a trace graph coloured by what each line grants. Filters above it keep one database or schema, object type or access level. |
 | What they see (`see`) | Which columns each person or role sees in clear or masked, and why. |
 | Compare (`compare`) | Two people or roles side by side as two overlapping circles (only A, only B, both but different, the same), the differences, and the text to make them match. |
 | Request access (`request`) | The smallest existing role that gives it, the approver, and the request as SQL, Terraform or ticket text: `GRANT ROLE x TO USER u` for a person, `GRANT ROLE x TO ROLE r` for a role (with a too broad warning). For a database role: a skeleton for a new database role in its own database (`GRANT DATABASE ROLE ... TO DATABASE ROLE ...`), or why it can't be done when the object is in another database. |
-| Risks & fixes (`rules`) | Rule checks with findings and admin holders; risks by rule, person, object or as a heat grid (grantee x rule, `by=grid`) with a change plan built from the fixes; the Rules list (`show=list`): the 29 rules by area with a severity bar per area (Home's findings-by-area bars open it at `area=`), with On/Off. |
+| Risks & fixes (`rules`) | Rule checks with findings, admin holders and the dormant and disabled people still holding roles (`part=admins`, `part=stale`); risks by rule, person, object or as a heat grid (grantee x rule, `by=grid`) with a change plan built from the fixes; the Rules list (`show=list`): the 29 rules by area with a severity bar per area (Home's findings-by-area bars open it at `area=`), with On/Off. |
 | What if (`whatif`) | If we revoke this, who loses what (people who lose the same thing are one row, the removed link crossed out, a lose-vs-keep bar), who keeps it another way, and which findings go or appear. Simulation only. |
 | Review & sign-off (`review`) | The access review (CSV) and a people x objects grid with Keep / Revoke and a signed CSV. |
 | Sensitive data (`sensitive`) | Sensitive objects, who reads them, a catalog of how well each one is protected. |
 | Sensitive data flow (`flow`) | People -> roles -> sensitive objects, with the dormant and disabled people first. |
 | Granted vs used (`usage`) | Which granted tables and views were actually used (ACCESS_HISTORY), and what could be trimmed. |
+| Object activity (`objuse`) | Every table, view, warehouse and Streamlit app by last use (30, 90 or 180 days): not used, read but never written, written but never read; new objects marked, so a fresh one does not pass for a dead one. |
 | What changed (`changes`) | This snapshot against the previous one: a strip of new against fixed findings per severity, each gained or lost grant drawn as two boxes and a + or crossed-out link, and watched questions asked again. |
 | User paths, Role paths (`user`, `role`) | The detailed pages of the earlier version, also shown inside A person or role. |
 
@@ -115,6 +117,8 @@ Every mode after install ([step 1](#1-install-once-powershell-needs-python-310-a
 | Another port | | `python run.py --port 9000` | http://localhost:9000 |
 | DuckDB SQL copy | `duckdb` (in both requirements files) | after each Snowflake read; also for fake data: `$env:DUCKDB="1"; python run.py --fake` | `.cache\access.duckdb`, see [Query the data with SQL](#query-the-data-with-sql-duckdb) |
 | Memory only, nothing in `.cache/` | | `$env:CACHE_HOURS="0"; python run.py` | |
+| Local copies in another folder | | `python run.py --cache-dir D:\copies` (`CACHE_DIR`) | |
+| Synthetic big account | nothing | `python run.py --fake twin --scale 0.1` | http://localhost:8000 |
 | Shared server for a team | key-pair login in `.env` | `$env:HOST="0.0.0.0"; python run.py` | `http://<server>:8000`, [details](#on-a-shared-server-local-web-app-or-streamlit) |
 | Streamlit in Snowflake, snapshot objects | objects setup, `sis/.env` with `INSIDE=1`, `SOURCE=objects`, `ACCESS_SNAPSHOT=<DB>.<SCHEMA>` | `python run_sql.py sql/4_streamlit.sql` | Snowsight > Projects > Streamlit, [details](#streamlit-in-snowflake-sis) |
 | Streamlit in Snowflake, read directly (no objects) | `sis/.env` with `INSIDE=1`, `SOURCE=direct`; owner role holds `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` | `python run_sql.py sql/4_streamlit.sql` | Snowsight > Projects > Streamlit |
@@ -132,14 +136,14 @@ The **local web app (React)** is the recommended and default version: it runs on
 | Use it when | You can't (or don't want to) create objects, or you just want to try it | A team wants one shared, scheduled copy, viewers with low rights, and SQL in worksheets without the app |
 | Settings | nothing more | `ACCESS_SNAPSHOT=<DB>.<SCHEMA>`, or `SNOWFLAKE_DATABASE` and `SNOWFLAKE_SCHEMA` |
 
-With `SOURCE=direct` the shared data is read only when you click **Load shared data** (a copy from the last 24 h opens at
+With `SOURCE=direct` the shared data is read only when you click **Load shared data** (a saved copy opens at
 once), so **My access** works without waiting for it. Each source is read from ACCOUNT_USAGE first. When a view is refused it falls back to INFORMATION_SCHEMA (query history in 7 one-day windows over the last 167 h; tags and policies per object), then to `SHOW` (grants and users, one per role, sent 16 at a
 time (`SHOW_THREADS`); the heavy ACCOUNT_USAGE reads run `WORKERS` at a time). `IMPORTED PRIVILEGES` on database `SNOWFLAKE` makes it one fast query. If a full ACCOUNT_USAGE read times out, the app does not fall back, because SHOW would be slower still: Direct mode marks that source unread, and a snapshot run fails. If the session has no warehouse (error 000606), the load stops and says to set `SNOWFLAKE_WAREHOUSE`. The side menu's
 **Incomplete** box says what could not be read and which grant fixes it. While it reads, the page shows what the app is
 doing line by line (each read, `SHOW` counts, `[w2]` = worker 2, a timeout with the `STATEMENT_TIMEOUT` to set, and every 60 s a line saying what is still running), in both
 versions and in the terminal. The first load locks the page until the data is there; the **SQL** button shows once there is data.
 
-Data does not need to be real time. Once read, it is kept for 24 h in memory and in `.cache/` (one file per account and source, and one per user for My access). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The top bar shows **Data from &lt;time&gt;**; **↻** (Read Snowflake again) reads it again; with `objects`, while the last OK run is the one held, one small query keeps that copy. Locally **↻** and **Rebuild snapshot** run in the background: the pages keep the data they have, the top bar shows **Reading again: &lt;last line&gt;** (click for the log), and the new read replaces it only once built; a failed read keeps the old one. Streamlit answers when the read is done. The rule results of the shared data are kept in `.cache/<key>.rules.pkl`, so a restart checks the rules again only when the data, the settings or `access.py` changed. A refresh that brings a new run also compares it with the previous snapshot while the data it replaces is still built (progress line "Comparing with the previous snapshot"; otherwise the first open compares). It keeps the result in `.cache/<key>.diff.pkl`, so **What changed** opens at once, after a restart too. Each change lists its first 200 people and objects. A feed filtered to one person or object says when some may be missing. The side menu's **Data from** box says where the data came from, how long it is kept and where its [SQL copy](#query-the-data-with-sql-duckdb) is. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
+Data does not need to be real time. Once read, it is kept in memory and in `.cache/` (`CACHE_DIR`) until you read again: `shared_data.pkl` for the shared data and `my_data.pkl` for My access, one of each per folder (another account or role: another `--cache-dir`). When a new read replaces a file of another run, the older one stays as `<name>.prev.pkl`, the previous snapshot that **What changed** compares with, until the next new run replaces it (deleting `.cache/` removes it). The top bar shows **Data from &lt;time&gt;**; **↻** (Read Snowflake again) reads it again; with `objects`, while the last OK run is the one held, one small query keeps that copy. Locally **↻** and **Rebuild snapshot** run in the background: the pages keep the data they have, the top bar shows **Reading again: &lt;last line&gt;** (click for the log), and the new read replaces it only once built; a failed read keeps the old one. Streamlit answers when the read is done. The rule results of the shared data are kept in `.cache/<key>.rules.pkl`, so a restart checks the rules again only when the data, the settings or `access.py` changed. A refresh that brings a new run also compares it with the previous snapshot while the data it replaces is still built (progress line "Comparing with the previous snapshot"; otherwise the first open compares). It keeps the result in `.cache/<key>.diff.pkl`, so **What changed** opens at once, after a restart too. Each change lists its first 200 people and objects. A feed filtered to one person or object says when some may be missing. The side menu's **Data from** box says where the data came from, how long it is kept and where its [SQL copy](#query-the-data-with-sql-duckdb) is. For `objects`, schedule `SP_ACCESS_SNAPSHOT` as a daily task (README.html, Run modes and setup).
 
 ### 1. Install once (PowerShell; needs Python 3.10+ and git, no Node or npm)
 ```
@@ -156,11 +160,13 @@ Developers who change `web/src` rebuild both bundles with Node 20+ (`cd web; npm
 ```
 python run.py                    # local web app on your Snowflake data: http://localhost:8000
 python run.py --fake             # fake data, no Snowflake, no .env
+python run.py --fake twin --scale 0.1   # a synthetic big account (twin.py), a tenth of its size
 python run.py streamlit          # the Streamlit version (pip install -r requirements.txt): http://localhost:8501
 python run.py --direct | --objects   # SOURCE for this run
 python run.py --port 9000        # another port
 python run.py --export           # stage 1 only: Snowflake -> .cache/reads/ parts, then exit (--fresh: every part again)
 python run.py --build            # stage 2 only: build from the parts kept, never read Snowflake, then serve
+python run.py --cache-dir D:\copies   # local copies there (CACHE_DIR): used if present, else written there
 ```
 A load runs two stages. **Export** keeps every Snowflake read as a Parquet part in `.cache/reads/<key>/` (`parts.json` lists the finished ones), so a load that stops resumes with only the missing parts. **Build** makes the role graph, the rules and the DuckDB copy from the parts. A part is read again only on a manual **Rebuild snapshot** / **Read Snowflake again**, or `--export --fresh`; a part that timed out is read again on the next load.
 Both apps can run side by side to compare them: `APP=web|streamlit` picks the default, `WEB_PORT` (8000) and `STREAMLIT_PORT` (8501) the ports. Stop with Ctrl+C.
@@ -203,10 +209,12 @@ SNOWFLAKE_HOST=<org>-<account>.privatelink.snowflakecomputing.com
 ### Settings
 | Name | Default | Meaning |
 |---|---|---|
-| `FAKE` | unset | `1` = fake data (also `python run.py --fake`); anything else = Snowflake |
+| `FAKE` | unset | `1` = fake data (also `python run.py --fake`); `twin` = the synthetic big account, `FAKE_SCALE` its size (`--fake twin --scale 0.1`); anything else = Snowflake |
 | `SOURCE` | `direct` (`objects` if `ACCESS_SNAPSHOT` is set) | `direct` or `objects`, see above |
 | `ACCESS_SNAPSHOT` | `SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA` | `<DB>.<SCHEMA>` of the `TBL_ACCESS_` tables; `SOURCE=objects` without any of these is an error |
-| `CACHE_HOURS` | `24` | Hours the local copy in `.cache/` is used; `0` = memory only |
+| `CACHE_HOURS` | `24` | `0` = memory only, nothing in `.cache/`; any other value keeps the local copy until you read again |
+| `CACHE_DIR` | `.cache` | Folder of the local copies, absolute or relative to the app (`--cache-dir`: relative to where you start it); an existing one is used, a missing one is created |
+| `INFO_SCHEMA` | `0` | `1` keeps `INFORMATION_SCHEMA` views in activity, Granted vs used and rules 27-28; by default they are left out, since every tool that reads metadata touches them |
 | `BUILTIN` | `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*` | Names of Snowflake's built-in roles and objects, folded under PUBLIC and left out of rule checks (`?builtin=1` shows them) |
 | `APP`, `WEB_PORT`, `STREAMLIT_PORT` | `web`, `8000`, `8501` | What `run.py` starts, and where |
 | `SHOW_THREADS` | `16` | Light statements the app sends at once: the probes, My access, and the SHOW / per-object INFORMATION_SCHEMA fallbacks (`1` = one after another) |
@@ -235,8 +243,7 @@ After each read from Snowflake (shared data and My access) the app also writes w
 local [DuckDB](https://duckdb.org) file you can query with SQL. The app itself keeps using its `.pkl` copy; this file is
 only for you. It holds the `TBL_ACCESS_` tables of `sql/1_setup.sql` with the same names and columns (`RUN`, `GRANT`,
 `USER_ROLE`, `USER`, `USAGE`, `TAG`, `POLICY`, `STREAM`, `OBJECT_USE`, `ACTIVITY`):
-- one **schema per account + source** (and per user for My access), named after the copy in `.cache/`, for example
-  `myorg_myacct_direct_jdoe_analyst`; the table `COPIES` lists them (`SCHEMA_NAME`, `CACHE_KEY`, `RUN_ID`, `READ_AT`, `PREV_RUN_ID`);
+- one **schema per copy in `.cache/`**: `shared_data` and `my_data` (fake data: named after account and source); the table `COPIES` lists them (`SCHEMA_NAME`, `CACHE_KEY`, `RUN_ID`, `READ_AT`, `PREV_RUN_ID`);
 - each new read **replaces** that schema's tables, and the read before stays as `TBL_ACCESS_<name>_PREV` (a read of the same
   snapshot run replaces only the current tables). Direct reads and My access get a `RUN_ID` per read (`direct-20261110080000`).
 - The side menu's **Data from** box names the file and schema. Not inside Snowflake (no disk there), not with
@@ -247,7 +254,7 @@ only for you. It holds the `TBL_ACCESS_` tables of `sql/1_setup.sql` with the sa
 ```
 duckdb .cache/access.duckdb -readonly        # DuckDB CLI
 SELECT SCHEMA_NAME, READ_AT FROM COPIES;
-USE myorg_myacct_direct_jdoe_analyst;
+USE shared_data;
 -- who holds a role directly, and since which read
 SELECT USER_NAME, ROLE_NAME FROM TBL_ACCESS_USER_ROLE WHERE ROLE_NAME = 'F_ANALYST';
 -- grants that are new since the previous read
@@ -331,14 +338,14 @@ python -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --ser
 ### Streamlit in Snowflake (SiS)
 The app runs inside Snowflake and opens in Snowsight; nobody installs anything. It runs the same React app as one Streamlit
 component (`web/dist-st/`, committed); its data calls are answered in Python by the same code as the local server.
-It uses the app's own Snowflake session, keeps data in memory only (24 h) and writes nothing. Two options:
+It uses the app's own Snowflake session, keeps data in memory only and writes nothing. Two options:
 
 | | `SOURCE=objects` (recommended for a team) | `SOURCE=direct` |
 |---|---|---|
 | Creates in Snowflake | the snapshot tables and procedures (`1_setup.sql`, `2_snapshot.sql`; the daily task is your own statement, see above), then the app (`4_streamlit.sql`) | only the stage and the app (`4_streamlit.sql`): no tables, procedures or task |
-| How the data is read | the app reads the last snapshot: opens fast, every viewer sees the same run | each viewer's session reads `ACCOUNT_USAGE` live with the owner role on **Load shared data** (seconds to minutes), kept 24 h in memory |
+| How the data is read | the app reads the last snapshot: opens fast, every viewer sees the same run | each viewer's session reads `ACCOUNT_USAGE` live with the owner role on **Load shared data** (seconds to minutes), kept in memory until read again |
 | The owner role (`DEV_ROLE`) needs | the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) privileges | `USAGE` on `<DB>`, `<SCHEMA>`, `<WH>`, `CREATE STAGE` and `CREATE STREAMLIT` on the schema, and `IMPORTED PRIVILEGES` on DB `SNOWFLAKE` (or the `SNOWFLAKE` database roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`) |
-| Missing | as in both: My access and What changed (local version only) | also future grants and streams when Snowflake refuses their `SHOW` in the app: listed under **Incomplete** |
+| Missing | as in both: My access and What changed (local version only) | also future grants when Snowflake refuses their `SHOW` in the app (streams too, when `ACCOUNT_USAGE.STREAMS` is not readable): listed under **Incomplete** |
 
 1. `SOURCE=objects`: do the [Objects in Snowflake](#objects-in-snowflake-sourceobjects) setup first (`1_setup.sql`,
    `2_snapshot.sql`, and the daily task you create). `SOURCE=direct`: skip it; step 3 also grants the app role `USAGE` on `<DB>`,
