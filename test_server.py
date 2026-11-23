@@ -1080,6 +1080,9 @@ def test_rules_paged():
     assert top == sorted(top, reverse=True) and js("/api/home")["cards"]["admins"]["names"][0]["user"] == adm[0]["user"]
     svc = js("/api/home")["cards"]["admins"]["service_names"]  # Home's admin card: service users with admin, riskiest first
     assert [x["user"] for x in svc] == [x["user"] for x in adm if x["service"]][:len(svc)] and all(x["role"] and x["login"] for x in svc)
+    for g in js("/api/rules?sev=all")["groups"]:  # a rule group counts every person its findings affect, not the first 50 each
+        xs = [x for x in server.S["rows"] if x["num"] == g["key"]]
+        assert g["people"] == len({u for x in xs for u in ([x["grantee"]] if x["kind"] == "user" else x["losers"])}), g
 
 
 def test_risks_plan():  # screens 5, 10, 11: findings carry their fix as What if changes; the plan runs as /api/whatif

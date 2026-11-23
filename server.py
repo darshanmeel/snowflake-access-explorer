@@ -3400,7 +3400,7 @@ def rule_index():
             user = x["kind"] == "user"
             g, os_ = a.uid(x["grantee"], user), a.finding_objects(x)
             out.append(dict(num=x["num"], sev=x["severity"], area=RULE_INFO.get(x["num"], ("", "Other"))[1], grantee=x["grantee"],
-                            gid=g, kind=norm(x["kind"]), people=[x["grantee"]] if user else x["losers"][:50],
+                            gid=g, kind=norm(x["kind"]), people=[x["grantee"]] if user else x["losers"],  # all: groups count them
                             reach=1 if user else len(x["losers"]),
                             objects=os_, text=" ".join((x["title"], g, x["detail"], x["num"], *os_)).lower()))  # an object's risk strip links q=<object>
         return out
