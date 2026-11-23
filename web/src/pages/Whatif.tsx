@@ -58,23 +58,26 @@ function Builder({ onAdd }: { onAdd: (ch: WhatIfChange) => void }) {
   const nDirect = holders.data?.items.filter((i) => i.type === "direct").length ?? 0;
   const nVia = (holders.data?.items.length ?? 0) - nDirect;
   const holderHint = !role ? "pick a role first" : holders.data ? `${nDirect} direct · ${nVia} through other roles` : "…";
+  const ready = op === "revoke_priv" || (!holders.loading && !!holders.data); // not the last role's holders
+  const missing = op !== "revoke_priv" && ready && !!role && !!other && !ids(holders).includes(other); // picked for another role: kept, but nothing to revoke
   const ch: WhatIfChange | null =
     op === "empty_public" ? { op } :
     !role ? null :
     op === "drop_role" ? { op, role } :
-    !other ? null :
+    !other || !ready || missing ? null :
     op === "revoke_role_from_user" ? { op, role, user: other } :
     op === "revoke_role_from_role" ? { op, role, grantee: other } :
     { op, role, privilege: priv, object: other };
   return (
     <Controls>
       <Sel label="Change" value={op} onPick={(v) => { setOp(v as WhatIfOp); setOther(""); }} options={OPS} />
-      {op !== "empty_public" && <Pick label={op === "revoke_role_from_role" ? "Role taken away" : "Role"} value={role} what="roles" onPick={(v) => { setRole(v); setOther(""); }} />}
+      {op !== "empty_public" && <Pick label={op === "revoke_role_from_role" ? "Role taken away" : "Role"} value={role} what="roles" onPick={setRole} />}
       {op === "revoke_role_from_user" && <Pick label={`From user (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
       {op === "revoke_role_from_role" && <Pick label={`From role (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
       {op === "revoke_priv" && <Sel label="Privilege" value={priv} onPick={setPriv} options={PRIVS.map((p): [string, string] => [p, p])} />}
       {op === "revoke_priv" && <Pick label="On object" value={other} width={340} what="objects" onPick={setOther} />}
       <button className="ae-btn" disabled={!ch} onClick={() => ch && onAdd(ch)}>Add</button>
+      {missing && <span className="ae-muted" role="status">{other} does not hold {role}: pick someone who does, or another role.</span>}
     </Controls>
   );
 }
