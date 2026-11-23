@@ -200,7 +200,7 @@ flowchart TD
 | `same_site` middleware | bad Host -> 400 `bad_host`; non-GET with foreign Origin, or `/api/` with `Sec-Fetch-Site` not same-origin/none -> 403 `cross_site`; a page reloaded or closed mid-answer (Starlette RuntimeError, request disconnected) -> 204, the work is kept | server.py:4330-4351 |
 | `mine_off()` | My access off inside Snowflake, `MY_ACCESS=0`, HOST not loopback or `ALLOWED_HOSTS` naming another host (server.py:283-284), key-pair login; `MY_ACCESS=1` forces on | server.py:271-289 |
 | `csv_text()` | a cell starting with `= + - @` tab or CR (not a plain number) gets a leading `'`, so a CSV opened in Excel never runs an object name as a formula | server.py:498-506 |
-| `csv_on()` / `serve_csv` | `CSV=0`: every server CSV download answers 403 `csv_off`, in both versions; the app hides its CSV buttons from `meta.csv`. Whoever can open the app still sees the screen, so app access stays the real control (README.md:222) | server.py:4283-4292 |
+| `csv_on()` / `serve_csv` | `CSV=0`: every server CSV download answers 403 `csv_off`, in both versions; the app hides its CSV buttons from `meta.csv`. Whoever can open the app still sees the screen, so app access stays the real control (README.md:230) | server.py:4283-4292 |
 | JSON errors | `ApiError` -> `{detail, message}` with its status; any other exception -> 500 `{detail: "error", message: "Type: text"}` | server.py:4353-4359 |
 
 - Same error shape in Streamlit: `st_react.answer` (st_react.py:50-53); there a `.csv` name is served only when it is a key of `server.CSV`, else 404 (st_react.py:45-46).

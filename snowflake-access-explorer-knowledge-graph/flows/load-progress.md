@@ -35,7 +35,7 @@ sequenceDiagram
 5. `server.progress(view)` returns the newest running read (or idle) and `job`, the last background refresh; it only reads `PROGRESS`, so asking never starts a load — server.py:154-161. Route `GET /api/progress` — server.py:4376-4378; `/api/reload` runs in a thread pool so the poll answers meanwhile — server.py:4374. uvicorn leaves `GET /api/progress` out of its access log (`quiet_log` / `NoProgress`, server.py:4459-4470).
 6. Local React: `peek()` (GET without the cache, `null` inside Streamlit) — web/src/api/client.ts:64-68; `LoadLog` polls every second while `busy` or `m.loading`, keeps the newest line in view — web/src/components/LoadLog.tsx:7-40, web/src/App.tsx:401, web/src/App.tsx:541; styles `.ae-loadlog` — web/src/components/styles.css:319-339. Until the first answer the app (no meta yet) and every page (`Load`) show `Waiting`: "Loading…" with a spinner, its seconds from 3 s, and from 10 s that the first open of a page on a big account works out its lookups and opens by itself — web/src/components/kit.tsx:266-274, web/src/App.tsx:543, web/src/pages/common.tsx:26.
 7. Streamlit in Snowflake: `answer()` serves `progress` too — st_react.py:34-35; `shown(box, r, sid)` runs the request in a thread kept in session state (a rerun waits for it), draws the last 40 lines into the `st.empty()` box above the app once a second, then clears it — st_react.py:56-80, st_react.py:89, st_react.py:98.
-8. Contract: `Progress` type — web/src/api/types.ts:181-187; API doc — web/API.md:261-267.
+8. Contract: `Progress` type — web/src/api/types.ts:181-187; API doc — web/API.md:286-292.
 
 ## Example (test_server.test_progress, fake connection)
 

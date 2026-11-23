@@ -142,15 +142,8 @@
 {"from": "script:run_sql.py", "to": "config:settings.sql", "type": "reads", "evidence": "run_sql.py:18-19", "status": "verified"}
 {"from": "script:run_sql.py", "to": "secret_ref:settings.local.sql", "type": "reads", "evidence": "run_sql.py:17", "status": "verified"}
 {"from": "business_rule:admin_paths_cap", "to": "config:server.py:MAX_ADMIN_PATHS", "type": "depends_on", "evidence": "server.py:2370", "status": "verified"}
-{"from": "business_rule:event_names_cap", "to": "config:access.py:EVENT_NAMES", "type": "depends_on", "evidence": "access.py:7008", "status": "verified"}
-{"from": "business_rule:event_names_cap", "to": "config:server.py:NAMES", "type": "depends_on", "evidence": "server.py:3105", "status": "verified"}
 {"from": "business_rule:findings_last_run", "to": "table:TBL_ACCESS_FINDING", "type": "writes", "evidence": "sql/1_setup.sql:1502", "status": "verified"}
 {"from": "business_rule:inventory_ownership_rows", "to": "table:TBL_ACCESS_GRANT", "type": "writes", "evidence": "sql/1_setup.sql:963", "status": "verified"}
-{"from": "business_rule:lane_fold", "to": "config:server.py:MAX_LANE", "type": "depends_on", "evidence": "server.py:62", "status": "verified"}
-{"from": "business_rule:lazy_boxes", "to": "config:server.py:LAZY", "type": "depends_on", "evidence": "server.py:59", "status": "verified"}
-{"from": "business_rule:paging_windows", "to": "config:server.py:FINDINGS_PAGE", "type": "depends_on", "evidence": "server.py:3334", "status": "verified"}
-{"from": "business_rule:paging_windows", "to": "config:server.py:PAGE", "type": "depends_on", "evidence": "server.py:77", "status": "verified"}
-{"from": "business_rule:paging_windows", "to": "config:server.py:REVIEW_PAGE", "type": "depends_on", "evidence": "server.py:3645", "status": "verified"}
 {"from": "business_rule:rule_1", "to": "config:access.py:RULES", "type": "depends_on", "evidence": "access.py:139-179", "status": "verified"}
 {"from": "business_rule:rule_1", "to": "config:access.py:SEVERITY", "type": "depends_on", "evidence": "access.py:180-183", "status": "verified"}
 {"from": "business_rule:rule_10", "to": "config:access.py:RULES", "type": "depends_on", "evidence": "access.py:139-179", "status": "verified"}
@@ -467,19 +460,14 @@
 {"from": "doc:kg/logic/caching.md", "to": "business_rule:keep_built", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/caching.md:1", "status": "verified", "evidence_orig": "logic/caching.md"}
 {"from": "doc:kg/logic/caching.md", "to": "business_rule:part_dup_columns", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/caching.md:1", "status": "verified", "evidence_orig": "logic/caching.md"}
 {"from": "doc:kg/logic/caching.md", "to": "business_rule:prev_snapshot", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/caching.md:1", "status": "verified", "evidence_orig": "logic/caching.md"}
-{"from": "doc:kg/logic/diff.md", "to": "business_rule:changes_at_refresh", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/diff.md:1", "status": "verified", "evidence_orig": "logic/diff.md"}
 {"from": "doc:kg/logic/diff.md", "to": "business_rule:diff_access", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/diff.md:1", "status": "verified", "evidence_orig": "logic/diff.md"}
 {"from": "doc:kg/logic/diff.md", "to": "business_rule:diff_events", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/diff.md:1", "status": "verified", "evidence_orig": "logic/diff.md"}
 {"from": "doc:kg/logic/diff.md", "to": "business_rule:diff_findings", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/diff.md:1", "status": "verified", "evidence_orig": "logic/diff.md"}
-{"from": "doc:kg/logic/diff.md", "to": "business_rule:event_names_cap", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/diff.md:1", "status": "verified", "evidence_orig": "logic/diff.md"}
 {"from": "doc:kg/logic/graph-focus.md", "to": "business_rule:focus_access", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-focus.md:1", "status": "verified", "evidence_orig": "logic/graph-focus.md"}
 {"from": "doc:kg/logic/graph-focus.md", "to": "business_rule:focus_way_in", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-focus.md:1", "status": "verified", "evidence_orig": "logic/graph-focus.md"}
 {"from": "doc:kg/logic/graph-focus.md", "to": "business_rule:graph_focus_narrow", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-focus.md:1", "status": "verified", "evidence_orig": "logic/graph-focus.md"}
-{"from": "doc:kg/logic/graph-focus.md", "to": "business_rule:lane_fold", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-focus.md:1", "status": "verified", "evidence_orig": "logic/graph-focus.md"}
 {"from": "doc:kg/logic/graph-input.md", "to": "business_rule:graph_rollup", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-input.md:1", "status": "verified", "evidence_orig": "logic/graph-input.md"}
 {"from": "doc:kg/logic/graph-input.md", "to": "business_rule:graph_summary", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-input.md:1", "status": "verified", "evidence_orig": "logic/graph-input.md"}
-{"from": "doc:kg/logic/graph-input.md", "to": "business_rule:lane_fold", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-input.md:1", "status": "verified", "evidence_orig": "logic/graph-input.md"}
-{"from": "doc:kg/logic/graph-input.md", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-input.md:1", "status": "verified", "evidence_orig": "logic/graph-input.md"}
 {"from": "doc:kg/logic/graph-input.md", "to": "business_rule:map_db_rollup", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-input.md:1", "status": "verified", "evidence_orig": "logic/graph-input.md"}
 {"from": "doc:kg/logic/object-activity.md", "to": "business_rule:object_activity_buckets", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/object-activity.md:1", "status": "verified", "evidence_orig": "logic/object-activity.md"}
 {"from": "doc:kg/logic/object-activity.md", "to": "business_rule:object_activity_patterns", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/object-activity.md:1", "status": "verified", "evidence_orig": "logic/object-activity.md"}
@@ -494,10 +482,7 @@
 {"from": "doc:kg/logic/reads.md", "to": "business_rule:inventory_ownership_rows", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
 {"from": "doc:kg/logic/reads.md", "to": "business_rule:list_fallback_order", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
 {"from": "doc:kg/logic/reads.md", "to": "business_rule:lost_session_stops", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
-{"from": "doc:kg/logic/reads.md", "to": "business_rule:paging_windows", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
-{"from": "doc:kg/logic/reads.md", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
 {"from": "doc:kg/logic/reads.md", "to": "business_rule:streams_source", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
-{"from": "doc:kg/logic/reads.md", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
 {"from": "doc:kg/logic/reads.md", "to": "business_rule:type_spelling", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
 {"from": "doc:kg/logic/risks-home.md", "to": "business_rule:home_cards", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/risks-home.md:1", "status": "verified", "evidence_orig": "logic/risks-home.md"}
 {"from": "doc:kg/logic/risks-home.md", "to": "business_rule:risk_strip_object", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/risks-home.md:1", "status": "verified", "evidence_orig": "logic/risks-home.md"}
@@ -548,81 +533,23 @@
 {"from": "doc:kg/logic/what-if.md", "to": "business_rule:what_if_restore", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/what-if.md:1", "status": "verified", "evidence_orig": "logic/what-if.md"}
 {"from": "document:CLAUDE.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "CLAUDE.md:117", "status": "verified"}
 {"from": "document:CLAUDE.md", "to": "module:access_queries", "type": "documents", "evidence": "CLAUDE.md:72", "status": "verified"}
-{"from": "document:CLAUDE.md", "to": "process:access_requests", "type": "documents", "evidence": "CLAUDE.md:6-7", "status": "verified"}
-{"from": "document:CLAUDE.md", "to": "process:build_web", "type": "documents", "evidence": "CLAUDE.md:35-36", "status": "verified"}
-{"from": "document:CLAUDE.md", "to": "process:container_services", "type": "documents", "evidence": "CLAUDE.md:42", "status": "verified"}
-{"from": "document:CLAUDE.md", "to": "process:run_local", "type": "documents", "evidence": "CLAUDE.md:28-30", "status": "verified"}
-{"from": "document:CLAUDE.md", "to": "process:test", "type": "documents", "evidence": "CLAUDE.md:104-119", "status": "verified"}
-{"from": "document:README.html", "to": "business_rule:changes_at_refresh", "type": "documents", "evidence": "README.html:538", "status": "verified"}
-{"from": "document:README.html", "to": "business_rule:lane_fold", "type": "documents", "evidence": "README.html:583", "status": "verified"}
-{"from": "document:README.html", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "README.html:583", "status": "verified"}
-{"from": "document:README.html", "to": "business_rule:paging_windows", "type": "documents", "evidence": "README.html:584", "status": "verified"}
-{"from": "document:README.html", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "README.html:672", "status": "verified"}
-{"from": "document:README.html", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "README.html:673", "status": "verified"}
-{"from": "document:README.html", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "README.html:757", "status": "verified"}
-{"from": "document:README.html", "to": "config:server.py:PAGE", "type": "documents", "evidence": "README.html:584", "status": "verified"}
-{"from": "document:README.html", "to": "process:access_requests", "type": "documents", "evidence": "README.html:330-349", "status": "verified"}
-{"from": "document:README.html", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.html:687-698", "status": "verified"}
-{"from": "document:README.html", "to": "process:privatelink_login", "type": "documents", "evidence": "README.html:683", "status": "verified"}
-{"from": "document:README.html", "to": "process:run_local", "type": "documents", "evidence": "README.html:648-685", "status": "verified"}
-{"from": "document:README.html", "to": "process:snapshot_task", "type": "documents", "evidence": "README.html:692-694", "status": "verified"}
-{"from": "document:README.md", "to": "business_rule:lane_fold", "type": "documents", "evidence": "README.md:21", "status": "verified"}
-{"from": "document:README.md", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "README.md:227-231", "status": "verified"}
-{"from": "document:README.md", "to": "business_rule:paging_windows", "type": "documents", "evidence": "README.md:227-231", "status": "verified"}
-{"from": "document:README.md", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "README.md:136-137", "status": "verified"}
-{"from": "document:README.md", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "README.md:395", "status": "verified"}
-{"from": "document:README.md", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "README.md:137", "status": "verified"}
-{"from": "document:README.md", "to": "config:ACTIVITY", "type": "documents", "evidence": "README.md:215", "status": "verified"}
-{"from": "document:README.md", "to": "config:CSV", "type": "documents", "evidence": "README.md:222", "status": "verified"}
-{"from": "document:README.md", "to": "config:HIERARCHY", "type": "documents", "evidence": "README.md:216", "status": "verified"}
-{"from": "document:README.md", "to": "config:SNOWFLAKE_HOST", "type": "documents", "evidence": "README.md:217", "status": "verified"}
-{"from": "document:README.md", "to": "config:STATEMENT_TIMEOUT", "type": "documents", "evidence": "README.md:214", "status": "verified"}
-{"from": "document:README.md", "to": "config:WORKERS", "type": "documents", "evidence": "README.md:213", "status": "verified"}
-{"from": "document:README.md", "to": "document:README.html", "type": "depends_on", "evidence": "README.md:5", "status": "verified"}
-{"from": "document:README.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "README.md:470", "status": "verified"}
-{"from": "document:README.md", "to": "flow:standalone_queries", "type": "documents", "evidence": "README.md:431", "status": "verified"}
-{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:418-470", "status": "verified"}
-{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:473", "status": "verified"}
-{"from": "document:README.md", "to": "process:access_requests", "type": "documents", "evidence": "README.md:476", "status": "verified"}
-{"from": "document:README.md", "to": "process:build_web", "type": "documents", "evidence": "README.md:152", "status": "verified"}
-{"from": "document:README.md", "to": "process:container_services", "type": "documents", "evidence": "README.md:385-393", "status": "verified"}
-{"from": "document:README.md", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.md:277-295", "status": "verified"}
-{"from": "document:README.md", "to": "process:privatelink_login", "type": "documents", "evidence": "README.md:186-201", "status": "verified"}
-{"from": "document:README.md", "to": "process:run_local", "type": "documents", "evidence": "README.md:102-123", "status": "verified"}
-{"from": "document:README.md", "to": "process:setup_local", "type": "documents", "evidence": "README.md:144-153", "status": "verified"}
-{"from": "document:README.md", "to": "process:test", "type": "documents", "evidence": "README.md:475", "status": "verified"}
 {"from": "document:THIRD_PARTY.md", "to": "dir:web/dist", "type": "documents", "evidence": "THIRD_PARTY.md:3", "status": "verified"}
 {"from": "document:THIRD_PARTY.md", "to": "dir:web/dist-st", "type": "documents", "evidence": "THIRD_PARTY.md:3", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "access_queries/README.md:29", "status": "verified"}
-{"from": "document:access_queries/README.md", "to": "flow:standalone_queries", "type": "documents", "evidence": "access_queries/README.md:42-87", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "module:access_queries", "type": "documents", "evidence": "access_queries/README.md:1-15", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/1_user_roles.sql:1_user_roles", "type": "documents", "evidence": "access_queries/README.md:21", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/2_user_access.sql:2_user_access", "type": "documents", "evidence": "access_queries/README.md:22", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/3_role_access.sql:3_role_access", "type": "documents", "evidence": "access_queries/README.md:23", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/4_role_holders.sql:4_role_holders", "type": "documents", "evidence": "access_queries/README.md:24", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/5_object_users.sql:5_object_users", "type": "documents", "evidence": "access_queries/README.md:25", "status": "verified"}
-{"from": "document:docs/overview.html", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "docs/overview.html:150", "status": "verified"}
-{"from": "document:docs/overview.html", "to": "business_rule:paging_windows", "type": "documents", "evidence": "docs/overview.html:150", "status": "verified"}
-{"from": "document:docs/overview.html", "to": "flow:standalone_queries", "type": "documents", "evidence": "docs/overview.html:275", "status": "verified"}
 {"from": "document:docs/overview.html", "to": "module:access_queries", "type": "documents", "evidence": "docs/overview.html:275", "status": "verified"}
-{"from": "document:docs/redesign-notes.md", "to": "document:README.html", "type": "documents", "evidence": "docs/redesign-notes.md:226-227", "status": "verified"}
 {"from": "document:docs/redesign-notes.md", "to": "module:web/src/App.tsx", "type": "documents", "evidence": "docs/redesign-notes.md:10", "status": "verified"}
 {"from": "document:docs/review-2026-11-09.md", "to": "module:access.py", "type": "documents", "evidence": "docs/review-2026-11-09.md:6", "status": "verified"}
 {"from": "document:docs/review-2026-11-09.md", "to": "module:server.py", "type": "documents", "evidence": "docs/review-2026-11-09.md:107", "status": "verified"}
-{"from": "document:docs/review-2026-11-09.md", "to": "process:container_services", "type": "documents", "evidence": "docs/review-2026-11-09.md:320", "status": "verified"}
-{"from": "document:docs/technical.html", "to": "flow:standalone_queries", "type": "documents", "evidence": "docs/technical.html:180", "status": "verified"}
 {"from": "document:docs/technical.html", "to": "module:access_queries", "type": "documents", "evidence": "docs/technical.html:180", "status": "verified"}
 {"from": "document:reviews/review-2026-11-10-2027.html", "to": "file:access.py", "type": "documents", "evidence": "reviews/review-2026-11-10-2027.html:1", "status": "inferred"}
-{"from": "document:web/API.md", "to": "business_rule:changes_at_refresh", "type": "documents", "evidence": "web/API.md:919", "status": "verified"}
-{"from": "document:web/API.md", "to": "business_rule:event_names_cap", "type": "documents", "evidence": "web/API.md:924", "status": "verified"}
-{"from": "document:web/API.md", "to": "config:server.py:PAGE", "type": "documents", "evidence": "web/API.md:288", "status": "verified"}
-{"from": "document:web/API.md", "to": "config:server.py:PAGE", "type": "documents", "evidence": "web/API.md:389", "status": "verified"}
-{"from": "document:web/API.md", "to": "endpoint:GET /api/request", "type": "documents", "evidence": "web/API.md:583", "status": "verified"}
-{"from": "document:web/API.md", "to": "function:server.py:load_error", "type": "documents", "evidence": "web/API.md:28", "status": "verified"}
-{"from": "document:web/API.md", "to": "module:server.py", "type": "documents", "evidence": "web/API.md:1-5", "status": "verified"}
 {"from": "document:web/ST.md", "to": "file:sql/4_streamlit.sql", "type": "documents", "evidence": "web/ST.md:52-56", "status": "verified"}
 {"from": "document:web/ST.md", "to": "module:st_react.py", "type": "documents", "evidence": "web/ST.md:1-5", "status": "verified"}
-{"from": "document:web/ST.md", "to": "process:build_web", "type": "documents", "evidence": "web/ST.md:8-19", "status": "verified"}
 {"from": "document:web/ST.md", "to": "process:sis_manual_check", "type": "documents", "evidence": "web/ST.md:45-50", "status": "verified"}
 {"from": "endpoint:GET /api/access", "to": "flow:access_page", "type": "part_of", "evidence": "server.py:4423", "status": "verified"}
 {"from": "endpoint:GET /api/access", "to": "function:server.py:access_page", "type": "calls", "evidence": "server.py:4228", "status": "verified"}
@@ -761,16 +688,13 @@
 {"from": "endpoint:POST /api/reload", "to": "function:server.py:reload", "type": "exposes", "evidence": "server.py:4374", "status": "verified"}
 {"from": "external_system:au:ACCESS_HISTORY", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:976", "status": "verified"}
 {"from": "external_system:au:GRANTS_TO_ROLES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:396", "status": "verified"}
-{"from": "external_system:au:GRANTS_TO_ROLES", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:34", "status": "verified"}
 {"from": "external_system:au:GRANTS_TO_USERS", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:398", "status": "verified"}
-{"from": "external_system:au:GRANTS_TO_USERS", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:51", "status": "verified"}
 {"from": "external_system:au:MASKING_POLICIES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:656", "status": "verified"}
 {"from": "external_system:au:POLICY_REFERENCES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:655", "status": "verified"}
 {"from": "external_system:au:QUERY_HISTORY", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:551", "status": "verified"}
 {"from": "external_system:au:ROW_ACCESS_POLICIES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:657", "status": "verified"}
 {"from": "external_system:au:TAG_REFERENCES", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:603", "status": "verified"}
 {"from": "external_system:au:USERS", "to": "external_system:SNOWFLAKE.ACCOUNT_USAGE", "type": "part_of", "evidence": "sql/1_setup.sql:510", "status": "verified"}
-{"from": "external_system:au:USERS", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:55", "status": "verified"}
 {"from": "file:.cache/<key>.pkl", "to": "data_structure:snapshot_dict", "type": "derived_from", "evidence": "cache.py:141", "status": "verified"}
 {"from": "file:.cache/access.duckdb", "to": "table:duckdb:COPIES", "type": "contains", "evidence": "cache.py:272", "status": "verified"}
 {"from": "file:.cache/access.duckdb", "to": "table:duckdb:TBL_ACCESS_ACTIVITY", "type": "contains", "evidence": "cache.py:277-299", "status": "verified"}
@@ -1211,7 +1135,6 @@
 {"from": "file:access_queries/3_role_access.sql", "to": "task:access_queries/3_role_access.sql:3_role_access", "type": "contains", "evidence": "access_queries/3_role_access.sql:22", "status": "verified"}
 {"from": "file:access_queries/4_role_holders.sql", "to": "task:access_queries/4_role_holders.sql:4_role_holders", "type": "contains", "evidence": "access_queries/4_role_holders.sql:22", "status": "verified"}
 {"from": "file:access_queries/5_object_users.sql", "to": "task:access_queries/5_object_users.sql:5_object_users", "type": "contains", "evidence": "access_queries/5_object_users.sql:22", "status": "verified"}
-{"from": "file:access_queries/access_examples.ipynb", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/README.md:72", "status": "verified"}
 {"from": "file:access_queries/access_examples.ipynb", "to": "task:access_queries/access_examples.ipynb:b_edges", "type": "contains", "evidence": "access_queries/access_examples.ipynb:629", "status": "verified"}
 {"from": "file:access_queries/access_examples.ipynb", "to": "task:access_queries/access_examples.ipynb:create_1", "type": "contains", "evidence": "access_queries/access_examples.ipynb:59", "status": "verified"}
 {"from": "file:access_queries/access_examples.ipynb", "to": "task:access_queries/access_examples.ipynb:create_2", "type": "contains", "evidence": "access_queries/access_examples.ipynb:129", "status": "verified"}
@@ -1301,20 +1224,6 @@
 {"from": "file:cache.py", "to": "function:cache.py:text", "type": "contains", "evidence": "cache.py:231", "status": "verified"}
 {"from": "file:cache.py", "to": "function:cache.py:write_part", "type": "contains", "evidence": "cache.py:400", "status": "verified"}
 {"from": "file:cache.py", "to": "module:cache.py", "type": "contains", "evidence": "cache.py:1", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "file:access.py", "type": "imports", "evidence": "docs/make_readme.py:12", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "file:server.py", "type": "imports", "evidence": "docs/make_readme.py:13", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:box_html", "type": "contains", "evidence": "docs/make_readme.py:91", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:canvas", "type": "calls", "evidence": "docs/make_readme.py:151", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:canvas", "type": "contains", "evidence": "docs/make_readme.py:99", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:crosses", "type": "contains", "evidence": "docs/make_readme.py:84", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:inject", "type": "calls", "evidence": "docs/make_readme.py:151", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:inject", "type": "contains", "evidence": "docs/make_readme.py:142", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:mid", "type": "calls", "evidence": "docs/make_readme.py:49", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:mid", "type": "contains", "evidence": "docs/make_readme.py:43", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:rules", "type": "calls", "evidence": "docs/make_readme.py:153", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:rules", "type": "contains", "evidence": "docs/make_readme.py:125", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:side", "type": "contains", "evidence": "docs/make_readme.py:77", "status": "verified"}
-{"from": "file:docs/make_readme.py", "to": "module:docs/make_readme.py", "type": "contains", "evidence": "docs/make_readme.py:1", "status": "verified"}
 {"from": "file:run.py", "to": "file:access.py", "type": "imports", "evidence": "run.py:23", "status": "verified"}
 {"from": "file:run.py", "to": "file:server.py", "type": "triggers", "evidence": "run.py:64", "status": "verified"}
 {"from": "file:run.py", "to": "flow:startup", "type": "part_of", "evidence": "run.py:1", "status": "verified"}
@@ -1726,7 +1635,6 @@
 {"from": "file:sql/3_cleanup.sql", "to": "module:sql/3_cleanup.sql", "type": "contains", "evidence": "sql/3_cleanup.sql:1", "status": "verified"}
 {"from": "file:sql/3_cleanup.sql", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "writes", "evidence": "sql/3_cleanup.sql:21", "status": "verified"}
 {"from": "file:sql/3_cleanup.sql", "to": "streamlit:ST_ACCESS_EXPLORER", "type": "writes", "evidence": "sql/3_cleanup.sql:12", "status": "verified"}
-{"from": "file:sql/3_cleanup.sql", "to": "task:TSK_ACCESS_SNAPSHOT", "type": "writes", "evidence": "sql/3_cleanup.sql:18", "status": "verified"}
 {"from": "file:sql/3_cleanup.sql", "to": "task:sql/3_cleanup.sql:DROP_FUNCTION_ACCESS_OF", "type": "contains", "evidence": "sql/3_cleanup.sql:32", "status": "verified"}
 {"from": "file:sql/3_cleanup.sql", "to": "task:sql/3_cleanup.sql:DROP_FUNCTION_CAN", "type": "contains", "evidence": "sql/3_cleanup.sql:26", "status": "verified"}
 {"from": "file:sql/3_cleanup.sql", "to": "task:sql/3_cleanup.sql:DROP_FUNCTION_WHO_CAN", "type": "contains", "evidence": "sql/3_cleanup.sql:29", "status": "verified"}
@@ -2895,11 +2803,6 @@
 {"from": "folder:access_queries", "to": "file:access_queries/make_notebook.py", "type": "contains", "evidence": "access_queries/make_notebook.py:1", "status": "verified"}
 {"from": "folder:access_queries", "to": "file:access_queries/test_queries.py", "type": "contains", "evidence": "access_queries/test_queries.py:1", "status": "verified"}
 {"from": "folder:access_queries", "to": "module:access_queries", "type": "implements", "evidence": "access_queries/README.md:1-4", "status": "verified"}
-{"from": "folder:docs", "to": "file:docs/make_readme.py", "type": "contains", "evidence": "docs/make_readme.py:1", "status": "verified"}
-{"from": "folder:docs", "to": "file:docs/overview.html", "type": "contains", "evidence": "docs/overview.html:1", "status": "verified"}
-{"from": "folder:docs", "to": "file:docs/redesign-notes.md", "type": "contains", "evidence": "docs/redesign-notes.md:1", "status": "verified"}
-{"from": "folder:docs", "to": "file:docs/review-2026-11-09.md", "type": "contains", "evidence": "docs/review-2026-11-09.md:1", "status": "verified"}
-{"from": "folder:docs", "to": "file:docs/technical.html", "type": "contains", "evidence": "docs/technical.html:1", "status": "verified"}
 {"from": "folder:sql", "to": "file:sql/1_setup.sql", "type": "contains", "evidence": "sql/1_setup.sql:1", "status": "verified"}
 {"from": "folder:sql", "to": "file:sql/1_setup_verify.sql", "type": "contains", "evidence": "sql/1_setup_verify.sql:1", "status": "verified"}
 {"from": "folder:sql", "to": "file:sql/2_snapshot.sql", "type": "contains", "evidence": "sql/2_snapshot.sql:1", "status": "verified"}
@@ -2908,15 +2811,6 @@
 {"from": "folder:sql", "to": "file:sql/3_cleanup_verify.sql", "type": "contains", "evidence": "sql/3_cleanup_verify.sql:1", "status": "verified"}
 {"from": "folder:sql", "to": "file:sql/4_streamlit.sql", "type": "contains", "evidence": "sql/4_streamlit.sql:1", "status": "verified"}
 {"from": "folder:sql", "to": "file:sql/4_streamlit_verify.sql", "type": "contains", "evidence": "sql/4_streamlit_verify.sql:1", "status": "verified"}
-{"from": "folder:web", "to": "file:web/.gitignore", "type": "contains", "evidence": "web/.gitignore:1", "status": "verified"}
-{"from": "folder:web", "to": "file:web/API.md", "type": "contains", "evidence": "web/API.md:1", "status": "verified"}
-{"from": "folder:web", "to": "file:web/ST.md", "type": "contains", "evidence": "web/ST.md:1", "status": "verified"}
-{"from": "folder:web", "to": "file:web/index.html", "type": "contains", "evidence": "web/index.html:1", "status": "verified"}
-{"from": "folder:web", "to": "file:web/package.json", "type": "contains", "evidence": "web/package.json:1", "status": "verified"}
-{"from": "folder:web", "to": "file:web/tsconfig.json", "type": "contains", "evidence": "web/tsconfig.json:1", "status": "verified"}
-{"from": "folder:web", "to": "file:web/vite.config.ts", "type": "contains", "evidence": "web/vite.config.ts:1", "status": "verified"}
-{"from": "folder:web", "to": "folder:web/src", "type": "contains", "evidence": "web/src/App.tsx:1", "status": "verified"}
-{"from": "folder:web", "to": "folder:web/st", "type": "contains", "evidence": "web/st/index.html:1", "status": "verified"}
 {"from": "folder:web/src", "to": "file:web/src/App.tsx", "type": "contains", "evidence": "web/src/App.tsx:1", "status": "verified"}
 {"from": "folder:web/src", "to": "file:web/src/app.css", "type": "contains", "evidence": "web/src/app.css:1", "status": "verified"}
 {"from": "folder:web/src", "to": "file:web/src/app.test.tsx", "type": "contains", "evidence": "web/src/app.test.tsx:1", "status": "verified"}
@@ -3278,7 +3172,6 @@
 {"from": "function:access.py:diff", "to": "business_rule:diff_access", "type": "implements", "evidence": "access.py:7029-7032", "status": "verified"}
 {"from": "function:access.py:diff", "to": "business_rule:diff_events", "type": "implements", "evidence": "access.py:7034-7090", "status": "verified"}
 {"from": "function:access.py:diff", "to": "business_rule:diff_findings", "type": "implements", "evidence": "access.py:7032-7033", "status": "verified"}
-{"from": "function:access.py:diff", "to": "business_rule:event_names_cap", "type": "implements", "evidence": "access.py:7050-7061", "status": "verified"}
 {"from": "function:access.py:diff", "to": "flow:what_changed", "type": "part_of", "evidence": "access.py:7016", "status": "verified"}
 {"from": "function:access.py:diff", "to": "function:access.py:event_counts", "type": "calls", "evidence": "access.py:7094", "status": "verified"}
 {"from": "function:access.py:diff", "to": "function:access.py:event_counts", "type": "calls", "evidence": "access.py:7095", "status": "verified"}
@@ -3500,7 +3393,6 @@
 {"from": "function:access.py:impact_text", "to": "function:access.py:names_text", "type": "calls", "evidence": "access.py:6945", "status": "verified"}
 {"from": "function:access.py:in_snowflake", "to": "flow:startup", "type": "part_of", "evidence": "access.py:45", "status": "verified"}
 {"from": "function:access.py:in_snowflake", "to": "flow:streamlit_in_snowflake", "type": "part_of", "evidence": "access.py:45", "status": "verified"}
-{"from": "function:access.py:info_schema", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:804-812", "status": "verified"}
 {"from": "function:access.py:info_schema", "to": "function:access.py:ident", "type": "calls", "evidence": "access.py:809", "status": "verified"}
 {"from": "function:access.py:inside_access", "to": "business_rule:inside_access", "type": "implements", "evidence": "access.py:4997-5024", "status": "verified"}
 {"from": "function:access.py:inside_access", "to": "flow:can_they", "type": "part_of", "evidence": "access.py:4997-5024", "status": "verified"}
@@ -3549,10 +3441,8 @@
 {"from": "function:access.py:live", "to": "business_rule:inventory_ownership_rows", "type": "implements", "evidence": "access.py:1644-1654", "status": "verified"}
 {"from": "function:access.py:live", "to": "business_rule:list_fallback_order", "type": "implements", "evidence": "access.py:1366-1374", "status": "verified"}
 {"from": "function:access.py:live", "to": "business_rule:lost_session_stops", "type": "implements", "evidence": "access.py:1279-1281", "status": "verified"}
-{"from": "function:access.py:live", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:1274-1294", "status": "verified"}
 {"from": "function:access.py:live", "to": "business_rule:shared_history_read", "type": "implements", "evidence": "access.py:1351-1364", "status": "verified"}
 {"from": "function:access.py:live", "to": "business_rule:streams_source", "type": "implements", "evidence": "access.py:1627-1640", "status": "verified"}
-{"from": "function:access.py:live", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "access.py:1282-1284", "status": "verified"}
 {"from": "function:access.py:live", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:1620", "status": "verified"}
 {"from": "function:access.py:live", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:1656", "status": "verified"}
 {"from": "function:access.py:live", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access.py:1301", "status": "verified"}
@@ -3675,7 +3565,6 @@
 {"from": "function:access.py:matrix", "to": "function:access.py:valid_privs", "type": "calls", "evidence": "access.py:4251", "status": "verified"}
 {"from": "function:access.py:mine", "to": "business_rule:inventory_ownership_rows", "type": "implements", "evidence": "access.py:903-916", "status": "verified"}
 {"from": "function:access.py:mine", "to": "business_rule:lost_session_stops", "type": "implements", "evidence": "access.py:856-858", "status": "verified"}
-{"from": "function:access.py:mine", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:841-858", "status": "verified"}
 {"from": "function:access.py:mine", "to": "data_structure:snapshot_dict", "type": "writes", "evidence": "access.py:971-973", "status": "verified"}
 {"from": "function:access.py:mine", "to": "external_system:au:QUERY_HISTORY", "type": "reads", "evidence": "access.py:863", "status": "verified"}
 {"from": "function:access.py:mine", "to": "external_system:is:APPLICABLE_ROLES", "type": "reads", "evidence": "access.py:922", "status": "verified"}
@@ -4174,7 +4063,6 @@
 {"from": "function:access.py:skipped_rules", "to": "business_rule:hierarchy_off", "type": "implements", "evidence": "access.py:7646-7657", "status": "verified"}
 {"from": "function:access.py:skipped_rules", "to": "function:access.py:cached", "type": "calls", "evidence": "access.py:7663", "status": "verified"}
 {"from": "function:access.py:skipped_rules", "to": "function:access.py:role_kind", "type": "calls", "evidence": "access.py:7663", "status": "verified"}
-{"from": "function:access.py:slow", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "access.py:634-636", "status": "verified"}
 {"from": "function:access.py:slow", "to": "function:access.py:timed_out", "type": "calls", "evidence": "access.py:636", "status": "verified"}
 {"from": "function:access.py:snapshot", "to": "business_rule:activity_off", "type": "implements", "evidence": "access.py:604-607", "status": "verified"}
 {"from": "function:access.py:snapshot", "to": "business_rule:no_run_empty", "type": "implements", "evidence": "access.py:562", "status": "verified"}
@@ -4261,7 +4149,6 @@
 {"from": "function:access.py:tidy", "to": "function:access.py:usable", "type": "calls", "evidence": "access.py:1989", "status": "verified"}
 {"from": "function:access.py:tidy_stamp", "to": "function:access.py:cached_stamp", "type": "calls", "evidence": "access.py:4719", "status": "verified"}
 {"from": "function:access.py:timed_out", "to": "business_rule:statement_timeout", "type": "implements", "evidence": "access.py:639-642", "status": "verified"}
-{"from": "function:access.py:timed_out", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "access.py:639-642", "status": "verified"}
 {"from": "function:access.py:timeout_hint", "to": "business_rule:statement_timeout", "type": "implements", "evidence": "access.py:645-655", "status": "verified"}
 {"from": "function:access.py:too_big", "to": "business_rule:graph_summary", "type": "implements", "evidence": "access.py:4517-4528", "status": "verified"}
 {"from": "function:access.py:uid", "to": "business_rule:user_role_namespace", "type": "implements", "evidence": "access.py:2064-2066", "status": "verified"}
@@ -4327,7 +4214,6 @@
 {"from": "function:access.py:walk", "to": "function:access.py:down", "type": "calls", "evidence": "access.py:2507", "status": "verified"}
 {"from": "function:access.py:walk", "to": "function:access.py:starts", "type": "calls", "evidence": "access.py:2507", "status": "verified"}
 {"from": "function:access.py:warehouse_use", "to": "function:access.py:up_rows", "type": "calls", "evidence": "access.py:6454", "status": "verified"}
-{"from": "function:access.py:week", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:795-801", "status": "verified"}
 {"from": "function:access.py:what_if", "to": "business_rule:finding_scope", "type": "implements", "evidence": "access.py:5862-5869", "status": "verified"}
 {"from": "function:access.py:what_if", "to": "business_rule:what_if_restore", "type": "implements", "evidence": "access.py:5877-5922", "status": "verified"}
 {"from": "function:access.py:what_if", "to": "function:access.py:bfs", "type": "calls", "evidence": "access.py:5841", "status": "verified"}
@@ -4534,12 +4420,8 @@
 {"from": "function:cache.py:write_part", "to": "function:access.py:ident", "type": "calls", "evidence": "cache.py:418", "status": "verified"}
 {"from": "function:cache.py:write_part", "to": "function:cache.py:duck_type", "type": "calls", "evidence": "cache.py:411", "status": "verified"}
 {"from": "function:cache.py:write_part", "to": "function:cache.py:engine", "type": "calls", "evidence": "cache.py:402", "status": "verified"}
-{"from": "function:docs/make_readme.py:canvas", "to": "function:docs/make_readme.py:box_html", "type": "calls", "evidence": "docs/make_readme.py:122", "status": "verified"}
-{"from": "function:docs/make_readme.py:canvas", "to": "function:docs/make_readme.py:crosses", "type": "calls", "evidence": "docs/make_readme.py:104", "status": "verified"}
-{"from": "function:docs/make_readme.py:canvas", "to": "function:docs/make_readme.py:side", "type": "calls", "evidence": "docs/make_readme.py:102", "status": "verified"}
 {"from": "function:run.py:command", "to": "business_rule:local_bind", "type": "implements", "evidence": "run.py:60", "status": "verified"}
 {"from": "function:run.py:command", "to": "flow:two_stage_load", "type": "part_of", "evidence": "run.py:51-55", "status": "verified"}
-{"from": "function:run.py:command", "to": "process:run_local", "type": "part_of", "evidence": "run.py:26", "status": "verified"}
 {"from": "function:run_sql.py:check_names", "to": "config:settings.sql:ACTIVITY", "type": "reads", "evidence": "run_sql.py:29-31", "status": "verified"}
 {"from": "function:run_sql.py:check_names", "to": "config:settings.sql:QUERY_TAG", "type": "reads", "evidence": "run_sql.py:26", "status": "verified"}
 {"from": "function:run_sql.py:check_names", "to": "config:settings.sql:STATEMENT_TIMEOUT", "type": "reads", "evidence": "run_sql.py:29-31", "status": "verified"}
@@ -4633,8 +4515,6 @@
 {"from": "function:server.py:breaks", "to": "function:access.py:uid", "type": "calls", "evidence": "server.py:687", "status": "verified"}
 {"from": "function:server.py:build_graph", "to": "business_rule:focus_access", "type": "implements", "evidence": "server.py:989", "status": "verified"}
 {"from": "function:server.py:build_graph", "to": "business_rule:graph_focus_narrow", "type": "implements", "evidence": "server.py:877-884", "status": "verified"}
-{"from": "function:server.py:build_graph", "to": "business_rule:lane_fold", "type": "implements", "evidence": "server.py:888-889", "status": "verified"}
-{"from": "function:server.py:build_graph", "to": "business_rule:lazy_boxes", "type": "implements", "evidence": "server.py:886-889", "status": "verified"}
 {"from": "function:server.py:build_graph", "to": "flow:graph_focus", "type": "part_of", "evidence": "server.py:877-886", "status": "verified"}
 {"from": "function:server.py:build_graph", "to": "flow:lazy_graph_box", "type": "part_of", "evidence": "server.py:886", "status": "verified"}
 {"from": "function:server.py:build_graph", "to": "function:access.py:cached", "type": "calls", "evidence": "server.py:880", "status": "verified"}
@@ -4675,7 +4555,6 @@
 {"from": "function:server.py:call_snapshot", "to": "function:access.py:say", "type": "calls", "evidence": "server.py:4185", "status": "verified"}
 {"from": "function:server.py:call_snapshot", "to": "function:server.py:with_query", "type": "calls", "evidence": "server.py:4185", "status": "verified"}
 {"from": "function:server.py:call_snapshot", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "calls", "evidence": "server.py:4183", "status": "verified"}
-{"from": "function:server.py:changes_page", "to": "business_rule:event_names_cap", "type": "implements", "evidence": "server.py:3133-3140", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "flow:paged_tables", "type": "part_of", "evidence": "server.py:3138", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:3108", "status": "verified"}
 {"from": "function:server.py:changes_page", "to": "function:access.py:cached", "type": "calls", "evidence": "server.py:3124", "status": "verified"}
@@ -4744,7 +4623,6 @@
 {"from": "function:server.py:compare_page", "to": "function:server.py:nk", "type": "calls", "evidence": "server.py:3200", "status": "verified"}
 {"from": "function:server.py:compare_page", "to": "function:server.py:side_of", "type": "calls", "evidence": "server.py:3188", "status": "verified"}
 {"from": "function:server.py:compare_page", "to": "function:server.py:window", "type": "calls", "evidence": "server.py:3206", "status": "verified"}
-{"from": "function:server.py:compared", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:4167-4178", "status": "verified"}
 {"from": "function:server.py:compared", "to": "flow:background_refresh", "type": "part_of", "evidence": "server.py:4160", "status": "verified"}
 {"from": "function:server.py:compared", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:4167", "status": "verified"}
 {"from": "function:server.py:compared", "to": "function:access.py:build", "type": "calls", "evidence": "server.py:4175", "status": "verified"}
@@ -4761,7 +4639,6 @@
 {"from": "function:server.py:data_key", "to": "function:server.py:mine_entry", "type": "calls", "evidence": "server.py:4244", "status": "verified"}
 {"from": "function:server.py:data_total", "to": "function:access.py:cached", "type": "calls", "evidence": "server.py:1755", "status": "verified"}
 {"from": "function:server.py:data_total", "to": "function:access.py:is_data", "type": "calls", "evidence": "server.py:1755", "status": "verified"}
-{"from": "function:server.py:diff_of", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:3148-3167", "status": "verified"}
 {"from": "function:server.py:diff_of", "to": "file:.cache/<key>.diff.pkl", "type": "reads", "evidence": "server.py:3157-3159", "status": "verified"}
 {"from": "function:server.py:diff_of", "to": "file:.cache/<key>.diff.pkl", "type": "writes", "evidence": "server.py:3162-3165", "status": "verified"}
 {"from": "function:server.py:diff_of", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:3148", "status": "verified"}
@@ -4838,7 +4715,6 @@
 {"from": "function:server.py:focus_access", "to": "flow:graph_focus", "type": "part_of", "evidence": "server.py:732-740", "status": "verified"}
 {"from": "function:server.py:focus_access", "to": "function:access.py:cached", "type": "calls", "evidence": "server.py:737", "status": "verified"}
 {"from": "function:server.py:focus_access", "to": "function:access.py:who_has", "type": "calls", "evidence": "server.py:737", "status": "verified"}
-{"from": "function:server.py:fold_lanes", "to": "business_rule:lane_fold", "type": "implements", "evidence": "server.py:743-774", "status": "verified"}
 {"from": "function:server.py:fold_lanes", "to": "flow:graph_focus", "type": "part_of", "evidence": "server.py:888-889", "status": "verified"}
 {"from": "function:server.py:fold_lanes", "to": "flow:lazy_graph_box", "type": "part_of", "evidence": "server.py:889", "status": "verified"}
 {"from": "function:server.py:fold_lanes", "to": "function:server.py:nk", "type": "calls", "evidence": "server.py:750", "status": "verified"}
@@ -4852,7 +4728,6 @@
 {"from": "function:server.py:grantees_page", "to": "function:server.py:grantee_groups", "type": "calls", "evidence": "server.py:2354", "status": "verified"}
 {"from": "function:server.py:grantees_page", "to": "function:server.py:grantee_tab_rows", "type": "calls", "evidence": "server.py:2352", "status": "verified"}
 {"from": "function:server.py:grantees_page", "to": "function:server.py:paged", "type": "calls", "evidence": "server.py:2355", "status": "verified"}
-{"from": "function:server.py:graph_page", "to": "business_rule:lazy_boxes", "type": "implements", "evidence": "server.py:3959-3970", "status": "verified"}
 {"from": "function:server.py:graph_page", "to": "flow:lazy_graph_box", "type": "part_of", "evidence": "server.py:3959", "status": "verified"}
 {"from": "function:server.py:graph_page", "to": "function:server.py:check_page", "type": "calls", "evidence": "server.py:3972", "status": "verified"}
 {"from": "function:server.py:graph_page", "to": "function:server.py:gsrc", "type": "calls", "evidence": "server.py:3978", "status": "verified"}
@@ -5211,10 +5086,8 @@
 {"from": "function:server.py:objuse_rows", "to": "function:access.py:object_activity", "type": "calls", "evidence": "server.py:3038", "status": "verified"}
 {"from": "function:server.py:objuse_rows", "to": "function:access.py:pattern", "type": "calls", "evidence": "server.py:3041", "status": "verified"}
 {"from": "function:server.py:objuse_rows", "to": "function:access.py:writable", "type": "calls", "evidence": "server.py:3041", "status": "verified"}
-{"from": "function:server.py:paged", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:1456-1460", "status": "verified"}
 {"from": "function:server.py:paged", "to": "flow:paged_tables", "type": "part_of", "evidence": "server.py:1456", "status": "verified"}
 {"from": "function:server.py:pattern", "to": "function:access.py:finding_objects", "type": "calls", "evidence": "server.py:3418", "status": "verified"}
-{"from": "function:server.py:prev_findings", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:409-416", "status": "verified"}
 {"from": "function:server.py:prev_findings", "to": "file:.cache/<key>.prev.rules.pkl", "type": "reads", "evidence": "server.py:414-416", "status": "verified"}
 {"from": "function:server.py:prev_findings", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:3161", "status": "verified"}
 {"from": "function:server.py:prev_findings", "to": "function:access.py:rules_stamp", "type": "calls", "evidence": "server.py:416", "status": "verified"}
@@ -5276,7 +5149,6 @@
 {"from": "function:server.py:reload", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "calls", "evidence": "server.py:4146", "status": "inferred"}
 {"from": "function:server.py:reload", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "triggers", "evidence": "server.py:4146", "status": "inferred"}
 {"from": "function:server.py:renew", "to": "business_rule:background_refresh", "type": "implements", "evidence": "server.py:4139", "status": "verified"}
-{"from": "function:server.py:renew", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:4159-4160", "status": "verified"}
 {"from": "function:server.py:renew", "to": "flow:background_refresh", "type": "part_of", "evidence": "server.py:4139", "status": "verified"}
 {"from": "function:server.py:renew", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:4160", "status": "verified"}
 {"from": "function:server.py:renew", "to": "function:cache.py:clear_parts", "type": "calls", "evidence": "server.py:4152", "status": "verified"}
@@ -5310,7 +5182,6 @@
 {"from": "function:server.py:review_ctx", "to": "function:server.py:flag", "type": "calls", "evidence": "server.py:3662", "status": "verified"}
 {"from": "function:server.py:review_ctx", "to": "function:server.py:need", "type": "calls", "evidence": "server.py:3654", "status": "verified"}
 {"from": "function:server.py:review_ctx", "to": "function:server.py:type_rank", "type": "calls", "evidence": "server.py:3666", "status": "verified"}
-{"from": "function:server.py:review_page", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:3717", "status": "verified"}
 {"from": "function:server.py:review_page", "to": "flow:paged_tables", "type": "part_of", "evidence": "server.py:3732", "status": "verified"}
 {"from": "function:server.py:review_page", "to": "function:access.py:future_label", "type": "calls", "evidence": "server.py:3719", "status": "verified"}
 {"from": "function:server.py:review_page", "to": "function:server.py:flag", "type": "calls", "evidence": "server.py:3687", "status": "verified"}
@@ -5406,7 +5277,6 @@
 {"from": "function:server.py:rules_csv", "to": "function:server.py:csv_text", "type": "calls", "evidence": "server.py:3534", "status": "verified"}
 {"from": "function:server.py:rules_csv", "to": "function:server.py:rules_pool", "type": "calls", "evidence": "server.py:3529", "status": "verified"}
 {"from": "function:server.py:rules_page", "to": "business_rule:hierarchy_off", "type": "implements", "evidence": "server.py:3435-3475", "status": "verified"}
-{"from": "function:server.py:rules_page", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:3460", "status": "verified"}
 {"from": "function:server.py:rules_page", "to": "flow:paged_tables", "type": "part_of", "evidence": "server.py:3460", "status": "verified"}
 {"from": "function:server.py:rules_page", "to": "function:access.py:policies_of", "type": "calls", "evidence": "server.py:3480", "status": "verified"}
 {"from": "function:server.py:rules_page", "to": "function:access.py:row_terms", "type": "calls", "evidence": "server.py:3480", "status": "verified"}
@@ -5644,7 +5514,6 @@
 {"from": "function:server.py:who_data", "to": "function:server.py:nk", "type": "calls", "evidence": "server.py:2500", "status": "verified"}
 {"from": "function:server.py:who_page", "to": "function:server.py:object_risks", "type": "calls", "evidence": "server.py:2533", "status": "verified"}
 {"from": "function:server.py:who_page", "to": "function:server.py:who_all", "type": "calls", "evidence": "server.py:2518", "status": "verified"}
-{"from": "function:server.py:window", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:3223-3229", "status": "verified"}
 {"from": "function:server.py:window", "to": "flow:paged_tables", "type": "part_of", "evidence": "server.py:3223", "status": "verified"}
 {"from": "function:server.py:window", "to": "flow:what_changed", "type": "part_of", "evidence": "server.py:3138", "status": "verified"}
 {"from": "function:server.py:with_query", "to": "flow:direct_live", "type": "part_of", "evidence": "server.py:93", "status": "verified"}
@@ -5692,14 +5561,11 @@
 {"from": "function:sql/1_setup.sql:async_ok", "to": "business_rule:parallel_reads", "type": "implements", "evidence": "sql/1_setup.sql:227-233", "status": "verified"}
 {"from": "function:sql/1_setup.sql:data_objects", "to": "table:TBL_ACCESS_GRANT", "type": "reads", "evidence": "sql/1_setup.sql:566-568", "status": "verified"}
 {"from": "function:sql/1_setup.sql:database_list", "to": "business_rule:list_fallback_order", "type": "implements", "evidence": "sql/1_setup.sql:832-853", "status": "verified"}
-{"from": "function:sql/1_setup.sql:fallback", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "sql/1_setup.sql:345-358", "status": "verified"}
-{"from": "function:sql/1_setup.sql:fallback", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "sql/1_setup.sql:355-356", "status": "verified"}
 {"from": "function:sql/1_setup.sql:fallback", "to": "flow:activity_read", "type": "part_of", "evidence": "sql/1_setup.sql:345", "status": "verified"}
 {"from": "function:sql/1_setup.sql:future", "to": "external_system:show:SHOW FUTURE GRANTS", "type": "reads", "evidence": "sql/1_setup.sql:473", "status": "verified"}
 {"from": "function:sql/1_setup.sql:future", "to": "external_system:show:SHOW SCHEMAS", "type": "reads", "evidence": "sql/1_setup.sql:467", "status": "verified"}
 {"from": "function:sql/1_setup.sql:future", "to": "flow:read_levels", "type": "part_of", "evidence": "sql/1_setup.sql:456-463", "status": "verified"}
 {"from": "function:sql/1_setup.sql:future", "to": "table:TBL_ACCESS_GRANT", "type": "writes", "evidence": "sql/1_setup.sql:494", "status": "verified"}
-{"from": "function:sql/1_setup.sql:grants", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "sql/1_setup.sql:402-404", "status": "verified"}
 {"from": "function:sql/1_setup.sql:grants", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "sql/1_setup.sql:397", "status": "verified"}
 {"from": "function:sql/1_setup.sql:grants", "to": "external_system:au:GRANTS_TO_USERS", "type": "reads", "evidence": "sql/1_setup.sql:399", "status": "verified"}
 {"from": "function:sql/1_setup.sql:grants", "to": "external_system:show:SHOW DATABASE ROLES", "type": "reads", "evidence": "sql/1_setup.sql:430", "status": "verified"}
@@ -5757,7 +5623,6 @@
 {"from": "function:sql/1_setup.sql:tags", "to": "external_system:is:TAG_REFERENCES_ALL_COLUMNS", "type": "reads", "evidence": "sql/1_setup.sql:611", "status": "verified"}
 {"from": "function:sql/1_setup.sql:tags", "to": "function:sql/1_setup.sql:data_objects", "type": "calls", "evidence": "sql/1_setup.sql:606", "status": "verified"}
 {"from": "function:sql/1_setup.sql:tags", "to": "table:TBL_ACCESS_TAG", "type": "writes", "evidence": "sql/1_setup.sql:597-604", "status": "verified"}
-{"from": "function:sql/1_setup.sql:usage", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "sql/1_setup.sql:548-561", "status": "verified"}
 {"from": "function:sql/1_setup.sql:usage", "to": "external_system:au:QUERY_HISTORY", "type": "reads", "evidence": "sql/1_setup.sql:550", "status": "verified"}
 {"from": "function:sql/1_setup.sql:usage", "to": "external_system:is:QUERY_HISTORY", "type": "reads", "evidence": "sql/1_setup.sql:557", "status": "verified"}
 {"from": "function:sql/1_setup.sql:usage", "to": "flow:read_levels", "type": "part_of", "evidence": "sql/1_setup.sql:530-561", "status": "verified"}
@@ -6397,59 +6262,11 @@
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "function:sql/1_setup.sql:users", "type": "contains", "evidence": "sql/1_setup.sql:503", "status": "verified"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "table:TBL_ACCESS_GRANT", "type": "writes", "evidence": "sql/1_setup.sql:389", "status": "verified"}
 {"from": "procedure:SP_ACCESS_SNAPSHOT", "to": "table:TBL_ACCESS_RUN", "type": "writes", "evidence": "sql/1_setup.sql:1159", "status": "verified"}
-{"from": "process:access_requests", "to": "role:APP_ROLE", "type": "grants", "evidence": "README.html:696", "status": "verified"}
-{"from": "process:access_requests", "to": "role:DEV_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:1574-1578", "status": "verified"}
-{"from": "process:build_web", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:8-9", "status": "verified"}
-{"from": "process:build_web", "to": "config:web/vite.config.ts", "type": "depends_on", "evidence": "web/vite.config.ts:22-24", "status": "verified"}
-{"from": "process:build_web", "to": "dir:web/dist", "type": "writes", "evidence": "web/vite.config.ts:27", "status": "verified"}
-{"from": "process:build_web", "to": "dir:web/dist-st", "type": "writes", "evidence": "web/vite.config.ts:27", "status": "verified"}
-{"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup.sql", "type": "calls", "evidence": "README.md:295", "status": "verified"}
-{"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup_verify.sql", "type": "calls", "evidence": "sql/3_cleanup_verify.sql:1", "status": "verified"}
-{"from": "process:container_services", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:387", "status": "verified"}
-{"from": "process:container_services", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:323", "status": "verified"}
-{"from": "process:container_services", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:391-392", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/1_setup.sql", "type": "calls", "evidence": "README.md:281", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/1_setup_verify.sql", "type": "calls", "evidence": "README.md:281", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/2_snapshot.sql", "type": "calls", "evidence": "README.md:282", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/2_snapshot_verify.sql", "type": "calls", "evidence": "README.md:282", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit.sql", "type": "calls", "evidence": "README.md:358", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit_verify.sql", "type": "calls", "evidence": "README.md:358", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:200", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "process:sis_manual_check", "type": "triggers", "evidence": "web/ST.md:47", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "process:snapshot_task", "type": "triggers", "evidence": "README.md:289-291", "status": "verified"}
-{"from": "process:deploy_snowflake", "to": "script:run_sql.py", "type": "calls", "evidence": "README.md:281", "status": "verified"}
-{"from": "process:privatelink_login", "to": "config:.env.example", "type": "depends_on", "evidence": "README.md:187-191", "status": "verified"}
-{"from": "process:privatelink_login", "to": "config:SNOWFLAKE_HOST", "type": "depends_on", "evidence": "README.md:190", "status": "verified"}
-{"from": "process:privatelink_login", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:29", "status": "verified"}
-{"from": "process:privatelink_login", "to": "secret_ref:.env", "type": "writes", "evidence": "README.md:187-191", "status": "verified"}
-{"from": "process:privatelink_login", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:197", "status": "verified"}
-{"from": "process:run_local", "to": "config:.streamlit/config.toml", "type": "reads", "evidence": ".streamlit/config.toml:1", "status": "verified"}
-{"from": "process:run_local", "to": "flow:startup", "type": "triggers", "evidence": "run.py:48-55", "status": "verified"}
-{"from": "process:run_local", "to": "process:setup_local", "type": "depends_on", "evidence": "README.md:102", "status": "verified"}
-{"from": "process:run_local", "to": "script:run.py", "type": "calls", "evidence": "README.md:157", "status": "verified"}
-{"from": "process:run_local", "to": "secret_ref:.env", "type": "reads", "evidence": "run.py:23", "status": "verified"}
-{"from": "process:setup_local", "to": "config:.env.example", "type": "depends_on", "evidence": "README.md:172", "status": "verified"}
-{"from": "process:setup_local", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:149", "status": "verified"}
-{"from": "process:setup_local", "to": "config:requirements.txt", "type": "depends_on", "evidence": "README.md:109", "status": "verified"}
-{"from": "process:setup_local", "to": "config:settings.sql", "type": "depends_on", "evidence": "README.md:280", "status": "verified"}
-{"from": "process:setup_local", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:184", "status": "verified"}
-{"from": "process:setup_local", "to": "secret_ref:.env", "type": "writes", "evidence": "README.md:172", "status": "verified"}
-{"from": "process:setup_local", "to": "secret_ref:settings.local.sql", "type": "writes", "evidence": "README.md:280", "status": "verified"}
-{"from": "process:snapshot_task", "to": "task:TSK_ACCESS_SNAPSHOT", "type": "deploys", "evidence": "README.html:692-694", "status": "verified"}
-{"from": "process:test", "to": "config:requirements-dev.txt", "type": "depends_on", "evidence": "CLAUDE.md:115", "status": "verified"}
-{"from": "process:test", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:11", "status": "verified"}
-{"from": "process:test", "to": "dir:web/dist", "type": "reads", "evidence": "test_server.py:816-828", "status": "verified"}
-{"from": "process:test", "to": "dir:web/dist-st", "type": "reads", "evidence": "test_server.py:816-828", "status": "verified"}
-{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:2400-2410", "status": "verified"}
-{"from": "process:test", "to": "file:access_queries/test_queries.py", "type": "calls", "evidence": "CLAUDE.md:117", "status": "verified"}
-{"from": "process:test", "to": "file:sql/4_streamlit.sql", "type": "reads", "evidence": "test_access.py:1071-1078", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:.env.example", "type": "contains", "evidence": ".env.example:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:.gitignore", "type": "contains", "evidence": ".gitignore:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:CLAUDE.md", "type": "contains", "evidence": "CLAUDE.md:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:LICENSE-APACHE", "type": "contains", "evidence": "LICENSE-APACHE:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:LICENSE-MIT", "type": "contains", "evidence": "LICENSE-MIT:1", "status": "verified"}
-{"from": "repo:snowflake-access-explorer", "to": "file:README.html", "type": "contains", "evidence": "README.html:1", "status": "verified"}
-{"from": "repo:snowflake-access-explorer", "to": "file:README.md", "type": "contains", "evidence": "README.md:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:THIRD_PARTY.md", "type": "contains", "evidence": "THIRD_PARTY.md:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:access.py", "type": "contains", "evidence": "access.py:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "file:app.py", "type": "contains", "evidence": "app.py:1", "status": "verified"}
@@ -6472,12 +6289,7 @@
 {"from": "repo:snowflake-access-explorer", "to": "file:ui.py", "type": "contains", "evidence": "ui.py:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "folder:.streamlit", "type": "contains", "evidence": ".streamlit/config.toml:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "folder:access_queries", "type": "contains", "evidence": "access_queries/1_user_roles.sql:1", "status": "verified"}
-{"from": "repo:snowflake-access-explorer", "to": "folder:docs", "type": "contains", "evidence": "docs/make_readme.py:1", "status": "verified"}
 {"from": "repo:snowflake-access-explorer", "to": "folder:sql", "type": "contains", "evidence": "sql/1_setup.sql:1", "status": "verified"}
-{"from": "repo:snowflake-access-explorer", "to": "folder:web", "type": "contains", "evidence": "web/.gitignore:1", "status": "verified"}
-{"from": "script:docs/make_readme.py", "to": "document:README.html", "type": "writes", "evidence": "docs/make_readme.py:148-155", "status": "verified"}
-{"from": "script:docs/make_readme.py", "to": "module:access.py", "type": "imports", "evidence": "docs/make_readme.py:12", "status": "verified"}
-{"from": "script:docs/make_readme.py", "to": "module:server.py", "type": "imports", "evidence": "docs/make_readme.py:13", "status": "verified"}
 {"from": "script:run_sql.py", "to": "role:DEV_ROLE", "type": "depends_on", "evidence": "run_sql.py:65", "status": "verified"}
 {"from": "script:run_sql.py", "to": "secret_ref:.env", "type": "reads", "evidence": "run_sql.py:13", "status": "verified"}
 {"from": "streamlit:ST_ACCESS_EXPLORER", "to": "stage:STG_ACCESS_APP", "type": "depends_on", "evidence": "sql/4_streamlit.sql:69", "status": "verified"}
@@ -6611,7 +6423,6 @@
 {"from": "table:duckdb:TBL_ACCESS_USER_PREV", "to": "table:duckdb:TBL_ACCESS_USER", "type": "derived_from", "evidence": "cache.py:279-281", "status": "verified"}
 {"from": "table:duckdb:TBL_ACCESS_USER_ROLE", "to": "table:TBL_ACCESS_USER_ROLE", "type": "derived_from", "evidence": "cache.py:205", "status": "verified"}
 {"from": "table:duckdb:TBL_ACCESS_USER_ROLE_PREV", "to": "table:duckdb:TBL_ACCESS_USER_ROLE", "type": "derived_from", "evidence": "cache.py:279-281", "status": "verified"}
-{"from": "task:TSK_ACCESS_SNAPSHOT", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "triggers", "evidence": "README.html:693", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "config:access.py:ADMIN", "type": "implements", "evidence": "access_queries/1_user_roles.sql:43-48", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "config:access.py:BUILTIN", "type": "implements", "evidence": "access_queries/1_user_roles.sql:36-42", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "config:access.py:MAX_HOPS", "type": "implements", "evidence": "access_queries/1_user_roles.sql:24-25", "status": "verified"}
@@ -6627,7 +6438,6 @@
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access_queries/1_user_roles.sql:34", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "external_system:au:GRANTS_TO_USERS", "type": "reads", "evidence": "access_queries/1_user_roles.sql:51", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/1_user_roles.sql:55", "status": "verified"}
-{"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:2", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/1_user_roles.sql:8", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "function:access.py:walk", "type": "implements", "evidence": "access_queries/1_user_roles.sql:6", "status": "verified"}
 {"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:1252", "status": "inferred"}
@@ -6651,7 +6461,6 @@
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access_queries/2_user_access.sql:36", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "external_system:au:GRANTS_TO_USERS", "type": "reads", "evidence": "access_queries/2_user_access.sql:56", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/2_user_access.sql:60", "status": "verified"}
-{"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/2_user_access.sql:2", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "function:access.py:access_of", "type": "implements", "evidence": "access_queries/2_user_access.sql:7", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/2_user_access.sql:9", "status": "verified"}
 {"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:1252", "status": "inferred"}
@@ -6669,7 +6478,6 @@
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "cte:access_queries/3_role_access.sql:ROLES", "type": "contains", "evidence": "access_queries/3_role_access.sql:64-67", "status": "verified"}
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "cte:access_queries/3_role_access.sql:WALK", "type": "contains", "evidence": "access_queries/3_role_access.sql:55-63", "status": "verified"}
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access_queries/3_role_access.sql:37", "status": "verified"}
-{"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/3_role_access.sql:2", "status": "verified"}
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "function:access.py:access_of", "type": "implements", "evidence": "access_queries/3_role_access.sql:8", "status": "verified"}
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/3_role_access.sql:10", "status": "verified"}
 {"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "function:sql:TF_ACCESS_OF", "type": "derived_from", "evidence": "sql/1_setup.sql:1252", "status": "inferred"}
@@ -6689,7 +6497,6 @@
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access_queries/4_role_holders.sql:36", "status": "verified"}
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "external_system:au:GRANTS_TO_USERS", "type": "reads", "evidence": "access_queries/4_role_holders.sql:53", "status": "verified"}
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/4_role_holders.sql:57", "status": "verified"}
-{"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/4_role_holders.sql:2", "status": "verified"}
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/4_role_holders.sql:10", "status": "verified"}
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "function:access.py:up", "type": "implements", "evidence": "access_queries/4_role_holders.sql:8", "status": "verified"}
 {"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "function:sql:TF_WHO_CAN", "type": "derived_from", "evidence": "sql/1_setup.sql:1313", "status": "inferred"}
@@ -6713,7 +6520,6 @@
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "external_system:au:GRANTS_TO_ROLES", "type": "reads", "evidence": "access_queries/5_object_users.sql:38", "status": "verified"}
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "external_system:au:GRANTS_TO_USERS", "type": "reads", "evidence": "access_queries/5_object_users.sql:60", "status": "verified"}
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "external_system:au:USERS", "type": "reads", "evidence": "access_queries/5_object_users.sql:64", "status": "verified"}
-{"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/5_object_users.sql:2", "status": "verified"}
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "function:access.py:depth", "type": "implements", "evidence": "access_queries/5_object_users.sql:11", "status": "verified"}
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "function:access.py:up", "type": "implements", "evidence": "access_queries/5_object_users.sql:9", "status": "verified"}
 {"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "function:sql:TF_WHO_CAN", "type": "derived_from", "evidence": "sql/1_setup.sql:1313", "status": "inferred"}
@@ -7015,7 +6821,6 @@
 {"from": "test_case:test_access.py:test_describe_not_ddl", "to": "function:access.py:build", "type": "illustrates", "evidence": "test_access.py:2437", "status": "verified"}
 {"from": "test_case:test_access.py:test_describe_not_ddl", "to": "function:access.py:checks", "type": "illustrates", "evidence": "test_access.py:2440", "status": "verified"}
 {"from": "test_case:test_access.py:test_describe_not_ddl", "to": "function:access.py:fake", "type": "illustrates", "evidence": "test_access.py:2434", "status": "verified"}
-{"from": "test_case:test_access.py:test_diff_kept", "to": "business_rule:changes_at_refresh", "type": "illustrates", "evidence": "test_access.py:2273-2290", "status": "verified"}
 {"from": "test_case:test_access.py:test_diff_kept", "to": "business_rule:keep_built", "type": "illustrates", "evidence": "test_access.py:2290", "status": "verified"}
 {"from": "test_case:test_access.py:test_diff_kept", "to": "flow:what_changed", "type": "illustrates", "evidence": "test_access.py:2287", "status": "verified"}
 {"from": "test_case:test_access.py:test_diff_kept", "to": "function:access.py:build", "type": "illustrates", "evidence": "test_access.py:2275", "status": "verified"}
@@ -7383,7 +7188,6 @@
 {"from": "test_case:test_server.py:test_answer_first", "to": "function:server.py:who_page", "type": "illustrates", "evidence": "test_server.py:1885", "status": "verified"}
 {"from": "test_case:test_server.py:test_background", "to": "function:server.py:refresh", "type": "illustrates", "evidence": "test_server.py:1393", "status": "verified"}
 {"from": "test_case:test_server.py:test_background", "to": "function:server.py:renew", "type": "illustrates", "evidence": "test_server.py:1393", "status": "verified"}
-{"from": "test_case:test_server.py:test_big_lanes", "to": "business_rule:lane_fold", "type": "illustrates", "evidence": "test_server.py:206-246", "status": "verified"}
 {"from": "test_case:test_server.py:test_big_lanes", "to": "business_rule:map_db_rollup", "type": "illustrates", "evidence": "test_server.py:206-246", "status": "verified"}
 {"from": "test_case:test_server.py:test_big_lanes", "to": "flow:lazy_graph_box", "type": "illustrates", "evidence": "test_server.py:214", "status": "verified"}
 {"from": "test_case:test_server.py:test_big_lanes", "to": "flow:paged_tables", "type": "illustrates", "evidence": "test_server.py:233", "status": "verified"}
@@ -7397,7 +7201,6 @@
 {"from": "test_case:test_server.py:test_built_ready", "to": "function:server.py:built", "type": "illustrates", "evidence": "test_server.py:1483", "status": "verified"}
 {"from": "test_case:test_server.py:test_built_ready", "to": "function:server.py:forget", "type": "illustrates", "evidence": "test_server.py:1480", "status": "verified"}
 {"from": "test_case:test_server.py:test_cache_lock", "to": "business_rule:cache_key_locks", "type": "illustrates", "evidence": "test_server.py:1601-1631", "status": "verified"}
-{"from": "test_case:test_server.py:test_changes_kept", "to": "business_rule:changes_at_refresh", "type": "illustrates", "evidence": "test_server.py:1491-1538", "status": "verified"}
 {"from": "test_case:test_server.py:test_changes_kept", "to": "business_rule:prev_snapshot", "type": "illustrates", "evidence": "test_server.py:1517", "status": "verified"}
 {"from": "test_case:test_server.py:test_changes_kept", "to": "flow:background_refresh", "type": "illustrates", "evidence": "test_server.py:1521", "status": "verified"}
 {"from": "test_case:test_server.py:test_changes_kept", "to": "flow:what_changed", "type": "illustrates", "evidence": "test_server.py:1516", "status": "verified"}
@@ -7425,7 +7228,6 @@
 {"from": "test_case:test_server.py:test_correct_answers", "to": "function:server.py:sensitive_page", "type": "illustrates", "evidence": "test_server.py:1856", "status": "verified"}
 {"from": "test_case:test_server.py:test_correct_answers", "to": "function:server.py:usage_page", "type": "illustrates", "evidence": "test_server.py:1832", "status": "verified"}
 {"from": "test_case:test_server.py:test_correct_answers", "to": "function:server.py:who_page", "type": "illustrates", "evidence": "test_server.py:1821", "status": "verified"}
-{"from": "test_case:test_server.py:test_crowded_lane", "to": "business_rule:lane_fold", "type": "illustrates", "evidence": "test_server.py:259-264", "status": "verified"}
 {"from": "test_case:test_server.py:test_crowded_lane", "to": "flow:graph_focus", "type": "illustrates", "evidence": "test_server.py:259", "status": "verified"}
 {"from": "test_case:test_server.py:test_crowded_lane", "to": "function:server.py:build_graph", "type": "illustrates", "evidence": "test_server.py:261", "status": "verified"}
 {"from": "test_case:test_server.py:test_csv_formula", "to": "function:server.py:csv_text", "type": "illustrates", "evidence": "test_server.py:1636", "status": "verified"}
@@ -7476,8 +7278,6 @@
 {"from": "test_case:test_server.py:test_objuse", "to": "function:server.py:objuse_page", "type": "illustrates", "evidence": "test_server.py:1210", "status": "verified"}
 {"from": "test_case:test_server.py:test_objuse", "to": "function:server.py:objuse_page", "type": "illustrates", "evidence": "test_server.py:1237", "status": "verified"}
 {"from": "test_case:test_server.py:test_objuse", "to": "function:server.py:objuse_rows", "type": "illustrates", "evidence": "test_server.py:1210", "status": "verified"}
-{"from": "test_case:test_server.py:test_paged", "to": "business_rule:lazy_boxes", "type": "illustrates", "evidence": "test_server.py:103-150", "status": "verified"}
-{"from": "test_case:test_server.py:test_paged", "to": "business_rule:paging_windows", "type": "illustrates", "evidence": "test_server.py:103-150", "status": "verified"}
 {"from": "test_case:test_server.py:test_paged", "to": "flow:lazy_graph_box", "type": "illustrates", "evidence": "test_server.py:110", "status": "verified"}
 {"from": "test_case:test_server.py:test_paged", "to": "flow:paged_tables", "type": "illustrates", "evidence": "test_server.py:133", "status": "verified"}
 {"from": "test_case:test_server.py:test_paged", "to": "function:server.py:access_page", "type": "illustrates", "evidence": "test_server.py:144", "status": "verified"}
@@ -7491,7 +7291,6 @@
 {"from": "test_case:test_server.py:test_parts", "to": "function:run.py:command", "type": "illustrates", "evidence": "test_server.py:1541", "status": "verified"}
 {"from": "test_case:test_server.py:test_parts", "to": "function:run.py:command", "type": "illustrates", "evidence": "test_server.py:1595", "status": "verified"}
 {"from": "test_case:test_server.py:test_parts", "to": "function:server.py:export", "type": "illustrates", "evidence": "test_server.py:1541", "status": "verified"}
-{"from": "test_case:test_server.py:test_parts", "to": "process:run_local", "type": "illustrates", "evidence": "test_server.py:1595-1598", "status": "verified"}
 {"from": "test_case:test_server.py:test_progress", "to": "business_rule:progress_lines", "type": "illustrates", "evidence": "test_server.py:1694-1742", "status": "verified"}
 {"from": "test_case:test_server.py:test_progress", "to": "function:server.py:make_app", "type": "illustrates", "evidence": "test_server.py:1720", "status": "verified"}
 {"from": "test_case:test_server.py:test_progress", "to": "function:st_react.py:answer", "type": "illustrates", "evidence": "test_server.py:1702", "status": "verified"}
@@ -7518,7 +7317,6 @@
 {"from": "test_case:test_server.py:test_risks", "to": "function:server.py:who_page", "type": "illustrates", "evidence": "test_server.py:1934", "status": "verified"}
 {"from": "test_case:test_server.py:test_rule_by_grantee", "to": "function:server.py:meta", "type": "illustrates", "evidence": "test_server.py:1142", "status": "verified"}
 {"from": "test_case:test_server.py:test_rule_by_grantee", "to": "function:server.py:rules_page", "type": "illustrates", "evidence": "test_server.py:1144", "status": "verified"}
-{"from": "test_case:test_server.py:test_rules_paged", "to": "business_rule:paging_windows", "type": "illustrates", "evidence": "test_server.py:1021-1050", "status": "verified"}
 {"from": "test_case:test_server.py:test_rules_paged", "to": "flow:paged_tables", "type": "illustrates", "evidence": "test_server.py:1026", "status": "verified"}
 {"from": "test_case:test_server.py:test_rules_paged", "to": "function:server.py:finding_page", "type": "illustrates", "evidence": "test_server.py:1045", "status": "verified"}
 {"from": "test_case:test_server.py:test_rules_paged", "to": "function:server.py:rules_page", "type": "illustrates", "evidence": "test_server.py:1026", "status": "verified"}
@@ -7726,3 +7524,205 @@
 {"from": "ui_screen:usage", "to": "endpoint:GET /api/usage", "type": "calls", "evidence": "server.py:39", "status": "inferred"}
 {"from": "ui_screen:user", "to": "endpoint:GET /api/user", "type": "calls", "evidence": "server.py:40", "status": "inferred"}
 {"from": "ui_screen:whatif", "to": "endpoint:GET /api/whatif", "type": "calls", "evidence": "server.py:38", "status": "inferred"}
+{"from": "business_rule:event_names_cap", "to": "config:access.py:EVENT_NAMES", "type": "depends_on", "evidence": "access.py:7008", "status": "verified"}
+{"from": "business_rule:event_names_cap", "to": "config:server.py:NAMES", "type": "depends_on", "evidence": "server.py:3105", "status": "verified"}
+{"from": "business_rule:lane_fold", "to": "config:server.py:MAX_LANE", "type": "depends_on", "evidence": "server.py:62", "status": "verified"}
+{"from": "business_rule:lazy_boxes", "to": "config:server.py:LAZY", "type": "depends_on", "evidence": "server.py:59", "status": "verified"}
+{"from": "business_rule:paging_windows", "to": "config:server.py:FINDINGS_PAGE", "type": "depends_on", "evidence": "server.py:3334", "status": "verified"}
+{"from": "business_rule:paging_windows", "to": "config:server.py:PAGE", "type": "depends_on", "evidence": "server.py:77", "status": "verified"}
+{"from": "business_rule:paging_windows", "to": "config:server.py:REVIEW_PAGE", "type": "depends_on", "evidence": "server.py:3645", "status": "verified"}
+{"from": "doc:kg/logic/diff.md", "to": "business_rule:changes_at_refresh", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/diff.md:1", "status": "verified", "evidence_orig": "logic/diff.md"}
+{"from": "doc:kg/logic/diff.md", "to": "business_rule:event_names_cap", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/diff.md:1", "status": "verified", "evidence_orig": "logic/diff.md"}
+{"from": "doc:kg/logic/graph-focus.md", "to": "business_rule:lane_fold", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-focus.md:1", "status": "verified", "evidence_orig": "logic/graph-focus.md"}
+{"from": "doc:kg/logic/graph-input.md", "to": "business_rule:lane_fold", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-input.md:1", "status": "verified", "evidence_orig": "logic/graph-input.md"}
+{"from": "doc:kg/logic/graph-input.md", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/graph-input.md:1", "status": "verified", "evidence_orig": "logic/graph-input.md"}
+{"from": "doc:kg/logic/reads.md", "to": "business_rule:paging_windows", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
+{"from": "doc:kg/logic/reads.md", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
+{"from": "doc:kg/logic/reads.md", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "snowflake-access-explorer-knowledge-graph/logic/reads.md:1", "status": "verified", "evidence_orig": "logic/reads.md"}
+{"from": "document:CLAUDE.md", "to": "process:access_requests", "type": "documents", "evidence": "CLAUDE.md:6-7", "status": "verified"}
+{"from": "document:CLAUDE.md", "to": "process:build_web", "type": "documents", "evidence": "CLAUDE.md:35-36", "status": "verified"}
+{"from": "document:CLAUDE.md", "to": "process:container_services", "type": "documents", "evidence": "CLAUDE.md:42", "status": "verified"}
+{"from": "document:CLAUDE.md", "to": "process:run_local", "type": "documents", "evidence": "CLAUDE.md:28-30", "status": "verified"}
+{"from": "document:CLAUDE.md", "to": "process:test", "type": "documents", "evidence": "CLAUDE.md:104-119", "status": "verified"}
+{"from": "document:README.html", "to": "business_rule:changes_at_refresh", "type": "documents", "evidence": "README.html:565", "status": "verified"}
+{"from": "document:README.html", "to": "business_rule:lane_fold", "type": "documents", "evidence": "README.html:610", "status": "verified"}
+{"from": "document:README.html", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "README.html:610", "status": "verified"}
+{"from": "document:README.html", "to": "business_rule:paging_windows", "type": "documents", "evidence": "README.html:611", "status": "verified"}
+{"from": "document:README.html", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "README.html:701", "status": "verified"}
+{"from": "document:README.html", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "README.html:702", "status": "verified"}
+{"from": "document:README.html", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "README.html:786", "status": "verified"}
+{"from": "document:README.html", "to": "config:server.py:PAGE", "type": "documents", "evidence": "README.html:611", "status": "verified"}
+{"from": "document:README.html", "to": "process:access_requests", "type": "documents", "evidence": "README.html:337-356", "status": "verified"}
+{"from": "document:README.html", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.html:716-727", "status": "verified"}
+{"from": "document:README.html", "to": "process:privatelink_login", "type": "documents", "evidence": "README.html:712", "status": "verified"}
+{"from": "document:README.html", "to": "process:run_local", "type": "documents", "evidence": "README.html:677-714", "status": "verified"}
+{"from": "document:README.html", "to": "process:snapshot_task", "type": "documents", "evidence": "README.html:721-723", "status": "verified"}
+{"from": "document:README.md", "to": "business_rule:lane_fold", "type": "documents", "evidence": "README.md:21", "status": "verified"}
+{"from": "document:README.md", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "README.md:235-239", "status": "verified"}
+{"from": "document:README.md", "to": "business_rule:paging_windows", "type": "documents", "evidence": "README.md:235-239", "status": "verified"}
+{"from": "document:README.md", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "README.md:140-141", "status": "verified"}
+{"from": "document:README.md", "to": "business_rule:read_fallback_order", "type": "documents", "evidence": "README.md:402", "status": "verified"}
+{"from": "document:README.md", "to": "business_rule:timeout_readable", "type": "documents", "evidence": "README.md:141", "status": "verified"}
+{"from": "document:README.md", "to": "config:ACTIVITY", "type": "documents", "evidence": "README.md:223", "status": "verified"}
+{"from": "document:README.md", "to": "config:CSV", "type": "documents", "evidence": "README.md:230", "status": "verified"}
+{"from": "document:README.md", "to": "config:HIERARCHY", "type": "documents", "evidence": "README.md:224", "status": "verified"}
+{"from": "document:README.md", "to": "config:SNOWFLAKE_HOST", "type": "documents", "evidence": "README.md:225", "status": "verified"}
+{"from": "document:README.md", "to": "config:STATEMENT_TIMEOUT", "type": "documents", "evidence": "README.md:222", "status": "verified"}
+{"from": "document:README.md", "to": "config:WORKERS", "type": "documents", "evidence": "README.md:221", "status": "verified"}
+{"from": "document:README.md", "to": "document:README.html", "type": "depends_on", "evidence": "README.md:5", "status": "verified"}
+{"from": "document:README.md", "to": "file:access_queries/test_queries.py", "type": "documents", "evidence": "README.md:477", "status": "verified"}
+{"from": "document:README.md", "to": "flow:standalone_queries", "type": "documents", "evidence": "README.md:438", "status": "verified"}
+{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:425-477", "status": "verified"}
+{"from": "document:README.md", "to": "module:access_queries", "type": "documents", "evidence": "README.md:480", "status": "verified"}
+{"from": "document:README.md", "to": "process:access_requests", "type": "documents", "evidence": "README.md:483", "status": "verified"}
+{"from": "document:README.md", "to": "process:build_web", "type": "documents", "evidence": "README.md:156", "status": "verified"}
+{"from": "document:README.md", "to": "process:container_services", "type": "documents", "evidence": "README.md:392-400", "status": "verified"}
+{"from": "document:README.md", "to": "process:deploy_snowflake", "type": "documents", "evidence": "README.md:284-302", "status": "verified"}
+{"from": "document:README.md", "to": "process:privatelink_login", "type": "documents", "evidence": "README.md:192-207", "status": "verified"}
+{"from": "document:README.md", "to": "process:run_local", "type": "documents", "evidence": "README.md:104-127", "status": "verified"}
+{"from": "document:README.md", "to": "process:setup_local", "type": "documents", "evidence": "README.md:148-157", "status": "verified"}
+{"from": "document:README.md", "to": "process:test", "type": "documents", "evidence": "README.md:482", "status": "verified"}
+{"from": "document:access_queries/README.md", "to": "flow:standalone_queries", "type": "documents", "evidence": "access_queries/README.md:42-87", "status": "verified"}
+{"from": "document:docs/overview.html", "to": "business_rule:lazy_boxes", "type": "documents", "evidence": "docs/overview.html:150", "status": "verified"}
+{"from": "document:docs/overview.html", "to": "business_rule:paging_windows", "type": "documents", "evidence": "docs/overview.html:150", "status": "verified"}
+{"from": "document:docs/overview.html", "to": "flow:standalone_queries", "type": "documents", "evidence": "docs/overview.html:275", "status": "verified"}
+{"from": "document:docs/redesign-notes.md", "to": "document:README.html", "type": "documents", "evidence": "docs/redesign-notes.md:226-227", "status": "verified"}
+{"from": "document:docs/review-2026-11-09.md", "to": "process:container_services", "type": "documents", "evidence": "docs/review-2026-11-09.md:320", "status": "verified"}
+{"from": "document:docs/technical.html", "to": "flow:standalone_queries", "type": "documents", "evidence": "docs/technical.html:180", "status": "verified"}
+{"from": "document:web/API.md", "to": "business_rule:changes_at_refresh", "type": "documents", "evidence": "web/API.md:1025", "status": "verified"}
+{"from": "document:web/API.md", "to": "business_rule:event_names_cap", "type": "documents", "evidence": "web/API.md:1030", "status": "verified"}
+{"from": "document:web/API.md", "to": "config:server.py:PAGE", "type": "documents", "evidence": "web/API.md:315", "status": "verified"}
+{"from": "document:web/API.md", "to": "config:server.py:PAGE", "type": "documents", "evidence": "web/API.md:436", "status": "verified"}
+{"from": "document:web/API.md", "to": "endpoint:GET /api/request", "type": "documents", "evidence": "web/API.md:656", "status": "verified"}
+{"from": "document:web/API.md", "to": "function:server.py:load_error", "type": "documents", "evidence": "web/API.md:28", "status": "verified"}
+{"from": "document:web/API.md", "to": "module:server.py", "type": "documents", "evidence": "web/API.md:1-5", "status": "verified"}
+{"from": "document:web/ST.md", "to": "process:build_web", "type": "documents", "evidence": "web/ST.md:8-19", "status": "verified"}
+{"from": "external_system:au:GRANTS_TO_ROLES", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:34", "status": "verified"}
+{"from": "external_system:au:GRANTS_TO_USERS", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:51", "status": "verified"}
+{"from": "external_system:au:USERS", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:55", "status": "verified"}
+{"from": "file:access_queries/access_examples.ipynb", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/README.md:72", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "file:access.py", "type": "imports", "evidence": "docs/make_readme.py:12", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "file:server.py", "type": "imports", "evidence": "docs/make_readme.py:13", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:box_html", "type": "contains", "evidence": "docs/make_readme.py:91", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:canvas", "type": "calls", "evidence": "docs/make_readme.py:151", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:canvas", "type": "contains", "evidence": "docs/make_readme.py:99", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:crosses", "type": "contains", "evidence": "docs/make_readme.py:84", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:inject", "type": "calls", "evidence": "docs/make_readme.py:151", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:inject", "type": "contains", "evidence": "docs/make_readme.py:142", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:mid", "type": "calls", "evidence": "docs/make_readme.py:49", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:mid", "type": "contains", "evidence": "docs/make_readme.py:43", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:rules", "type": "calls", "evidence": "docs/make_readme.py:153", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:rules", "type": "contains", "evidence": "docs/make_readme.py:125", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "function:docs/make_readme.py:side", "type": "contains", "evidence": "docs/make_readme.py:77", "status": "verified"}
+{"from": "file:docs/make_readme.py", "to": "module:docs/make_readme.py", "type": "contains", "evidence": "docs/make_readme.py:1", "status": "verified"}
+{"from": "file:sql/3_cleanup.sql", "to": "task:TSK_ACCESS_SNAPSHOT", "type": "writes", "evidence": "sql/3_cleanup.sql:18", "status": "verified"}
+{"from": "folder:docs", "to": "file:docs/make_readme.py", "type": "contains", "evidence": "docs/make_readme.py:1", "status": "verified"}
+{"from": "folder:docs", "to": "file:docs/overview.html", "type": "contains", "evidence": "docs/overview.html:1", "status": "verified"}
+{"from": "folder:docs", "to": "file:docs/redesign-notes.md", "type": "contains", "evidence": "docs/redesign-notes.md:1", "status": "verified"}
+{"from": "folder:docs", "to": "file:docs/review-2026-11-09.md", "type": "contains", "evidence": "docs/review-2026-11-09.md:1", "status": "verified"}
+{"from": "folder:docs", "to": "file:docs/technical.html", "type": "contains", "evidence": "docs/technical.html:1", "status": "verified"}
+{"from": "folder:web", "to": "file:web/.gitignore", "type": "contains", "evidence": "web/.gitignore:1", "status": "verified"}
+{"from": "folder:web", "to": "file:web/API.md", "type": "contains", "evidence": "web/API.md:1", "status": "verified"}
+{"from": "folder:web", "to": "file:web/ST.md", "type": "contains", "evidence": "web/ST.md:1", "status": "verified"}
+{"from": "folder:web", "to": "file:web/index.html", "type": "contains", "evidence": "web/index.html:1", "status": "verified"}
+{"from": "folder:web", "to": "file:web/package.json", "type": "contains", "evidence": "web/package.json:1", "status": "verified"}
+{"from": "folder:web", "to": "file:web/tsconfig.json", "type": "contains", "evidence": "web/tsconfig.json:1", "status": "verified"}
+{"from": "folder:web", "to": "file:web/vite.config.ts", "type": "contains", "evidence": "web/vite.config.ts:1", "status": "verified"}
+{"from": "folder:web", "to": "folder:web/src", "type": "contains", "evidence": "web/src/App.tsx:1", "status": "verified"}
+{"from": "folder:web", "to": "folder:web/st", "type": "contains", "evidence": "web/st/index.html:1", "status": "verified"}
+{"from": "function:access.py:diff", "to": "business_rule:event_names_cap", "type": "implements", "evidence": "access.py:7050-7061", "status": "verified"}
+{"from": "function:access.py:info_schema", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:804-812", "status": "verified"}
+{"from": "function:access.py:live", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:1274-1294", "status": "verified"}
+{"from": "function:access.py:live", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "access.py:1282-1284", "status": "verified"}
+{"from": "function:access.py:mine", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:841-858", "status": "verified"}
+{"from": "function:access.py:slow", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "access.py:634-636", "status": "verified"}
+{"from": "function:access.py:timed_out", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "access.py:639-642", "status": "verified"}
+{"from": "function:access.py:week", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "access.py:795-801", "status": "verified"}
+{"from": "function:docs/make_readme.py:canvas", "to": "function:docs/make_readme.py:box_html", "type": "calls", "evidence": "docs/make_readme.py:122", "status": "verified"}
+{"from": "function:docs/make_readme.py:canvas", "to": "function:docs/make_readme.py:crosses", "type": "calls", "evidence": "docs/make_readme.py:104", "status": "verified"}
+{"from": "function:docs/make_readme.py:canvas", "to": "function:docs/make_readme.py:side", "type": "calls", "evidence": "docs/make_readme.py:102", "status": "verified"}
+{"from": "function:run.py:command", "to": "process:run_local", "type": "part_of", "evidence": "run.py:26", "status": "verified"}
+{"from": "function:server.py:build_graph", "to": "business_rule:lane_fold", "type": "implements", "evidence": "server.py:888-889", "status": "verified"}
+{"from": "function:server.py:build_graph", "to": "business_rule:lazy_boxes", "type": "implements", "evidence": "server.py:886-889", "status": "verified"}
+{"from": "function:server.py:changes_page", "to": "business_rule:event_names_cap", "type": "implements", "evidence": "server.py:3133-3140", "status": "verified"}
+{"from": "function:server.py:compared", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:4167-4178", "status": "verified"}
+{"from": "function:server.py:diff_of", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:3148-3167", "status": "verified"}
+{"from": "function:server.py:fold_lanes", "to": "business_rule:lane_fold", "type": "implements", "evidence": "server.py:743-774", "status": "verified"}
+{"from": "function:server.py:graph_page", "to": "business_rule:lazy_boxes", "type": "implements", "evidence": "server.py:3959-3970", "status": "verified"}
+{"from": "function:server.py:paged", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:1456-1460", "status": "verified"}
+{"from": "function:server.py:prev_findings", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:409-416", "status": "verified"}
+{"from": "function:server.py:renew", "to": "business_rule:changes_at_refresh", "type": "implements", "evidence": "server.py:4159-4160", "status": "verified"}
+{"from": "function:server.py:review_page", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:3717", "status": "verified"}
+{"from": "function:server.py:rules_page", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:3460", "status": "verified"}
+{"from": "function:server.py:window", "to": "business_rule:paging_windows", "type": "implements", "evidence": "server.py:3223-3229", "status": "verified"}
+{"from": "function:sql/1_setup.sql:fallback", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "sql/1_setup.sql:345-358", "status": "verified"}
+{"from": "function:sql/1_setup.sql:fallback", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "sql/1_setup.sql:355-356", "status": "verified"}
+{"from": "function:sql/1_setup.sql:grants", "to": "business_rule:timeout_readable", "type": "implements", "evidence": "sql/1_setup.sql:402-404", "status": "verified"}
+{"from": "function:sql/1_setup.sql:usage", "to": "business_rule:read_fallback_order", "type": "implements", "evidence": "sql/1_setup.sql:548-561", "status": "verified"}
+{"from": "process:access_requests", "to": "role:APP_ROLE", "type": "grants", "evidence": "README.html:725", "status": "verified"}
+{"from": "process:access_requests", "to": "role:DEV_ROLE", "type": "grants", "evidence": "sql/1_setup.sql:1574-1578", "status": "verified"}
+{"from": "process:build_web", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:8-9", "status": "verified"}
+{"from": "process:build_web", "to": "config:web/vite.config.ts", "type": "depends_on", "evidence": "web/vite.config.ts:22-24", "status": "verified"}
+{"from": "process:build_web", "to": "dir:web/dist", "type": "writes", "evidence": "web/vite.config.ts:27", "status": "verified"}
+{"from": "process:build_web", "to": "dir:web/dist-st", "type": "writes", "evidence": "web/vite.config.ts:27", "status": "verified"}
+{"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup.sql", "type": "calls", "evidence": "README.md:302", "status": "verified"}
+{"from": "process:cleanup_snowflake", "to": "file:sql/3_cleanup_verify.sql", "type": "calls", "evidence": "sql/3_cleanup_verify.sql:1", "status": "verified"}
+{"from": "process:container_services", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:394", "status": "verified"}
+{"from": "process:container_services", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:330", "status": "verified"}
+{"from": "process:container_services", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:398-399", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/1_setup.sql", "type": "calls", "evidence": "README.md:288", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/1_setup_verify.sql", "type": "calls", "evidence": "README.md:288", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/2_snapshot.sql", "type": "calls", "evidence": "README.md:289", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/2_snapshot_verify.sql", "type": "calls", "evidence": "README.md:289", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit.sql", "type": "calls", "evidence": "README.md:365", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "file:sql/4_streamlit_verify.sql", "type": "calls", "evidence": "README.md:365", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:206", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "process:sis_manual_check", "type": "triggers", "evidence": "web/ST.md:47", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "process:snapshot_task", "type": "triggers", "evidence": "README.md:296-298", "status": "verified"}
+{"from": "process:deploy_snowflake", "to": "script:run_sql.py", "type": "calls", "evidence": "README.md:288", "status": "verified"}
+{"from": "process:privatelink_login", "to": "config:.env.example", "type": "depends_on", "evidence": "README.md:193-197", "status": "verified"}
+{"from": "process:privatelink_login", "to": "config:SNOWFLAKE_HOST", "type": "depends_on", "evidence": "README.md:196", "status": "verified"}
+{"from": "process:privatelink_login", "to": "function:sf.py:connect", "type": "configures", "evidence": "sf.py:29", "status": "verified"}
+{"from": "process:privatelink_login", "to": "secret_ref:.env", "type": "writes", "evidence": "README.md:193-197", "status": "verified"}
+{"from": "process:privatelink_login", "to": "secret_ref:SNOWFLAKE_PRIVATE_KEY_FILE", "type": "reads", "evidence": "README.md:203", "status": "verified"}
+{"from": "process:run_local", "to": "config:.streamlit/config.toml", "type": "reads", "evidence": ".streamlit/config.toml:1", "status": "verified"}
+{"from": "process:run_local", "to": "flow:startup", "type": "triggers", "evidence": "run.py:48-55", "status": "verified"}
+{"from": "process:run_local", "to": "process:setup_local", "type": "depends_on", "evidence": "README.md:104", "status": "verified"}
+{"from": "process:run_local", "to": "script:run.py", "type": "calls", "evidence": "README.md:161", "status": "verified"}
+{"from": "process:run_local", "to": "secret_ref:.env", "type": "reads", "evidence": "run.py:23", "status": "verified"}
+{"from": "process:setup_local", "to": "config:.env.example", "type": "depends_on", "evidence": "README.md:178", "status": "verified"}
+{"from": "process:setup_local", "to": "config:requirements-web.txt", "type": "depends_on", "evidence": "README.md:153", "status": "verified"}
+{"from": "process:setup_local", "to": "config:requirements.txt", "type": "depends_on", "evidence": "README.md:111", "status": "verified"}
+{"from": "process:setup_local", "to": "config:settings.sql", "type": "depends_on", "evidence": "README.md:287", "status": "verified"}
+{"from": "process:setup_local", "to": "process:privatelink_login", "type": "depends_on", "evidence": "README.md:190", "status": "verified"}
+{"from": "process:setup_local", "to": "secret_ref:.env", "type": "writes", "evidence": "README.md:178", "status": "verified"}
+{"from": "process:setup_local", "to": "secret_ref:settings.local.sql", "type": "writes", "evidence": "README.md:287", "status": "verified"}
+{"from": "process:snapshot_task", "to": "task:TSK_ACCESS_SNAPSHOT", "type": "deploys", "evidence": "README.html:721-723", "status": "verified"}
+{"from": "process:test", "to": "config:requirements-dev.txt", "type": "depends_on", "evidence": "CLAUDE.md:115", "status": "verified"}
+{"from": "process:test", "to": "config:web/package.json", "type": "depends_on", "evidence": "web/package.json:11", "status": "verified"}
+{"from": "process:test", "to": "dir:web/dist", "type": "reads", "evidence": "test_server.py:816-828", "status": "verified"}
+{"from": "process:test", "to": "dir:web/dist-st", "type": "reads", "evidence": "test_server.py:816-828", "status": "verified"}
+{"from": "process:test", "to": "document:README.html", "type": "reads", "evidence": "test_access.py:2400-2410", "status": "verified"}
+{"from": "process:test", "to": "file:access_queries/test_queries.py", "type": "calls", "evidence": "CLAUDE.md:117", "status": "verified"}
+{"from": "process:test", "to": "file:sql/4_streamlit.sql", "type": "reads", "evidence": "test_access.py:1071-1078", "status": "verified"}
+{"from": "repo:snowflake-access-explorer", "to": "file:README.html", "type": "contains", "evidence": "README.html:1", "status": "verified"}
+{"from": "repo:snowflake-access-explorer", "to": "file:README.md", "type": "contains", "evidence": "README.md:1", "status": "verified"}
+{"from": "repo:snowflake-access-explorer", "to": "folder:docs", "type": "contains", "evidence": "docs/make_readme.py:1", "status": "verified"}
+{"from": "repo:snowflake-access-explorer", "to": "folder:web", "type": "contains", "evidence": "web/.gitignore:1", "status": "verified"}
+{"from": "script:docs/make_readme.py", "to": "document:README.html", "type": "writes", "evidence": "docs/make_readme.py:148-155", "status": "verified"}
+{"from": "script:docs/make_readme.py", "to": "module:access.py", "type": "imports", "evidence": "docs/make_readme.py:12", "status": "verified"}
+{"from": "script:docs/make_readme.py", "to": "module:server.py", "type": "imports", "evidence": "docs/make_readme.py:13", "status": "verified"}
+{"from": "task:TSK_ACCESS_SNAPSHOT", "to": "procedure:SP_ACCESS_SNAPSHOT", "type": "triggers", "evidence": "README.html:722", "status": "verified"}
+{"from": "task:access_queries/1_user_roles.sql:1_user_roles", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/1_user_roles.sql:2", "status": "verified"}
+{"from": "task:access_queries/2_user_access.sql:2_user_access", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/2_user_access.sql:2", "status": "verified"}
+{"from": "task:access_queries/3_role_access.sql:3_role_access", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/3_role_access.sql:2", "status": "verified"}
+{"from": "task:access_queries/4_role_holders.sql:4_role_holders", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/4_role_holders.sql:2", "status": "verified"}
+{"from": "task:access_queries/5_object_users.sql:5_object_users", "to": "flow:standalone_queries", "type": "part_of", "evidence": "access_queries/5_object_users.sql:2", "status": "verified"}
+{"from": "test_case:test_access.py:test_diff_kept", "to": "business_rule:changes_at_refresh", "type": "illustrates", "evidence": "test_access.py:2273-2290", "status": "verified"}
+{"from": "test_case:test_server.py:test_big_lanes", "to": "business_rule:lane_fold", "type": "illustrates", "evidence": "test_server.py:206-246", "status": "verified"}
+{"from": "test_case:test_server.py:test_changes_kept", "to": "business_rule:changes_at_refresh", "type": "illustrates", "evidence": "test_server.py:1491-1538", "status": "verified"}
+{"from": "test_case:test_server.py:test_crowded_lane", "to": "business_rule:lane_fold", "type": "illustrates", "evidence": "test_server.py:259-264", "status": "verified"}
+{"from": "test_case:test_server.py:test_paged", "to": "business_rule:lazy_boxes", "type": "illustrates", "evidence": "test_server.py:103-150", "status": "verified"}
+{"from": "test_case:test_server.py:test_paged", "to": "business_rule:paging_windows", "type": "illustrates", "evidence": "test_server.py:103-150", "status": "verified"}
+{"from": "test_case:test_server.py:test_parts", "to": "process:run_local", "type": "illustrates", "evidence": "test_server.py:1595-1598", "status": "verified"}
+{"from": "test_case:test_server.py:test_rules_paged", "to": "business_rule:paging_windows", "type": "illustrates", "evidence": "test_server.py:1021-1050", "status": "verified"}

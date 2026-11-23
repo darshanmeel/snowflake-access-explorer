@@ -43,7 +43,7 @@ flowchart LR
 - `sql_wanted`: never inside Snowflake; fake data only with `DUCKDB=1`; Snowflake reads when a local copy may be kept (`CACHE_HOURS > 0`); there is no off switch (`cache.py:219-224`).
 - Started by `cache.store` in a daemon thread (`COPYING[key]`, `cache.py:152-155`) after a fresh read that has an OK run (a no-run read is never copied, `cache.py:150`); the app never waits for it; `sql_info` says "Being written now" while the thread runs (`cache.py:316-318`).
 - UI info: `sql_info` (`cache.py:310-319`), sent by `server.py:4008,2108`.
-- Example queries (EXCEPT against `_PREV`): `README.md:246-261`.
+- Example queries (EXCEPT against `_PREV`): `README.md:253-268`.
 
 ## Unclear
 

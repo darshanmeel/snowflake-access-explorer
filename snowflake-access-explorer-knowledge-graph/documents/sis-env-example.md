@@ -22,4 +22,4 @@ flowchart LR
 ## Relates to
 - `CSV=0` (commented): no CSV export inside Snowflake either (server.csv_on, server.py:4283-4284) — sis.env.example:22-23.
 - `STATEMENT_TIMEOUT` (default 300 = 5 min; a read that stops names its step, give it longer with 600) — sis.env.example:24-26; `WORKERS` (default 3; 1 if Snowflake refuses statements side by side on the app's session) — sis.env.example:27-29; `ACTIVITY=0` (no ACCESS_HISTORY: Activity tabs, rules 24-28, Granted vs used show skipped) — sis.env.example:30-31; `HIERARCHY=0` (skip the rule checks that walk role paths) — sis.env.example:32-33.
-- sql/4_streamlit.sql:64-65 (PUT), run_sql.py:59-62 (missing-file hint), .gitignore:8 (`sis/`), access.py:50-51 (INSIDE), access.py:107-108 (QUERY_TAG / STREAMLIT_APP), README.md:345-354, web/ST.md:67.
+- sql/4_streamlit.sql:64-65 (PUT), run_sql.py:59-62 (missing-file hint), .gitignore:8 (`sis/`), access.py:50-51 (INSIDE), access.py:107-108 (QUERY_TAG / STREAMLIT_APP), README.md:352-361, web/ST.md:67.

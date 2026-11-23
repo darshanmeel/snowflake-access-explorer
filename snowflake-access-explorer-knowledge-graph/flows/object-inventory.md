@@ -27,7 +27,7 @@ sequenceDiagram
 
 ## Steps
 
-1. Kinds: databases, schemas, tables (any flavour), views, functions, procedures, stages, pipes, sequences, file formats, streams, tasks, tags, masking and row access policies, integrations, compute pools (ACCOUNT_USAGE / INFORMATION_SCHEMA where a view exists), Streamlit apps, notebooks, alerts and warehouses (SHOW only) — access.py:1017-1057, README.md:396-398.
+1. Kinds: databases, schemas, tables (any flavour), views, functions, procedures, stages, pipes, sequences, file formats, streams, tasks, tags, masking and row access policies, integrations, compute pools (ACCOUNT_USAGE / INFORMATION_SCHEMA where a view exists), Streamlit apps, notebooks, alerts and warehouses (SHOW only) — access.py:1017-1057, README.md:403-405.
 2. `inventory_seen()` keys the grant rows by name before `(` (a function's grant name carries its signature, the inventory's argument names); role and account rows are skipped — access.py:1060-1068.
 3. `inventory_read()` reads level by level per kind, the first level that answers; a refused read loses only its own kind; the note lists only kinds no level read and kinds read with a fallback — access.py:1134-1185 ([read-levels.md](read-levels.md)).
 4. `inventory_rows()` gives one row per object whose ownership the grants lack: owner role, a database role as `DB.ROLE`, `None` when an application owns it or the read names no owner (listed with no holder); an object already granted keeps its kind; `INFORMATION_SCHEMA` itself is skipped — access.py:1071-1092.

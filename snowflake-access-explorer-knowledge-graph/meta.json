@@ -1,6 +1,6 @@
 {
  "built_at": "2026-11-17",
- "commit": "df69583f05e54b851a96bfaf585e9091763f45d5",
+ "commit": "9a2757b72ffd6a701014451598e18cdb410d348a",
  "generated_by": {
   "flows/": "model",
   "logic/": "model",
@@ -79,8 +79,8 @@
   "CLAUDE.md": "6b861c916049e2a2374edaf53633462849e961806d1c1a003af53413fc13fd02",
   "LICENSE-APACHE": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
   "LICENSE-MIT": "ca553b75fe9ff718aee4e5c37cbd1505626ebe66ed23ed9eee0abfdd3a5e2d49",
-  "README.html": "515dea9549bc77b8e01c00d267a3cbec78db0475d0b6cff2af81c5d96a785701",
-  "README.md": "ade2e3a2e664c197004cac3c6cf63db4afeeeb91f0b174b07047c8c74d244eea",
+  "README.html": "f4ad2d1549c30e48bd47432efcac5285f4ceb1fd059ac78f4847840f3de3b4f0",
+  "README.md": "5d691df8db4e29a8a054858e753e5f448aaf6457e9f2ca8f4ffb937ad48731f5",
   "THIRD_PARTY.md": "c948d1fcd2941f071b9c71bde325bd4871d6150346a589f8af49cc3e415d66dc",
   "access.py": "a367322da236c399ab2c6c8c85d13059e16bb2da2c12055cae4307a0c5eb5e10",
   "access_queries/1_user_roles.sql": "b380e8b902d2b32993a125dea6472c51d25bdda165871b8f712888ee4e9a441e",
@@ -134,7 +134,7 @@
   "docs/img/redesign/user_paths.png": "086b347305a47f016ae3e31e99a9b9fa20b6a23a84d087839eb5d1a3d8cb398b",
   "docs/img/redesign/whatif.png": "3aa9b1a07e9a0a22abb5a632849ab2a30867818613c7f603ef0198773b000492",
   "docs/img/redesign/whatif_plan.png": "567fea055ed47be608de6f2ab4c2d7881e3fa4b474f647860753c4d9e512541d",
-  "docs/make_readme.py": "06feb395a3d535fc18e6e0af6a91f763addd7c2b6d49ca0a061c6de6840fda06",
+  "docs/make_readme.py": "8ec917d709175c2a6bb38acb539a6d90fa9efc8a2ddd23ae285d57539f1eacd7",
   "docs/overview.html": "d1dd87e74b818a904410d83151f2a2b1b8b6d0744423eb4f1d3719c6a4721856",
   "docs/redesign-notes.md": "222fd4a45c14c1fffa0ab8bed22aacf7799b096efd5122a6305226b9203ce106",
   "docs/review-2026-11-09.md": "737066ba51d617c613f9822b94b9725830a94e682cfe6fa0b826578a2b2a0f5c",
@@ -164,7 +164,7 @@
   "twin.py": "32d93cc9f68ad4000abfdfca6d32d3476d213eff0ed69f899ce0d2c8a4b3afa8",
   "ui.py": "fec29f8810757b1fd4e70c3e20187be1977b88875f695f3058a2ba58ba0c467a",
   "web/.gitignore": "853bdb9e4c430bb46f05289d0d2c37d6b99128f78ab80d4fa929c50af733be90",
-  "web/API.md": "b813008097b5550491939cff3d05441e26b362fbd52d729679c0eb8f4cbbc81a",
+  "web/API.md": "02fac7ce9c2c9a9792846a237ec5f03d4f8767daa32a1733ebecae80586fe6bf",
   "web/ST.md": "f5cd4baad3adcb16fcf7851a416105e154863cef0d7de39067874f6d6cc09a25",
   "web/dist-st/assets/ibm-plex-mono-latin-400-normal-DMJ8VG8y.woff2": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7",
   "web/dist-st/assets/ibm-plex-mono-latin-500-normal-DSY6xOcd.woff2": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22",
@@ -277,5 +277,5 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-23 10:32 UTC"
+ "updated": "2026-11-23 10:52 UTC"
 }
