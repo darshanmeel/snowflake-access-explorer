@@ -60,6 +60,11 @@ button.ae-chip { cursor: pointer; }
 .ae-risk-text { flex: 1 1 260px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line each; the link has the detail */
 .ae-risk-more { margin: 2px 0 0 4px; }
 .ae-risk-link { font-size: 13px; white-space: nowrap; text-decoration: underline; }
+.ae-risk-toggle { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.ae-risk-table { flex: 1 1 100%; overflow-x: auto; padding: 4px 0 2px; }
+.ae-risk-table table { border-collapse: collapse; width: 100%; font-size: 13px; color: var(--ae-ink); }
+.ae-risk-table th { text-align: left; font-weight: 600; color: var(--ae-muted); padding: 4px 8px; border-bottom: 1px solid var(--ae-line); }
+.ae-risk-table td { padding: 4px 8px; border-bottom: 1px solid var(--ae-line); font-family: var(--ae-mono); overflow-wrap: anywhere; }
 .ae-risk-none { margin: 0 0 12px; color: var(--ae-muted); font-size: 13px; }
 
 /* kpis */

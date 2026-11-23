@@ -24,6 +24,17 @@ describe("risk strip", () => {
     expect(open).toHaveBeenCalledWith({ label: "Findings", page: "rules", params: { rule: "9" } });
   });
 
+  it("opens its table in place, the rest behind the link", () => {
+    const open = vi.fn();
+    const x = { ...line("bad", "Reads 12 sensitive objects unmasked", 12), table: { cols: ["Object"], rows: [["DB.S.T1"], ["DB.S.T2"]], total: 12 } };
+    const { getByRole, queryByRole } = render(<RiskStrip items={[x]} onOpen={open} />);
+    expect(queryByRole("table")).toBeNull();
+    fireEvent.click(getByRole("button", { name: /Reads 12 sensitive/ }));
+    expect(getByRole("table").textContent).toContain("DB.S.T2");
+    fireEvent.click(getByRole("button", { name: "+10 more: Findings →" }));
+    expect(open).toHaveBeenCalled();
+  });
+
   it("says no risks in one quiet line", () => {
     const { container } = render(<RiskStrip items={[]} onOpen={() => {}} />);
     expect(container.textContent).toBe("No risks found");

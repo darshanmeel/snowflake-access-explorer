@@ -53,6 +53,7 @@ export interface RiskItem {
   text: string;
   n: number;
   link: LinkTo;
+  table: { cols: string[]; rows: string[][]; total: number } | null; // opens under the line (first rows; link: all)
 }
 
 export interface Banner {

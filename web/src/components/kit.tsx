@@ -164,13 +164,17 @@ export function EmptyState({ title, children, art = "empty" }: { title: ReactNod
   return <div className={`ae-empty ae-empty-${art}`}><EmptyArt art={art} /><b>{title}</b>{children && <p>{children}</p>}</div>;
 }
 
-export interface RiskLine { severity: "bad" | "warn"; text: string; n: number; link: { label: string; page: string; params: Record<string, string> } }
+export interface RiskLine {
+  severity: "bad" | "warn"; text: string; n: number; link: { label: string; page: string; params: Record<string, string> };
+  table?: { cols: string[]; rows: string[][]; total: number } | null; // opens under the line; the link has all of them
+}
 export const RISK_WORD = { bad: "Risk", warn: "Check" } as const;
 
 /** What needs attention at the top of a page, worst first as the server sends it: the word (never colour alone), the
  * count, one line and a link to the detail. Nothing risky: one quiet line. */
 export function RiskStrip({ items, onOpen, top = 3 }: { items: RiskLine[]; onOpen: (l: RiskLine["link"]) => void; top?: number }) {
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
   if (!items.length) return <p className="ae-risk-none">No risks found</p>;
   const shown = all ? items : items.slice(0, top); // the most severe first; the rest behind +N more
   return (
@@ -180,8 +184,21 @@ export function RiskStrip({ items, onOpen, top = 3 }: { items: RiskLine[]; onOpe
           <li key={x.text} className={`ae-risk ae-tone-${x.severity}`}>
             <span className="ae-risk-word">{RISK_WORD[x.severity]}</span>
             <b className="ae-risk-n">{x.n.toLocaleString()}</b>
-            <span className="ae-risk-text" title={x.text}>{x.text}</span>
-            <button type="button" className="ae-link ae-risk-link" onClick={() => onOpen(x.link)}>{x.link.label} →</button>
+            {x.table ? (
+              <button type="button" className="ae-risk-text ae-risk-toggle" title={x.text} aria-expanded={open === x.text}
+                onClick={() => setOpen(open === x.text ? null : x.text)}>{open === x.text ? "▾" : "▸"} {x.text}</button>
+            ) : <span className="ae-risk-text" title={x.text}>{x.text}</span>}
+            <button type="button" className="ae-link ae-risk-link" onClick={() => onOpen(x.link)}>{x.table ? "Open all" : x.link.label} →</button>
+            {x.table && open === x.text && (
+              <div className="ae-risk-table">
+                <table>
+                  <thead><tr>{x.table.cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                  <tbody>{x.table.rows.map((r, i) => <tr key={i}>{r.map((v, j) => <td key={j}>{v}</td>)}</tr>)}</tbody>
+                </table>
+                {x.table.total > x.table.rows.length && <button type="button" className="ae-link" onClick={() => onOpen(x.link)}>
+                  +{(x.table.total - x.table.rows.length).toLocaleString()} more: {x.link.label} →</button>}
+              </div>
+            )}
           </li>
         ))}
       </ul>

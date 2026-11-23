@@ -1914,7 +1914,8 @@ def test_answer_first():  # each screen's answer: the grant on Can they?, one re
 
 def test_risks():  # the risk strip at the top of Access Overview, Role paths, Who has access and Can they?
     def ok(xs):
-        assert all(set(x) == {"severity", "text", "n", "link"} and x["severity"] in ("bad", "warn") and x["n"] > 0
+        assert all(set(x) == {"severity", "text", "n", "link", "table"} and x["severity"] in ("bad", "warn") and x["n"] > 0
+                   and (not x["table"] or 0 < len(x["table"]["rows"]) <= min(server.RISK_ROWS, x["table"]["total"]))
                    and x["link"]["page"] in server.PAGES for x in xs), xs
         sev = [x["severity"] for x in xs]
         assert sev == sorted(sev, key=lambda s: s != "bad"), sev  # worst first
@@ -1929,6 +1930,7 @@ def test_risks():  # the risk strip at the top of Access Overview, Role paths, W
     u = next(x for x in js("/api/access?user=FIN_14")["risks"] if "unmasked" in x["text"])  # opens those sensitive objects
     q = "&".join(f"{k}={v}" for k, v in u["link"]["params"].items())
     see = js(f"/api/see?{q}")
+    assert u["table"]["total"] == u["n"] and u["table"]["cols"][0] == "Object"  # the same objects open in place
     assert u["link"]["params"]["show"] == "cards" and see["cards_total"] >= u["n"] and see["risks"] == js("/api/access?user=FIN_14")["risks"]
     t = ok(js("/api/access?user=FIN_14")["risks"])  # disabled, reads sensitive: bad before warn
     assert t == ["Reads 2 sensitive objects unmasked", t[1], "Disabled, still holds 1 role"] and "1 Critical" in t[1], t
@@ -1943,7 +1945,7 @@ def test_risks():  # the risk strip at the top of Access Overview, Role paths, W
     r = js(f"/api/role?name={a.FUNC}ENGINEER")["risks"]
     assert ok(r) == ok(js(f"/api/access?role={a.FUNC}ENGINEER")["risks"])  # one function, both pages
     assert [x["link"] for x in r[:2]] == [{"label": "Account powers", "page": "access", "params": {"role": a.FUNC + "ENGINEER", "show": "detail"}},
-                                          {"label": "Which ones", "page": "see", "params": {"role": a.FUNC + "ENGINEER", "show": "cards"}}]
+                                          {"label": "Column by column", "page": "see", "params": {"role": a.FUNC + "ENGINEER", "show": "cards"}}]
     assert ok(js("/api/role?name=SYSADMIN")["risks"])[0].startswith("Is admin role SYSADMIN")
     t = ok(js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["risks"])
     assert t[:3] == ["2 sensitive columns without masking (BIRTH_DATE, PHONE): in clear for the 6 users who can read it",

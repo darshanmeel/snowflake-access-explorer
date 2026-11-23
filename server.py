@@ -1729,8 +1729,13 @@ UNUSED = 90
 RISK_TOP = 3  # rule names a findings line lists
 
 
-def risk(bad, text, n, to):
-    return dict(severity="bad" if bad else "warn", text=text, n=n, link=to)
+RISK_ROWS = 10  # rows of the table a risk line opens in place; the link opens all of them
+
+
+def risk(bad, text, n, to, cols=(), rows=()):
+    """One risk line; cols and rows: the table it opens under itself (the first RISK_ROWS of rows)."""
+    return dict(severity="bad" if bad else "warn", text=text, n=n, link=to,
+                table=dict(cols=list(cols), rows=[list(r) for r in rows[:RISK_ROWS]], total=len(rows)) if rows else None)
 
 
 def more(xs):
@@ -1745,7 +1750,8 @@ def findings_risk(xs, to):
     sev = Counter(x["severity"] for x in xs)
     names = list(dict.fromkeys(SHORT.get(x["num"], x["title"]) for x in xs))[:RISK_TOP]
     counts = ", ".join(f"{sev[s]} {s}" for s in SEVS if sev[s])
-    return risk(sev["Critical"] or sev["High"], f"{plural(len(xs), 'rule finding')} ({counts}): {'; '.join(names)}", len(xs), to)
+    return risk(sev["Critical"] or sev["High"], f"{plural(len(xs), 'rule finding')} ({counts}): {'; '.join(names)}", len(xs), to,
+                ["Severity", "Finding", "On"], [(x["severity"], SHORT.get(x["num"], x["title"]), x["grantee"]) for x in xs])
 
 
 def ranked(xs):
@@ -1757,13 +1763,16 @@ def data_total():
 
 
 def seen_counts(name, user):
-    """(data objects read, sensitive ones seen in clear) as the Access page counts them, without its paths and
-    findings: Role paths has no access_all."""
+    """(data objects read, sensitive ones seen in clear [(object, columns in clear)]) as the Access page counts them,
+    without its paths and findings: Role paths has no access_all."""
     def make():
         views = views_by(name, user, S["view"] == "mine")
         data = [o for o in a.access_objects(a.grants(name, user), user) if o["category"] == "data" and o["level"]
                 and not o["type"].startswith("FUTURE")]
-        return sum(o["level"] != "names" for o in data), sum(in_clear(o, sens_columns(o, views)) for o in data)
+        cols = {o["object"]: sens_columns(o, views) for o in data}
+        return sum(o["level"] != "names" for o in data), [
+            (o["object"], ", ".join(c["column"] for c in cols[o["object"]] if c["state"] != "masked") or "not known")
+            for o in data if in_clear(o, cols[o["object"]])]
     return a.cached(("seen_counts", name, user), make)
 
 
@@ -1783,14 +1792,21 @@ def risks_of(name, user):
         first.setdefault(q[-1], q)
     if first:
         via = "; ".join(f"{r} via {q[1]}" if len(q) > 2 else f"{r} directly" for r, q in first.items())
-        out.append(risk(True, f"Holds {plural(len(first), 'admin role')}: {via}", len(first), admins))
+        out.append(risk(True, f"Holds {plural(len(first), 'admin role')}: {via}", len(first), admins,
+                        ["Admin role", "Path"], [(r, " > ".join(q)) for r, q in first.items()]))
     acct = sorted({pv for pv, q in a.account_privs(name, user) if q[-1] != "PUBLIC"})  # PUBLIC's: everyone has them (rule 9)
     if acct:
+        way = {}
+        for pv, q in a.account_privs(name, user):
+            if q[-1] != "PUBLIC":
+                way.setdefault(pv, q)
         out.append(risk(True, f"{plural(len(acct), 'account privilege')}: {more(acct)}", len(acct),
-                        link("Account powers", "access", **me, show="privs" if user else "detail")))
+                        link("Account powers", "access", **me, show="privs" if user else "detail"),
+                        ["Privilege", "Path"], [(pv, " > ".join(way[pv])) for pv in acct]))
     read, clear = seen_counts(name, user)
     if clear:
-        out.append(risk(True, f"Reads {plural(clear, 'sensitive object')} unmasked", clear, link("Which ones", "see", **me, show="cards")))
+        out.append(risk(True, f"Reads {plural(len(clear), 'sensitive object')} unmasked", len(clear),
+                        link("Column by column", "see", **me, show="cards"), ["Object", "Sensitive columns in clear"], clear))
     mine = subject_of_finding(name, "user" if user else "role")
     out.append(findings_risk([x for x in S["rows"] if mine(x["grantee"], x["kind"])],
                              link("Findings", "rules", grantee=name, of="user" if user else "role", sev="all")))
@@ -1801,14 +1817,16 @@ def risks_of(name, user):
     if held and a.stale(name):
         d = a.login_days(name)
         word = "Disabled" if a.is_disabled(name) else "Never logged in" if d is None else f"Dormant, no login for {d} days"
-        out.append(risk(False, f"{word}, still holds {plural(held, 'role')}", held, link("Dormant & disabled", "rules", part="stale")))
+        out.append(risk(False, f"{word}, still holds {plural(held, 'role')}", held, link("Dormant & disabled", "rules", part="stale"),
+                        ["Role held"], [(r,) for r in sorted(a.roles_of.get(name, []))]))
     total = data_total()
     if read >= BROAD_MIN and read >= BROAD * total:
         out.append(risk(False, f"Very broad access: reads {read:,} of the account's {total:,} data objects ({100 * read // total}%)",
                         read, link("Objects", "access", **me, show="summary")))
     if held > 1 and "ALL" in str(pr.get("DEFAULT_SECONDARY_ROLES") or "").upper():
         out.append(risk(False, f"Secondary roles ALL: every query uses all {held} granted roles at once", held,
-                        link("Role usage", "user", name=name, part="usage")))
+                        link("Role usage", "user", name=name, part="usage"), ["Granted role"],
+                        [(r,) for r in sorted(a.roles_of.get(name, []))]))
     return ranked(out)
 
 
@@ -1833,7 +1851,8 @@ def object_risks_of(o):
     bare = [c for c in a.sensitive_cols(o) if c not in a.policies_of(o)["columns"]] if a.is_data(k) else []
     if bare and readers:
         out.append(risk(True, f"{plural(len(bare), 'sensitive column')} without masking ({more(bare)}): "
-                              f"in clear for the {plural(len(readers), 'user')} who can read it", len(bare), who))
+                              f"in clear for the {plural(len(readers), 'user')} who can read it", len(bare), who,
+                        ["Column without masking"], [(c,) for c in bare]))
     pub = sorted({pv for r, pv, _ in grants if r == "PUBLIC"})
     if pub:
         out.append(risk(sens, f"Granted to PUBLIC (every user): {more(pub)}", len(pub), link("Rule 9", "rules", rule="9")))
@@ -1841,10 +1860,11 @@ def object_risks_of(o):
         ws = open_(u for u in users(lambda pv: pv in WRITES) if not a.is_service(u))
         if ws:
             out.append(risk(True, f"{len(ws)} {'person' if len(ws) == 1 else 'people'} can change this sensitive object",
-                            len(ws), link("Rule 10", "rules", rule="10")))
+                            len(ws), link("Rule 10", "rules", rule="10"), ["Person"], [(u,) for u in ws]))
     stale = [u for u in readers if a.stale(u)]
     if stale:
-        out.append(risk(sens, f"{plural(len(stale), 'disabled or dormant user')} can still read it", len(stale), who))
+        out.append(risk(sens, f"{plural(len(stale), 'disabled or dormant user')} can still read it", len(stale), who,
+                        ["User", "Status"], [(u, a.status(u)) for u in stale]))
     q = o.lower()  # the findings Risks & fixes lists for q=<object>: about it, or naming it
     out.append(findings_risk([S["rows"][i] for i, x in enumerate(rule_index()) if q in x["text"]], link("Findings", "rules", q=o, sev="all")))
     adm = a.admin_readers(o, a.READ_PRIVS) if a.is_data(k) and not readers else {}
