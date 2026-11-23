@@ -2639,7 +2639,7 @@ def container_usage(r, focus):
     ls, _ = a.lanes(ps)
     return dict(priv="USAGE", answer=ans, verdict="yes" if not miss else "no", paths=ps, paths_total=sum(v["count"] for v in rs.values()), owner=own, admin_paths=adm, lanes=ls[:20],
                 lanes_total=len(ls), cut=[], cuts=[], options=[], layers=None, read=None, nearest=[], nearest_own=None,
-                narrow=None, held=[dict(privilege=f"USAGE on {x['type'].lower()}", held=x["held"]) for x in r["usage"]],
+                narrow=None, held=[],
                 graph=g and build_graph("Paths combined", g[0], g[1], g[2], focus=focus) or None)
 
 

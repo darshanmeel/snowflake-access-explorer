@@ -154,7 +154,7 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
       <button className="ae-fg-head" onClick={() => setOn(!on)} aria-expanded={on}>
         <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
         <span className={`ae-chip ae-chip-${g.kind ?? "plain"}`}>{g.key.replace(/ \(user\)$/, "")}</span>
-        <span className="ae-muted">{plural(g.findings, "finding")}{g.objects ? ` on ${plural(g.objects, "object")}` : ""}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people} people`} affected` : ""}</span>
+        <span className="ae-muted">{plural(g.findings, "finding")}{g.objects ? ` on ${plural(g.objects, "object")}` : ""}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people.toLocaleString()} people`} affected` : ""}</span>
         {g.tags?.map((t) => <span key={t} className="ae-tag">{t}</span>)}
       </button>
       {!on && ( // open, the findings below say it
@@ -166,7 +166,7 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
       )}
       {on && (
         <GroupItems key={qs(q)} q={q} group={g.key}>{(list, refs, open) => (
-          <ul className="ae-fd-list">{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
+          <ul className="ae-fd-list">{FD_HEAD}{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
         )}</GroupItems>
       )}
     </div>
@@ -177,7 +177,7 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
         <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
         <span className="ae-fg-num">{g.key}</span>
         <span className="ae-fg-title">{g.title}</span>
-        <span className="ae-muted">{plural(g.findings, "finding")}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people} people`}` : ""}</span>
+        <span className="ae-muted">{plural(g.findings, "finding")}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people.toLocaleString()} people`}` : ""}</span>
       </button>
       {on && (
         <>
@@ -186,7 +186,7 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
             <button type="button" className="ae-link" onClick={() => c.set({ rule: g.key })}>Per role / user</button>
           </p>
           <GroupItems key={qs(q)} q={q} group={g.key}>{(list, refs, open) => (
-            <ul className="ae-fd-list">{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
+            <ul className="ae-fd-list">{FD_HEAD}{list.map((f) => <Line key={f.id} f={f} refs={refs} onOpen={open} view={c.view} />)}</ul>
           )}</GroupItems>
         </>
       )}
@@ -194,17 +194,25 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
   );
 }
 
+const FD_HEAD = <li className="ae-fd-row ae-fd-h" aria-hidden><span>Role or user</span><span>What was found</span><span>If you fix it</span><span /></li>;
+
 function Line({ f, refs, onOpen, view }: { f: FindingRow; refs: Refs; onOpen: (id: string) => void; view: string }) {
   const [fix, setFix] = useState(false);
+  const [names, setNames] = useState(false);
+  const [short, who] = (f.impact?.text ?? "").split(/ lose(?:s)? access: /); // "3 users lose access: A, B, C": the names open on a click
+  const n = who ? Number(short.split(" ")[0]).toLocaleString() : "";
   const k = refs.kinds[f.grantee] ?? f.kind;
   return (
     <li className="ae-fd">
-      <div className="ae-fd-line">
-        <button className={`ae-chip ae-chip-${k}`} onClick={() => onOpen(f.grantee)} title={f.grantee}>{f.grantee.replace(/ \(user\)$/, "")}</button>
-        {f.what && <span className="ae-fd-what" title={f.what}>{f.what}</span>}
-        {f.impact && <span className={`ae-tag ae-tag-${f.impact.tone}`}>{f.impact.text}</span>}
+      <div className="ae-fd-row">
+        <span className="ae-fd-who"><button className={`ae-chip ae-chip-${k}`} onClick={() => onOpen(f.grantee)} title={f.grantee}>{f.grantee.replace(/ \(user\)$/, "")}</button></span>
+        <span className="ae-fd-why">{f.what}</span>
+        <span>{!f.impact ? "" : who
+          ? <button className={`ae-tag ae-tag-${f.impact.tone} ae-fd-n`} aria-expanded={names} title={f.impact.text} onClick={() => setNames(!names)}>{n === "1" ? "1 user loses" : `${n} users lose`} access {names ? "▾" : "▸"}</button>
+          : <span className={`ae-tag ae-tag-${f.impact.tone}`}>{f.impact.text}</span>}</span>
         {(f.fix || f.paths_total > 0) && <button className="ae-btn ae-btn-s ae-fd-fix" aria-expanded={fix} onClick={() => setFix(!fix)}>{fix ? "Hide fix" : "Fix"}</button>}
       </div>
+      {names && <p className="ae-muted ae-fd-names">{who}</p>}
       {fix && <FindingFix id={f.id} view={view} whatIf={(p, kinds) => { const ch = changeOfPath(p, kinds); return ch && <WhatIfButton ch={[ch]} />; }} />}
     </li>
   );

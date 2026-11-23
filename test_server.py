@@ -303,7 +303,7 @@ def test_check():
     for who in ("ENGINEER_01", "ANALYST_01"):  # USAGE on a table: on its database and schema, the object stays
         us = js(f"/api/check?name={who}&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=USAGE")
         assert us["priv"] == "USAGE" and us["object"] == "HR.PEOPLE.TBL_EMPLOYEE" and "USAGE" in us["privileges"]
-        assert us["answer"]["yes"] == all(x["held"] for x in us["usage"]) and len(us["held"]) == 2, us["answer"]
+        assert us["answer"]["yes"] == all(x["held"] for x in us["usage"]) and len(us["usage"]) == 2 and not us["held"], us["answer"]  # its two chips are usage
         assert not us["answer"]["yes"] or us["paths"] or us["owner"] or us["admin_paths"]  # a Yes shows its way
         assert all(q["path"][-1] in ("HR", "HR.PEOPLE") for q in us["paths"])
     assert no["answer"]["how"] in ("none", "paths", "owner", "admin")

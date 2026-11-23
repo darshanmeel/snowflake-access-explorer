@@ -133,6 +133,7 @@ body { background: #F6F7F9; }
 .ae-headrow { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .ae-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
 .ae-actions .ae-btn, .ae-toolbar .ae-btn { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.ae-actions > .ae-more { margin: 0; } .ae-actions > .ae-more > summary { box-sizing: border-box; display: inline-flex; align-items: center; min-height: 40px; }
 .ae-answer { font-size: 16px; line-height: 1.55; margin: 14px 0; max-width: 900px; }
 .ae-sens-word { color: var(--ae-sens_ink); font-weight: 600; }
 .ae-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 0 0 16px; }

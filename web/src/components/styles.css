@@ -209,6 +209,13 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-fd-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ae-fd-what { font-family: var(--ae-mono); font-size: 12px; color: var(--ae-muted); max-width: 48ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ae-fd-fix { margin-left: auto; }
+.ae-fd-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr) 200px 84px; gap: 4px 12px; align-items: center; }
+.ae-fd-h { color: var(--ae-muted); font-size: 12px; padding: 4px 0; }
+.ae-fd-who { min-width: 0; } .ae-fd-who .ae-chip { max-width: 100%; overflow-wrap: anywhere; white-space: normal; text-align: left; }
+.ae-fd-why { font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.ae-fd-n { font: inherit; font-size: 12px; border-style: solid; cursor: pointer; white-space: nowrap; }
+.ae-fd-names { margin: 4px 0 0; font-size: 12.5px; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .ae-fd-row { grid-template-columns: 1fr auto; } .ae-fd-h { display: none; } .ae-fd-why { grid-column: 1 / -1; grid-row: 2; } }
 .ae-fd-panel { margin: 6px 0 2px; padding: 8px; background: var(--ae-sunk); border-radius: 6px; display: grid; gap: 6px; }
 .ae-tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid; }
 .ae-tag-ok { background: var(--ae-ok_bg); color: var(--ae-ok_ink); border-color: var(--ae-ok_bd); }

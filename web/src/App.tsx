@@ -218,7 +218,7 @@ function SideTabs({ tabs, fill, under }: { tabs: NavTabs[]; fill: boolean; under
             <span>{x.label}</span>{x.count != null && <Count n={x.count} cls={x.tone ? ` ae-tone-${x.tone}` : ""} />}
           </button>
           {x.key === t.active && deeper[0] && <div className="side-sub">{<SideTabs tabs={deeper} fill={fill} />}</div>}
-          {x.key === t.active && x.key === under?.key && <div className="side-sub">{under.node}</div>}
+          {x.key === t.active && x.key === under?.key && under.node}
         </Fragment>
       ))}
     </div>
@@ -238,7 +238,7 @@ function SideFindings({ meta, rule, sev, nav }: { meta: Meta; rule?: string; sev
     <div aria-label="Findings by severity, then rule" className="side-findings">
       {sevs.map(([s, rs], i) => (
         <details key={s} open={s === at || (i === 0 && !rule)}>
-          <summary><span className={`ae-sevpill ae-sev-${s}`}>{s}</span><Count n={rs.reduce((t, [, v]) => t + v, 0)} unit="findings" /></summary>
+          <summary><span className={`ae-sevpill ae-sev-${s}`}>{s}</span><Count n={rs.reduce((t, [, v]) => t + v, 0)} /></summary>
           {rs.map(([num, v]) => {
             const r = meta.rules.find((x) => x.num === num), on = num === rule && s === at;
             return (
