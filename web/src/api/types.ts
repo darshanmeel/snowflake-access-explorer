@@ -1291,6 +1291,7 @@ export interface ComparePage {
   counts: Record<Diff, number>;
   match: CompareChange[]; // make B match A
   extras: CompareChange[]; // remove A's extras
+  trim: CompareChange[]; // remove B's extras: match + trim make B equal to A
   refs: Refs;
 }
 

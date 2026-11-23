@@ -300,6 +300,11 @@ def test_check():
     no = js("/api/check?name=ANALYST_01&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=DELETE")
     assert {"REBUILD", "EVOLVE SCHEMA", "APPLYBUDGET"} <= set(no["privileges"]) and no["privileges"][:2] == ["*", "OWNERSHIP"]  # every table privilege
     assert js("/api/check?name=ANALYST_01&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=REBUILD")["priv"] == "REBUILD"  # one nobody holds
+    for who in ("ENGINEER_01", "ANALYST_01"):  # USAGE on a table: on its database and schema, the object stays
+        us = js(f"/api/check?name={who}&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=USAGE")
+        assert us["priv"] == "USAGE" and us["object"] == "HR.PEOPLE.TBL_EMPLOYEE" and "USAGE" in us["privileges"]
+        assert us["answer"]["yes"] == all(x["held"] for x in us["usage"]) and len(us["held"]) == 2, us["answer"]
+        assert all(q["path"][-1] in ("HR", "HR.PEOPLE") for q in us["paths"])
     assert no["answer"]["how"] in ("none", "paths", "owner", "admin")
     for u in a.users:
         js(f"/api/check?name={u}", ["verdict", "held", "lanes", "cut", "cuts", "nearest", "layers", "roles_count"])
@@ -1015,6 +1020,8 @@ def test_graph_see_compare():  # screens 4, 7, 9
     assert all(r["diff"] == "only_a" for r in js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all&f=only_a")["rows"])
     x = js(f"/api/compare?a={a.FUNC}DEPLOY&b={a.FUNC}MARKETING&scope=all")
     assert x["counts"]["only_a"] > 0 and x["match"] and x["extras"] and x["a"]["kind"] == "functional"
+    y = js(f"/api/compare?a={a.FUNC}MARKETING&b={a.FUNC}DEPLOY&scope=all")  # match + trim make B equal to A
+    assert y["counts"]["only_b"] > 0 and y["trim"] and all(c["op"] == "revoke" and c["to"] == f"{a.FUNC}DEPLOY" for c in y["trim"])
     assert js("/api/compare?a=ENGINEER_01&b=ANALYST_01&scope=db&db=HR")["rows"][0]["diff"] == "only_a"
     get("/api/compare?a=NOPE", 404)
     g = {p["key"]: p["group"] for p in js("/api/meta")["pages"]}

@@ -5616,8 +5616,8 @@ def compare(x, xu, y, yu, scope="sensitive", db=None):
     extra_a / extra_b (privileges only that side has). counts per diff. match: the changes that give B what only A
     has (B a user: the role A starts the path with, or A itself; B a role: the grant holder role, or the privilege
     when A holds it itself); extras: the changes that take A's extras away (the first link of A's path, or A's own
-    grant). A side holding an admin role reaches what that role's real links reach (admin_objects: level admin, no
-    extras against it).
+    grant); trim: the same for B's extras, so match + trim make B equal to A. A side holding an admin role reaches
+    what that role's real links reach (admin_objects: level admin, no extras against it).
     A change: op, role | privilege + objectType + object, to, toUser. Text only: nothing runs."""
     def side(n, u):
         rows = grants(n, u)
@@ -5628,7 +5628,7 @@ def compare(x, xu, y, yu, scope="sensitive", db=None):
             if k not in best or len(r["path"]) < len(best[k]):
                 best[k] = r["path"]
         return objs, best
-    (ax, ap), (bx, _) = side(x, xu), side(y, yu)
+    (ax, ap), (bx, bp) = side(x, xu), side(y, yu)
     boss = {n: set().union(*map(admin_objects, held_admin(n, u))) for n, u in ((x, xu), (y, yu))}
     god = lambda n, u: dict(level="admin", privileges=[], sees=f"through admin role {', '.join(held_admin(n, u))}")
     keep = {"sensitive": lambda o: o in sens, "db": lambda o: split_name(o, kinds.get(o))[0] == db}.get(scope, lambda o: True)
@@ -5647,8 +5647,15 @@ def compare(x, xu, y, yu, scope="sensitive", db=None):
         out.append(dict(object=o, type=kinds.get(o, ""), database=db_, schema=sc, name=nm, diff=d, a=va, b=vb,
                         extra_a=[] if o in boss[y] else sorted(pa - pb), extra_b=[] if o in boss[x] else sorted(pb - pa)))
     out.sort(key=lambda r: (DIFF.index(r["diff"]), r["object"]))
-    match, extras = [], []
+    def cut(n, u, p, pv, r):  # the first link of the path, or the role's own grant
+        return dict(op="revoke", privilege=pv, objectType=r["type"], object=r["object"], to=n, toUser=False) \
+            if len(p) == 2 and not u else dict(op="revoke", role=p[1], to=n, toUser=u)
+    match, extras, trim = [], [], []
     for r in out:
+        for pv in r["extra_b"]:
+            c = cut(y, yu, bp[(pv, r["object"])], pv, r)
+            if c not in trim and c.get("role") != "PUBLIC":
+                trim.append(c)
         for pv in r["extra_a"]:
             p = ap[(pv, r["object"])]
             if yu:
@@ -5659,12 +5666,12 @@ def compare(x, xu, y, yu, scope="sensitive", db=None):
                 c = dict(op="grant", role=p[-2], to=y, toUser=False)
             if c not in match and c.get("role") != "PUBLIC":  # every user holds PUBLIC
                 match.append(c)
-            c = dict(op="revoke", privilege=pv, objectType=r["type"], object=r["object"], to=x, toUser=False) \
-                if len(p) == 2 and not xu else dict(op="revoke", role=p[1], to=x, toUser=xu)
+            c = cut(x, xu, p, pv, r)
             if c not in extras and c.get("role") != "PUBLIC":
                 extras.append(c)
     return dict(rows=out, counts={d: sum(r["diff"] == d for r in out) for d in DIFF},
-                match=[with_sql(c) for c in match], extras=[with_sql(c) for c in extras])
+                match=[with_sql(c) for c in match], extras=[with_sql(c) for c in extras],
+                trim=[with_sql(c) for c in trim])
 
 
 def review(db=None):

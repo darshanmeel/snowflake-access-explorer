@@ -2586,6 +2586,39 @@ MAX_WH = 10  # Can they?: warehouses named in the note under the answer
 
 
 def check_page(p, view):
+    """Can they? priv=USAGE on an object without USAGE of its own: USAGE on its database and schema (container_usage)."""
+    r = check_object(p if p.get("priv") != "USAGE" else {**p, "priv": ""}, view)
+    if r["usage"] and "USAGE" not in r["privileges"]:
+        r["privileges"].append("USAGE")
+        if p.get("priv") == "USAGE":
+            r |= container_usage(r)
+    return r
+
+
+def container_usage(r):
+    """The answer, paths and graph of USAGE on the object's database and schema, which Snowflake checks before any
+    privilege on the object itself."""
+    u, user, o = r["user"], r["subject"]["user"], r["object"]
+    rs = {c: a.can(u, "USAGE", c, is_user=user) for _, c in a.containers(o, a.kinds[o])}
+    ps = [q | dict(privilege="USAGE") for v in rs.values() for q in v["paths"]]
+    miss = [x for x in r["usage"] if not x["held"]]
+    names = " and ".join(f"{x['type'].lower()} {x['name']}" for x in r["usage"])
+    ans = dict(yes=not miss, how="paths" if not miss else "none", tone=None if not miss else "low",
+               title="Yes, USAGE on its database and schema" if not miss else
+               f"No USAGE on {' or '.join(x['type'].lower() + ' ' + x['name'] for x in miss)}",
+               text=f"{u} has USAGE on {names}, so Snowflake lets statements on {o} through to its own privileges." if not miss
+               else f"Snowflake refuses every statement on {o} until {u} has USAGE on {names}.",
+               stats=[["Paths", sum(v["count"] for v in rs.values())], ["Missing USAGE", len(miss)]])
+    g = ps and a.down_graph(u, [dict(privilege="USAGE", type=a.kinds[c], object=c, paths=[q["path"] for q in v["paths"]])
+                                for c, v in rs.items() if v["paths"]], user=user)
+    ls, _ = a.lanes(ps)
+    return dict(priv="USAGE", answer=ans, verdict="yes" if not miss else "no", paths=ps, paths_total=len(ps), lanes=ls[:20],
+                lanes_total=len(ls), cut=[], cuts=[], options=[], layers=None, read=None, nearest=[], nearest_own=None,
+                narrow=None, held=[dict(privilege=f"USAGE on {x['type'].lower()}", held=x["held"]) for x in r["usage"]],
+                graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None)
+
+
+def check_object(p, view):
     need(a.objects, "No objects in this data.")
     mine = view == "mine"
     u, user = asker(p, view)
@@ -3182,7 +3215,8 @@ def side_of(x):
 
 def compare_page(p, view):
     """Screen 9, two people or roles (a=, b=) compared on sensitive data, everything or one database (scope=, db=):
-    counts, rows with the differences first and the changes that make B match A or remove A's extras (text only).
+    counts, rows with the differences first and the changes that make B match A, equal to A (match + trim) or remove
+    A's extras (text only).
     The database picker searches /api/list?what=databases, so the page sends only the one picked."""
     need(a.users or a.roles, "No users or roles in this data.")
     me = (a.users[0] if view == "mine" or DEMO_USER not in a.users else DEMO_USER) if a.users else None

@@ -7,10 +7,9 @@ export function Overlap({ a, b, onlyA, onlyB, different, same, onPick }: {
   a: string; b: string; onlyA: number; onlyB: number; different: number; same: number; onPick?: () => void;
 }) {
   const go = onPick ? { role: "button", tabIndex: 0, onClick: onPick, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(); } } } : {};
-  const cut = (s: string) => (s.length > 22 ? s.slice(0, 21) + "…" : s);
   return (
     <figure className="ae-venn">
-      <svg viewBox="0 0 400 176" role="img" aria-label={`Only ${a}: ${onlyA}. Both, different: ${different}. Both, the same: ${same}. Only ${b}: ${onlyB}.`}>
+      <svg viewBox="0 0 400 160" role="img" aria-label={`Only ${a}: ${onlyA}. Both, different: ${different}. Both, the same: ${same}. Only ${b}: ${onlyB}.`}>
         <circle cx="158" cy="80" r="74" className="ae-venn-a" />
         <circle cx="242" cy="80" r="74" className="ae-venn-b" />
         <g {...go} className={onPick ? "ae-venn-hit" : undefined}>
@@ -23,9 +22,11 @@ export function Overlap({ a, b, onlyA, onlyB, different, same, onPick }: {
           <text x="284" y="80" className="ae-venn-n ae-venn-nb">{onlyB}</text>
           <text x="284" y="100" className="ae-venn-l">only B</text>
         </g>
-        <text x="120" y="170" className="ae-venn-name ae-venn-na">A · {cut(a)}</text>
-        <text x="280" y="170" className="ae-venn-name ae-venn-nb">B · {cut(b)}</text>
       </svg>
+      <figcaption className="ae-venn-names">
+        <span className="ae-venn-na" title={a}>A · {a}</span>
+        <span className="ae-venn-nb" title={b}>B · {b}</span>
+      </figcaption>
     </figure>
   );
 }

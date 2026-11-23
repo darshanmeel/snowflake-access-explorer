@@ -39,9 +39,9 @@ export function ComparePageView() {
 export function compareLine(n: ComparePage["counts"], a: string, b: string): string {
   if (!n.only_a && !n.only_b && !n.different) return `${a} and ${b} reach the same ${n.same.toLocaleString()} object${n.same === 1 ? "" : "s"} with the same access.`;
   const objs = (x: number) => `${x.toLocaleString()} object${x === 1 ? "" : "s"}`;
-  return [n.only_a ? `${b} lacks ${objs(n.only_a)} ${a} reaches` : `${b} has everything ${a} reaches`,
-    n.only_b ? `${a} lacks ${objs(n.only_b)} ${b} reaches` : `${a} has nothing ${b} lacks`,
-    ...(n.different ? [`${objs(n.different)} both reach with different access`] : [])].join("; ") + ".";
+  return [n.only_a ? `${b} is missing ${objs(n.only_a)} that ${a} reaches` : `${b} reaches everything ${a} reaches`,
+    n.only_b ? `${b} also reaches ${objs(n.only_b)} that ${a} does not` : `${b} reaches nothing extra`,
+    ...(n.different ? [`${objs(n.different)} reached by both with different access`] : [])].join("; ") + ".";
 }
 
 function Body({ d }: { d: ComparePage }) {
@@ -64,18 +64,23 @@ function Body({ d }: { d: ComparePage }) {
   );
 }
 
-const planOf = (p: string | undefined) => (p === "match" || p === "extras" ? p : null);
+const planOf = (p: string | undefined) => (p === "match" || p === "extras" || p === "equal" ? p : null);
+const changesOf = (d: ComparePage, plan: "match" | "extras" | "equal") =>
+  plan === "match" ? d.match : plan === "extras" ? d.extras : [...d.match, ...d.trim];
 
 /** The two plans, right under the answer; one with nothing to do is not offered. */
 function Plans({ d }: { d: ComparePage }) {
   const c = useApp();
   const plan = planOf(c.params.plan);
-  if (!d.match.length && !d.extras.length) return <p className="ae-muted">Nothing to plan: {d.b.name} already reaches what {d.a.name} reaches, with the same access, here.</p>;
+  const pick = (k: "match" | "extras" | "equal") => c.set({ plan: plan === k ? null : k });
+  const cuts = plan === "extras" ? d.extras : plan === "equal" ? d.trim : [];
+  if (!d.match.length && !d.extras.length && !d.trim.length) return <p className="ae-muted">Nothing to plan: {d.b.name} already reaches what {d.a.name} reaches, with the same access, here.</p>;
   return (
     <div className="ae-actions">
-      {d.match.length > 0 && <button type="button" className={`ae-btn${plan === "match" ? " ae-btn-primary" : ""}`} onClick={() => c.set({ plan: plan === "match" ? null : "match" })}>Make B match A ({d.match.length})</button>}
-      {d.extras.length > 0 && <button type="button" className={`ae-btn${plan === "extras" ? " ae-btn-primary" : ""}`} onClick={() => c.set({ plan: plan === "extras" ? null : "extras" })}>Remove A's extras ({d.extras.length})</button>}
-      {plan === "extras" && <button type="button" className="ae-btn" onClick={() => whatIf(c, whatIfOf(d.extras))}>Simulate on What if</button>}
+      {d.match.length + d.trim.length > 0 && <button type="button" className={`ae-btn${plan === "equal" ? " ae-btn-primary" : ""}`} title="Grants what only A has and revokes what only B has" onClick={() => pick("equal")}>Make B equal to A ({d.match.length + d.trim.length})</button>}
+      {d.match.length > 0 && <button type="button" className={`ae-btn${plan === "match" ? " ae-btn-primary" : ""}`} title="Only grants: B keeps what it has" onClick={() => pick("match")}>Give B what A has ({d.match.length})</button>}
+      {d.extras.length > 0 && <button type="button" className={`ae-btn${plan === "extras" ? " ae-btn-primary" : ""}`} onClick={() => pick("extras")}>Remove what only A has ({d.extras.length})</button>}
+      {cuts.length > 0 && <button type="button" className="ae-btn" onClick={() => whatIf(c, whatIfOf(cuts))}>Simulate the revokes on What if</button>}
     </div>
   );
 }
@@ -85,10 +90,11 @@ function PlanText({ d }: { d: ComparePage }) {
   const plan = planOf(c.params.plan);
   if (!plan) return null;
   return (
-    <Card title={plan === "match" ? `Give ${d.b.name} what only ${d.a.name} has` : `Take away what only ${d.a.name} has`}
-      sub={plan === "match" ? "B gets the grant holder role (a person: the role A starts with), or the privilege A holds itself."
+    <Card title={plan === "equal" ? `Make ${d.b.name} equal to ${d.a.name}` : plan === "match" ? `Give ${d.b.name} what only ${d.a.name} has` : `Take away what only ${d.a.name} has`}
+      sub={plan === "equal" ? "Grants first (what only A has), then revokes (the first link of B's path to what only B has). A revoked role link removes everything it brings, so simulate it first. Text only: run it through your access code."
+        : plan === "match" ? "B gets the grant holder role (a person: the role A starts with), or the privilege A holds itself."
         : "The first link of A's path, or A's own grant: a role link removes everything it brings, so simulate it first."}>
-      <CodeOutput changes={(plan === "match" ? d.match : d.extras) as Change[]} name={`compare_${plan}`} note={{ reason: `Compare ${d.a.name} with ${d.b.name} (${d.scope === "db" ? d.db : d.scope})` }} />
+      <CodeOutput changes={changesOf(d, plan) as Change[]} name={`compare_${plan}`} note={{ reason: `Compare ${d.a.name} with ${d.b.name} (${d.scope === "db" ? d.db : d.scope})` }} />
     </Card>
   );
 }

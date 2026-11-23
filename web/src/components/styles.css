@@ -378,7 +378,9 @@ button.ae-pchip:hover { border-color: var(--ae-accent); }
 .ae-venn-na { fill: var(--ae-accent_ink); } .ae-venn-nb { fill: var(--ae-warn_ink); }
 .ae-venn-l { font-size: 11.5px; text-anchor: middle; fill: var(--ae-muted); }
 .ae-venn-ls { font-size: 10px; }
-.ae-venn-name { font-size: 12px; font-weight: 600; text-anchor: middle; font-family: var(--ae-mono); }
+.ae-venn-names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font: 600 12px var(--ae-mono); }
+.ae-venn-names span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* long names stay on their side */
+.ae-venn-names .ae-venn-na { color: var(--ae-accent_ink); } .ae-venn-names .ae-venn-nb { color: var(--ae-warn_ink); text-align: right; }
 .ae-venn-hit { cursor: pointer; outline: none; }
 .ae-venn-hit:focus-visible text { text-decoration: underline; }
 
