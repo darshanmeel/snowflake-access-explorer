@@ -1079,6 +1079,8 @@ export interface Who {
   login_mark: string;
   default_role: string | null;
   secondary_all: boolean;
+  default_warehouse: string | null;
+  owner: string[]; // a role's owners
   held_by: { users: number; roles: number } | null;
 }
 
@@ -1191,6 +1193,7 @@ export interface WhoPage {
     id: string | null; preset: "admin" | null; type: string; database: string | null; schema: string | null; name: string;
     sensitive: boolean; tags: string[]; columns: number; masking: string[]; row_policies: string[]; owners: string[]; owner_note: string;
   };
+  by_role: boolean; // the Columns tab has By role (ObjectPage.sees)
   risks: RiskItem[] | null; // null for the admin preset
   people: WhoPerson[]; // the first 200 matching q= (plus as= and sel=); shown counts every match
   shown: { people: number; roles: number; groups: number }; // with q= and st=

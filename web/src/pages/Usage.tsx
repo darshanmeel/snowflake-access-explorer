@@ -49,11 +49,11 @@ function Body({ d }: { d: UsagePage }) {
   );
   return (
     <>
-      <div className="ae-actions">
-        <button type="button" className="ae-btn" onClick={() => c.nav("access", back)}>Access</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav("see", back)}>What they see</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav("access", { ...back, show: "history" })}>History</button>
-      </div>
+      <p className="ae-muted">
+        <button type="button" className="ae-link" onClick={() => c.nav("access", back)}>Access</button>
+        {" · "}<button type="button" className="ae-link" onClick={() => c.nav("see", back)}>What they see</button>
+        {" · "}<button type="button" className="ae-link" onClick={() => c.nav("access", { ...back, show: "history" })}>History</button>
+      </p>
       {!d.available ? (
         <Card title="No usage to compare with">
           <EmptyState title="Granted vs used needs ACCESS_HISTORY">{d.reason}</EmptyState>
@@ -96,12 +96,11 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
       ]} />
       {show === "table" && (
         <Card>
-          <ListToolbar search={q} onSearch={(v) => c.set({ q: v || null, u_offset: null })} onCsv={csv}>
-            <FilterChips label="Show" value={f} onPick={(k) => c.set({ f: k === "all" ? null : k, u_offset: null })} items={[
-              { key: "all", label: "All", count: n.objects }, { key: "drop", label: "Not used", count: n.drop },
-              { key: "trim", label: "Partly used", count: n.trim }, { key: "keep", label: "Keep", count: n.keep },
-              { key: "sensitive", label: "Sensitive", count: n.sensitive }]} />
-          </ListToolbar>
+          <Tabs nav={2} active={f} onChange={(k) => c.set({ f: k === "all" ? null : k, u_offset: null })} tabs={[
+            { key: "all", label: "All", count: n.objects }, { key: "drop", label: "Not used", count: n.drop },
+            { key: "trim", label: "Partly used", count: n.trim }, { key: "keep", label: "Keep", count: n.keep },
+            { key: "sensitive", label: "Sensitive", count: n.sensitive }]} />
+          <ListToolbar search={q} onSearch={(v) => c.set({ q: v || null, u_offset: null })} onCsv={csv} />
           {!rows.length ? <EmptyState title="Nothing here">{n.objects ? "Change the filter or clear the search." : "No tables or views reached."}</EmptyState> : (
             <div className="ae-olist" role="table">
               <div className="ae-urow ae-orow-h" role="row"><span>Object</span><span>Granted</span><span>Actually used</span><span>Queries per week</span><span>Last used</span><span>Suggestion</span></div>
@@ -110,9 +109,8 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
           )}
           {d.rows_total > size && <Pager at={Math.floor(d.offset / size)} size={size} total={d.rows_total} sizes={[25, 50, 100, 250]}
             onPage={(k) => c.set({ u_offset: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), u_offset: null })} />}
-          {n.changes > 0 && <Trim d={d} added={added} />}
-          <p className="ae-muted ae-foot">Usage {d.source === "demo values" ? "values are demo values; in Snowflake they come" : "comes"} from SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
-            (query metadata, Enterprise edition), refreshed with each snapshot. {w.kind === "user" ? "" : "For a role: used by any of its people, through any of their roles."}</p>
+          <p className="ae-muted ae-foot" title={`${d.source === "demo values" ? "Demo values; in Snowflake: " : ""}SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY (query metadata, Enterprise edition).${w.kind === "user" ? "" : " For a role: used by any of its people, through any of their roles."}`}>
+            Source: ACCESS_HISTORY, refreshed with each snapshot.</p>
         </Card>
       )}
       {show === "trim" && (
@@ -148,22 +146,6 @@ function Row({ r, weeks, open }: { r: UsageRow; weeks: string[]; open: (id: stri
       </span>
       <span className="ae-muted">{r.last ? r.last.slice(0, 10) : "never"}</span>
       <span><span className={`ae-sg ${SUGGEST[r.suggest]}`} title={r.unused.length ? `Not used: ${r.unused.join(", ")}` : undefined}>{r.text}</span></span>
-    </div>
-  );
-}
-
-function Trim({ d, added }: { d: UsagePage; added: boolean }) {
-  const c = useApp();
-  return (
-    <div className="ae-trim">
-      <div>
-        <div className="ae-trim-t">Trim to what is used: {plural(d.counts!.changes, "grant")}</div>
-        <div className="ae-muted">{d.trim_text}</div>
-      </div>
-      <div className="ae-actions">
-        {!d.changes_capped && <button type="button" className="ae-btn ae-btn-primary" disabled={added} onClick={() => plan.set(addTo(plan.get(), d.changes))}>{added ? "In the change plan ✓" : "Add to change plan"}</button>}
-        <button type="button" className="ae-btn" onClick={() => c.set({ show: "trim" })}>See the revokes</button>
-      </div>
     </div>
   );
 }

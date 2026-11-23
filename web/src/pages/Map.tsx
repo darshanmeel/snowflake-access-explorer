@@ -59,8 +59,8 @@ export function GraphPageView() {
         {mode !== "object" && !none && <Filters trace={tab === "trace"} />}
       </div>
       <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k, focus: null, sel: null })} tabs={[
-        { key: "diagram", label: "Role hierarchy, by depth" },
-        { key: "trace", label: "Trace graph" },
+        { key: "diagram", label: "Hierarchy" },
+        { key: "trace", label: "Trace" },
       ]} />
       {none ? <PickFirst what={mode === "user" ? "a person" : mode === "role" ? "a role" : "a table"} /> : <>
         {tab === "diagram" && <OldDiagram mode={mode} name={shown} />}
@@ -92,12 +92,13 @@ function Trace({ d }: { d: MapPage }) {
   return (
     <>
       <div className="ae-toolbar">
-        <Toggle label="Group people with the same path" on={c.params.same !== "0"} onPick={(v) => c.set({ same: v ? null : "0", sel: null })} />
-        <Toggle label="Show admin bypass" on={c.params.admin !== "0"} onPick={(v) => c.set({ admin: v ? null : "0", sel: null })} />
-        <Toggle label="Fold Snowflake built-ins" on={c.params.builtin !== "1"} onPick={(v) => c.set({ builtin: v ? null : "1", sel: null })} />
-        <Toggle label="Highlight risky paths (to admin, via PUBLIC, read role that writes)" on={risky} onPick={(v) => c.set({ risky: v ? "1" : null })} />
+        <Toggle label={<span title="Group people with the same path">Group same path</span>} on={c.params.same !== "0"} onPick={(v) => c.set({ same: v ? null : "0", sel: null })} />
+        <Toggle label={<span title="Show admin bypass">Admin bypass</span>} on={c.params.admin !== "0"} onPick={(v) => c.set({ admin: v ? null : "0", sel: null })} />
+        <Toggle label={<span title="Fold Snowflake built-ins">Fold built-ins</span>} on={c.params.builtin !== "1"} onPick={(v) => c.set({ builtin: v ? null : "1", sel: null })} />
+        <Toggle label={<span title="Highlight risky paths (to admin, via PUBLIC, read role that writes)">Risky paths</span>} on={risky} onPick={(v) => c.set({ risky: v ? "1" : null })} />
       </div>
-      <div className="ae-gmap">
+      {!node && <p className="ae-muted">Click any box in the graph to see who comes through it and what it leads to.</p>}
+      <div className={node ? "ae-gmap" : undefined}>
         <Card title="Click a box to trace everything through it" right={sel && <button type="button" className="ae-btn" onClick={() => c.set({ sel: null })}>Clear trace</button>}>
           {d.graph.nodes.length > 1 ? (
             <Graph graph={d.graph} theme={c.theme} focus={sel} hi={hi} flow maxHeight={760} minZoom={0.6}
@@ -105,26 +106,20 @@ function Trace({ d }: { d: MapPage }) {
               onOnly={(id) => c.set({ focus: id, sel: id }, { push: true, stay: true })} />
           ) : filtered ? <EmptyState title="Nothing matches the filters">Change the database, type or access above.</EmptyState>
             : <EmptyState title="Nobody reaches it">No role or person has a grant on it.</EmptyState>}
+          <div className="ae-bar-legend" title="Thicker = more people">
+            {([["read", "Read"], ["write", "Write"], ["own", "Own"], ["admin", "Admin bypass"], ["use", "Use"], ["inherit", "Holds the role only"]] as const).map(([k, t]) => (
+              <span key={k}><span className={`ae-gline ae-gline-${k}`} aria-hidden />{t}</span>
+            ))}
+            {risky && <span title={Object.values(d.why).join(", ")}><span className="ae-gline ae-gline-risk" aria-hidden />Risky</span>}
+          </div>
         </Card>
-        <div className="ae-whoside">
-          <Card title={node ? node.label : "Details"}>
-            {node && x ? <Detail d={d} n={node} x={x} />
-              : node && more.error ? <p className="ae-muted" role="alert">{more.error.message}</p>
-              : node ? <p className="ae-muted">Loading…</p>
-              : <p className="ae-muted">Click any box in the graph to see who comes through it and what it leads to.</p>}
+        {node && <div className="ae-whoside">
+          <Card title={node.label}>
+            {x ? <Detail d={d} n={node} x={x} />
+              : more.error ? <p className="ae-muted" role="alert">{more.error.message}</p>
+              : <p className="ae-muted">Loading…</p>}
           </Card>
-          <Card title="How to read it">
-            <ul className="ae-gkey">
-              {([["read", "Carries read access"], ["write", "Carries write access"], ["own", "Carries ownership"],
-                ["admin", "Admin bypass or account privilege: no grant needed"], ["use", "Lets them use or run something"],
-                ["inherit", "Holds the role, leads to nothing on the ladder"]] as const).map(([k, t]) => (
-                <li key={k}><span className={`ae-gline ae-gline-${k}`} aria-hidden />{t}</li>
-              ))}
-              {risky && <li><span className="ae-gline ae-gline-risk" aria-hidden />Risky: {Object.values(d.why).join(", ")}</li>}
-            </ul>
-            <p className="ae-muted">Thicker line, more people flow through it. People with exactly the same lines are stacked into one box.</p>
-          </Card>
-        </div>
+        </div>}
       </div>
     </>
   );

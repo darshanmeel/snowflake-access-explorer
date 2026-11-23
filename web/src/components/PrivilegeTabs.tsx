@@ -30,6 +30,7 @@ export interface PrivilegeTabsProps {
    * each privilege tab's diagram from GET graph?of=user-tab (role-tab) (rows is then empty); the role and account tabs
    * still draw from roles and account. */
   server?: Record<string, string | undefined | null>;
+  nav?: number; // Tabs nav: the tabs as side-menu items
 }
 
 export function PrivilegeTabs(p: PrivilegeTabsProps) {
@@ -49,7 +50,7 @@ export function PrivilegeTabs(p: PrivilegeTabsProps) {
 
   return (
     <div className="ae-privtabs">
-      <Tabs tabs={tabs.map((t) => ({ ...t, tone: t.key === "account" ? "bad" as const : null }))} active={active} onChange={pick} />
+      <Tabs tabs={tabs.map((t) => ({ ...t, tone: t.key === "account" ? "bad" as const : null }))} active={active} onChange={pick} nav={p.nav} />
       <div className="ae-privtab-body">
         {active === "account" && <AccountList account={account} rows={tabRows(rows, "account")} kinds={kinds} onOpen={p.onOpen} />}
         {graph && graph.nodes.length > 1

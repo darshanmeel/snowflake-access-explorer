@@ -1,9 +1,9 @@
-// Screen 7: What they see + role usage. The old tables (What they see, Sensitive data they can see, Role usage) stay
-// the default tab; "Column by column" has the sentence, one card per object and the role usage bars.
+// Screen 7: What they see + role usage. "Column by column" (the sentence, one card per object) first; the old tables
+// (All protected, Sensitive reach, Role usage) are the other side-menu items.
 import { useMemo } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, SeeCard, SeePage, SensitiveReach } from "../api/types";
-import { Card, DataTable, EmptyState, FilterChips, IdentityCard, Pager, Tabs } from "../components";
+import { Card, DataTable, EmptyState, FilterChips, IdentityCard, NameList, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, Risks, StateTag, unread, Usage } from "./common";
 import { PAGE } from "./paged";
@@ -32,11 +32,15 @@ export function SeePageView() {
   );
 }
 
+const SHOWS = ["sees", "sens", "usage", "cards"];
+
 function Body({ d }: { d: SeePage }) {
   const c = useApp();
   const w = d.who, user = w.kind === "user";
-  const tab = c.params.show === "cards" ? "cards" : "detail";
   const sub: Record<string, string> = user ? { user: w.name } : { role: w.name };
+  const tagsOff = unread(c.meta, "tags");
+  const { show, part } = c.params;  // part: old links and redirect() output
+  const tab = SHOWS.includes(show ?? "") ? show! : SHOWS.slice(0, 3).includes(part ?? "") ? part! : "cards";
   return (
     <>
       <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
@@ -46,38 +50,21 @@ function Body({ d }: { d: SeePage }) {
       <div className="ae-actions">
         <button type="button" className="ae-btn" onClick={() => c.nav("access", sub)}>Access</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", sub)}>Show as graph</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
       </div>
-      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
-        { key: "detail", label: "What they see · tables" },
+      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "cards" ? null : k, part: null })} tabs={[
         { key: "cards", label: "Column by column", count: d.counts?.objects ?? 0 },
-      ]} />
-      {tab === "detail" && <Old d={d} />}
-      {tab === "cards" && <Cards d={d} />}
-    </>
-  );
-}
-
-/** The old User / Role tabs: What they see, Sensitive data they can see, Role usage. */
-function Old({ d }: { d: SeePage }) {
-  const c = useApp();
-  const user = d.who.kind === "user";
-  const part = c.params.part ?? "sees";
-  const tagsOff = unread(c.meta, "tags");
-  return (
-    <>
-      <Tabs active={part} onChange={(k) => c.set({ part: k === "sees" ? null : k })} tabs={[
-        { key: "sees", label: user ? "What they see" : "What it sees", count: d.can_read?.total ?? 0 },
-        ...(user && d.sensitive?.known ? [{ key: "sens", label: "Sensitive data they can see", count: d.sensitive.rows.length, tone: "warn" as const }]
-          : user && tagsOff ? [{ key: "sens", label: "Sensitive data they can see" }] : []),
+        { key: "sees", label: "All protected", count: d.can_read?.total ?? 0 },
+        ...(user && d.sensitive?.known ? [{ key: "sens", label: "Sensitive reach", count: d.sensitive.rows.length, tone: "warn" as const }]
+          : user && tagsOff ? [{ key: "sens", label: "Sensitive reach", tone: "warn" as const }] : []),
         { key: "usage", label: "Role usage", count: d.usage?.roles.length ?? d.role_usage?.holders ?? 0 },
       ]} />
-      {part === "sees" && (d.can_read?.total ? <DataViews s={d.can_read} path="see" title={user ? "What they see when they read" : "What it sees"} />
+      {tab === "cards" && <Cards d={d} />}
+      {tab === "sees" && (d.can_read?.total ? <DataViews s={d.can_read} path="see" title={user ? "What they see when they read" : "What it sees"} />
         : tagsOff ? <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}. {tagsOff.meaning} {tagsOff.fix ? `Fix: ${tagsOff.fix}` : ""}</EmptyState>
         : <EmptyState title={d.known ? "No protected object" : "Not known here"}>{d.known ? "Nothing they read has a tag, a masking policy or a row policy." : "Policies need the shared snapshot."}</EmptyState>)}
-      {part === "sens" && !d.sensitive && tagsOff && <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}. {tagsOff.meaning}</EmptyState>}
-      {part === "sens" && d.sensitive && (
-        <Card title="Sensitive data they can see" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
+      {tab === "sens" && !d.sensitive && tagsOff && <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}. {tagsOff.meaning}</EmptyState>}
+      {tab === "sens" && d.sensitive && (
+        <Card title="Sensitive reach" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
           <DataTable csv="sensitive_reach.csv" rows={d.sensitive.rows}
             columns={[col("o", "Object", (r: SensitiveReach) => r.object, { wrap: "nowrap" }),
               col("c", "Columns", (r: SensitiveReach) => r.cols.join(", "), { wrap: "wrap" }),
@@ -86,7 +73,7 @@ function Old({ d }: { d: SeePage }) {
               pathCol<SensitiveReach>(d.refs)]} />
         </Card>
       )}
-      {part === "usage" && (d.usage ? <Usage u={d.usage} refs={d.refs} /> : <RoleUse d={d} />)}
+      {tab === "usage" && (d.usage ? <Usage u={d.usage} refs={d.refs} /> : <RoleUse d={d} />)}
     </>
   );
 }
@@ -98,7 +85,8 @@ function RoleUse({ d }: { d: SeePage }) {
   return (
     <Card title="Role usage" sub="Users holding the role who used it in the query history">
       <div className="ae-gbar"><span style={{ width: `${pct}%` }} /></div>
-      <p>{u.used} of {u.holders} holders used it{u.unused.length > 0 && <> · not used by {u.unused.slice(0, 12).join(", ")}{u.unused.length > 12 ? ` +${u.unused.length - 12}` : ""}</>}</p>
+      <p>{u.used} of {u.holders} holders used it{u.unused.length > 0 && " · not used by:"}</p>
+      <NameList items={u.unused} max={3} />
     </Card>
   );
 }
@@ -121,17 +109,12 @@ function Cards({ d }: { d: SeePage }) {
         <FilterChips label="Show" value={only ? "sens" : "all"} onPick={(k) => c.set({ all: k === "all" ? "1" : null, c_offset: null })}
           items={[{ key: "sens", label: "Only sensitive", count: n?.sensitive ?? 0 }, { key: "all", label: "All protected objects", count: n?.objects ?? 0 }]} />
       </div>
-      <div className="ae-whogrid">
-        <div className="ae-seecards">
-          {!cards.length && (tagsOff && only ? <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}: which objects are sensitive is not known.</EmptyState>
-            : <EmptyState title="Nothing here">No {only ? "sensitive" : "protected"} object they can read.</EmptyState>)}
-          {cards.map((x) => <SeeObj key={x.object} x={x} open={o.open} rule={() => c.nav("rules", { rule: "6" })} />)}
-          {d.cards_total > size && <Pager at={Math.floor(d.cards_offset / size)} size={size} total={d.cards_total} sizes={[25, 50, 100, 250]}
-            onPage={(k) => c.set({ c_offset: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), c_offset: null })} />}
-        </div>
-        <aside className="ae-whoside">
-          {d.usage ? <UseBars d={d} /> : <RoleUse d={d} />}
-        </aside>
+      <div className="ae-seecards">
+        {!cards.length && (tagsOff && only ? <EmptyState title="Not read: sensitivity unknown">{tagsOff.title}: which objects are sensitive is not known.</EmptyState>
+          : <EmptyState title="Nothing here">No {only ? "sensitive" : "protected"} object they can read.</EmptyState>)}
+        {cards.map((x) => <SeeObj key={x.object} x={x} open={o.open} rule={() => c.nav("rules", { rule: "6" })} />)}
+        {d.cards_total > size && <Pager at={Math.floor(d.cards_offset / size)} size={size} total={d.cards_total} sizes={[25, 50, 100, 250]}
+          onPage={(k) => c.set({ c_offset: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), c_offset: null })} />}
       </div>
     </>
   );
@@ -156,32 +139,5 @@ function SeeObj({ x, open, rule }: { x: SeeCard; open: (id: string) => void; rul
       ))}
       {!x.columns.length && <p className="ae-muted">No tagged or masked column: the object itself is tagged.</p>}
     </section>
-  );
-}
-
-function UseBars({ d }: { d: SeePage }) {
-  const o = useOpen(d.refs);
-  const u = d.usage!;
-  const max = Math.max(1, ...u.roles.map((r) => r.queries));
-  const unused = u.roles.filter((r) => r.status === "unused");
-  return (
-    <Card title="Role usage" sub={u.source}>
-      {!u.readable ? <p className="ae-muted">Query history is not readable with this role.</p> : (
-        <div className="ae-gbars">
-          {u.roles.map((r) => (
-            <div key={r.role}>
-              <div className="ae-gbars-h"><button type="button" className="ae-link ae-mono" onClick={() => o.open(r.role)}>{r.role}</button>
-                <span><b>{r.queries}</b> queries{r.last_used ? ` · last ${r.last_used.slice(0, 10)}` : ""}</span></div>
-              <div className="ae-gbar"><span style={{ width: `${(100 * r.queries) / max}%` }} className={r.status === "secondary" ? "ae-gbar-2" : undefined} /></div>
-              <div className="ae-muted">{r.default ? "Used as default role" : r.status === "secondary" ? "Used as secondary role" : r.status === "unused" ? `Not used in ${u.days} days` : "Used"}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {u.readable && <p className={unused.length ? "ae-note" : "ae-note ae-gok"}>{unused.length
-        ? `${unused.map((r) => r.role).join(", ")} not used in ${u.days} days: a candidate to revoke (see What if).`
-        : `Every granted role was used in the last ${u.days} days.`}</p>}
-      {u.warehouses.length > 0 && <p className="ae-muted">Warehouses: {u.warehouses.map((w) => `${w.name} · ${w.queries} queries`).join(" · ")}</p>}
-    </Card>
   );
 }

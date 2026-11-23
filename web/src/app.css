@@ -65,6 +65,7 @@ body { background: #F6F7F9; }
 .ae-tab-count.ae-tone-bad { color: var(--ae-bad_ink); background: var(--ae-bad_bg); }
 .ae-tab-count.ae-tone-warn { color: var(--ae-warn_ink); background: var(--ae-warn_bg); }
 @media (min-width: 1001px) { .app:not(.side-shut) .ae-tabs-nav { display: none; } } /* the side menu lists them */
+@media (min-width: 1001px) { .app:not(.side-shut) .ae-wide-hide { display: none; } } /* the side menu offers it too */
 .side nav button:focus-visible { outline: 2px solid var(--ae-accent); }
 .side details { margin-bottom: 6px; }
 .side summary { cursor: pointer; font-weight: 600; }
@@ -235,7 +236,7 @@ div.ae-tile { cursor: default; }
 .ae-block { display: block; }
 .ae-whogrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .ae-whogrid { grid-template-columns: minmax(0, 1fr); } }
-.ae-whoside { display: grid; gap: 14px; }
+.ae-whoside { display: grid; gap: 14px; min-width: 0; }
 .ae-wholist { display: grid; gap: 6px; margin-top: 8px; }
 .ae-whogroup { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 2px 2px; font-size: 12.5px; }
 .ae-whorow { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 32px minmax(160px, 1.2fr) minmax(180px, 1.4fr) minmax(120px, 1fr) 64px; gap: 10px 14px; align-items: center; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: var(--ae-panel); cursor: pointer; }
@@ -355,6 +356,7 @@ div.ae-tile { cursor: default; }
 .ae-graph-sub { margin: -6px 0 10px; }
 .ae-gmap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .ae-gmap { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1340px) { .app:not(.side-shut) .ae-whogrid, .app:not(.side-shut) .ae-gmap { grid-template-columns: minmax(0, 1fr); } } /* the 236px menu leaves too little room */
 .ae-gdetail { display: grid; gap: 6px; font-size: 13px; }
 .ae-gdetail h4 { margin: 8px 0 2px; font-size: 12px; color: var(--ae-muted); font-weight: 600; }
 .ae-gchips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -366,7 +368,8 @@ div.ae-tile { cursor: default; }
 .ae-gline-use { border-top: 2px dashed var(--ae-e_use); } .ae-gline-risk { border-color: var(--ae-bad_ink); }
 /* Screen 7: what they see */
 .ae-gbars { display: grid; gap: 12px; }
-.ae-gbars-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.ae-gbars-h { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 13px; min-width: 0; }
+.ae-gbars-h .ae-mono { overflow-wrap: anywhere; }
 .ae-gbar { height: 10px; border-radius: 5px; background: var(--ae-sunk); margin: 4px 0 2px; overflow: hidden; }
 .ae-gbar span { display: block; height: 100%; background: var(--ae-accent); border-radius: 5px; }
 .ae-gbar span.ae-gbar-2 { background: var(--ae-lvl_change_bg); }

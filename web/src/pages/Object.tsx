@@ -1,5 +1,5 @@
-// Screen 2: who has access to a table (or any object), or to the admin roles (preset=admin). The old Object page
-// (graph, by path / by user or role, users × privileges) is the default tab; the new list by level is next to it.
+// Screen 2: who has access to a table (or any object), or to the admin roles (preset=admin). Overview (the object page's
+// summary and graph) first; People by level, by path and users × privileges; Columns; Activity; History.
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole, WhoState } from "../api/types";
@@ -53,8 +53,27 @@ function Who({ d }: { d: WhoPage }) {
   const csvOn = useCsv();
   const o = d.object, admin = o.preset === "admin";
   useEffect(() => { if (o.id) remember({ page: "object", id: o.id, label: o.id }); }, [o.id]);
-  const show = c.params.show === "who" || ((c.params.show === "history" || c.params.show === "activity") && !admin) ? c.params.show : "detail";
+  const [all, setAll] = useState(false);
+  const sh = c.params.show, pp = c.params.part;
+  const cols = !admin && (d.columns.length > 0 || o.sensitive);
+  // old links: show=who is People by level; part=users|who (People) and sens|sees (Columns) without a show
+  const show = sh === "who" || sh === "people" ? "people" : sh === "columns" && cols ? "columns"
+    : (sh === "history" || sh === "activity") && !admin ? sh
+    : !sh && !admin && (pp === "users" || pp === "who") ? "people" : !sh && cols && (pp === "sens" || pp === "sees") ? "columns" : "detail";
+  const part = show === "people" ? (!admin && (pp === "who" || pp === "users") ? pp : "level") : show === "columns" ? (pp === "sees" ? "sees" : "sens") : "summary";
   const save = () => saveCsv("who.csv", { view: c.view, ...(admin ? { preset: "admin" } : { name: o.id }) }, `${o.id ?? "admin_roles"}_who.csv`);
+  const tags = [
+    <span key="type" className="ae-otag">{o.type.toLowerCase()}</span>,
+    o.owners.length > 0 ? <span key="own" className="ae-otag">Owner {o.owners.join(", ")}</span>
+      : o.owner_note && <span key="own" className="ae-otag ae-otag-warn">{o.owner_note[0].toUpperCase() + o.owner_note.slice(1)}</span>,
+    o.columns > 0 && <span key="sens" className="ae-otag ae-sens-tag">Sensitive · {plural(o.columns, "column")}</span>,
+    o.sensitive && !o.columns && <span key="sens" className="ae-otag ae-sens-tag">Sensitive</span>,
+    ...o.tags.map((t) => <span key={`t${t}`} className="ae-otag">{t}</span>),
+    o.masking.length > 0 && <span key="mask" className="ae-otag" title={o.masking.join(", ")}>{o.masking.length} masking polic{o.masking.length === 1 ? "y" : "ies"}</span>,
+    ...o.row_policies.map((p) => <span key={`r${p}`} className="ae-otag">Row policy {p.split(".").pop()}</span>),
+  ].filter(Boolean);
+  const lvl2 = (tabs: { key: string; label: string; count?: number }[], first: string) => // counts only the who page knows: none that come later
+    <Tabs nav={2} active={part} onChange={(k) => c.set({ show, part: k === first ? null : k })} tabs={tabs} />;
   return (
     <>
       <div className="ae-objhead">
@@ -62,28 +81,29 @@ function Who({ d }: { d: WhoPage }) {
           {o.database && <div className="ae-muted ae-crumb">{[o.database, o.schema].filter(Boolean).join(" › ")} ›</div>}
           {!admin && <div className="ae-mono ae-objname">{o.name}</div>}
           <div className="ae-objtags">
-            <span className="ae-otag">{o.type.toLowerCase()}</span>
-            {o.columns > 0 && <span className="ae-otag ae-sens-tag">Sensitive · {plural(o.columns, "column")}</span>}
-            {o.sensitive && !o.columns && <span className="ae-otag ae-sens-tag">Sensitive</span>}
-            {o.tags.map((t) => <span key={t} className="ae-otag">{t}</span>)}
-            {o.masking.length > 0 && <span className="ae-otag" title={o.masking.join(", ")}>{o.masking.length} masking polic{o.masking.length === 1 ? "y" : "ies"}</span>}
-            {o.row_policies.map((p) => <span key={p} className="ae-otag">Row policy {p.split(".").pop()}</span>)}
-            {o.owners.length > 0 ? <span className="ae-otag">Owner {o.owners.join(", ")}</span>
-              : o.owner_note && <span className="ae-otag ae-otag-warn">{o.owner_note[0].toUpperCase() + o.owner_note.slice(1)}</span>}
+            {tags.length > 3 ? <>{all ? tags : tags.slice(0, 3)}<button type="button" className="ae-otag" onClick={() => setAll(!all)}>{all ? "show less" : `+${tags.length - 3} more`}</button></> : tags}
           </div>
         </div>
         {csvOn && <button type="button" className="ae-btn" onClick={save}>Export CSV</button>}
       </div>
       <Risks list={d.risks} />
-      <For d={d} />
       {d.app && <AppNote app={d.app} />}
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k })} tabs={[
-        { key: "detail", label: admin ? "Admin holders table" : "Diagram, paths & users" },
-        { key: "who", label: "Who has access", count: d.counts.people },
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k, part: null })} tabs={[
+        { key: "detail", label: admin ? "Admin holders table" : "Overview" },
+        { key: "people", label: "People", count: d.counts.people },
+        ...(cols ? [{ key: "columns", label: "Columns" }] : []),
         ...(admin ? [] : [{ key: "activity", label: "Activity" }, { key: "history", label: "History" }]),
       ]} />
-      {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} />)}
-      {show === "who" && <List d={d} />}
+      {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} part="summary" />)}
+      {show === "people" && <>
+        {!admin && lvl2([{ key: "level", label: "By level", count: d.counts.people }, { key: "who", label: "By path" }, { key: "users", label: "Users × privileges" }], "level")}
+        {part === "level" ? <><For d={d} /><List d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
+      </>}
+      {show === "columns" && <>
+        {lvl2([{ key: "sens", label: "Sensitivity" }, ...(d.by_role ? [{ key: "sees", label: "By role" }] : [])], "sens")}
+        {part === "sens" && d.columns.length > 0 && <ColumnsCard d={d} />}
+        <Detail id={o.id ?? ""} part={part} />
+      </>}
       {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} user={c.params.as} />}
       {show === "history" && <ChangeFeed subject={o.id ?? ""} />}
     </>
@@ -97,14 +117,15 @@ function AppNote({ app }: { app: NonNullable<WhoPage["app"]> }) {
   const out = Object.entries(app.exposed);
   const viewers = new Set(Object.values(app.holders).flat()).size;
   return (
-    <Banner tone={out.length ? "bad" : "info"} title={`Viewers see the data of its owner role ${app.owner.join(", ")}, not their own`} lines={[
+    <Banner tone={out.length ? "bad" : "info"} title={`Viewers see the data of its owner role ${app.owner.join(", ")}, not their own`}>
+      <button type="button" className="ae-link" onClick={() => c.set({ show: "activity" })}>Who opened it →</button>
+      <details><summary>Why</summary><ul>{[
       `${viewers === 1 ? "1 person" : `${viewers} people`} can open it, through ${Object.keys(app.holders).join(", ") || "no role"}.`,
       sens.length ? `The owner reads sensitive ${sens.map(([o, cs]) => `${o}${cs.length ? ` (${cs.join(", ")})` : ""}`).join(", ")}.` : "The owner reads no sensitive data.",
       ...(out.length ? [<>{out.length === 1 ? "1 person" : `${out.length} people`} can see it here but can't read it themselves:
         <NameList items={out.map(([u, os]) => ({ key: u, n: os.length === 1 ? os[0] : `${os.length} objects` }))} onOpen={(u) => c.nav("access", { user: u })} /></>] : []),
       "An app that queries with a caller's rights connection shows each viewer only their own data; the grants can't tell which one it uses.",
-    ]}>
-      <button type="button" className="ae-link" onClick={() => c.set({ show: "activity" })}>Who opened it →</button>
+      ].map((l, i) => <li key={i}>{l}</li>)}</ul></details>
     </Banner>
   );
 }
@@ -129,7 +150,7 @@ function For({ d }: { d: WhoPage }) {
             {clear.length > 0 && `Sees ${clear.join(", ")} unmasked`}{clear.length > 0 && masked.length > 0 && " · "}{masked.length > 0 && `${masked.join(", ")} masked`}
           </span>
         )}
-        <button type="button" className="ae-link" onClick={() => c.set({ show: "who", sel: x.name, by: null })}>How?</button>
+        <button type="button" className="ae-link" onClick={() => c.set({ show: "people", part: null, sel: x.name, by: null })}>How?</button>
       </>}
       {who && d.object.id && <UseLine name={d.object.id} user={who} />}
     </section>
@@ -154,7 +175,7 @@ function List({ d }: { d: WhoPage }) {
   const lv = ORDER.filter((l) => n.levels[l]);
   return (
     <div className="ae-whogrid">
-      <Card title="Who has access" sub={`${n.people} ${n.people === 1 ? "person" : "people"} · ${plural(n.roles, "role")} in between · grouped by the most each can do`}
+      <Card title="Who has access" sub={`${n.people} people · ${n.roles} roles`}
         right={<FilterChips label="Show" value={roles ? "roles" : "people"} onPick={(k) => c.set({ by: k === "roles" ? k : null, sel: null })}
           items={[{ key: "people", label: "People", count: n.people }, { key: "roles", label: "Roles", count: n.roles }]} />}>
         {n.people > 0 && <>
@@ -165,12 +186,8 @@ function List({ d }: { d: WhoPage }) {
           <div className="ae-bar-legend">
             {lv.map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{TITLE[l]} {n.levels[l]}</span>)}
             {n.blocked > 0 && <span className="ae-blocked" title="The privilege is there, but not USAGE on the database or schema: Snowflake refuses it">Blocked {n.blocked}: no USAGE on the database or schema</span>}
-            {n.disabled > 0 && <span className="ae-warn-word">{plural(n.disabled, "disabled user")} still hold{n.disabled === 1 ? "s" : ""} access</span>}
-            {n.dormant > 0 && <span className="ae-muted">{n.dormant} dormant or never logged in</span>}
           </div>
         </>}
-        {(d.shown.people > d.people.length || d.shown.roles > d.roles.length || d.shown.groups > d.groups.length) &&
-          <p className="ae-muted">First {roles ? d.roles.length : same ? d.groups.length : d.people.length} of {roles ? d.shown.roles : same ? d.shown.groups : d.shown.people}, the most access first: search to find the rest.</p>}
         {!roles && n.people > 0 && <FilterChips label="People" value={d.st} onPick={(k) => c.set({ st: k || null, sel: null })}
           items={[{ key: "", label: "Everyone", count: n.people }, ...STATES.filter(([k]) => n.states[k]).map(([key, label]) => ({ key, label, count: n.states[key] ?? 0 }))]} />}
         <ListToolbar search={q} onSearch={setQ}>
@@ -216,27 +233,33 @@ function List({ d }: { d: WhoPage }) {
               ))}
             </div>
           )}
+        {(d.shown.people > d.people.length || d.shown.roles > d.roles.length || d.shown.groups > d.groups.length) &&
+          <p className="ae-muted">First {roles ? d.roles.length : same ? d.groups.length : d.people.length} of {roles ? d.shown.roles : same ? d.shown.groups : d.shown.people}, the most access first: search to find the rest.</p>}
       </Card>
       <aside className="ae-whoside">
         {sel && <How e={sel} d={d} role={roles} onOpen={o.open} />}
-        {d.columns.length > 0 && (
-          <Card title="Sensitive columns" sub="Who sees each one unmasked">
-            <ul className="ae-whocols">
-              {d.columns.map((k) => (
-                <li key={k.column}>
-                  <div><div className="ae-mono">{k.column}</div><div className="ae-muted">{k.tags.map(tagWord).filter(Boolean).join(", ") || (k.sensitive ? "sensitive" : "")}</div></div>
-                  <div className="ae-whocols-r">
-                    <MiniBar of={Math.max(1, k.clear.length + k.masked.length + k.unknown.length)} text={<span className={k.clear.length ? "ae-sens-word" : ""} title={k.clear.join(", ")}>{k.clear.length} of {k.clear.length + k.masked.length + k.unknown.length} see it</span>}
-                      parts={[{ key: "c", label: "See it in the clear", value: k.clear.length, cls: "high" }, { key: "m", label: "Masked", value: k.masked.length, cls: "keep" }, { key: "u", label: "Unknown", value: k.unknown.length, cls: "low" }]} />
-                    <div className="ae-muted">{k.policies.length ? `${k.policies.map((x) => x.split(".").pop()).join(", ")}${k.masked.length ? ` · masked for ${k.masked.length}` : ""}` : "No masking policy"}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
       </aside>
     </div>
+  );
+}
+
+/** Each sensitive column: how many readers see it in the clear, and its masking policies. */
+function ColumnsCard({ d }: { d: WhoPage }) {
+  return (
+    <Card title="Who sees each column in the clear">
+      <ul className="ae-whocols">
+        {d.columns.map((k) => (
+          <li key={k.column}>
+            <div><div className="ae-mono">{k.column}</div><div className="ae-muted">{k.tags.map(tagWord).filter(Boolean).join(", ") || (k.sensitive ? "sensitive" : "")}</div></div>
+            <div className="ae-whocols-r">
+              <MiniBar of={Math.max(1, k.clear.length + k.masked.length + k.unknown.length)} text={<span className={k.clear.length ? "ae-sens-word" : ""} title={k.clear.join(", ")}>{k.clear.length} of {k.clear.length + k.masked.length + k.unknown.length} see it</span>}
+                parts={[{ key: "c", label: "See it in the clear", value: k.clear.length, cls: "high" }, { key: "m", label: "Masked", value: k.masked.length, cls: "keep" }, { key: "u", label: "Unknown", value: k.unknown.length, cls: "low" }]} />
+              <div className="ae-muted">{k.policies.length ? `${k.policies.map((x) => x.split(".").pop()).join(", ")}${k.masked.length ? ` · masked for ${k.masked.length}` : ""}` : "No masking policy"}</div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -269,13 +292,13 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
   );
 }
 
-/** The old Object page for the same object, inside this screen. */
-function Detail({ id }: { id: string }) {
+/** One part of the object page (ObjectDetail) for the same object, inside this screen. */
+function Detail({ id, part }: { id: string; part: string }) {
   const c = useApp();
-  const { show: _s, as: _a, sel: _l, by: _b, same: _m, ...rest } = c.params;
+  const { show: _s, as: _a, sel: _l, by: _b, same: _m, part: _p, ...rest } = c.params;
   return (
     <div className="ae-embed">
-      <AppCtx.Provider value={{ ...c, params: { ...rest, name: id } }}><ObjectDetail /></AppCtx.Provider>
+      <AppCtx.Provider value={{ ...c, params: { ...rest, name: id } }}><ObjectDetail part={part} /></AppCtx.Provider>
     </div>
   );
 }
@@ -299,7 +322,7 @@ function AdminRoleLine({ g, refs }: { g: ObjectPage["admin_roles"][number]; refs
   );
 }
 
-/** Admin preset: the Rule checks "Admin holders" table (admin roles and account privileges). */
+/** Admin preset: the Risks & fixes "Admin holders" table (admin roles and account privileges). */
 function AdminDetail() {
   const c = useApp();
   const s = useApi<RulesPage>("rules", { view: c.view });
@@ -317,38 +340,30 @@ export const adminTitle = (r: AdminRow) =>
     : Object.values(r.cells).some((x) => x.admin) ? `Admin role: cells marked "admin" come through ${r.admin.join(", ")} and the roles it holds`
     : `Holds ${r.admin.join(", ")}${r.real ? "" : "; no role it holds reaches this object"}`;
 
-/** The old Object page: graph of the paths in, who has access by path or by user / role, users × privileges, what
- * each role sees, sensitivity. The default tab of screen 2. */
-export function ObjectDetail() {
+/** One part of the object page as a tab of screen 2: summary (Overview: counts, owner, graph of the paths in), who
+ * (By path), users (Users × privileges), sees (By role), sens (Sensitivity). */
+export function ObjectDetail({ part }: { part: string }) {
   const c = useApp();
   const name = c.params.name ?? "";
   const [tab, setTab] = useState("all");
-  const [part, setPart] = useState(c.params.part ?? "users");
   // no name: the server picks the first object of the type (as app.py)
   const s = useApi<ObjectPage>("object", { ...apiParams(c), name });
   const op = useOpen(s.data?.refs);
   return (
     <>
       <Head title="Object" sub="Who can reach a table, view or other object, and how." />
-      <Controls>
+      {(part === "summary" || part === "users") && <Controls>
         <Tog label="Active users only" on={c.params.active === "1"} onPick={(v) => c.set({ active: v ? "1" : null })} />
         <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} />
         {s.data && <Sel label="Privilege" value={c.params.priv ?? ""} onPick={(v) => c.set({ priv: v })}
           options={[["", "Any"], ...s.data.object.privileges.map((p): [string, string] => [p, p])]} />}
-      </Controls>
+      </Controls>}
       <Load s={s}>{(d) => {
         const o = d.object, k = d.kpis;
         return (
           <>
-            <Tabs nav={2} active={part} onChange={setPart} tabs={[
-              { key: "summary", label: "Summary" },
-              { key: "users", label: "Users × privileges", count: d.matrix.total },
-              { key: "who", label: "By path", count: d.grantees.total },
-              ...(d.sees ? [{ key: "sees", label: "What each role sees", count: d.sees.rows.length }] : []),
-              ...(d.sensitivity ? [{ key: "sens", label: "Sensitivity", count: d.sensitivity.columns.length, tone: o.sensitive ? "warn" as const : null }] : []),
-            ]} />
-            {part === "summary" && <>  {/* the counts, owner, admin reach and paths diagram; the other tabs are tables */}
-              <Card title={o.id} sub={`${o.type.toLowerCase()}${o.sensitive ? " · sensitive" : ""}`}>
+            {part === "summary" && <>  {/* the counts, owner, admin reach and paths diagram; the other parts are tables */}
+              <Card>
                 <KpiRow items={[
                   { label: "Users with access", value: k.people + k.disabled + k.service + k.admin, caption: `${k.people} people · ${k.disabled} disabled · ${k.service} service · ${k.admin} only through an admin role`, tone: k.admin ? "bad" : null },
                   { label: "Read / Write / Own", value: `${k.read} / ${k.write} / ${k.own}` },
@@ -356,12 +371,11 @@ export function ObjectDetail() {
                   { label: "Longest chain", value: k.longest },
                 ]} />
                 {k.owners.length > 0 && <p>Owner: <Chips items={k.owners.map((r) => ({ id: r, kind: "technical" }))} /></p>}
-                {k.deployers.length > 0 && <p>Deployed by: <Chips items={k.deployers.map((r) => ({ id: r, kind: "user" }))} /></p>}
                 {k.owner_note && <p className="ae-muted">{k.owner_note}</p>}
+                {k.deployers.length > 0 && <p>Deployed by: <Chips items={k.deployers.map((r) => ({ id: r, kind: "user" }))} /></p>}
               </Card>
-              {d.admin_roles.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_roles.map((g) => <AdminRoleLine key={g.role} g={g} refs={d.refs} />)}>
-                <p className="ae-muted">These users reach this object through the roles granted to an admin role; those links are not drawn below.
-                  {d.admin_roles.some((g) => g.total > g.paths.length) && <> Long lists are cut: <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Who holds an admin role</button> has every path.</>}</p>
+              {d.admin_roles.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_roles.slice(0, 3).map((g) => <AdminRoleLine key={g.role} g={g} refs={d.refs} />)}>
+                {d.admin_roles.length > 3 && <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Every path: Who holds an admin role</button>}
               </Banner>}
               <CutBanner capped={d.capped} />
               <GraphCard g={d.graph} refs={d.refs} />
@@ -413,7 +427,7 @@ export function ObjectDetail() {
             )}
             {part === "who" && (
               <Card title="By path" sub="Users and roles that come in through the same chain are one row" right={
-                <div className="seg">{d.tabs.map((t) => <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>{t.label} {t.count}</button>)}</div>}>
+                <FilterChips label="Show" value={tab} onPick={setTab} items={d.tabs.map((t) => ({ key: t.key, label: t.label, count: t.count }))} />}>
                 <GroupedGrantees key={tab} params={{ ...apiParams(c), name: o.id, tab }} total={d.tabs.find((t) => t.key === tab)?.count ?? 0}
                   kinds={d.refs.kinds} onOpen={op.open} csv={`${o.name}_grantees_${tab}.csv`} />
               </Card>

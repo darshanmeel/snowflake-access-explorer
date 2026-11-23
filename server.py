@@ -1684,14 +1684,15 @@ def access_page(p, view):
             why.append(dict(role="PUBLIC", kind="group", note="everyone", **kids("PUBLIC")))
         who = dict(kind="user", name=name, id=a.uid(name, True), type=str(pr.get("TYPE") or "PERSON"), status=a.status(name),
                    disabled=a.is_disabled(name), last_login=text, login_mark=mark, default_role=dr or None, secondary_all=sec,
-                   held_by=None)
+                   default_warehouse=pr.get("DEFAULT_WAREHOUSE") or None, owner=[], held_by=None)
     else:
         rs, us = a.ups(name)
         hb = sorted(set(a.held_by.get(name, [])))
         why = [dict(role=x, kind=nk(x), note="holds it", kids=[], kids_total=0) for x in hb[:HOLDERS]]
         why.append(dict(role=name, kind=nk(name), note="this role", **kids(name)))
         who = dict(kind=nk(name), name=name, id=name, type=KIND.get(norm(a.role_kind(name)), "Role"), status=None,
-                   disabled=False, last_login=None, login_mark="", default_role=None, secondary_all=False,
+                   disabled=False, last_login=None, login_mark="", default_role=None, secondary_all=False, default_warehouse=None,
+                   owner=[g for g, pv, t in a.on.get(name, []) if pv == "OWNERSHIP" and t == "ROLE"],
                    held_by=dict(users=len(us), roles=len(rs) - 1))
     out = lambda o: {k: v for k, v in o.items() if k != "holders"}
     hq = p.get("hq", "").lower()
@@ -1801,7 +1802,7 @@ def risks_of(name, user):
             if q[-1] != "PUBLIC":
                 way.setdefault(pv, q)
         out.append(risk(True, f"{plural(len(acct), 'account privilege')}: {more(acct)}", len(acct),
-                        link("Account powers", "access", **me, show="privs" if user else "detail"),
+                        link("Account powers", "access", **me, show="runs"),
                         ["Privilege", "Path"], [(pv, " > ".join(way[pv])) for pv in acct]))
     read, clear = seen_counts(name, user)
     if clear:
@@ -2015,7 +2016,7 @@ def role_ctx(p, view):
     if name not in a.roles:
         if name in a.ADMIN:
             raise ApiError(404, "not_found", f"No user or role holds {name} in this snapshot. See People with admin "
-                                             "roles on Rule checks for who holds the other admin roles.")
+                                             "roles on Risks & fixes for who holds the other admin roles.")
         raise ApiError(404, "not_found", f"{name} is not in this snapshot")
     limit = depth_of(p)
     key = ("role_ctx", name, limit, p.get("schema", ""), flag(p, "sensitive"), p.get("otype", ""), flag(p, "users"))
@@ -2551,7 +2552,9 @@ def who_page(p, view):
     want = {p.get("as") or du, p.get("sel")} | {g["names"][0] for g in groups}
     sent = people[:MAX_WHO] + [e for e in x["people"] if e["name"] in want and e not in people[:MAX_WHO]]
     sel = [e for e in roles[MAX_WHO:] if e["name"] == p.get("sel")]
-    return dict(view=view, object=x["head"], risks=object_risks(x["o"]) if x["o"] else None, people=sent, roles=roles[:MAX_WHO] + sel, groups=groups,
+    o, ps = x["o"], a.policies_of(x["o"]) if x["o"] else None
+    by_role = bool(o and view == "shared" and a.is_data(a.kinds[o]) and (ps["rows"] or ps["columns"] or a.sensitive_cols(o)))  # object_page's sees
+    return dict(view=view, object=x["head"], by_role=by_role, risks=object_risks(x["o"]) if x["o"] else None, people=sent, roles=roles[:MAX_WHO] + sel, groups=groups,
                 shown=dict(people=len(people), roles=len(roles), groups=len(every)), st=st,
                 app=x["app"], counts=x["counts"], columns=x["columns"], default_user=du)
 
@@ -2611,16 +2614,18 @@ def check_page(p, view):
     if r["usage"] and "USAGE" not in r["privileges"]:
         r["privileges"].append("USAGE")
         if p.get("priv") == "USAGE":
-            r |= container_usage(r)
+            r |= container_usage(r, p.get("focus"))
     return r
 
 
-def container_usage(r):
+def container_usage(r, focus):
     """The answer, paths and graph of USAGE on the object's database and schema, which Snowflake checks before any
     privilege on the object itself."""
     u, user, o = r["user"], r["subject"]["user"], r["object"]
     rs = {c: a.can(u, "USAGE", c, is_user=user) for _, c in a.containers(o, a.kinds[o])}
     ps = [q | dict(privilege="USAGE") for v in rs.values() for q in v["paths"]]
+    own = list({tuple(q): q for v in rs.values() for q in v["owner"]}.values())
+    adm = list({tuple(q): q for c in rs for q in a.admin_can(u, c, user, ["USAGE"])}.values())
     miss = [x for x in r["usage"] if not x["held"]]
     names = " and ".join(f"{x['type'].lower()} {x['name']}" for x in r["usage"])
     ans = dict(yes=not miss, how="paths" if not miss else "none", tone=None if not miss else "low",
@@ -2632,10 +2637,10 @@ def container_usage(r):
     g = ps and a.down_graph(u, [dict(privilege="USAGE", type=a.kinds[c], object=c, paths=[q["path"] for q in v["paths"]])
                                 for c, v in rs.items() if v["paths"]], user=user)
     ls, _ = a.lanes(ps)
-    return dict(priv="USAGE", answer=ans, verdict="yes" if not miss else "no", paths=ps, paths_total=len(ps), lanes=ls[:20],
+    return dict(priv="USAGE", answer=ans, verdict="yes" if not miss else "no", paths=ps, paths_total=sum(v["count"] for v in rs.values()), owner=own, admin_paths=adm, lanes=ls[:20],
                 lanes_total=len(ls), cut=[], cuts=[], options=[], layers=None, read=None, nearest=[], nearest_own=None,
                 narrow=None, held=[dict(privilege=f"USAGE on {x['type'].lower()}", held=x["held"]) for x in r["usage"]],
-                graph=g and build_graph("Paths combined", g[0], g[1], g[2]) or None)
+                graph=g and build_graph("Paths combined", g[0], g[1], g[2], focus=focus) or None)
 
 
 def check_object(p, view):
@@ -2721,7 +2726,7 @@ def check_object(p, view):
     ls, cut = a.lanes(ps)
     cut = [x for x in cut if x in r["choke"]]  # lanes list at most MAX_PATHS paths; choke is counted over all
     ask = pv if pv != ALL else a.basic_priv(k)
-    # the slow part of a No (seconds on a big account): only when the Nearest ways in tab asks (near=1)
+    # the slow part of a No (seconds on a big account): only when the Ways in tab asks (near=1)
     near = [] if mine or ps or r["owner"] or admin else a.nearest(u, ask, o, is_user=user) if p.get("near") == "1" else None
     # "do anything": the way to use it first, the way to own it apart; the narrowest grant before handing over a big role
     own = a.nearest(u, "OWNERSHIP", o, is_user=user) if near is not None and not mine and pv == ALL and ask != "OWNERSHIP" else None
@@ -2964,7 +2969,7 @@ def subject(p, view):
 
 def see_page(p, view):
     """Screen 7, what a person or a role sees when they query: a card per protected object (rows, each column clear
-    or masked and why), the old What they see / Sensitive data they can see tables, and role usage."""
+    or masked and why), the All protected and Sensitive reach tables, and role usage."""
     name, user = subject(p, view)
     ok = view != "mine" or bool(S["sens"])
     s = a.cached(("seen", name, user), lambda: a.seen(name, user)) if ok else dict(cards=[], counts=None)

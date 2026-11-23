@@ -2,7 +2,7 @@
 // differences first, and the changes that make B match A or remove A's extras (text only, What if to simulate).
 import { useApi } from "../api/client";
 import type { CompareRow, CompareSide, ComparePage } from "../api/types";
-import { AccessPill, Banner, Card, CodeOutput, EmptyState, FilterChips, Overlap, Pager, type Change } from "../components";
+import { AccessPill, Banner, Card, CodeOutput, EmptyState, FilterChips, Overlap, Pager, Tabs, type Change } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Load, Pick, PickFirst, Sel } from "./common";
 import { whatIfOf } from "./screens";
@@ -14,7 +14,7 @@ const PILL: Record<string, string> = { only_a: "Only A", only_b: "Only B", diffe
 export function ComparePageView() {
   const c = useApp();
   const none = c.view !== "mine" && !c.params.a;  // shared: nobody picked yet
-  const s = useApi<ComparePage>(none ? null : "compare", { ...apiParams(c), plan: null });
+  const s = useApi<ComparePage>(none ? null : "compare", { ...apiParams(c), plan: null, tab: null });
   const d = s.data;
   const what = subjects(c.view === "mine");
   return (
@@ -45,21 +45,25 @@ export function compareLine(n: ComparePage["counts"], a: string, b: string): str
 }
 
 function Body({ d }: { d: ComparePage }) {
+  const c = useApp();
   const n = d.counts;
+  // `tab`, not `show`: redirect() strips show on compare (old links)
+  const plans = d.match.length + d.trim.length, any = plans + d.extras.length; // no Plan tab with nothing to plan
+  const tab = any && (c.params.tab === "plan" || planOf(c.params.plan)) ? "plan" : "diff"; // an old ?plan= link opens the Plan tab
   return (
     <>
       <div className="ae-cmp-sum">
         <Overlap a={d.a.name} b={d.b.name} onlyA={n.only_a} onlyB={n.only_b} different={n.different} same={n.same} />
         <div className="ae-cmp-say">
           <p className="ae-answer"><b>{compareLine(n, d.a.name, d.b.name)}</b></p>
-          <p className="ae-muted">Of {(n.only_a + n.only_b + n.different + n.same).toLocaleString()} objects {d.scope === "sensitive" ? "with sensitive data" : d.scope === "db" ? `in ${d.db}` : ""} that either reaches:{" "}
-            <span className="ae-cmp-a">{n.only_a} only A</span>, <span className="ae-cmp-b">{n.only_b} only B</span>, {n.different} different, {n.same} the same.</p>
-          <Plans d={d} />
+          {plans > 0 && <button type="button" className="ae-btn" onClick={() => c.set({ tab: "plan", plan: "equal" })}>Make B equal to A →</button>}
         </div>
       </div>
       {d.scope === "sensitive" && !d.sensitive && <Banner tone="info" title="No sensitive objects known" lines={["Pick everything or one database as the scope."]} />}
-      <PlanText d={d} />
-      <Diffs d={d} />
+      <Tabs nav active={tab} onChange={(k) => c.set(k === "plan" ? { tab: "plan" } : { tab: null, plan: null })} tabs={[
+        { key: "diff", label: "Differences", count: n.only_a + n.only_b + n.different },
+        ...(any ? [{ key: "plan", label: "Plan" }] : [])]} />
+      {tab === "plan" ? <><Plans d={d} /><PlanText d={d} /></> : <Diffs d={d} />}
     </>
   );
 }
@@ -74,7 +78,6 @@ function Plans({ d }: { d: ComparePage }) {
   const plan = planOf(c.params.plan);
   const pick = (k: "match" | "extras" | "equal") => c.set({ plan: plan === k ? null : k });
   const cuts = plan === "extras" ? d.extras : plan === "equal" ? d.trim : [];
-  if (!d.match.length && !d.extras.length && !d.trim.length) return <p className="ae-muted">Nothing to plan: {d.b.name} already reaches what {d.a.name} reaches, with the same access, here.</p>;
   return (
     <div className="ae-actions">
       {d.match.length + d.trim.length > 0 && <button type="button" className={`ae-btn${plan === "equal" ? " ae-btn-primary" : ""}`} title="Grants what only A has and revokes what only B has" onClick={() => pick("equal")}>Make B equal to A ({d.match.length + d.trim.length})</button>}
@@ -91,9 +94,9 @@ function PlanText({ d }: { d: ComparePage }) {
   if (!plan) return null;
   return (
     <Card title={plan === "equal" ? `Make ${d.b.name} equal to ${d.a.name}` : plan === "match" ? `Give ${d.b.name} what only ${d.a.name} has` : `Take away what only ${d.a.name} has`}
-      sub={plan === "equal" ? "Grants first (what only A has), then revokes (the first link of B's path to what only B has). A revoked role link removes everything it brings, so simulate it first. Text only: run it through your access code."
-        : plan === "match" ? "B gets the grant holder role (a person: the role A starts with), or the privilege A holds itself."
-        : "The first link of A's path, or A's own grant: a role link removes everything it brings, so simulate it first."}>
+      sub={plan === "equal" ? "Grants, then revokes. Simulate the revokes first."
+        : plan === "match" ? "Grants only; B keeps what it has."
+        : "Revokes only. Simulate them first."}>
       <CodeOutput changes={changesOf(d, plan) as Change[]} name={`compare_${plan}`} note={{ reason: `Compare ${d.a.name} with ${d.b.name} (${d.scope === "db" ? d.db : d.scope})` }} />
     </Card>
   );

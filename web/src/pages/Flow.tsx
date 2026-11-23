@@ -20,8 +20,7 @@ export function FlowPageView() {
   const s = useApi<FlowPage>("flow", apiParams(c));
   return (
     <>
-      <button type="button" className="ae-link ae-crumb" onClick={() => c.nav("review", { show: "grid" })}>← Review & sign-off</button>
-      <Head title="Where sensitive data flows" sub="People → the role they were granted → the sensitive object. Line width = people. Click a box to follow it." />
+      <Head title="Where sensitive data flows" sub="People → granted role → sensitive object." />
       <Load s={s}>{(d) => d.state !== "ok"
         ? <Banner tone="info" title="Nothing to show" lines={[d.state === "mine" ? "The flow needs the shared snapshot: it is about everyone." : "No object carries a sensitive tag."]} />
         : <Flow d={d} />}</Load>
@@ -41,13 +40,13 @@ function sub(n: FlowNode, col: number, off: boolean): string {
 /** Tables first: on a big account the drawing has thousands of boxes and lines, so it opens only on a click. */
 function Flow({ d }: { d: FlowPage }) {
   const c = useApp();
-  const show = c.params.show === "graph" ? "graph" : "table";
+  const show = c.params.show === "graph" || c.params.show === "roles" ? c.params.show : "objects"; // show=table: the old Tables tab
   return (
     <>
       <PolicyNote />
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "table" ? null : k })} tabs={[
-        { key: "table", label: "Tables" }, { key: "graph", label: "Graph" }]} />
-      {show === "table" ? <Tables d={d} /> : d.follow ? <Body d={d} /> : <Waiting />}
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "objects" ? null : k })} tabs={[
+        { key: "objects", label: "Objects" }, { key: "roles", label: "Roles", count: d.roles_total }, { key: "graph", label: "Graph" }]} />
+      {show === "objects" ? <Objects d={d} /> : show === "roles" ? <Roles d={d} /> : d.follow ? <Body d={d} /> : <Waiting />}
     </>
   );
 }
@@ -55,7 +54,7 @@ function Flow({ d }: { d: FlowPage }) {
 type Obj = FlowNode;
 type Role = FlowRole;
 
-function Tables({ d }: { d: FlowPage }) {
+function Objects({ d }: { d: FlowPage }) {
   const c = useApp();
   const objs = d.objects.filter((n) => n.kind !== "fold");
   const off = c.meta.sources.policies === "UNAVAILABLE";
@@ -72,13 +71,19 @@ function Tables({ d }: { d: FlowPage }) {
             col("u", "Unmasked columns", (r: Obj) => (off ? "unknown: policies not read" : (r.unmasked ?? []).join(", "))), col("m", "Masked columns", (r: Obj) => (r.masked ?? []).join(", ")),
             col("w", "Rows", (r: Obj) => (r.row_policies?.length ? `by ${r.row_policies.map((x) => x.split(".").pop()).join(", ")}` : "whole object"))]} />
       </Card>
-      <Card title={`Roles that lead there · ${d.roles_total}`} sub="Every role people were granted that reaches sensitive data, the people holding it and the sensitive objects it reaches; most people first">
-        <PagedTable path="flow" at="e_offset" total={d.roles_total} offset={d.roles_offset} pick={(x: FlowPage) => x.roles_all} csv="sensitive_roles.csv"
-          rows={d.roles_all} onRowClick={(r: Role) => r.kind !== "admin" && c.nav("access", { role: r.id })}
-          columns={[col("r", "Role", (r: Role) => r.id, { wrap: "wrap" }), col("k", "Kind", (r: Role) => r.kind),
-            col("p", "People", (r: Role) => r.count, { num: true }), col("o", "Sensitive objects", (r: Role) => r.objects, { num: true })]} />
-      </Card>
     </>
+  );
+}
+
+function Roles({ d }: { d: FlowPage }) {
+  const c = useApp();
+  return (
+    <Card title={`Roles that lead there · ${d.roles_total}`} sub="Every role people were granted that reaches sensitive data, the people holding it and the sensitive objects it reaches; most people first">
+      <PagedTable path="flow" at="e_offset" total={d.roles_total} offset={d.roles_offset} pick={(x: FlowPage) => x.roles_all} csv="sensitive_roles.csv"
+        rows={d.roles_all} onRowClick={(r: Role) => r.kind !== "admin" && c.nav("access", { role: r.id })}
+        columns={[col("r", "Role", (r: Role) => r.id, { wrap: "wrap" }), col("k", "Kind", (r: Role) => r.kind),
+          col("p", "People", (r: Role) => r.count, { num: true }), col("o", "Sensitive objects", (r: Role) => r.objects, { num: true })]} />
+    </Card>
   );
 }
 
@@ -131,6 +136,7 @@ function Body({ d }: { d: FlowPage }) {
         {([["active", "Active people"], ["risky", "Dormant or disabled"], ["admin", "Admin"], ["service", "Service"]] as const).map(([k, l]) => (
           <span key={k}><span className="ae-flow-key" style={{ background: TONE[k] }} />{l}</span>))}
         <span className="ae-bad">Red text = columns with no masking</span>
+        <span className="ae-muted">Click a box to follow it</span>
       </div>
       {picked && (
         <div className="ae-flow-detail">

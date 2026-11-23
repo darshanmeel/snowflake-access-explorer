@@ -68,7 +68,7 @@ function Group({ g, open, kinds, onOpen, onRule, whatIf }: { g: RuleGroup; open:
       {on && (
         <>
           <ul className="ae-fd-list">{g.items.map((f, i) => <Line key={i} f={f} kinds={kinds} onOpen={onOpen} whatIf={whatIf} />)}</ul>
-          {onRule && <button className="ae-link ae-fg-all" onClick={() => onRule(g.num)}>Rule {g.num} on the Rule checks page</button>}
+          {onRule && <button className="ae-link ae-fg-all" onClick={() => onRule(g.num)}>Rule {g.num} on Risks & fixes</button>}
         </>
       )}
     </div>

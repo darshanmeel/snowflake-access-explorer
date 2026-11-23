@@ -12,10 +12,10 @@ const strongest = (cs: PrivClass[]): PrivClass => cs.reduce<PrivClass>((a, c) =>
 export function ReviewPageView() {
   const c = useApp();
   const show = c.params.show === "rows" || (c.params.part && c.params.show !== "grid") ? "old" : "grid"; // the sign-off grid first; part=: an old link to the rows
-  if (c.view === "mine") return <><Head title="Access review" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
+  if (c.view === "mine") return <><Head title="Review & sign-off" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
   return (
     <>
-      <Head title="Review & sign-off" sub="Who can reach what, ready for sign-off. Decisions stay in this browser; nothing is written to Snowflake." />
+      <Head title="Review & sign-off" sub="Who can reach what, ready for sign-off." />
       <Tabs nav active={show} onChange={(k) => c.set(k === "grid" ? { show: null, part: null } : { show: "rows", columns: null, object: null, scope: null })} tabs={[
         { key: "grid", label: "Review grid & sign-off" },
         { key: "old", label: "Rows / CSV" },
@@ -59,16 +59,13 @@ function OldReview() {
               <Tog label="Hide USAGE rows" on={f.hideusage} onPick={(v) => c.set({ hideusage: v ? null : "0" })} help="Screen only: the CSV always has every row" />
             </Controls>
             <KpiRow items={[
-              { label: "Objects", value: k.objects }, { label: "Users", value: k.users },
+              { label: "Users", value: k.users, caption: k.hidden_usage ? `${k.hidden_usage} USAGE rows hidden` : undefined },
               { label: "Not active", value: k.not_active, tone: k.not_active ? "warn" : null },
-              { label: "Rows", value: k.rows, caption: k.hidden_usage ? `${k.hidden_usage} USAGE rows hidden` : undefined },
               { label: "Admin rows", value: k.admin_rows, tone: k.admin_rows ? "bad" : null },
-              { label: "Sensitive objects", value: k.sensitive, tone: k.sensitive ? "warn" : null },
             ]} />
-            <p className="ae-muted">{f.db === "*" ? "Every database." : `Database ${f.db} only.`}</p>
             {d.note && <Banner tone="info" title={d.note} />}
-            <Tabs active={t} onChange={(k) => { setTab(k); setPg((o) => ({ ...o, at: 0 })); }} tabs={[
-              { key: "sens", label: "Sensitive objects", count: d.counts.sens, tone: "warn" },
+            <Tabs nav={2} active={t} onChange={(k) => { setTab(k); setPg((o) => ({ ...o, at: 0 })); }} tabs={[
+              { key: "sens", label: "Sensitive", count: d.counts.sens, tone: "warn" },
               { key: "all", label: "All", count: d.counts.all },
             ]} />
             <Card scroll>

@@ -17,15 +17,16 @@ export function RulesPageView() {
   const c = useApp();
   const csvOn = useCsv();
   const off = useSaved(rulesOff);
-  const [all, setAll] = useState(false); // Risks & change plan: also the findings of rules turned off
-  const [f, setF] = useState(NONE); // Rule checks filters as typed; the search goes to the server after a pause
+  const [all, setAll] = useState(false); // Change plan: also the findings of rules turned off
+  const [f, setF] = useState(NONE); // Findings filters as typed; the search goes to the server after a pause
   const [q0, setQ0] = useState("");
   useEffect(() => { const t = setTimeout(() => setQ0(f.q), 300); return () => clearTimeout(t); }, [f.q]);
-  const tab = c.params.part ?? "findings"; // part=: the Rule checks tab, linkable (the side menu opens admins and stale)
-  const setTab = (k: string) => c.set({ part: k === "findings" ? null : k, show: null });
   const show = c.params.show === "fixes" || c.params.show === "list" ? c.params.show : "checks"; // the old page first
   const q = rulesQuery(apiParams(c), show, all ? [] : off, show === "checks" ? { ...f, q: q0 } : NONE);
   const s = useApi<RulesPage>("rules", q);
+  const tab = c.params.part === "admins" || c.params.part === "stale" ? c.params.part : show; // part=: linkable from other pages
+  const pick = (k: string) => c.set(k === "admins" || k === "stale" ? { part: k, show: null }
+    : k === "checks" ? { show: null, part: null, sev: null, rule: null } : { show: k, part: null });
   return (
     <>
       <Head title="Risks & fixes" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
@@ -44,22 +45,17 @@ export function RulesPageView() {
           <>
             {unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read: rows are unknown for">
               <NameList items={unknown} onOpen={(o) => c.nav("object", { name: o })} /></Banner>}
-            <Tabs nav active={show} onChange={(k) => c.set({ show: k === "checks" ? null : k })} tabs={[
-              { key: "checks", label: "Rule checks", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
-              { key: "fixes", label: "Risks & change plan" },
-              { key: "list", label: "Rules", count: c.meta.rules.length },
-            ]} />
-            {show !== "checks" && chips}
-            {show === "fixes" && <RisksTab key={scope.join()} d={d} q={q} all={all} setAll={setAll} />}
-            {show === "list" && <RuleList d={d} />}
-            {show === "checks" && <>
-            {/* in the page only: the side menu keeps three levels, and has these two as shortcuts of its own */}
-            <Tabs active={tab} onChange={setTab} tabs={[
-              { key: "findings", label: "Findings", count: d.total },
+            <Tabs nav active={tab} onChange={pick} tabs={[
+              { key: "checks", label: "Findings", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
+              { key: "fixes", label: "Change plan" },
               { key: "admins", label: "Admin holders", count: d.admins_total, tone: d.admins_total ? "bad" : null },
               { key: "stale", label: "Dormant & disabled", count: d.stale_total, tone: d.stale_total ? "warn" : null },
+              { key: "list", label: "Rules", count: c.meta.rules.length },
             ]} />
-            {tab === "findings" && (
+            {(tab === "fixes" || tab === "list") && chips}
+            {tab === "fixes" && <RisksTab key={scope.join()} d={d} q={q} all={all} setAll={setAll} />}
+            {tab === "list" && <RuleList d={d} />}
+            {tab === "checks" && (
               <Card>
                 {d.filters.rule ? <RuleHead d={d} /> : chips}
                 <FindingGroups key={scope.join()} d={d} q={q} f={f} setF={setF} />
@@ -78,7 +74,6 @@ export function RulesPageView() {
                 <StaleTable d={d} />
               </Card>
             )}
-            </>}
           </>
         );
       }}</Load>
@@ -86,7 +81,7 @@ export function RulesPageView() {
   );
 }
 
-/** Rule checks > Findings: severity tabs and filters answered by the server, one group per rule (most people
+/** Findings: severity tabs and filters answered by the server, one group per rule (most people
  * affected first); an opened group loads its findings a page at a time, an opened finding its fix. */
 function FindingGroups({ d, q, f, setF }: {
   d: RulesPage; q: Record<string, string | undefined>; f: Filters; setF: (f: Filters) => void;
@@ -98,9 +93,11 @@ function FindingGroups({ d, q, f, setF }: {
   if (!all && !why) return null;
   return (
     <div className="ae-findings">
-      <Tabs active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
-        tabs={[...SEVERITIES.filter((s) => d.sev_counts[s]).map((s) => ({ key: s, label: s, count: d.sev_counts[s], tone: s === "Medium" ? "warn" as const : s === "Low" ? null : "bad" as const })),
-          { key: "All", label: "All", count: all }]} />
+      <div className="ae-wide-hide">{/* wide with the menu open: the side menu's findings pick the severity */}
+        <Tabs active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
+          tabs={[...SEVERITIES.filter((s) => d.sev_counts[s]).map((s) => ({ key: s, label: s, count: d.sev_counts[s], tone: s === "Medium" ? "warn" as const : s === "Low" ? null : "bad" as const })),
+            { key: "All", label: "All", count: all }]} />
+      </div>
       <div className="ae-controls ae-fd-filter">
         {d.areas.length > 1 && (
           <select className="ae-input" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} aria-label="Area">
@@ -138,8 +135,13 @@ function RuleHead({ d }: { d: RulesPage }) {
         <div><dt>Roles and users</dt><dd>{d.groups_total.toLocaleString()}</dd></div>
         {r.area && <div><dt>Area</dt><dd>{r.area}</dd></div>}
       </dl>
-      {r.meaning && <p><b>What it means.</b> {r.meaning}</p>}
-      {r.fix && <p><b>How to fix.</b> {r.fix}</p>}
+      {(r.meaning || r.fix) && (
+        <details>
+          <summary>About this rule</summary>
+          {r.meaning && <p><b>What it means.</b> {r.meaning}</p>}
+          {r.fix && <p><b>How to fix.</b> {r.fix}</p>}
+        </details>
+      )}
     </div>
   );
 }
@@ -208,8 +210,8 @@ function Line({ f, refs, onOpen, view }: { f: FindingRow; refs: Refs; onOpen: (i
   );
 }
 
-/** Users with an admin role or an account privilege, with their shortest path (Rule checks, Admin holders preset). */
-/** Rule checks "Dormant & disabled": status split, then one row per person with what to look at first. */
+/** Users with an admin role or an account privilege, with their shortest path (Risks & fixes > Admin holders, Object > Who holds an admin role). */
+/** Risks & fixes > Dormant & disabled: status split, then one row per person with what to look at first. */
 function StaleTable({ d }: { d: RulesPage }) {
   const c = useApp();
   const n = (st: string) => d.stale_split[st] ?? 0;

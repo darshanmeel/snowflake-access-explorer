@@ -304,6 +304,7 @@ def test_check():
         us = js(f"/api/check?name={who}&obj=HR.PEOPLE.TBL_EMPLOYEE&priv=USAGE")
         assert us["priv"] == "USAGE" and us["object"] == "HR.PEOPLE.TBL_EMPLOYEE" and "USAGE" in us["privileges"]
         assert us["answer"]["yes"] == all(x["held"] for x in us["usage"]) and len(us["held"]) == 2, us["answer"]
+        assert not us["answer"]["yes"] or us["paths"] or us["owner"] or us["admin_paths"]  # a Yes shows its way
         assert all(q["path"][-1] in ("HR", "HR.PEOPLE") for q in us["paths"])
     assert no["answer"]["how"] in ("none", "paths", "owner", "admin")
     for u in a.users:
@@ -1947,7 +1948,7 @@ def test_risks():  # the risk strip at the top of Access Overview, Role paths, W
         assert js(clean)["risks"] == [], clean  # the page says "No risks found"
     r = js(f"/api/role?name={a.FUNC}ENGINEER")["risks"]
     assert ok(r) == ok(js(f"/api/access?role={a.FUNC}ENGINEER")["risks"])  # one function, both pages
-    assert [x["link"] for x in r[:2]] == [{"label": "Account powers", "page": "access", "params": {"role": a.FUNC + "ENGINEER", "show": "detail"}},
+    assert [x["link"] for x in r[:2]] == [{"label": "Account powers", "page": "access", "params": {"role": a.FUNC + "ENGINEER", "show": "runs"}},
                                           {"label": "Column by column", "page": "see", "params": {"role": a.FUNC + "ENGINEER", "show": "cards"}}]
     assert ok(js("/api/role?name=SYSADMIN")["risks"])[0].startswith("Is admin role SYSADMIN")
     t = ok(js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["risks"])

@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
-import { AgeBars, Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, type BarPart } from "../components";
+import { AgeBars, Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, Tabs, type BarPart } from "../components";
 import { areaTakeaway, attention, busiest, depthRows, depthTakeaway, peopleTakeaway, weekend } from "./homedata";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
@@ -67,9 +67,8 @@ const GROUP: [string, string][] = [["user", "People"], ["role", "Roles"], ["ware
 export const groupOf = (i: Pick<FindItem, "kind" | "type">) =>
   i.kind === "user" ? "user" : i.kind !== "object" ? "role" : i.type === "WAREHOUSE" ? "warehouse" : "object";
 
-/** Hero quick links: questions first, then the pages to explore (only those in the nav). */
-const QUICK: [string, Page[]][] = [["Ask a question", ["check", "compare", "whatif", "request"]],
-  ["Explore", ["graph", "flow", "usage", "changes", "objuse"]]];
+/** Hero quick links: the questions (only those in the nav; the nav has the pages to explore). */
+const QUICK: [string, Page[]][] = [["Ask a question", ["check", "compare", "whatif", "request"]]];
 
 export function HomePageView() {
   const c = useApp();
@@ -103,6 +102,7 @@ export function HomePageView() {
     else if (hits.q === q && items[0]) openItem(items[0]); // Enter waits for the hits of the text now in the box
   };
   const rec = recent();
+  const [allRec, setAllRec] = useState(false);
   const first = items[0], me = c.meta.default_user;
   const who: Who | null = first ? { kind: first.kind, id: first.id, name: first.name } : me ? { kind: "user", id: me, name: me } : null;
   const links = shortcuts(c.meta.pages.map((p) => p.key), who);
@@ -170,8 +170,9 @@ export function HomePageView() {
         {rec.length > 0 && (
           <div className="ae-recent" role="group" aria-label="Recently viewed">
             <span className="ae-muted" aria-hidden>Recently viewed</span>
-            {rec.map((r) => <button type="button" key={r.id} className="ae-pchip" title={r.label}
+            {(allRec ? rec : rec.slice(0, 3)).map((r) => <button type="button" key={r.id} className="ae-pchip" title={r.label}
               onClick={() => (r.page === "user" ? c.nav("access", { user: r.label }) : r.page === "role" ? c.nav("access", { role: r.id }) : c.nav(r.page, { name: r.id }))}>{r.label}</button>)}
+            {rec.length > 3 && <button type="button" className="ae-pchip ae-chip-more" onClick={() => setAllRec(!allRec)}>{allRec ? "show less" : `+${rec.length - 3} more`}</button>}
           </div>
         )}
       </section>
@@ -236,8 +237,14 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
   const ruleN = Object.values(d.per_rule ?? {}).filter(Boolean).length;
   const stale = statusParts(k.stale.by_status);
   const people = statusParts(k.people.by_status, true);
+  const tab = c.params.show === "glance" || c.params.show === "changes" ? c.params.show : "risks";
   return (
     <>
+      <Tabs nav active={tab} onChange={(t) => c.set({ show: t === "risks" ? null : t })} tabs={[
+        { key: "risks", label: "Risks", count: grantsOff ? null : total },
+        { key: "glance", label: "At a glance" },
+        { key: "changes", label: "Changes", count: k.changes?.counts?.all ?? null }]} />
+      {tab === "risks" && <>
       <Attention d={d} />
       <div className="ae-home-two">
         <Card title="Act first" sub="Critical, then high. Within each, the rarest first: small lists are quick wins."
@@ -271,17 +278,16 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
             </div>
           )}
           <StackBar label={`Findings: ${sevParts(risks).map((p) => `${p.label} ${p.value}`).join(", ")}`} parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
-          <div className="ae-home-sub">
-            <h4>By area <span className="ae-muted ae-hc-unit">bar length on a √ scale</span></h4>
+          <details className="ae-home-sub">
+            <summary>By area</summary>
             <Areas ruleSev={d.rule_sev ?? {}} />
-          </div>
+          </details>
           {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
         </Card>
       </div>
 
       <div className="ae-home-grid">
-        <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>}
-          sub={`An admin role, or an account privilege not given to everyone through PUBLIC. ${plural(ad.service, "is a service user", "are service users")}.`}>
+        <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>} sub="Admin role or account privilege">
           <HBars label="Admin holders per admin role" rows={ad.by_role.map((r) => ({ key: r.role, label: r.role, n: r.people, cls: "high" }))
             .concat(ad.account_only ? [{ key: "acct", label: "Account privilege only", n: ad.account_only, cls: "medium" }] : [])} />
           <div className="ae-home-sub">
@@ -297,7 +303,7 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
           <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("rules", { part: "admins" })}>All {plural(ad.total, "holder")} →</button>
         </Card>
         <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{nr(usersOff ?? grantsOff, k.stale.total)}</b></>}
-          sub="People who still hold roles (rules 8 and 16). Dormant service users are left out, so People shows more.">
+          sub="Still hold roles; dormant service users left out">
           {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <>
             <StackBar parts={stale} legend={false} />
             <ul className="ae-keyrows">
@@ -321,8 +327,9 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
           <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("sensitive", {})}>Open Sensitive data →</button>
         </Card>
       </div>
+      </>}
 
-      <section className="ae-home-sec" aria-labelledby="ae-glance-h">
+      {tab === "glance" && <section className="ae-home-sec" aria-labelledby="ae-glance-h">
         <h2 id="ae-glance-h" className="ae-home-sec-h">Your Snowflake at a glance</h2>
         <div className="ae-home-grid">
           <Card title={<>People <b className="ae-hc-n">{d.counts.users.toLocaleString()}</b></>}
@@ -348,7 +355,6 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
             right={<button type="button" className="ae-btn" onClick={() => c.nav("object", k.biggest[big][0] ? { name: k.biggest[big][0].name } : {})}>Open</button>}>
             <FilterChips label="Count by" value={big} onPick={(v) => setBig(v as typeof big)} items={[{ key: "schemas", label: "Schemas" }, { key: "databases", label: "Databases" }]} />
             <HBars mono label={`Objects per ${big === "schemas" ? "schema" : "database"}`} rows={k.biggest[big].map((x) => ({ key: x.name, label: x.name, n: x.n, cls: "low" }))} />
-            <p className="ae-muted">Objects in each; the schemas and databases themselves are not counted.</p>
           </Card>
           <Card title={<>Activity {k.activity.ok && <><b className="ae-hc-n">{k.activity.users.toLocaleString()}</b> <span className="ae-muted ae-hc-unit">people queried</span></>}</>}
             right={<button type="button" className="ae-btn" onClick={() => c.nav("rules", { area: "Activity", show: "list" })}>Rules 24–28</button>}>
@@ -361,15 +367,14 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
                       <span className="ae-muted">Rule {n}</span><b>{(d.per_rule![n] ?? 0).toLocaleString()}</b></button>
                   ))}
                 </div>
-                <p className="ae-muted">Findings from the activity rules.</p>
               </div>
             )}
           </Card>
           <ObjUseCard u={k.objuse} />
         </div>
-      </section>
+      </section>}
 
-      {k.changes && (k.changes.counts ? (
+      {tab === "changes" && k.changes && (k.changes.counts ? (
         <Card title={<>What changed <b className="ae-hc-n">{k.changes.counts.all.toLocaleString()}</b></>} sub={`since ${k.changes.before}`}
           right={<button type="button" className="ae-btn" onClick={() => c.nav("changes", {})}>Open</button>}>
           <StackBar parts={[{ key: "gain", label: "Gained", value: k.changes.counts.gain, cls: "medium" }, { key: "lose", label: "Lost", value: k.changes.counts.lose, cls: "low" }]} />
@@ -447,7 +452,7 @@ function DepthCard({ k }: { k: HomeCards }) {
 function ObjUseCard({ u }: { u: HomeCards["objuse"] }) {
   const c = useApp();
   return (
-    <Card title={<>Object activity {u.ok && <b className="ae-hc-n">{u.unused.toLocaleString()}</b>}</>} sub={u.ok ? `objects not used in ${u.days} days${u.unused_new ? `, ${u.unused_new.toLocaleString()} of them new or changed` : ""}` : undefined}
+    <Card title="Object activity" sub={u.ok ? `${u.unused.toLocaleString()} objects not used in ${u.days} days${u.unused_new ? `, ${u.unused_new.toLocaleString()} of them new or changed` : ""}` : undefined}
       right={<button type="button" className="ae-btn" onClick={() => c.nav("objuse", {})}>Open</button>}>
       {u.notes.map((n) => <p key={n} className="ae-muted">Not read: {n}</p>)}
       <AgeBars types={u.types} onPick={(t) => c.nav("objuse", { type: t })} />

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { SensitivePage } from "../api/types";
-import { Banner, Card, EmptyState, KpiRow, ListToolbar, MaskDots, MiniBar, Tabs, Waiting, type BarPart } from "../components";
+import { Banner, Card, EmptyState, ListToolbar, MaskDots, MiniBar, Tabs, Waiting, type BarPart } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { Catalog } from "./Catalog";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog, unread } from "./common";
@@ -40,9 +40,7 @@ export function SensitivePageView() {
   const pol = unread(c.meta, "policies", true), polOff = c.meta.sources.policies === "UNAVAILABLE"; // off: masked is unknown
   return (
     <>
-      <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them."
-        right={<div className="ae-row0"><button type="button" className="ae-btn" onClick={() => c.nav("flow", {})}>Data flow</button>
-          <button type="button" className="ae-btn" onClick={() => c.nav("review", { show: "grid" })}>Review & sign-off</button></div>} />
+      <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them." />
       <Load s={s}>{(d) => {
         if (d.state !== "ok") return <><Banner tone="info" title="Nothing to show" lines={[WHY[d.state] ?? d.state]} />{d.row_total > 0 && <RowTables d={d} />}</>;
         const k = d.kpis;
@@ -56,16 +54,9 @@ export function SensitivePageView() {
               <Sel label="Database" value={d.filters.db} onPick={(v) => c.set({ db: v, ...first })} options={[["", "All databases"], ...d.filters.dbs.map((t): [string, string] => [t, t])]} />
               <Tog label="People only" on={d.filters.people} onPick={(v) => c.set({ people: v ? "1" : null, ...first })} />
             </Controls>
-            <KpiRow items={[
-              { label: "Sensitive objects", value: k.objects, caption: `${k.columns} columns, ${k.whole} whole-object` },
-              { label: "Users who can read", value: k.readers, caption: `${k.people} people · ${k.disabled} disabled · ${k.service} service · ${k.admin} only through an admin role` },
-              { label: "Admin readers", value: k.admin, tone: k.admin ? "bad" : null },
-              { label: "Disabled readers", value: k.disabled, tone: k.disabled ? "warn" : null },
-              { label: "Unmasked columns", value: polOff ? "unknown" : k.unmasked, tone: k.unmasked && !polOff ? "bad" : null },
-            ]} />
-            {d.filters.people && <p className="ae-muted">The tiles count every reader; People only filters the tables.</p>}
+            <p className="ae-muted">{`${k.columns} columns, ${k.whole} whole-object · readers: ${k.people} people, ${k.disabled} disabled, ${k.service} service`}</p>
+            {d.filters.people && <p className="ae-muted">Counts are every reader; People only filters the tables.</p>}
             <PolicyNote />
-            <p className="ae-muted"><button type="button" className="ae-link" onClick={() => c.nav("compare", { scope: "sensitive" })}>Compare two people or roles on sensitive data →</button></p>
             <Tabs nav active={part} onChange={(k) => { setPart(k); c.set({ show: LINKED.includes(k) ? k : null }); }} tabs={[
               { key: "objects", label: "Sensitive objects", count: d.objects_total },
               { key: "readers", label: "Users who can read them", count: d.readers_total },

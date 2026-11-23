@@ -1,12 +1,12 @@
 // Screen 1: My access / a person or role. Answer first, one row per object at its highest level, "How?" on demand.
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
-import type { AccessObject, AccessPage, ListItem } from "../api/types";
+import type { AccessObject, AccessPage, ListItem, RolePage } from "../api/types";
 import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Pager, StackBar, Toggle } from "../components";
-import { AppCtx, useApp, useOpen } from "../ctx";
+import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
-import { RolePageView } from "./Role";
+import { RolePageView, roleTabs } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick, PickFirst, Risks, Sel, unread } from "./common";
 import { ladderParts, recent, remember } from "./Home";
@@ -17,6 +17,7 @@ const nameOf = (o: AccessObject) => o.label ?? o.object;
 /** A long role name cut in the middle, where technical role names differ least (T_DB_SCHEMA_..._READ). */
 export const mid = (s: string, n = 30) => (s.length > n ? `${s.slice(0, Math.ceil(n / 2) - 1)}…${s.slice(-Math.floor(n / 2))}` : s);
 const HEAT_MIN = 15; // the server's HEAT: more schemas than this get a search box
+const ROLE_PARTS = ["privs", "held", "holds", "sees", "rw"]; // the Role page's parts, a role's own tabs here
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 const subjectOf = (c: ReturnType<typeof useApp>) => {
@@ -59,6 +60,7 @@ function Body({ d }: { d: AccessPage }) {
   const [otype, setOtype] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [cell, setCell] = useState<{ schema: string; min: string } | null>(null);
+  const [whyAll, setWhyAll] = useState(false);
   const [sq, setSq] = useState(""); // q as sent, a moment after the last key
   const [page, setPage] = useState(0);
   useEffect(() => { const t = setTimeout(() => setSq(q), 250); return () => clearTimeout(t); }, [q]);
@@ -71,8 +73,11 @@ function Body({ d }: { d: AccessPage }) {
   const w = d.who, n = d.counts, user = w.kind === "user";
   const adm = d.admin_roles ?? [], adminRole = !user && adm.includes(w.name); // admin role links are dropped: zero would read as safe
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
-  const asked = ["summary", "privs", "detail", "history", "activity"].includes(c.params.show ?? "") ? c.params.show! : "overview"; // the summary first, the long lists on their own tabs
-  const show = asked === "privs" && !user ? "detail" : asked; // a role has no Privileges tab: picking one from a person's keeps show
+  const rd = useApi<RolePage>(user ? null : "role", { ...apiParams(inner(c, w.name, false)), name: w.name }).data; // a role's own tabs, the same fetch they show
+  const rtabs = user ? [] : roleTabs(rd);
+  const part = !user && c.params.show === "detail" && ROLE_PARTS.includes(c.params.part ?? "") ? c.params.part! : c.params.show ?? ""; // old links: show=detail&part=held
+  const keys = ["summary", "privs", "detail", "runs", "history", "activity", ...(user ? [] : ROLE_PARTS)];
+  const show = keys.includes(part) ? part : "overview"; // the summary first, the long lists on their own tabs
   // the list is filtered, sorted and paged on the server: a big user has 100k+ objects
   const ask = { ...subjectOf(c), filter: lvl === "all" ? null : lvl, q: sq || null, usage: usage ? "1" : null, group: group === "none" ? null : group,
     sort: sort === "risk" ? null : sort, otype: otype || null, cell: cell?.schema, min: cell?.min, offset: page ? String(page * d.limit) : null };
@@ -90,25 +95,30 @@ function Body({ d }: { d: AccessPage }) {
   return (
     <>
       <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
-        line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${status}` : `${w.type} · held by ${plural(w.held_by?.users ?? 0, "person")} and ${plural(w.held_by?.roles ?? 0, "role")}`}
+        line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${status} · default role ${w.default_role ?? "none"} · secondary roles ${w.secondary_all ? "ALL" : "none"} · default warehouse ${w.default_warehouse ?? "none"}`
+          : <span className={adminRole ? "ae-bad" : undefined}>{w.type}{w.owner.length ? ` · owner ${w.owner.join(", ")}` : ""} · held by {plural(w.held_by?.users ?? 0, "person")} and {plural(w.held_by?.roles ?? 0, "role")}</span>}
         roles={user ? d.why.map((r) => ({ id: r.role, note: r.note === "everyone" ? "" : r.note, kind: r.kind })) : undefined} />
-      <div className="ae-actions">
+      {show === "overview" && <div className="ae-actions">
         <button type="button" className="ae-btn" onClick={() => c.nav("check", user ? { name: w.name } : { role: w.name })}>Can they?</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", user ? { user: w.name } : { role: w.name })}>Show as graph</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
-        <button type="button" className="ae-btn" title="Every grant next to the query history: up to a minute for a big person or role" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
-      </div>
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "overview" ? null : k })} tabs={[
+        <details className="ae-more"><summary className="ae-btn">More</summary>
+          <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
+          <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
+          <button type="button" className="ae-btn" title="Every grant next to the query history: up to a minute for a big person or role" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
+        </details>
+      </div>}
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "overview" ? null : k, part: null })} tabs={[
         { key: "overview", label: "Overview" },
         { key: "summary", label: "Objects", count: d.data },
-        ...(user ? [{ key: "privs", label: "Privileges" }, { key: "detail", label: "Diagram" }]
-          : [{ key: "detail", label: "Diagram, held by & holds" }]),
+        user ? { key: "privs", label: "Privileges" } : rtabs[0],
+        { key: "detail", label: "Paths" },
+        ...rtabs.slice(1),
+        { key: "runs", label: "Can run", count: d.runs_total + d.powers_total, tone: d.powers_total > 0 ? "bad" as const : null },
         { key: "activity", label: "Activity" },
         { key: "history", label: "History" },
       ]} />
-      {show === "privs" && user && <Detail name={w.name} user pane="privs" />}
-      {show === "detail" && <Detail name={w.name} user={user} pane={user ? "diagram" : undefined} />}
+      {show === "detail" ? <Detail name={w.name} user={user} pane="diagram" />
+        : ROLE_PARTS.includes(show) ? <Detail name={w.name} user={user} pane={show} /> : null}
       {show === "activity" && <ActivityTab what={user ? "user" : "role"} name={w.name} />}
       {show === "history" && <ChangeFeed subject={w.id} />}
       {show === "overview" && <>
@@ -132,31 +142,12 @@ function Body({ d }: { d: AccessPage }) {
             onPick={(k) => { setLvl(lvl === k ? "all" : k); c.set({ show: "summary" }); }} />
         </div>
         <div className="ae-tile ae-tile-sens" title={tagsOff ? `${tagsOff.title}: sensitivity unknown` : undefined}><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{tagsOff ? "not read" : n.sensitive}</span></div>
-        <button type="button" className="ae-tile" onClick={() => document.getElementById("runs")?.scrollIntoView()}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
+        <button type="button" className="ae-tile" onClick={() => c.set({ show: "runs" })}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
       </div>
       <div>
-        <Card title="Where the access is" sub={`Objects per schema, each at the most they can do; riskiest ${d.heat_total > HEAT_MIN ? `${heat.heat.length} of ${d.heat_total} ` : ""}schemas first. Click a cell to filter the list.`}>
-          {d.heat_total > HEAT_MIN && <input className="ae-input" placeholder={`Search ${d.heat_total} schemas`} value={hq} onChange={(e) => setHq(e.target.value)} aria-label="Search schemas" />}
-          {heat.heat.length ? (
-            <div className={`ae-heat${sq2 && hs.loading ? " ae-fade" : ""}`} role="table">
-              <div role="row" className="ae-heat-h"><span>Database</span><span>Schema</span><span>Read only</span><span>Change</span><span>Own</span><span>Sensitive</span></div>
-              {heat.heat.map((h) => (
-                <div role="row" key={h.schema}>
-                  <span className="ae-mono" title={h.database}>{h.database}</span>
-                  <span className="ae-mono" title={h.name}>{h.name || "·"}</span>
-                  {(["read", "change", "own", "sensitive"] as const).map((k) => (
-                    <button type="button" key={k} disabled={!h[k]} className={`ae-heat-c ${h[k] ? (k === "sensitive" ? "ae-sens-tag" : `ae-lvl-${k}`) : ""}${cell?.schema === h.schema && cell.min === k ? " on" : ""}`}
-                      onClick={() => { setCell({ schema: h.schema, min: k }); c.set({ show: "summary" }); }}>{h[k] || "·"}</button>
-                  ))}
-                </div>
-              ))}
-              {heat.heat_total > heat.heat.length && <div role="row" className="ae-muted">{plural(heat.heat_total - heat.heat.length, "more schema")}: search to find one</div>}
-            </div>
-          ) : sq2 ? <EmptyState title="No schema matches">Clear the search.</EmptyState> : <EmptyState title="No data objects">Only names, runnable things or account powers.</EmptyState>}
-        </Card>
         <Card title="Why they have it" sub={`${plural(d.roles, "role")} · deepest ${d.deepest}`}>
           <ul className="ae-why">
-            {d.why.map((r) => (
+            {(whyAll ? d.why : d.why.slice(0, 3)).map((r) => (
               <li key={r.role}>
                 <div><button type="button" className={`ae-pchip ae-pchip-${r.kind}`} onClick={() => o.open(r.role)}>{r.role}</button> <span className="ae-muted">{r.note}</span></div>
                 {r.kids.length > 0 && <div className="ae-why-kids">{r.kids.map((k) => <button type="button" key={k} className="ae-pchip" onClick={() => o.open(k)}>{k}</button>)}
@@ -164,10 +155,13 @@ function Body({ d }: { d: AccessPage }) {
               </li>
             ))}
           </ul>
-          {d.why_more > 0 && <p className="ae-muted">{plural(d.why_more, "more role")} hold{d.why_more === 1 ? "s" : ""} it: <button type="button" className="ae-link" onClick={() => c.nav("role", { name: w.name })}>Role paths</button></p>}
+          {d.why.length > 3 && <button type="button" className="ae-link" onClick={() => setWhyAll(!whyAll)}>{whyAll ? "show less" : `+${d.why.length - 3} more`}</button>}
+          {d.why_more > 0 && <p className="ae-muted">{plural(d.why_more, "more role")} hold{d.why_more === 1 ? "s" : ""} it: <button type="button" className="ae-link" onClick={() => c.set({ show: "held", part: null })}>Held by</button></p>}
           {w.secondary_all && <p className="ae-note">Secondary roles are <b>ALL</b>, so every query uses all of these roles at once.</p>}
         </Card>
       </div>
+      </>}
+      {show === "runs" && <>
       <div className="ae-two" id="runs">
         <Card title="Things they can run" sub="Warehouses, tasks, functions and procedures: not on the ladder.">
           {runs.length ? <Items xs={runs} open={o.open} rule={ruleLink} /> : <EmptyState title="Nothing to run" />}
@@ -180,6 +174,25 @@ function Body({ d }: { d: AccessPage }) {
       </div>
       </>}
       {show === "summary" && <>
+      <Card title="Where the access is" sub={`Objects per schema, each at the most they can do; riskiest ${d.heat_total > HEAT_MIN ? `${heat.heat.length} of ${d.heat_total} ` : ""}schemas first. Click a cell to filter the list.`}>
+        {d.heat_total > HEAT_MIN && <input className="ae-input" placeholder={`Search ${d.heat_total} schemas`} value={hq} onChange={(e) => setHq(e.target.value)} aria-label="Search schemas" />}
+        {heat.heat.length ? (
+          <div className={`ae-heat${sq2 && hs.loading ? " ae-fade" : ""}`} role="table">
+            <div role="row" className="ae-heat-h"><span>Database</span><span>Schema</span><span>Read only</span><span>Change</span><span>Own</span><span>Sensitive</span></div>
+            {heat.heat.map((h) => (
+              <div role="row" key={h.schema}>
+                <span className="ae-mono" title={h.database}>{h.database}</span>
+                <span className="ae-mono" title={h.name}>{h.name || "·"}</span>
+                {(["read", "change", "own", "sensitive"] as const).map((k) => (
+                  <button type="button" key={k} disabled={!h[k]} className={`ae-heat-c ${h[k] ? (k === "sensitive" ? "ae-sens-tag" : `ae-lvl-${k}`) : ""}${cell?.schema === h.schema && cell.min === k ? " on" : ""}`}
+                    onClick={() => { setCell({ schema: h.schema, min: k }); c.set({ show: "summary" }); }}>{h[k] || "·"}</button>
+                ))}
+              </div>
+            ))}
+            {heat.heat_total > heat.heat.length && <div role="row" className="ae-muted">{plural(heat.heat_total - heat.heat.length, "more schema")}: search to find one</div>}
+          </div>
+        ) : sq2 ? <EmptyState title="No schema matches">Clear the search.</EmptyState> : <EmptyState title="No data objects">Only names, runnable things or account powers.</EmptyState>}
+      </Card>
       <Card title="Data they can access" sub="One row per object, at the most it allows. Riskiest first.">
         <ListToolbar search={q} onSearch={setQ} onCsv={() => saveCsv("access.csv", { ...ask, offset: null }, `${w.name}_access.csv`)}>
           <FilterChips label="Filter by access" value={lvl} onPick={setLvl} items={[
@@ -271,15 +284,18 @@ function How({ x, who, user }: { x: AccessObject; who: string; user: boolean }) 
   );
 }
 
-/** The full User paths / Role paths page (role hierarchy diagram, privilege tabs with their diagrams, detail tables)
- * inside this screen, for the same subject. */
-function Detail({ name, user, pane }: { name: string; user: boolean; pane?: string }) {
-  const c = useApp();
+/** The User or Role page's context inside this screen, for the same subject: `pane` is the one part it shows. */
+const inner = (c: ReturnType<typeof useApp>, name: string, user: boolean, pane?: string) => {
   const { user: _u, role: _r, show: _s, ...rest } = c.params;
-  const inner = { ...c, page: (user ? "user" : "role") as typeof c.page, params: { ...rest, name, ...(pane ? { pane } : {}) }, inside: true };
+  return { ...c, page: (user ? "user" : "role") as typeof c.page, params: { ...rest, name, ...(pane ? { pane } : {}) }, inside: true };
+};
+
+/** One part of the User or Role page (its diagram, privilege tabs, held by, ...) as this screen's tab. */
+function Detail({ name, user, pane }: { name: string; user: boolean; pane: string }) {
+  const c = useApp();
   return (
     <div className="ae-embed">
-      <AppCtx.Provider value={inner}>{user ? <UserPage /> : <RolePageView />}</AppCtx.Provider>
+      <AppCtx.Provider value={inner(c, name, user, pane)}>{user ? <UserPage /> : <RolePageView />}</AppCtx.Provider>
     </div>
   );
 }

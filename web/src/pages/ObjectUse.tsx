@@ -37,7 +37,6 @@ function Body({ d }: { d: ObjUsePage }) {
     <>
       <p className="ae-answer">
         <b>{plural(d.tabs.unused, "object")}</b> not used in the last {d.days} days{d.unused_new > 0 && <> ({d.unused_new.toLocaleString()} of them new or changed)</>}
-        {d.tabs.read_only + d.tabs.write_only > 0 && <> · tables <b>read, never written</b>: {d.tabs.read_only.toLocaleString()} · <b>written, never read</b>: {d.tabs.write_only.toLocaleString()}</>}
         {d.new > 0 && <> · {plural(d.new, "object")} created or changed in the activity window</>}.
       </p>
       {!d.available && d.reason && <p className="ae-warn-word">{d.reason}</p>}
@@ -62,13 +61,15 @@ function Body({ d }: { d: ObjUsePage }) {
       )}
       <Card title={TITLE[tab](d.days)} sub={SUB[tab]}>
         <Table d={d} />
-        <p className="ae-muted ae-foot">
-          Tables and views: ACCESS_HISTORY over {d.history.data} days, reads through a view count as reads{d.base_read ? "" : " (this snapshot has direct reads only)"}.
-          {" "}Warehouses: queries run, QUERY_HISTORY over {d.history.warehouse} days. Streamlit apps: queries for their viewers over {d.history.app} days.
+        <p className="ae-muted ae-foot">{`History: data ${d.history.data} days · warehouses ${d.history.warehouse} days · apps ${d.history.app} days.`}</p>
+        <details className="ae-muted ae-small">
+          <summary>How use is counted</summary>
+          Tables and views: ACCESS_HISTORY, reads through a view count as reads{d.base_read ? "" : " (this snapshot has direct reads only)"}.
+          {" "}Warehouses: queries run, QUERY_HISTORY. Streamlit apps: queries for their viewers.
           {" "}A warehouse or app not used in its history counts as no activity data, and is left out of a longer window: older use is unknown.
           {" "}Procedures, functions and tasks have no use in the snapshot: "no activity data", never "not used".
           {d.source === "demo values" && " These are demo values."}
-        </p>
+        </details>
       </Card>
     </>
   );
@@ -79,10 +80,10 @@ const TITLE: Record<(typeof TABS)[number], (days: number) => string> = {
   write_only: (n) => `Tables written, never read in ${n} days`, all: (n) => `Every object, use in the last ${n} days`,
 };
 const SUB: Record<(typeof TABS)[number], string> = {
-  unused: "Never used first, then the longest unused. A new or changed object is marked: it may simply be new.",
-  read_only: "Read in the window, no inserts, updates or merges: a reference or a finished load. Views are never written, so they are left out.",
-  write_only: "Loaded in the window but nobody read it: a load nobody needs, or one read only later.",
-  all: "Every object; procedures, functions and tasks have no activity data.",
+  unused: "Never used first, then the longest unused.",
+  read_only: "Read, no inserts, updates or merges.",
+  write_only: "Loaded, but nobody read it.",
+  all: "Every object, by name.",
 };
 const SORT: Record<(typeof TABS)[number], { key: string; dir: 1 | -1 }> = {
   unused: { key: "days", dir: -1 }, read_only: { key: "read_q", dir: -1 }, write_only: { key: "write_q", dir: -1 }, all: { key: "object", dir: 1 },

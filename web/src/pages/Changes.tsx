@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { forget, useApi } from "../api/client";
 import type { ChangeEvent, ChangesPage, CheckPage, ListItem, WhoPage } from "../api/types";
-import { Card, EmptyState, FilterChips, FindingChip, GrantLink, Pager, Tabs } from "../components";
+import { Card, EmptyState, FindingChip, GrantLink, Pager, Tabs } from "../components";
 import { useApp } from "../ctx";
 import { useSaved } from "./changeplan";
 import { Head, Load, Pick, Sel } from "./common";
@@ -46,8 +46,8 @@ function Feed({ d }: { d: ChangesPage }) {
   return (
     <Card>
       <p className="ae-answer">{d.subject ? <>For <span className="ae-mono">{d.subject}</span>: {d.text?.replace(/^Since/, "since")}</> : d.text}</p>
-      {d.severity && <Strip s={d.severity} onPick={(k) => setF(k)} />}
-      <FilterChips label="Show" value={f} onPick={(k) => setF(k as Filter)} items={[
+      {d.severity && <Strip s={d.severity} />}
+      <Tabs nav={2} active={f} onChange={(k) => setF(k as Filter)} tabs={[
         { key: "all", label: "All", count: n.all }, { key: "gain", label: "Gained access", count: n.gain },
         { key: "lose", label: "Lost access", count: n.lose }, { key: "risk", label: "New findings", count: n.risk },
         { key: "sensitive", label: "Sensitive only", count: n.sensitive }]} />
@@ -69,10 +69,10 @@ function Feed({ d }: { d: ChangesPage }) {
 const SEVS = ["Critical", "High", "Medium", "Low"] as const;
 
 /** New findings against fixed ones, per severity: one row of blocks each, the worst first. */
-function Strip({ s, onPick }: { s: NonNullable<ChangesPage["severity"]>; onPick: (f: Filter) => void }) {
+function Strip({ s }: { s: NonNullable<ChangesPage["severity"]> }) {
   const total = (x: Record<string, number>) => SEVS.reduce((n, v) => n + (x[v] ?? 0), 0);
   const max = Math.max(1, total(s.new), total(s.fixed));
-  const row = (label: string, x: Record<string, number>, cls: string, f: Filter | null) => (
+  const row = (label: string, x: Record<string, number>, cls: string) => (
     <div className={`ae-strip-row ae-strip-${cls}`}>
       <span className="ae-strip-l">{label}</span>
       <span className="ae-strip-track">
@@ -80,13 +80,13 @@ function Strip({ s, onPick }: { s: NonNullable<ChangesPage["severity"]>; onPick:
         {!total(x) && <span className="ae-muted">none</span>}
       </span>
       <b className="ae-strip-n">{total(x)}</b>
-      {f && total(x) > 0 ? <button type="button" className="ae-link" onClick={() => onPick(f)}>show</button> : <span />}
+      <span />
     </div>
   );
   return (
     <div className="ae-strip" aria-label="Findings: new and fixed, per severity">
-      {row("New findings", s.new, "new", "risk")}
-      {row("Fixed", s.fixed, "fixed", null)}
+      {row("New findings", s.new, "new")}
+      {row("Fixed", s.fixed, "fixed")}
       <div className="ae-bar-legend">{SEVS.filter((v) => s.new[v] || s.fixed[v]).map((v) => <span key={v}><span className={`ae-dot2 ae-hc-${v}`} />{v}</span>)}</div>
     </div>
   );

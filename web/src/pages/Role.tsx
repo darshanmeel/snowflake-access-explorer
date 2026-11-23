@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
-import { Banner, Card, DataTable, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph } from "../components";
+import { Banner, Card, DataTable, EmptyState, FilterChips, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph, type TabItem } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, Risks, ScopePick, Sel, Tog } from "./common";
+import { Banners, col, Controls, DataViews, GraphCard, Head, Load, NameLink, pathCol, Pick, Risks, ScopePick, Sel, Tog } from "./common";
 import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
 type RW = RolePage["readonly_writes"][number];
 const CELL: Record<HoldCell, string> = { direct: "direct", inherited: "inherited", owner: "owner", lacks: "lacks" };
 
-/** What the role holds, one tab per object type with its count. */
+/** What the role holds, one object type at a time (a picker with its count). */
 function Holds({ d }: { d: RolePage }) {
   const c = useApp();
   const t = d.holds.types.find((x) => x.type === c.params.htype) ?? d.holds.types[0];
@@ -18,7 +18,11 @@ function Holds({ d }: { d: RolePage }) {
   type HR = (typeof t.rows)[number];
   return (
     <>
-      <Tabs active={t.type} onChange={(k) => c.set({ htype: k, h_offset: null })} tabs={d.holds.types.map((x) => ({ key: x.type, label: x.type.toLowerCase(), count: x.count }))} />
+      <Controls>
+        <Sel label="Type" value={t.type} onPick={(k) => c.set({ htype: k, h_offset: null })} options={d.holds.types.map((x): [string, string] => [x.type, `${x.type.toLowerCase()} (${x.count})`])} />
+        <Sel label="Show who lacks" value={d.filters.lacks} onPick={(v) => c.set({ lacks: v })}
+          options={[["", "(any)"], ...d.filters.gaps.map((x): [string, string] => [x, x])]} />
+      </Controls>
       <PagedTable key={t.type} path="role" at="h_offset" total={t.count} offset={t.offset} csv={`${d.role.name}_${t.type}.csv`} rows={t.rows}
         pick={(x: RolePage) => x.holds.types.find((y) => y.type === t.type)?.rows ?? []}
         columns={[col("o", "Object", (r: HR) => r.object, { wrap: "nowrap" }),
@@ -34,7 +38,7 @@ function revokeText(r: HeldRow) {
   return r.only_via.length ? `only via ${r.only_via.join(", ")}` : "keeps it other ways";
 }
 
-/** Who gets the role: a graph from the holders to the role (Users / Roles / All; the first of each kind on a big
+/** Who gets the role: a graph from the holders to the role (Users / Roles / All chips; the first of each kind on a big
  * account), the table under it a page at a time from GET held. */
 function HeldBy({ d }: { d: RolePage }) {
   const c = useApp();
@@ -47,7 +51,7 @@ function HeldBy({ d }: { d: RolePage }) {
     { kinds: d.refs.kinds, objectLabel: "This role", title: "Held by" }), [rows, d.refs.kinds]);
   return (
     <>
-      <Tabs active={tab} onChange={setTab} tabs={[
+      <FilterChips label="Show" value={tab} onPick={setTab} items={[
         { key: "users", label: "Users", count: h.users },
         { key: "roles", label: "Roles", count: h.roles },
         { key: "all", label: "All", count: h.total },
@@ -57,7 +61,7 @@ function HeldBy({ d }: { d: RolePage }) {
           <NameList items={d.usage.unused} total={d.usage.holders - d.usage.used} onOpen={(u) => c.nav("access", { user: u })} /></div>
       )}
       {rows.length > 0 && <Graph graph={g} theme={c.theme} onNodeClick={o.node} maxHeight={420} />}
-      {n > rows.length && <p className="ae-muted">The diagram draws the first {rows.length} of {n}, the shortest chains; the table has them all.</p>}
+      {n > rows.length && <p className="ae-muted">Diagram: first {rows.length} of {n}.</p>}
       <DataTable csv={`${d.role.name}_held_by_${tab}.csv`} rows={[]} server={{ path: "held", params: { ...apiParams(c), name: d.role.name, tab } }} rowTone={(r: HeldRow) => (r.kind === "admin" ? "bad" : r.loses_it ? "warn" : null)}
         columns={[
           col("g", "Grantee", (r: HeldRow) => r.grantee, { wrap: "nowrap", render: (r: HeldRow) => <NameLink id={r.id} refs={d.refs} label={r.grantee} /> }),
@@ -76,41 +80,54 @@ function HeldBy({ d }: { d: RolePage }) {
   );
 }
 
+/** A role's tabs after its diagram: on the Role page, and as the Access page's own tabs for a role (counts once loaded). */
+export const roleTabs = (d?: RolePage | null): TabItem[] => [
+  { key: "privs", label: "Privileges", count: d?.tabs.find((t) => t.key === "all")?.count ?? null },
+  { key: "held", label: "Held by", count: d?.held_by.total ?? null },
+  ...(d?.holds.types.length ? [{ key: "holds", label: "What it holds", count: d.holds.count }] : []),
+  ...(d?.can_read?.total ? [{ key: "sees", label: "All protected", count: d.can_read.total }] : []),
+  ...(d?.readonly_writes.length ? [{ key: "rw", label: "Read-only writes", count: d.readonly_writes.length, tone: "bad" as const }] : []),
+];
+
 export function RolePageView() {
   const c = useApp();
   const name = c.params.name ?? "";
   const s = useApi<RolePage>(name ? "role" : null, { ...apiParams(c), name });
   const o = useOpen(s.data?.refs);
-  const [part, setPart] = useState(c.params.part ?? "privs");
+  const pane = c.inside ? c.params.pane : undefined; // the Access page's tab this one part fills (diagram, privs, held, ...)
+  const [want, setPart] = useState(c.params.part ?? "diagram");
+  const ro = s.data?.role;
   return (
     <>
-      <Head title="Role" sub="Who holds this role, what it holds, and what it can reach." right={name && <WhatIfButton ch={[{ op: "drop_role", role: name }]} label="What if dropped?" />} />
+      {!pane && <Head title="Role" sub={ro && <span className={ro.admin ? "ae-bad" : undefined}>{ro.kind.replace("_", " ")}{ro.owner.length ? ` · owner ${ro.owner.join(", ")}` : ""}</span>} right={name && <WhatIfButton ch={[{ op: "drop_role", role: name }]} label="What if dropped?" />} />}
       <Controls>
-        <Pick label="Role" value={name} what="roles" onPick={(v) => c.nav("role", { name: v })} />
+        {!pane && <Pick label="Role" value={name} what="roles" onPick={(v) => c.nav("role", { name: v })} />}
         <Sel label="Max depth" value={c.params.depth ?? ""} options={[["", "No limit"], ["1", "1"], ["3", "3"], ["5", "5"], ["10", "10"]]} onPick={(v) => c.set({ depth: v })} />
         <ScopePick />
         <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} help="Hide roles that no user holds" />
         <Tog label="Sensitive only" on={c.params.sensitive === "1"} onPick={(v) => c.set({ sensitive: v ? "1" : null })} />
       </Controls>
       {!name && <p className="ae-muted">Pick a role above, or search in the top bar.</p>}
-      {name && <Load s={s}>{(d) => (
+      {name && <Load s={s}>{(d) => {
+        const tabs = [{ key: "diagram", label: "Diagram" }, ...roleTabs(d)];
+        const part = pane ?? (tabs.some((t) => t.key === want) ? want : "diagram");
+        return (
         <>
-          {!c.inside && <Risks list={d.risks} />}{/* inside: the Access page's Diagram tab, its Overview has the strip */}
+          {!pane && <Risks list={d.risks} />}{/* inside: the Access page's Overview has the strip */}
           <Banners list={d.banners} />
-          <KpiRow items={[
-            { label: "Kind", value: d.role.kind.replace("_", " "), caption: d.role.owner.length ? `owner ${d.role.owner.join(", ")}` : undefined, tone: d.role.admin ? "bad" : null },
+          {part === "diagram" && <KpiRow items={d.scope_kpis ? [
+            { label: "Effective privileges", value: d.scope_kpis.effective, caption: `in scope · ${d.scope_kpis.objects} objects, ${d.scope_kpis.direct} direct` },
+            { label: "Users", value: d.scope_kpis.holders, caption: "in scope" },
+            { label: "Sensitive objects", value: d.scope_kpis.sensitive, caption: "in scope", tone: d.scope_kpis.sensitive ? "warn" : null },
+          ] : [
             { label: "Effective privileges", value: d.kpis.effective, caption: `${d.kpis.privileges} direct, ${d.kpis.future} future` },
-            { label: "Held by roles", value: d.kpis.above, caption: `${d.kpis.above_direct} direct` },
-            { label: "Users", value: d.kpis.users, caption: `${d.kpis.users_direct} direct` },
-            { label: "Farthest user", value: d.kpis.farthest },
+            { label: "Users", value: d.kpis.users, caption: `${d.kpis.users_direct} direct · ${d.kpis.above} held by roles · farthest ${d.kpis.farthest}` },
             { label: "Sensitive objects", value: d.kpis.sensitive, tone: d.kpis.sensitive ? "warn" : null },
-          ]} />
-          {d.scope_kpis && <KpiRow items={[
-            { label: "Direct in scope", value: d.scope_kpis.direct }, { label: "Effective in scope", value: d.scope_kpis.effective },
-            { label: "Objects", value: d.scope_kpis.objects }, { label: "Holders", value: d.scope_kpis.holders }, { label: "Sensitive", value: d.scope_kpis.sensitive },
           ]} />}
-          <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.role.name} of="role" refs={d.refs} />
-          {d.readonly_writes.length > 0 && (
+          {!pane && <Tabs nav active={part} onChange={setPart} tabs={tabs} />}
+          {!tabs.some((t) => t.key === part) && <EmptyState title="Nothing here">Clear the filters above, or open another tab.</EmptyState>}
+          {part === "diagram" && <GraphCard g={d.graph} refs={d.refs} />}
+          {part === "rw" && d.readonly_writes.length > 0 && (
             <Card title="Read-only role that can write" sub="Named like a reader, yet holds a write privilege">
               <DataTable csv={`${d.role.name}_readonly_writes.csv`} rows={d.readonly_writes} rowTone={() => "bad"}
                 columns={[col("o", "Object", (r: RW) => r.object, { wrap: "wrap" }), col("p", "Privileges", (r: RW) => r.privileges.join(", ")),
@@ -119,20 +136,13 @@ export function RolePageView() {
                   col("n", "Read-only objects", (r: RW) => `${r.read_only} of ${r.objects}`)]} />
             </Card>
           )}
-          <GraphCard g={d.graph} refs={d.refs} />
-          <Tabs nav={c.inside ? 2 : 1} active={part} onChange={setPart} tabs={[
-            { key: "privs", label: "Privileges", count: d.tabs.find((t) => t.key === "all")?.count ?? 0 },
-            { key: "held", label: "Held by", count: d.held_by.total },
-            ...(d.holds.types.length ? [{ key: "holds", label: "What it holds", count: d.holds.count }] : []),
-            ...(d.can_read?.total ? [{ key: "sees", label: "What it sees", count: d.can_read.total }] : []),
-          ]} />
           {part === "privs" && <Card title="Effective privileges and roles held" sub="Split by what they allow">
             <PrivilegeTabs rows={[]} roles={d.roles} account={d.account} refs={d.refs} tabs={d.tabs} theme={c.theme}
-              server={{ ...apiParams(c), name: d.role.name, of: "role" }}
+              server={{ ...apiParams(c), name: d.role.name, of: "role" }} nav={2}
               csvName={`${d.role.name}_privileges`} onNodeClick={o.node} onOpen={o.open}
               focus={c.params.tfocus} onOnly={(id) => c.set({ tfocus: id }, { push: true, stay: true })} />
           </Card>}
-          {part === "held" && <Card title="Held by" sub="Every user and role that gets this role, through which chain, and what a revoke would take away">
+          {part === "held" && <Card title="Held by">
             <HeldBy d={d} />
             {d.filters.cuts_total > 0 && (
               <Controls><Pick label="If revoked from" value={d.filters.cut} what="direct_holders" params={{ role: d.role.name }} onPick={(v) => c.set({ cut: v })} />
@@ -148,8 +158,6 @@ export function RolePageView() {
           </Card>}
           {part === "holds" && d.holds.types.length > 0 && (
             <Card title="What it holds" sub={`${d.holds.count} privileges on ${d.holds.objects} objects. Green: has it, red: lacks it.`}>
-              <Controls><Sel label="Show who lacks" value={d.filters.lacks} onPick={(v) => c.set({ lacks: v })}
-                options={[["", "(any)"], ...d.filters.gaps.map((x): [string, string] => [x, x])]} /></Controls>
               <Holds d={d} />
               {d.holds.other_total > 0 && (
                 <details><summary>Account and other privileges ({d.holds.other_total})</summary><PagedTable path="role" at="o_offset" total={d.holds.other_total}
@@ -161,7 +169,8 @@ export function RolePageView() {
           )}
           {part === "sees" && <DataViews s={d.can_read} path="role" />}
         </>
-      )}</Load>}
+        );
+      }}</Load>}
     </>
   );
 }

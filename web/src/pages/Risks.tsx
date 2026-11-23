@@ -152,7 +152,7 @@ export function skipNote(skipped: Record<string, string>) {
 export const firstOf = (d: RulesPage, what: string) =>
   d.groups_total > d.groups.length ? <p className="ae-muted">First {d.groups.length} of {d.groups_total} {what}, most findings first. Search or filter to narrow them.</p> : null;
 
-/** Risks & change plan. d answers q (rulesQuery: by, sev, off); all shows the findings of rules turned off and muted. */
+/** Change plan. d answers q (rulesQuery: by, sev, off); all shows the findings of rules turned off and muted. */
 export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string, string | undefined>; all: boolean; setAll: (v: boolean) => void }) {
   const c = useApp();
   const o = useOpen(d.refs);
@@ -188,9 +188,6 @@ export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string
             <span className="ae-tile-l">{s}</span><span className="ae-tile-v">{d.sev_counts[s] ?? 0}</span>
           </button>
         ))}
-        <button type="button" className={`ae-tile${d.admins_total ? " ae-tile-bad" : ""}`} onClick={() => c.nav("object", { preset: "admin" })}>
-          <span className="ae-tile-l">Admin holders</span><span className="ae-tile-v">{d.admins_total}</span><span className="ae-muted ae-tile-c">Who has access, admin preset</span>
-        </button>
       </div>
       {(d.hidden_off > 0 || nMuted > 0 || all) && (
         <p className="ae-muted">

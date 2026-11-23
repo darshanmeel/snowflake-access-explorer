@@ -119,9 +119,8 @@ function UserRow({ u, refs, changes }: { u: WhatIfUser; refs: WhatIfPage["refs"]
 
 function Result({ d }: { d: WhatIfPage }) {
   const c = useApp();
-  const csvOn = useCsv();
   const o = useOpen(d.refs);
-  const [tab, setTab] = useState(c.params.part ?? "users");
+  const tab = c.params.part ?? "users";
   const k = d.counts;
   const fcols = [
     col("s", "Status", (r: WhatIfFinding) => (r.changed ? "changed" : r.status), { wrap: "nowrap",
@@ -134,24 +133,24 @@ function Result({ d }: { d: WhatIfPage }) {
   ];
   return (
     <>
-      <Banner tone={k.unreached || k.orphans ? "warn" : "info"} title="If these changes were made" lines={[d.summary, "A simulation: nothing changes in Snowflake."]} />
+      <Banner tone={k.unreached || k.orphans ? "warn" : "info"} title="If these changes were made" lines={[d.summary]} />
       <KpiRow items={[
-        { label: "Users lose access", value: k.users }, { label: "Objects lost", value: k.objects }, { label: "Kept another way", value: k.kept },
-        { label: "Objects nobody reaches", value: k.unreached }, { label: "Roles orphaned", value: k.orphans },
-        { label: "Findings fixed", value: k.fixed }, { label: "New findings", value: k.new },
+        { label: "Users lose access", value: k.users, caption: `${k.kept} kept another way` },
+        { label: "Objects nobody reaches", value: k.unreached, tone: k.unreached ? "bad" : null, caption: `${k.objects} objects lost · ${k.orphans} roles orphaned` },
+        { label: "New findings", value: k.new, tone: k.new ? "bad" : null, caption: `${k.fixed} fixed` },
       ]} />
-      <Tabs active={tab} onChange={setTab} tabs={[
-        { key: "users", label: "Users", count: d.users_total },
+      <Tabs nav={2} active={tab} onChange={(t) => c.set({ part: t === "users" ? null : t })} tabs={[
+        { key: "users", label: "Who loses", count: d.users_total },
         { key: "objects", label: "Objects", count: d.objects_total, tone: k.unreached ? "bad" : null },
-        { key: "roles", label: "Roles", count: d.roles_total },
+        { key: "roles", label: "Roles", count: d.roles_total, tone: k.orphans ? "warn" : null },
         { key: "findings", label: "Findings", count: d.findings_total },
         { key: "fix", label: "Text to apply" },
       ]} />
       {tab === "users" && (
-        <Card title="Who loses what" sub={`People who lose the same thing are one row; the crossed-out link is the one the change removes. Open a row for the names.${
+        <Card title="Who loses what" sub={`Same loss, one row. Crossed out: the removed link.${
           d.rows_capped ? ` A person lists at most ${c.meta.limits.max_paths} objects: the CSV has all.` : ""}`}>
-          <LoseKeep d={d} />
           <LossGroups gs={d.groups} total={d.groups_total} changes={d.changes.map((x) => x.change)} refs={d.refs} />
+          <LoseKeep d={d} />
           {d.users.length > 0 && (
             <details className="ae-mt">
               <summary>One row per person, with every path</summary>
@@ -196,7 +195,6 @@ function Result({ d }: { d: WhatIfPage }) {
           {d.sql && <><p className="ae-muted">The same as SQL:</p><pre className="ae-code">{d.sql}</pre></>}
         </Card>
       )}
-      {csvOn && <p><button className="ae-btn" onClick={() => download("whatif.csv", apiParams(c), "what_if.csv")}>Download CSV</button></p>}
     </>
   );
 }
@@ -207,13 +205,16 @@ export function WhatIfPageView() {
   const put = (l: WhatIfChange[]) => c.set({ changes: l.length ? JSON.stringify(l) : null });
   const show = c.params.show === "plan" ? "plan" : "changes"; // the old page first
   const s = useApi<WhatIfPage>(list.length && show === "changes" ? "whatif" : null, apiParams(c));
+  const csvOn = useCsv();
   return (
     <>
       <Head title="What if" sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake."
-        right={<button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks & fixes</button>} />
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "changes" ? null : k, by: null })} tabs={[
-        { key: "changes", label: "Changes & impact tables", count: list.length || null },
-        { key: "plan", label: "Change plan" },
+        right={<>
+          {csvOn && list.length > 0 && <button className="ae-btn" onClick={() => download("whatif.csv", apiParams(c), "what_if.csv")}>Download CSV</button>}
+          <button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks & fixes</button></>} />
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "changes" ? null : k, by: null, part: null })} tabs={[
+        { key: "changes", label: "Impact", count: list.length || null },
+        { key: "plan", label: "Plan" },
       ]} />
       {show === "plan" && <PlanTab fromUrl={list} />}
       {show === "changes" && <>

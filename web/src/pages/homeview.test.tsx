@@ -1,4 +1,5 @@
 // Home as rendered: section order, headings in order, tiles and switches that work, charts that describe themselves.
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { HomePage, Meta } from "../api/types";
@@ -33,24 +34,41 @@ const home: HomePage = {
   },
 };
 
-const view = (nav = vi.fn()) => {
+/** Home with params that c.set really changes, so its tabs switch. */
+function Host({ nav, start }: { nav: Ctx["nav"]; start: Record<string, string> }) {
+  const [params, setParams] = useState(start);
+  const set = (p: Record<string, string | null | undefined>) => setParams((x) => {
+    const y = { ...x };
+    for (const [k, v] of Object.entries(p)) if (v == null) delete y[k]; else y[k] = v;
+    return y;
+  });
+  return <AppCtx.Provider value={{ page: "home", params, view: "shared", meta, theme: "light", nav, set } as unknown as Ctx}><HomePageView /></AppCtx.Provider>;
+}
+
+const view = (nav = vi.fn(), start: Record<string, string> = {}) => {
   setTransport((_m, url) => (url.startsWith("/api/home") ? Promise.resolve(home) : Promise.resolve({ items: [] })));
-  render(<AppCtx.Provider value={{ page: "home", params: {}, view: "shared", meta, theme: "light", nav, set: vi.fn() } as unknown as Ctx}><HomePageView /></AppCtx.Provider>);
+  render(<Host nav={nav} start={start} />);
   return nav;
 };
 
+const heads = () => [...document.querySelectorAll("h2, h3")].map((h) => `${h.tagName}:${h.textContent}`);
+const inOrder = (names: string[]) => {
+  const hs = heads();
+  const order = names.map((t) => hs.findIndex((h) => h.includes(t)));
+  expect(order.every((i) => i >= 0)).toBe(true);
+  expect(order).toEqual([...order].sort((x, y) => x - y));
+  expect(hs.every((h) => h.startsWith("H2") || h.startsWith("H3"))).toBe(true);
+};
+
 describe("Home page", () => {
-  it("keeps the sections in order with headings that never skip a level", async () => {
+  it("keeps the sections of each tab in order with headings that never skip a level", async () => {
     view();
     await screen.findByText("Needs attention");
-    const hs = [...document.querySelectorAll("h2, h3")].map((h) => `${h.tagName}:${h.textContent}`);
-    const at = (t: string) => hs.findIndex((h) => h.includes(t));
-    expect(hs[0]).toBe("H2:Who can access what in Snowflake?");
-    const order = ["Needs attention", "Act first", "All findings by severity", "Admin holders", "Dormant", "Sensitive data",
-      "at a glance", "People", "Role chain depth", "Activity", "Object activity", "What changed"].map(at);
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect(order).toEqual([...order].sort((x, y) => x - y));
-    expect(hs.every((h) => h.startsWith("H2") || h.startsWith("H3"))).toBe(true);
+    expect(heads()[0]).toBe("H2:Who can access what in Snowflake?");
+    inOrder(["Needs attention", "Act first", "All findings by severity", "Admin holders", "Dormant", "Sensitive data"]);
+    fireEvent.click(screen.getByRole("tab", { name: "At a glance" }));
+    inOrder(["People", "Role chain depth", "Activity", "Object activity"]);
+    fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     expect(screen.getByText("No earlier snapshot yet.")).toBeTruthy();
   });
 
@@ -61,7 +79,7 @@ describe("Home page", () => {
     fireEvent.click(screen.getByRole("button", { name: /Not used\s*4/ }));
     expect(nav).toHaveBeenCalledWith("objuse", {});
     expect(screen.getByRole("group", { name: "Ask a question" }).querySelectorAll("button")).toHaveLength(4);
-    expect(screen.getByRole("group", { name: "Explore" }).querySelectorAll("button")).toHaveLength(5);
+    fireEvent.click(screen.getByRole("tab", { name: "At a glance" }));
     const objects = screen.getAllByRole("button", { name: "Objects" })[0];
     fireEvent.click(objects);
     expect(objects.getAttribute("aria-pressed")).toBe("true");
@@ -70,10 +88,11 @@ describe("Home page", () => {
   });
 
   it("names the busiest day and the service users with admin; / focuses the search", async () => {
-    view();
+    view(vi.fn(), { show: "glance" });
     expect(await screen.findByRole("img", { name: /busiest 2026-11-16 with 9 queries/ })).toBeTruthy();
-    expect(screen.getByText("NAME_03")).toBeTruthy();
     expect(screen.getByText(/75% active/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /Risks/ }));
+    expect(screen.getByText("NAME_03")).toBeTruthy();
     await act(async () => { fireEvent.keyDown(window, { key: "/" }); });
     expect(document.activeElement).toBe(screen.getByLabelText("Search"));
   });

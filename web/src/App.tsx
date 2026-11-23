@@ -1,6 +1,6 @@
 // App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
 // Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
@@ -194,19 +194,21 @@ function Count({ n, cls = "", unit }: { n: number; cls?: string; unit?: string }
 
 /** Under the open page's entry: the person, role or object it shows, then its tabs (Tabs nav), so they are one click
  * away without the page's own tab bar. */
-function SideSub({ tabs, subject, fill }: { tabs: NavTabs[]; subject?: string; fill: boolean }) {
+function SideSub({ tabs, subject, fill, under }: { tabs: NavTabs[]; subject?: string; fill: boolean; under?: Under }) {
   if (!tabs[0] && !subject) return null;
   return (
     <div className="side-sub">
       {subject && <div className="side-subject ae-mono" title={subject}>{subject}</div>}
-      {tabs[0] && <SideTabs tabs={tabs} fill={fill} />}
+      {tabs[0] && <SideTabs tabs={tabs} fill={fill} under={under} />}
     </div>
   );
 }
 
+type Under = { key: string; node: ReactNode }; // entries nested under one main tab while it is open (Findings: its severities)
+
 /** One level of a page's tabs; the next level (the tabs inside the open one) nests under the open tab. fill: the
  * deepest open tab is the one filled entry (false when an entry further down, a rule or a shortcut, is). */
-function SideTabs({ tabs, fill }: { tabs: NavTabs[]; fill: boolean }) {
+function SideTabs({ tabs, fill, under }: { tabs: NavTabs[]; fill: boolean; under?: Under }) {
   const [t, ...deeper] = tabs;
   return (
     <div role="tablist" aria-label="Sections of this page">
@@ -216,6 +218,7 @@ function SideTabs({ tabs, fill }: { tabs: NavTabs[]; fill: boolean }) {
             <span>{x.label}</span>{x.count != null && <Count n={x.count} cls={x.tone ? ` ae-tone-${x.tone}` : ""} />}
           </button>
           {x.key === t.active && deeper[0] && <div className="side-sub">{<SideTabs tabs={deeper} fill={fill} />}</div>}
+          {x.key === t.active && x.key === under?.key && <div className="side-sub">{under.node}</div>}
         </Fragment>
       ))}
     </div>
@@ -251,6 +254,8 @@ function SideFindings({ meta, rule, sev, nav }: { meta: Meta; rule?: string; sev
   );
 }
 
+const NAV_HIDDEN = new Set(["user", "role"]); // Access shows them; the pages still open from links
+
 function Side({ meta, page, params, tabs, nav, onShut }: {
   meta: Meta; page: Page; params: Params; tabs: NavTabs[]; nav: (p: Page, params?: Params) => void; onShut: () => void;
 }) {
@@ -266,25 +271,24 @@ function Side({ meta, page, params, tabs, nav, onShut }: {
       <details className="side-menu" ref={menu} open={wide}>
         <summary>Menu · {LABEL[page]}</summary>
         {GROUPS.map(([g, title]) => {
-          const ps = meta.pages.filter((p) => (p.group ?? "access") === g);
+          const ps = meta.pages.filter((p) => (p.group ?? "access") === g && (!NAV_HIDDEN.has(p.key) || p.key === page));
           return ps.length ? (
             <nav key={g} aria-label={title}>
               {title && <h4>{title}</h4>}
               {ps.map((p) => {
                 const on = p.key === page; // only the deepest open entry is filled; the ones above it are bold
-                const part = page === "rules" && (params.part === "admins" || params.part === "stale") ? params.part : undefined;
                 return (
                   <Fragment key={p.key}>
                     <button type="button" className={on ? (tabs[0] ? "open" : "on") : ""} aria-current={on ? "page" : undefined} onClick={() => nav(p.key)}>
                       <span>{p.label}</span>
                       {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`} title={p.title ?? p.badge.toLocaleString()}>{p.severity ? `${short(p.badge)} ${p.severity.toLowerCase()}` : short(p.badge)}</span>}
                     </button>
-                    {on && <SideSub tabs={tabs} subject={subject} fill={!rule && !part} />}
-                    {on && p.key === "rules" && <SideFindings meta={meta} rule={rule} sev={params.sev} nav={nav} />}
-                    {p.key === "rules" && ppl && <>
-                      <button type="button" className={part === "admins" ? "on" : ""} aria-current={part === "admins" ? "page" : undefined} onClick={() => nav("rules", { part: "admins" })}
+                    {on && <SideSub tabs={tabs} subject={subject} fill={!rule}
+                      under={p.key === "rules" ? { key: "checks", node: <SideFindings meta={meta} rule={rule} sev={params.sev} nav={nav} /> } : undefined} />}
+                    {p.key === "rules" && page !== "rules" && ppl && <>
+                      <button type="button" onClick={() => nav("rules", { part: "admins" })}
                         title="Users holding an admin role or an account-level privilege"><span>Admin holders</span><Count n={ppl.admins} unit="people" cls={ppl.admins ? " ae-tone-bad" : ""} /></button>
-                      <button type="button" className={part === "stale" ? "on" : ""} aria-current={part === "stale" ? "page" : undefined} onClick={() => nav("rules", { part: "stale" })}
+                      <button type="button" onClick={() => nav("rules", { part: "stale" })}
                         title="People disabled, dormant or never logged in who still hold roles (rules 8 and 16), each once"><span>Dormant & disabled</span><Count n={ppl.stale} unit="people" cls={ppl.stale ? " ae-tone-warn" : ""} /></button>
                     </>}
                   </Fragment>

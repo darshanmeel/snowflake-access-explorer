@@ -25,7 +25,7 @@ export function RequestPageView() {
         <div>
           {p.role && <button type="button" className="ae-link ae-crumb" onClick={() => c.nav("check", { ...back, obj: p.obj ?? "" })}>← Can they?</button>}
           <h2 className="ae-h1">Request access</h2>
-          <p className="ae-muted ae-lead">This app never changes Snowflake. It writes the SQL or Terraform for the right role, with the reason and approver as comments, ready for a pull request.</p>
+          <p className="ae-muted ae-lead">Writes the SQL or Terraform; never changes Snowflake.</p>
         </div>
       </div>
       <div className="ae-forstrip">
@@ -52,6 +52,8 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
   const [days, setDays] = useState(30);
   const [approver, setApprover] = useState(d.approver ?? d.owners[0] ?? "");  // no owner tag: the owner role
   const [reason, setReason] = useState("");
+  const [more, setMore] = useState(false);
+  const shown = more ? d.suggestions : d.suggestions.slice(0, 3); // smallest first, as sent
   const ch = choices.find((x) => x.role === pick);
   const note = { by: forRole ? undefined : d.user, reason, approver, expiry: expiryOf(days) || "until revoked" };
   const changes = ch ? [ch.change] : [];
@@ -90,12 +92,12 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
                   {a?.rule1 && <span className="ae-warn-word ae-block">A technical role on a user or group role breaks rule 1.</span>}</span>
               </label>
             ))}
-            {d.suggestions.map((x, i) => (
+            {shown.map((x, i) => (
               <label key={x.role} className={`ae-req-role${pick === x.role ? " on" : ""}`}>
                 <input type="radio" name="role" checked={pick === x.role} onChange={() => setPick(x.role)} />
                 <span>
                   <b className="ae-mono">{x.role}</b>{i === 0 && <span className="ae-otag ae-ml">smallest</span>}
-                  <span className="ae-muted"> · gives {d.privileges.join(", ")} on this {d.type.toLowerCase()} · held by {x.holders} {x.holders === 1 ? "person" : "people"} · {x.extra} other privilege{x.extra === 1 ? "" : "s"}
+                  <span className="ae-muted">{` · ${x.holders} ${x.holders === 1 ? "person" : "people"} · +${x.extra} privilege${x.extra === 1 ? "" : "s"}`}
                     {forRole ? ` · to ${d.user}: its ${x.people} ${x.people === 1 ? "holder gets" : "holders get"} it too` : ""}</span>
                   {x.broad && <span className="ae-warn-word ae-block">Too broad: everyone holding {d.user} ({x.people} people) gets it.</span>}
                   {(x.also.length > 0 || x.unmasked.length > 0) && (
@@ -108,6 +110,7 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
                 </span>
               </label>
             ))}
+            {d.suggestions.length > 3 && <button type="button" className="ae-link" onClick={() => setMore(!more)}>{more ? "Fewer roles" : `+${d.suggestions.length - 3} more roles`}</button>}
             <label className={`ae-req-role${!ch ? " on" : ""}`}>
               <input type="radio" name="role" checked={!ch} onChange={() => setPick("")} />
               <span><b>None of these</b><span className="ae-muted"> · a skeleton for a new role, for the owner to decide</span></span>
@@ -135,7 +138,7 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
           <textarea className="ae-input" rows={3} value={reason} placeholder="What it is for, and until when" onChange={(e) => setReason(e.target.value)} />
         </label>
       </section>
-      <Card title="Ready to copy" sub="Paste into your RBAC repo or a pull request; ticket text for teams without infrastructure as code.">
+      <Card title="Ready to copy" sub="For your RBAC repo or a ticket.">
         {d.has ? <p className="ae-muted">Nothing to request.</p>
           : <CodeOutput changes={changes} note={note} texts={text} name={`access_request_${d.user.toLowerCase()}`} />}
       </Card>

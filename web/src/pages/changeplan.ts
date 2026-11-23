@@ -56,7 +56,7 @@ export function visible<T extends Keyed>(list: T[], off: string[], mute: Record<
   return { shown, off: list.filter((f) => o.has(f.num)).length, muted: list.filter((f) => !o.has(f.num) && findingKey(f) in mute).length };
 }
 
-/** /api/rules parameters of the Risks & fixes page: the URL's, grouped by rule except on Risks & change plan, which
+/** /api/rules parameters of the Risks & fixes page: the URL's, grouped by rule except on Change plan, which
  * also sends the rules turned off (unless they are shown) and opens the heat grid on every severity. The local
  * filters replace the URL's area (Rules list: where to scroll). */
 export function rulesQuery(p: Record<string, string | undefined>, show: string, off: string[], f: { q: string; area: string; people: boolean }) {

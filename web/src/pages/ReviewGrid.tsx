@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { GridPage } from "../api/types";
-import { Card, EmptyState, FilterChips, LEVEL_WORD, ListToolbar, Toggle, useCsv } from "../components";
+import { Card, EmptyState, LEVEL_WORD, ListToolbar, Tabs, Toggle, useCsv } from "../components";
 import { download } from "../components/table";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { addTo, plan, saved, useSaved } from "./changeplan";
@@ -80,29 +80,21 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
       <div className="ae-headrow">
         <p className="ae-answer">
           <b>{d.counts.people} people</b> {isObj ? "hold" : "can reach"} {what}.{d.counts.admin > 0 && <> {d.counts.admin} {d.counts.admin === 1 ? "is an admin" : "are admins"}</>}
-          {d.counts.stale > 0 && <> and <span className="ae-warn-word">{d.counts.stale} {d.counts.stale === 1 ? "is" : "are"} dormant or disabled</span></>}. Mark each person Keep or Revoke, then sign off.
-          {(d.total > d.columns.length || d.matched > d.rows.length) && <span className="ae-warn-word"> Partial: the grid draws {d.columns.length} of {d.total} objects and lists {d.rows.length} of {d.matched} people; pick a database or search for the rest.</span>}
+          {d.counts.stale > 0 && <> and <span className="ae-warn-word">{d.counts.stale} {d.counts.stale === 1 ? "is" : "are"} dormant or disabled</span></>}. Mark each person Keep or Revoke, then sign off. <button type="button" className="ae-link" onClick={() => c.nav("flow", {})}>Data flow</button>
         </p>
-        <div className="ae-row">
-          <button type="button" className="ae-btn" onClick={() => c.nav("sensitive", { show: "catalog" })}>Sensitive objects catalog</button>
-          <button type="button" className="ae-btn" onClick={() => c.nav("compare", {})}>Compare two</button>
-          <button type="button" className="ae-btn" onClick={() => c.nav("flow", {})}>Data flow</button>
-        </div>
       </div>
+      {!isObj && scopes.length <= 8 && <Tabs nav={2} active={d.scope === "db" ? `db:${d.db}` : d.scope} onChange={pick} tabs={scopes} />}
       <ListToolbar search={q} onSearch={setQ}
         onCsv={() => download(`access_review_${key.replace(/[^A-Za-z0-9_]+/g, "_")}.csv`, signoffCsv(d, rows, dec, reviewer.trim(), "not signed"))}>
         {isObj ? <span className="ae-chip ae-chip-plain">{d.object} · privileges <button type="button" className="ae-link" onClick={() => pick("all")} aria-label="Back to objects">×</button></span>
-          : <><FilterChips label="Scope" value={d.scope === "db" ? `db:${d.db}` : d.scope} onPick={pick} items={scopes} />
-            {many && <Sel label="Database" value={d.scope === "db" ? d.db : ""} onPick={(v) => pick(v ? `db:${v}` : "sensitive")}
+          : <>{many && <Sel label="Database" value={d.scope === "db" ? d.db : ""} onPick={(v) => pick(v ? `db:${v}` : "sensitive")}
               options={[["", "One database…"], ...d.dbs.map((x): [string, string] => [x, x])]} />}</>}
         <Toggle label="People only" on={people} onPick={(v) => c.set({ people: v ? null : "0" })} />
         <Toggle label="Only dormant / disabled" on={stale} onPick={(v) => c.set({ stale: v ? "1" : null })} />
         <Toggle label="Hide USAGE" on={hide} onPick={(v) => c.set({ hideusage: v ? null : "0" })} />
       </ListToolbar>
       <Card title={isObj ? `Who holds each privilege on ${d.object.split(".").pop()}` : d.scope === "sensitive" ? "Who can reach each sensitive object" : "Who can reach each object"}
-        sub={[d.total > d.columns.length && `First ${d.columns.length} of ${d.total} objects, most people first`,
-          d.matched > d.rows.length && `first ${d.rows.length} of ${d.matched} people, admins and the highest access first: search or filter for the others`]
-          .filter(Boolean).join("; ").replace(/^./, (x) => x.toUpperCase()) || undefined}
+        sub={d.total > d.columns.length ? `First ${d.columns.length} of ${d.total} objects` : undefined}
         right={<span className="ae-bar-legend">{(["read", "change", "own", "admin"] as const).map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{WORD[l]}</span>)}<span className="ae-muted">Hover a cell for its path</span></span>}>
         {!rows.length || !d.columns.length ? <EmptyState title="Nobody here">Change the scope, or turn off Only dormant / disabled.</EmptyState> : (
           <div className="ae-grid-wrap">
