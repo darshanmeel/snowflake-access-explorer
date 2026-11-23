@@ -3,7 +3,7 @@
 // the default is the dormant or disabled people.
 import { download, useApi } from "../api/client";
 import type { FlowNode, FlowPage, FlowRole } from "../api/types";
-import { Banner, Card, DataTable, StackBar, Tabs, Waiting } from "../components";
+import { Banner, Card, DataTable, NameList, StackBar, Tabs, Waiting } from "../components";
 import { useCsv } from "../components/table";
 import { apiParams, useApp } from "../ctx";
 import { col, Head, Load } from "./common";
@@ -11,7 +11,7 @@ import { PagedTable } from "./paged";
 import { PolicyNote } from "./Sensitive";
 import { linkKey } from "./signoff";
 
-const W = 200, COLX = [0, 380, 760], TOP = 28, GAP = 12, MIN = 44;
+const W = 200, COLX = [0, 380, 760], TOP = 28, GAP = 12, MIN = 44, NAMES = 5; // NAMES: a sample under the graph, the CSV has everyone
 const TONE: Record<string, string> = { active: "var(--ae-accent)", risky: "var(--ae-warn_ink)", admin: "var(--ae-lvl_admin_bg)", service: "var(--ae-line_strong)" };
 const plural = (n: number, w: string, m = `${w}s`) => `${n} ${n === 1 ? w : m}`;
 
@@ -140,8 +140,8 @@ function Body({ d }: { d: FlowPage }) {
       </div>
       {picked && (
         <div className="ae-flow-detail">
-          <div><b className="ae-mono">{picked.n.label}</b> <span className="ae-muted">{plural(f.count, "person", "people")}, disabled and service users included{f.users.length < f.count ? `: first ${f.users.length} of ${f.count} shown, the CSV has all` : ""}</span></div>
-          <div className="ae-objtags0">{f.users.map((u) => <button type="button" key={u} className="ae-pchip" onClick={() => c.nav("access", { user: u })}>{u}</button>)}</div>
+          <div><b className="ae-mono">{picked.n.label}</b> <span className="ae-muted">{plural(f.count, "person", "people")}, disabled and service users included</span></div>
+          <NameList items={f.users.slice(0, NAMES)} total={f.count} onOpen={(u) => c.nav("access", { user: u })} />
           <div className="ae-row0">
             {picked.n.kind === "fold" && <button type="button" className="ae-btn" onClick={() => c.set({ show: null })}>List them in the tables</button>}
             {((picked.col === 2 && picked.n.kind !== "fold") || (picked.col === 1 && picked.n.kind !== "admin" && picked.n.kind !== "fold")) &&
