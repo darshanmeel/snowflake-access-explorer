@@ -5,7 +5,7 @@ import { useApi } from "../api/client";
 import type { ListItem, SeeCard, SeePage, SensitiveReach } from "../api/types";
 import { Card, DataTable, EmptyState, FilterChips, IdentityCard, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, StateTag, unread, Usage } from "./common";
+import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, Risks, StateTag, unread, Usage } from "./common";
 import { PAGE } from "./paged";
 import { seeSentence } from "./screens";
 
@@ -42,6 +42,7 @@ function Body({ d }: { d: SeePage }) {
       <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
         line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${w.status ?? ""}${w.default_role ? ` · default role ${w.default_role}` : ""}${w.secondary_all ? " · secondary roles ALL" : ""}` : w.type}
         roles={user ? w.roles.map((r) => ({ id: r, note: r === w.default_role ? "default" : "" })) : undefined} />
+      <Risks list={d.risks} quiet />
       <div className="ae-actions">
         <button type="button" className="ae-btn" onClick={() => c.nav("access", sub)}>Access</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", sub)}>Show as graph</button>

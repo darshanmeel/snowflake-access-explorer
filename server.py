@@ -1790,7 +1790,7 @@ def risks_of(name, user):
                         link("Account powers", "access", **me, show="privs" if user else "detail")))
     read, clear = seen_counts(name, user)
     if clear:
-        out.append(risk(True, f"Reads {plural(clear, 'sensitive object')} unmasked", clear, link("What they see", "see", **me)))
+        out.append(risk(True, f"Reads {plural(clear, 'sensitive object')} unmasked", clear, link("Which ones", "see", **me, show="cards")))
     mine = subject_of_finding(name, "user" if user else "role")
     out.append(findings_risk([x for x in S["rows"] if mine(x["grantee"], x["kind"])],
                              link("Findings", "rules", grantee=name, of="user" if user else "role", sev="all")))
@@ -2958,7 +2958,8 @@ def see_page(p, view):
                roles=sorted(a.roles_of.get(name, [])) if user else [])
     return dict(view=view, who=who, known=ok, cards=cards[w], cards_total=len(cards), cards_offset=c_off, counts=s["counts"],
                 can_read=sees(p, a.data_views(name, user)) if ok else None, sensitive=sens_reach(name) if user else None,
-                usage=usage(name) if user else None, role_usage=None if user else role_usage(name))
+                usage=usage(name) if user else None, role_usage=None if user else role_usage(name),
+                risks=subject_risks(name, user) if view != "mine" else None)
 
 
 # ---------- granted vs used (screen 13), what changed (screen 14) ----------

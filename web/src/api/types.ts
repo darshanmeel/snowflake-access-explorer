@@ -1244,6 +1244,7 @@ export interface SeeCard {
 
 export interface SeePage {
   view: View;
+  risks: RiskItem[] | null; // the person's or role's risk strip, as on Access
   who: { kind: NodeKind; name: string; id: string; type: string; status: UserStatus | null; default_role: string | null;
     secondary_all: boolean; roles: string[] };
   known: boolean; // policies readable here (not in My access without tags)
