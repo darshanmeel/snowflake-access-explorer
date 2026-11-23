@@ -279,5 +279,9 @@
   "web/vite.config.ts": "65c90811358b409b79339fbe897d0e2b323a5a46e4db66d4964f444182f6a5c6"
  },
  "scripts_hash": "b3a26051d041a321",
- "updated": "2026-11-23 23:13 UTC"
+ "updated": "2026-11-23 23:13 UTC",
+ "pending": {
+  "choice": "skip",
+  "head": "4e54c3b1ef27720467f46d597f887a0bfe77e4d6"
+ }
 }
