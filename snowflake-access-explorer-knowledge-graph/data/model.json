@@ -1620,7 +1620,7 @@
    ],
    "cardinality": "1:N",
    "status": "logical",
-   "evidence": "access.py:1894, 7517-7534"
+   "evidence": "access.py:1894, 7567-7584"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1633,7 +1633,7 @@
    ],
    "cardinality": "N:1 (sensitive source table, rule 22)",
    "status": "logical",
-   "evidence": "access.py:7517-7534"
+   "evidence": "access.py:7567-7584"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1659,7 +1659,7 @@
    ],
    "cardinality": "N:M (name as ACCESS_HISTORY gives it)",
    "status": "inferred",
-   "evidence": "access.py:6654-6658"
+   "evidence": "access.py:6704-6708"
   },
   {
    "from": "TBL_ACCESS_FINDING",
@@ -1711,7 +1711,7 @@
    ],
    "cardinality": "N:1",
    "status": "inferred",
-   "evidence": "access.py:7583 (u in profile)"
+   "evidence": "access.py:7633 (u in profile)"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1724,7 +1724,7 @@
    ],
    "cardinality": "N:M (name as ACCESS_HISTORY gives it)",
    "status": "inferred",
-   "evidence": "access.py:7583 (o in kinds), access.py:6365-6383"
+   "evidence": "access.py:7633 (o in kinds), access.py:6415-6433"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1737,7 +1737,7 @@
    ],
    "cardinality": "N:M",
    "status": "inferred",
-   "evidence": "access.py:7584-7585 (data_use(role) walks the role grants)"
+   "evidence": "access.py:7634-7635 (data_use(role) walks the role grants)"
   }
  ],
  "views": [

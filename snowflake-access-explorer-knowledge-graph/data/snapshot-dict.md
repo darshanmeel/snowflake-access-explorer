@@ -30,9 +30,9 @@ flowchart LR
 | `ACTIVITY` | `TBL_ACCESS_ACTIVITY` (optional) | DAY, USER_NAME, ROLE_NAME, CLIENT, OBJECT_NAME, ACTION, QUERY_TYPE, QUERIES, LAST_USED | `access.py:1897` (`acts`) |
 
 - Mapping key -> table: `TABLES` / `OPTIONAL` `access.py:81-82`, `SELECT * EXCLUDE (RUN_ID) FROM {where}.TBL_ACCESS_{t}` `access.py:581`.
-- No producer's rows carry RUN_ID: `snapshot()` reads `SELECT * EXCLUDE (RUN_ID)` (`access.py:581`); `live()` / `mine()` rows have no RUN_ID key (`access.py:1262-1303,483-484`).
+- No producer's rows carry RUN_ID: `snapshot()` reads `SELECT * EXCLUDE (RUN_ID)` (`access.py:581`); `live()` / `mine()` rows have no RUN_ID key (`access.py:1262-1303,885-885`).
 - `ACTIVITY=0`: `OBJECT_USE` and `ACTIVITY` are `[]` and `run.SOURCES` say `SKIPPED` (`access.py:605-606`, `access.py:1613`, `access.py:1625`).
-- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:589`; `act_state()` then explains it (`access.py:6033-6035`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:172-174`, `access.py:1615-1625`).
+- `OBJECT_USE` and `ACTIVITY` are None when the table is missing (older setup): `access.py:589`; `act_state()` then explains it (`access.py:6083-6085`). Direct mode reads `ACTIVITY` incrementally from the kept dict (`server.py:172-174`, `access.py:1615-1625`).
 
 ## Shape guaranteed by `tidy()` (`access.py:1952-2012`)
 
@@ -51,19 +51,19 @@ flowchart LR
 | `snapshot(query, where, old)` | uuid of the last OK run | `access.py:546-609` | no OK run, no RUN_ID or `TBL_ACCESS_RUN` unreadable -> every table `[]`, RUN_ID None, every source UNAVAILABLE, NOTES `no_run` (`access.py:556-565`); a table that fails -> `[]`, UNAVAILABLE, noted, in `run.UNREAD` (`access.py:590-594`); the run held (`old`) is returned as is (`access.py:568-573`) |
 | `live(query)` | `"direct"` | `access.py:1222-1656` | same sources as SP_ACCESS_SNAPSHOT; `FINISHED_AT` = CURRENT_TIMESTAMP (`access.py:1247`, `access.py:1656`) |
 | `mine(query, db)` | `"live"` | `access.py:815-973` | TAG / POLICY / STREAM empty, no OBJECT_USE; tags/policies UNAVAILABLE (`access.py:967`) |
-| `fake()` | `"fake"` | `access.py:218-439` | `access.py:435,344-345` |
+| `fake()` | `"fake"` | `access.py:218-439` | `access.py:435,438-439` |
 | `fake_previous()` | `"fake-previous"` | `access.py:532-543` | What changed demo |
 | `only(d, user)` | `"live"` | `access.py:1785-1794` | demo of mine() |
 
 - Shared data chosen by `server.read_shared` `server.py:164-176` (fake / live / snapshot by MODE and SOURCE from `cache.config()` `cache.py:43-56`, `server.py:27`), cached via `load_shared` `server.py:220-241` (stage 1 parts in `.cache/reads/<key>/`, [flows/two-stage-load.md](../flows/two-stage-load.md)).
-- My access: `server.py:300-307` (`cache.get(cache.name("mine", ...), a.mine)`).
+- My access: `server.py:300-307` (`cache.get("my_data", ...)` around `a.mine`).
 - SP_ACCESS_FINDINGS also builds it inside Snowflake: `sql/1_setup.sql:1493-1494`.
 
 ## Kept where
 
-- Memory `cache.MEM`, 24 h (`TTL`): `cache.py:30-31,95-98`.
-- `.cache/<key>.pkl` for `CACHE_HOURS` (24, 0 = memory only), not inside Snowflake: `cache.py:29,51-57,99-114`.
-- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:90-99`; read by `cache.prev` `cache.py:102-108` for What changed `server.py:3120`.
+- Memory `cache.MEM`, 24 h (`TTL`): `cache.py:30-31,127-133`.
+- `.cache/<key>.pkl` for `CACHE_HOURS` (24, 0 = memory only), not inside Snowflake: `cache.py:29,69-75,134-141`.
+- Previous run kept as `<key>.prev.pkl` (only if a different RUN_ID / FINISHED_AT): `cache.py:90-99`; read by `cache.prev` `cache.py:102-108` for What changed `server.py:3180`.
 - `drop` sets the file aside as `.old.pkl` (Read again): `cache.py:190-200`.
-- Cache key = account, source/what, snapshot location, user, role: `cache.py:59-65`; server `KEY` `server.py:29`.
-- `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:1814-1815,903-909`.
+- Cache key: `shared_data` for the shared data on Snowflake, `my_data` for My access (one copy of each per `CACHE_DIR`), `cache.name` in fake mode: `server.py:29-30`, `server.py:300`, `cache.py:59-65`.
+- `build()` keeps `KEEP_BUILT` (3) built data sets: `access.py:1814-1815,1839-1845`.

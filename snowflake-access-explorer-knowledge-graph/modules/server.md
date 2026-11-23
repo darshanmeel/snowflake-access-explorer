@@ -5,24 +5,24 @@ FastAPI JSON API over access.py, plus `serve()` / `serve_csv()` that st_react.py
 
 ```mermaid
 flowchart LR
-  B[Browser / React] -->|GET /api/name| MW[same_site middleware<br/>server.py:4330-4351]
-  MW --> R[route h<br/>server.py:4394-4423]
-  R --> SV[serve<br/>server.py:4254-4280]
+  B[Browser / React] -->|GET /api/name| MW[same_site middleware<br/>server.py:4391-4412]
+  MW --> R[route h<br/>server.py:4455-4484]
+  R --> SV[serve<br/>server.py:4315-4341]
   SV --> SE[session<br/>server.py:325-351]
   SE --> LS[load_shared / MINE]
   LS --> C[cache.get]
   SE --> AB[a.build]
-  SV --> H[ROUTES handler<br/>server.py:4228-4232]
+  SV --> H[ROUTES handler<br/>server.py:4289-4293]
   H --> A[access.py]
-  SV --> MK[mkrefs<br/>server.py:4198-4225]
+  SV --> MK[mkrefs<br/>server.py:4259-4286]
   ST[st_react.answer] --> SV
 ```
 
 ## Module state
 
-- `MODE, SOURCE, WHERE = cache.config()` (server.py:27); `DIRECT` (server.py:28); `KEY` cache name (server.py:29); `DEMO_USER` (server.py:32).
+- `MODE, SOURCE, WHERE = cache.config()` (server.py:27); `DIRECT` (server.py:28); `KEY` cache name (server.py:30); `DEMO_USER` (server.py:32).
 - `PAGES` page key -> label (server.py:36-39); `GROUP` side-nav group (server.py:41-44); `SHARED_ONLY` = review, flow, changes, objuse (server.py:45).
-- `LOCK` RLock: access.py keeps lookups in globals, build + answer under one lock (server.py:65); `ANSWERS`: `serve()` keeps each answer per (data set `data_key`, endpoint, params), up to `MAX_ANSWERS` (200, oldest out), so a repeat skips the lock (server.py:75-76, server.py:4239-4280); `LOAD` one Snowflake read at a time (server.py:66).
+- `LOCK` RLock: access.py keeps lookups in globals, build + answer under one lock (server.py:65); `ANSWERS`: `serve()` keeps each answer per (data set `data_key`, endpoint, params), up to `MAX_ANSWERS` (200, oldest out), so a repeat skips the lock (server.py:75-76, server.py:4300-4341); `LOAD` one Snowflake read at a time (server.py:66).
 - `PROGRESS` cache key -> its last Snowflake read (view, running, start, lines), `PLOCK`, `MAX_LINES` 200 (server.py:69-74).
 - `ApiError(status, detail, message)` (server.py:80-83).
 - `OFFLINE` = `BUILD_ONLY=1` (run.py --build): built from the parts kept, never a Snowflake read (server.py:31); `LOG_LINES` progress lines also on the terminal, `JOB` the last refresh (id, what, state, ok, message), `BACKGROUND` refresh in a thread, off inside Snowflake (server.py:71-73); `KEPT` rule results kept across restarts, `SERVER_STAMP` hash of this file (server.py:354-355).
@@ -32,76 +32,76 @@ flowchart LR
 
 | Method | Path | Handler | path:line |
 |---|---|---|---|
-| GET | /api/meta | `meta` | server.py:4364-4366 -> server.py:4004-4036 |
-| POST | /api/reload | `reload` (`what` = page / load / rebuild): load reads now; page / rebuild start `refresh()` in the background (`{started, job}`), in a thread pool | server.py:4368-4374 -> server.py:4092-4106 |
-| GET | /api/progress | `progress` (`view=` optional): lines of the read running now, plus `job` (the background refresh) | server.py:4376-4378 -> server.py:154-161 |
-| POST | /api/mine/load | `load_mine`, sets `ae_sid` cookie (httponly, samesite strict, path /api) | server.py:4380-4388 -> server.py:292-321 |
-| GET | /api/mine | `mine_state` | server.py:4390-4392 -> server.py:261-265 |
-| GET | /api/home | `home_page`: shared view from `home_summary` (findings per severity and rule, act-first rules) and `home_cards` (area cards, Object activity card, What changed counts) | server.py:1859-1872 |
-| GET | /api/access | `access_page`: one page of the Access list (`access_list` filters incl. otype= one object type, offset= / limit=), `types` for the Type filter, `risks` (risk strip) | server.py:1658-1707 |
+| GET | /api/meta | `meta` | server.py:4425-4427 -> server.py:4065-4097 |
+| POST | /api/reload | `reload` (`what` = page / load / rebuild): load reads now; page / rebuild start `refresh()` in the background (`{started, job}`), in a thread pool | server.py:4429-4435 -> server.py:4153-4167 |
+| GET | /api/progress | `progress` (`view=` optional): lines of the read running now, plus `job` (the background refresh) | server.py:4437-4439 -> server.py:154-161 |
+| POST | /api/mine/load | `load_mine`, sets `ae_sid` cookie (httponly, samesite strict, path /api) | server.py:4441-4449 -> server.py:292-321 |
+| GET | /api/mine | `mine_state` | server.py:4451-4453 -> server.py:261-265 |
+| GET | /api/home | `home_page`: shared view from `home_summary` (findings per severity and rule, act-first rules) and `home_cards` (area cards, Object activity card, What changed counts) | server.py:1881-1894 |
+| GET | /api/access | `access_page`: one page of the Access list (`access_list` filters incl. otype= one object type, offset= / limit=), `types` for the Type filter, `risks` (risk strip) | server.py:1659-1709 |
 | GET | /api/user | `user_page` | server.py:1346-1407 |
 | GET | /api/privs | `privs_page`: one Privileges tab of the User page (of=role: the Role page), paged | server.py:1463-1467 |
-| GET | /api/role | `role_page` | server.py:2132-2208 |
-| GET | /api/held | `held_page`: the Role page's held by rows of one tab, paged | server.py:2117-2121 |
-| GET | /api/object | `object_page` | server.py:2389-2452 |
-| GET | /api/grantees | `grantees_page`: the Object page's grantees of one tab, paged; by=groups pages `grantee_groups` | server.py:2349-2359 |
-| GET | /api/who | `who_page` | server.py:2513-2535 |
-| GET | /api/check | `check_page`: verdict, `usage` chips, `inside` (a database or schema: `inside_page`), `narrow` (the narrowest grant), `nearest_own` apart, `risks`, focus= on its graph | server.py:2587-2710 |
-| GET | /api/request | `request_page` | server.py:2730-2762 |
-| GET | /api/map | `map_page` (node=: one box's detail) | server.py:2873-2895 |
-| GET | /api/see | `see_page` | server.py:2911-2927 |
-| GET | /api/usage | `usage_page` | server.py:2986-3014 |
-| GET | /api/objuse | `objuse_page`: Object activity, every object by last use (`objuse_rows`: days=, scope=, tab=, type=, q=, sort=, dir=), one table page | server.py:3073-3088 |
-| GET | /api/changes | `changes_page` (f=, subject=, offset= / limit=) | server.py:3108-3145 |
-| GET | /api/activity | `activity_page` (`name` [+ `as`] / `user` / `role`) | server.py:2940-2978 |
-| GET | /api/sql | `sql_page` (`page` + that page's own params: `user` / `a`, `role`, `name` / `obj` / `table`, `show`) | server.py:2981-2983 |
-| GET | /api/compare | `compare_page` | server.py:3182-3208 |
-| GET | /api/sensitive | `sensitive_page` | server.py:3232-3311 |
-| GET | /api/rules | `rules_page` (filters from `rules_pool` server.py:3423-3448) | server.py:3451-3491 |
-| GET | /api/finding | `finding_page`: one finding in full by id= | server.py:3520-3524 |
-| GET | /api/whatif | `whatif_page` (-> `what_if` server.py:3551-3562; `loss_groups` server.py:3570-3588, `object_impact` server.py:3594-3603) | server.py:3606-3626 |
-| GET | /api/review | `review_page` | server.py:3680-3732 |
-| GET | /api/grid | `grid_page` | server.py:3775-3796 |
-| GET | /api/flow | `flow_page` | server.py:3799-3813 |
-| GET | /api/find | `find_page` | server.py:3883-3893 |
-| GET | /api/list | `list_page` (`q`, `limit`, `what`) | server.py:3907-3923 |
-| GET | /api/graph | `graph_page` (of= user / role / object / map / check / user-tab / role-tab; group=: one combined box) | server.py:3959-3985 |
-| GET | /api/rules.csv | `rules_csv` | server.py:3527-3540 |
-| GET | /api/review.csv | `review_csv` | server.py:3834-3850 |
-| GET | /api/whatif.csv | `whatif_csv` | server.py:3629-3635 |
+| GET | /api/role | `role_page` | server.py:2154-2230 |
+| GET | /api/held | `held_page`: the Role page's held by rows of one tab, paged | server.py:2139-2143 |
+| GET | /api/object | `object_page` | server.py:2411-2474 |
+| GET | /api/grantees | `grantees_page`: the Object page's grantees of one tab, paged; by=groups pages `grantee_groups` | server.py:2371-2381 |
+| GET | /api/who | `who_page`; `by_role`: the Columns tab has By role | server.py:2535-2559 |
+| GET | /api/check | `check_page` -> `check_object`: verdict, `privileges` (`ask_privs`), `usage` chips, `inside` (a database or schema: `inside_page`), `narrow` (the narrowest grant), `nearest_own` apart, `risks`, focus= on its graph; priv=USAGE on an object without USAGE of its own -> `container_usage` (its database and schema) | server.py:2611-2769 |
+| GET | /api/request | `request_page` | server.py:2789-2821 |
+| GET | /api/map | `map_page` (node=: one box's detail) | server.py:2932-2954 |
+| GET | /api/see | `see_page`: cards, can_read, sensitive, usage, `risks` (shared data: the Access risk strip) | server.py:2970-2987 |
+| GET | /api/usage | `usage_page` | server.py:3046-3074 |
+| GET | /api/objuse | `objuse_page`: Object activity, every object by last use (`objuse_rows`: days=, scope=, tab=, type=, q=, sort=, dir=), one table page | server.py:3133-3148 |
+| GET | /api/changes | `changes_page` (f=, subject=, offset= / limit=) | server.py:3168-3205 |
+| GET | /api/activity | `activity_page` (`name` [+ `as`] / `user` / `role`) | server.py:3000-3038 |
+| GET | /api/sql | `sql_page` (`page` + that page's own params: `user` / `a`, `role`, `name` / `obj` / `table`, `show`) | server.py:3041-3043 |
+| GET | /api/compare | `compare_page`: rows, counts, `match`, `extras`, `trim` (match + trim make B equal to A) | server.py:3242-3269 |
+| GET | /api/sensitive | `sensitive_page` | server.py:3293-3372 |
+| GET | /api/rules | `rules_page` (filters from `rules_pool` server.py:3484-3509) | server.py:3512-3552 |
+| GET | /api/finding | `finding_page`: one finding in full by id= | server.py:3581-3585 |
+| GET | /api/whatif | `whatif_page` (-> `what_if` server.py:3612-3623; `loss_groups` server.py:3631-3649, `object_impact` server.py:3655-3664) | server.py:3667-3687 |
+| GET | /api/review | `review_page` | server.py:3741-3793 |
+| GET | /api/grid | `grid_page` | server.py:3836-3857 |
+| GET | /api/flow | `flow_page` | server.py:3860-3874 |
+| GET | /api/find | `find_page` | server.py:3944-3954 |
+| GET | /api/list | `list_page` (`q`, `limit`, `what`) | server.py:3968-3984 |
+| GET | /api/graph | `graph_page` (of= user / role / object / map / check / user-tab / role-tab; group=: one combined box) | server.py:4020-4046 |
+| GET | /api/rules.csv | `rules_csv` | server.py:3588-3601 |
+| GET | /api/review.csv | `review_csv` | server.py:3895-3911 |
+| GET | /api/whatif.csv | `whatif_csv` | server.py:3690-3696 |
 | GET | /api/privs.csv | `privs_csv` | server.py:1470-1476 |
-| GET | /api/access.csv | `access_csv` | server.py:1710-1719 |
-| GET | /api/held.csv | `held_csv` | server.py:2124-2129 |
-| GET | /api/grantees.csv | `grantees_csv` | server.py:2362-2367 |
-| GET | /api/who.csv | `who_csv` | server.py:2538-2543 |
-| GET | /api/flow.csv | `flow_csv`: every person of the selected Flow box | server.py:3817-3831 |
-| GET | /api/objuse.csv | `objuse_csv`: every row of the Object activity tab | server.py:3091-3102 |
-| GET | /{path:path} | `spa`: web/dist file, else index.html; unknown /api/ -> 404 JSON | server.py:4436-4446 |
+| GET | /api/access.csv | `access_csv` | server.py:1712-1721 |
+| GET | /api/held.csv | `held_csv` | server.py:2146-2151 |
+| GET | /api/grantees.csv | `grantees_csv` | server.py:2384-2389 |
+| GET | /api/who.csv | `who_csv` | server.py:2562-2567 |
+| GET | /api/flow.csv | `flow_csv`: every person of the selected Flow box | server.py:3878-3892 |
+| GET | /api/objuse.csv | `objuse_csv`: every row of the Object activity tab | server.py:3151-3162 |
+| GET | /{path:path} | `spa`: web/dist file, else index.html; unknown /api/ -> 404 JSON | server.py:4497-4507 |
 
-- The 29 page routes are registered in a loop, each as GET and as POST (`post_route`: a query too long for a URL comes as a JSON body, `body_of`) (server.py:4399-4424); the 10 CSV routes from `CSV`, GET and POST (server.py:4235-4236, server.py:4432-4434).
-- CSV export setting: `csv_on()` reads env `CSV` (unset = on, `0` = off) (server.py:4283-4284); `serve_csv` raises `ApiError(403, "csv_off")` before any session work when it is off (server.py:4287-4292). Both versions go through it: the FastAPI `*.csv` routes (server.py:4426-4433) and `st_react.answer` (st_react.py:45-46). `meta()` sends `csv` so the React app hides every CSV button (server.py:4008).
-- `WITH_REFS` answers get `refs` (kinds, types, sensitive, disabled) from `mkrefs` (server.py:4233-4234, server.py:4273-4274).
+- The 29 page routes are registered in a loop, each as GET and as POST (`post_route`: a query too long for a URL comes as a JSON body, `body_of`) (server.py:4460-4485); the 10 CSV routes from `CSV`, GET and POST (server.py:4296-4297, server.py:4493-4495).
+- CSV export setting: `csv_on()` reads env `CSV` (unset = on, `0` = off) (server.py:4344-4345); `serve_csv` raises `ApiError(403, "csv_off")` before any session work when it is off (server.py:4348-4353). Both versions go through it: the FastAPI `*.csv` routes (server.py:4487-4494) and `st_react.answer` (st_react.py:45-46). `meta()` sends `csv` so the React app hides every CSV button (server.py:4069).
+- `WITH_REFS` answers get `refs` (kinds, types, sensitive, disabled) from `mkrefs` (server.py:4294-4295, server.py:4334-4335).
 
 ### Handler -> access.py (verified by text match)
 
 | Handler | access.py calls |
 |---|---|
-| home_page | access_objects, grants, ladder_counts (My access); `home_summary` -> governance_kpis (server.py:1875-1909); `home_cards` -> object_activity, act_state, use_state, depth_counts, event_counts (server.py:1920-1968) |
-| access_page | via `access_all` / `access_entries` (server.py:1560-1612): grants, access_objects, data_views, future_label, ladder_counts |
+| home_page | access_objects, grants, ladder_counts (My access); `home_summary` -> governance_kpis (server.py:1897-1931); `home_cards` -> object_activity, act_state, use_state, depth_counts, event_counts (server.py:1942-1990) |
+| access_page | via `access_all` / `access_entries` (server.py:1560-1613): grants, access_objects, data_views, future_label, ladder_counts |
 | user_page | `user_ctx` / `user_rows`, `grant_count` for the default-role banner (server.py:1356), `user_graph` -> graph_input, down_graph |
-| role_page | `role_ctx` / `role_rows`, `role_up` -> readonly_writes, `role_graph`, `held_rows` -> loses, fix_text, role_edge (server.py:2058-2085) |
-| check_page | can, admin_can, cut_points, nearest, narrowest, lanes, best_paths, data_view, approver, containers, usage_gaps; `inside_page` -> inside_access (server.py:2716-2727) |
-| object_page | `object_ctx` / `object_rows` -> matrix, grantees, object_stats (server.py:2256-2286), `object_graph` |
-| who_page | `who_all` / `who_data` -> who_has, admin_access, column_view, same_paths, app_exposure for a Streamlit app (server.py:2471-2510) |
-| map_page | `map_graph` -> access_graph, builtin_info; `map_filters` / `map_cut` (schema=, otype=, access=) (server.py:2775-2835) |
-| objuse_page | `objuse_rows` -> object_activity, pattern, writable, use_state (server.py:3030-3062) |
+| role_page | `role_ctx` / `role_rows`, `role_up` -> readonly_writes, `role_graph`, `held_rows` -> loses, fix_text, role_edge (server.py:2080-2107) |
+| check_page (`check_object`, server.py:2646-2769; `container_usage`, server.py:2621-2643) | ask_privs, can, admin_can, cut_points, nearest, narrowest, lanes, best_paths, data_view, approver, containers, usage_gaps; `inside_page` -> inside_access (server.py:2775-2786) |
+| object_page | `object_ctx` / `object_rows` -> matrix, grantees, object_stats (server.py:2278-2308), `object_graph` |
+| who_page | `by_role` (server.py:2556), `who_all` / `who_data` -> who_has, admin_access, column_view, same_paths, app_exposure for a Streamlit app (server.py:2493-2532) |
+| map_page | `map_graph` -> access_graph, builtin_info; `map_filters` / `map_cut` (schema=, otype=, access=) (server.py:2834-2894) |
+| objuse_page | `objuse_rows` -> object_activity, pattern, writable, use_state (server.py:3090-3122) |
 | compare_page | compare, sensitive_rank |
 | grid_page / flow_page | review_grid / sens_flow, flow_follow |
-| usage_page / changes_page | granted_used (its `sql`: the trim as What if writes it; `sql=""` when usage is off, server.py:2999) / `diff_of` -> diff, fake_previous |
-| request_page | suggest, approver, need_privs; each suggestion and the asked role get `change` = `a.with_sql(grant ...)` (server.py:2756-2760), so the page shows the server's SQL |
-| rules_page / finding_page | `rule_index` over `S["rows"]` = `a.rule_rows` set in `session` (server.py:346, server.py:3339-3351) |
-| activity_page | kind -> app / scope / warehouse (warehouse_use); act_state, activity, activity_graph (-> used_path, object / user / role only), activity_sensitive, query_sql, activity_section_sql per section (server.py:2971), app_use, mark_sensitive; rule >= 24 rows of `S["rows"]` on that name (server.py:2940-2978) |
-| sql_page | page_sql (-> query_file, plain, activity_section_sql, query_sql) (server.py:2981-2983) |
+| usage_page / changes_page | granted_used (its `sql`: the trim as What if writes it; `sql=""` when usage is off, server.py:3059) / `diff_of` -> diff, fake_previous |
+| request_page | suggest, approver, need_privs; each suggestion and the asked role get `change` = `a.with_sql(grant ...)` (server.py:2815-2819), so the page shows the server's SQL |
+| rules_page / finding_page | `rule_index` over `S["rows"]` = `a.rule_rows` set in `session` (server.py:346, server.py:3400-3412) |
+| activity_page | kind -> app / scope / warehouse (warehouse_use); act_state, activity, activity_graph (-> used_path, object / user / role only), activity_sensitive, query_sql, activity_section_sql per section (server.py:3031), app_use, mark_sensitive; rule >= 24 rows of `S["rows"]` on that name (server.py:3000-3038) |
+| sql_page | page_sql (-> query_file, plain, activity_section_sql, query_sql) (server.py:3041-3043) |
 
 ## Paged tables and CSV
 
@@ -110,23 +110,23 @@ Big accounts send one page of a table, never every row; the full table only goes
 | Table | Rows | Page | CSV |
 |---|---|---|---|
 | User / Role Privileges tab | `privs_rows` (tab=, q=, sort=, dir=; of=role reads the role's effective rows) server.py:1437-1453 | `privs_page` server.py:1463-1467 | `privs_csv` server.py:1470-1476 |
-| Role held by | `held_rows` (one row per holder, what revoking cut= takes away) server.py:2058-2085; `held_tab_rows` (tab=users / roles / all) server.py:2101-2114 | `held_page` server.py:2117-2121 | `held_csv` server.py:2124-2129 |
-| Object grantees | `grantee_tab_rows` server.py:2306-2319; `grantee_groups` (same chain and privileges as one group, `MAX_CHIPS` people listed) server.py:2322-2346 | `grantees_page` server.py:2349-2359 | `grantees_csv` server.py:2362-2367 |
-| Access list | `access_all` / `access_entries` (riskiest first) server.py:1560-1612; `access_list` filters server.py:1624-1645 | `access_page` server.py:1658-1705 | `access_csv` server.py:1710-1719 |
-| Who has access | `who_all` (once per data set) server.py:2459-2468; first `MAX_WHO` / `MAX_WHO_GROUPS` sent (server.py:2455-2456) | `who_page` server.py:2513-2535 | `who_csv` server.py:2538-2543 |
-| Risks & fixes | `rule_index` server.py:3339-3351, `rule_groups` (by rule / person / object / grid) server.py:3372-3401, `finding_row` (no fix texts) server.py:3354-3364 | `rules_page` (`FINDINGS_PAGE` 100, `MAX_GROUPS` 200, server.py:3334-3335) server.py:3404-3491; `finding_page` server.py:3520-3524 | `rules_csv` server.py:3527-3540 |
-| Review | `review_ctx` server.py:3649-3670, `review_slice` (sorted by a web table column) server.py:3735-3769 | `review_page` server.py:3680-3732 | `review_csv` server.py:3834-3850 |
-| What changed events | `diff_of(prev)` server.py:3148-3167 | `changes_page` (`window`, `NAMES` 20 names per event) server.py:3108-3145 | none |
+| Role held by | `held_rows` (one row per holder, what revoking cut= takes away) server.py:2080-2107; `held_tab_rows` (tab=users / roles / all) server.py:2123-2136 | `held_page` server.py:2139-2143 | `held_csv` server.py:2146-2151 |
+| Object grantees | `grantee_tab_rows` server.py:2328-2341; `grantee_groups` (same chain and privileges as one group, `MAX_CHIPS` people listed) server.py:2344-2368 | `grantees_page` server.py:2371-2381 | `grantees_csv` server.py:2384-2389 |
+| Access list | `access_all` / `access_entries` (riskiest first) server.py:1560-1613; `access_list` filters server.py:1625-1646 | `access_page` server.py:1659-1707 | `access_csv` server.py:1712-1721 |
+| Who has access | `who_all` (once per data set) server.py:2481-2490; first `MAX_WHO` / `MAX_WHO_GROUPS` sent (server.py:2477-2478) | `who_page` server.py:2535-2559 | `who_csv` server.py:2562-2567 |
+| Risks & fixes | `rule_index` server.py:3400-3412, `rule_groups` (by rule / person / object / grid) server.py:3433-3462, `finding_row` (no fix texts) server.py:3415-3425 | `rules_page` (`FINDINGS_PAGE` 100, `MAX_GROUPS` 200, server.py:3395-3396) server.py:3465-3552; `finding_page` server.py:3581-3585 | `rules_csv` server.py:3588-3601 |
+| Review | `review_ctx` server.py:3710-3731, `review_slice` (sorted by a web table column) server.py:3796-3830 | `review_page` server.py:3741-3793 | `review_csv` server.py:3895-3911 |
+| What changed events | `diff_of(prev)` server.py:3208-3227 | `changes_page` (`window`, `NAMES` 20 names per event) server.py:3168-3205 | none |
 
-- `paged(p, rows)`: offset= and limit= (default `PAGE`, at most 1000) (server.py:1456-1460); `window(p, key, n)` the same for the other long tables (server.py:3223-3229); `num_param` caps one integer parameter (server.py:3367-3369).
+- `paged(p, rows)`: offset= and limit= (default `PAGE`, at most 1000) (server.py:1456-1460); `window(p, key, n)` the same for the other long tables (server.py:3284-3290); `num_param` caps one integer parameter (server.py:3428-3430).
 
 ## Graphs: lazy boxes
 
 - `build_graph(...)` turns access.py's lanes and edges into graph JSON; `src` = the graph endpoint's params, so over `LAZY` members the combined boxes go out empty and `only=<box>` answers that box alone, members included (server.py:867-996).
 - `fold_lanes(...)`: a lane with more than `MAX_LANE` roles or people becomes one box, `lane:<i>` for roles and `lane:<i>:people` for people; lines to its members point at the box with their count (server.py:743-774).
 - `drawn_input(...)`: `a.graph_input` plus member groups; too big -> `a.summary` with fold groups (server.py:1056-1073).
-- Page diagrams: `user_graph` (server.py:1326-1338), `role_graph` (server.py:2029-2052), `object_graph` (server.py:2289-2295), `map_graph` (objects over `MAX_BOX` rolled up per database, people and role lanes folded) (server.py:2796-2835), with `dress` for stacks, every-object and built-in boxes (server.py:2838-2852) and `map_detail` per box (server.py:2855-2870).
-- `graph_page` redraws any of them alone (`of=`) or one combined box (`group=`) (server.py:3959-3985); `gsrc` builds the `src` params (server.py:1341-1343).
+- Page diagrams: `user_graph` (server.py:1326-1338), `role_graph` (server.py:2051-2074), `object_graph` (server.py:2311-2317), `map_graph` (objects over `MAX_BOX` rolled up per database, people and role lanes folded) (server.py:2855-2894), with `dress` for stacks, every-object and built-in boxes (server.py:2897-2911) and `map_detail` per box (server.py:2914-2929).
+- `graph_page` redraws any of them alone (`of=`) or one combined box (`group=`) (server.py:4020-4046); `gsrc` builds the `src` params (server.py:1341-1343).
 
 ## Graph focus (Show only this)
 
@@ -141,18 +141,18 @@ Every graph answer takes `focus=<box id>`: `build_graph` narrows before anything
 | `fold_lanes` | a crowded lane (over `MAX_LANE` roles or people) folds into one box in any graph, not only over `LAZY` members | server.py:743-774, server.py:888-889 |
 | graph answer | `focus = {id, label, access}` when narrowed | server.py:989 |
 
-- Every page graph passes `focus=` on: `user_graph` (server.py:1333, server.py:1338), `role_graph` (server.py:2052), `object_graph` (server.py:2295), `check_page` (server.py:2709), `map_graph` (server.py:2831), the Activity graph (server.py:2969), the user-tab / role-tab diagrams (server.py:3978, server.py:3984).
+- Every page graph passes `focus=` on: `user_graph` (server.py:1333, server.py:1338), `role_graph` (server.py:2074), `object_graph` (server.py:2317), `check_page` (server.py:2768), `map_graph` (server.py:2890), the Activity graph (server.py:3029), the user-tab / role-tab diagrams (server.py:4039, server.py:4045).
 
 ## Risk strip
 
-What needs attention at the top of Access Overview, Role paths, Who has access and Can they?: `[{severity bad | warn, text, n, link}]`, worst first (`ranked`), [] when nothing needs attention (server.py:1722-1856).
+What needs attention at the top of Access Overview, Role paths, Who has access, What they see and Can they?: `[{severity bad | warn, text, n, link, table}]` (`table` `{cols, rows, total}`, the first `RISK_ROWS` 10 rows, or null; `risk()`, server.py:1733-1739), worst first (`ranked`), [] when nothing needs attention (server.py:1724-1878).
 
 | Item | What | path:line |
 |---|---|---|
-| `subject_risks` / `risks_of` | a person or role: is or holds an admin role, account privileges not from PUBLIC, sensitive objects read unmasked (`seen_counts`), rule findings (`findings_risk`), admin default role, stale and still holding roles, very broad access (`BROAD` 25% and `BROAD_MIN` 20 data objects), secondary roles ALL | server.py:1769-1811 |
-| `object_risks` / `object_risks_of` | an object from its grants (no Who has access walk): sensitive columns without masking, PUBLIC grants, people who can change a sensitive object, stale readers, findings naming it, only admin roles reach it, unused for `UNUSED` (90) days yet read by `WIDE` (3)+ users; readers without USAGE on the database or schema left out | server.py:1818-1856 |
-| `findings_risk` | one line: findings per severity and the first `RISK_TOP` (3) short rule names | server.py:1739-1747 |
-| sent by | `access_page` (server.py:1707), `role_page` (server.py:2198), `who_page` (server.py:2533), `check_page` (both, each line prefixed with its name, server.py:2710) | |
+| `subject_risks` / `risks_of` | a person or role: is or holds an admin role, account privileges not from PUBLIC, sensitive objects read unmasked (`seen_counts`), rule findings (`findings_risk`), admin default role, stale and still holding roles, very broad access (`BROAD` 25% and `BROAD_MIN` 20 data objects), secondary roles ALL | server.py:1780-1831 |
+| `object_risks` / `object_risks_of` | an object from its grants (no Who has access walk): sensitive columns without masking, PUBLIC grants, people who can change a sensitive object, stale readers, findings naming it, only admin roles reach it, unused for `UNUSED` (90) days yet read by `WIDE` (3)+ users; readers without USAGE on the database or schema left out | server.py:1838-1878 |
+| `findings_risk` | one line: findings per severity and the first `RISK_TOP` (3) short rule names, table Severity / Finding / On | server.py:1746-1755 |
+| sent by | `access_page` (server.py:1709), `role_page` (server.py:2220), `who_page` (server.py:2557), `see_page` (server.py:2987), `check_page` (both, each line prefixed with its name, server.py:2769) | |
 
 ## Data loading
 
@@ -169,7 +169,7 @@ flowchart TD
   RS -->|objects| SN[with_query a.snapshot q, WHERE]
   LV & SN --> PQ[cache.parted: parts in .cache/reads]
   STG --> BT[built: a.build, rule checks or kept_rules<br/>server.py:202-211]
-  RL[reload -> refresh -> renew<br/>server.py:4092-4164] -->|KEY.new, then cache.swap, compared| RS
+  RL[reload -> refresh -> renew<br/>server.py:4153-4225] -->|KEY.new, then cache.swap, compared| RS
   PG[GET /api/progress -> progress server.py:154-161] -.reads.-> TR
 ```
 
@@ -180,32 +180,32 @@ flowchart TD
 - `read_shared(key)`: Direct mode reads activity and object use incrementally from `cache.old(key, KEY)` (server.py:172-174; [flows/activity-read.md](../flows/activity-read.md)); objects mode passes `old=cache.last(KEY)` (server.py:176); `_read` stamps every read, so `shared_key` changes on a re-read of the same run; `a.tidy(d)` runs before the copy is kept (server.py:177-183).
 - `fetched()`: "Data from" = the oldest part, else the read time (server.py:250-254).
 - `session(view, sid, builtin)` builds the view's data under `LOCK`, fills `S` (sens, rows, breaks); the rule results come from `kept_rules()` when kept (`.cache/<key>.rules.pkl`, stamp `(key, builtin, a.rules_stamp(), SERVER_STAMP)`), else are checked and saved; after a load `built()` has them all in `a.memo` already (server.py:325-377); `prev_findings(d)` gives the findings kept for the previous snapshot (server.py:409-416).
-- Loads run inside `tracked(key, view, fn)`: `a.progress` lines kept for `GET /api/progress` (`progress(view)`, never starts a load) and printed when `LOG_LINES`; `POST /api/reload` runs in a thread pool so the poll answers meanwhile (server.py:133-161, server.py:4374-4378; [flows/load-progress.md](../flows/load-progress.md)).
-- Refresh: `reload` -> `refresh(what)` (one `JOB`, a thread when `BACKGROUND`) -> `renew(what)`: rebuild CALLs `SP_ACCESS_SNAPSHOT('AUTO')` via `call_snapshot()` (the only non-read statement allowed, CLAUDE.md, test_read_only), then reads under `KEY + ".new"` (parts kept for an hour after a failed refresh, so the next resumes); any part that timed out keeps the old data; else `built()`, `cache.swap`, `compared()` (server.py:4092-4193); flow in [flows/background-refresh.md](../flows/background-refresh.md).
-- `HIERARCHY=0`: `session()` skips rule 17's read-only writes for What-if breaks (server.py:347); `rules_page` / `home_page` send `skipped` (server.py:3435, server.py:3474-3475, server.py:1871); `note_info` explains a `SKIPPED` source and the notes of missing or unreadable data (server.py:590-645).
-- `export(fresh)` (run.py --export): stage 1 only, the progress lines on the terminal; every part ok -> `cache.drop(KEY)` (the next start builds from the new parts), exit 0, else 1 (server.py:4473-4496).
+- Loads run inside `tracked(key, view, fn)`: `a.progress` lines kept for `GET /api/progress` (`progress(view)`, never starts a load) and printed when `LOG_LINES`; `POST /api/reload` runs in a thread pool so the poll answers meanwhile (server.py:133-161, server.py:4435-4439; [flows/load-progress.md](../flows/load-progress.md)).
+- Refresh: `reload` -> `refresh(what)` (one `JOB`, a thread when `BACKGROUND`) -> `renew(what)`: rebuild CALLs `SP_ACCESS_SNAPSHOT('AUTO')` via `call_snapshot()` (the only non-read statement allowed, CLAUDE.md, test_read_only), then reads under `KEY + ".new"` (parts kept for an hour after a failed refresh, so the next resumes); any part that timed out keeps the old data; else `built()`, `cache.swap`, `compared()` (server.py:4153-4254); flow in [flows/background-refresh.md](../flows/background-refresh.md).
+- `HIERARCHY=0`: `session()` skips rule 17's read-only writes for What-if breaks (server.py:347); `rules_page` / `home_page` send `skipped` (server.py:3496, server.py:3535-3536, server.py:1893); `note_info` explains a `SKIPPED` source and the notes of missing or unreadable data (server.py:590-645).
+- `export(fresh)` (run.py --export): stage 1 only, the progress lines on the terminal; every part ok -> `cache.drop(KEY)` (the next start builds from the new parts), exit 0, else 1 (server.py:4534-4557).
 
 ## What changed at refresh time
 
-- `diff_of(prev)`: `a.diff(prev, prev_findings(prev), shared_key(prev), pairs=False)` once per pair of data sets (`a.cached(("diff", run))`), kept in `.cache/<key>.diff.pkl` while both build keys, builtin, `a.rules_stamp()` and `SERVER_STAMP` match (server.py:3148-3167).
-- `compared(d)`: after a refresh swaps in `d`, builds it and runs `diff_of(prev)` while the replaced data set is still kept built (`a.built`), so the first open of What changed answers at once; a failure only says so in the load log (server.py:4167-4178).
-- `changes_page` filters the events by subject= and f= (gain / lose / risk / sensitive), pages them (`window`), cuts people / objects / subjects to `NAMES` per event and says when a big change names only its first `a.EVENT_NAMES` people (server.py:3108-3145).
+- `diff_of(prev)`: `a.diff(prev, prev_findings(prev), shared_key(prev), pairs=False)` once per pair of data sets (`a.cached(("diff", run))`), kept in `.cache/<key>.diff.pkl` while both build keys, builtin, `a.rules_stamp()` and `SERVER_STAMP` match (server.py:3208-3227).
+- `compared(d)`: after a refresh swaps in `d`, builds it and runs `diff_of(prev)` while the replaced data set is still kept built (`a.built`), so the first open of What changed answers at once; a failure only says so in the load log (server.py:4228-4239).
+- `changes_page` filters the events by subject= and f= (gain / lose / risk / sensitive), pages them (`window`), cuts people / objects / subjects to `NAMES` per event and says when a big change names only its first `a.EVENT_NAMES` people (server.py:3168-3205).
 
 ## Security checks
 
 | Check | What | path:line |
 |---|---|---|
-| `allowed_hosts()` | loopback + HOST + `ALLOWED_HOSTS`; HOST=0.0.0.0 adds machine names and IPs | server.py:4297-4311 |
-| `served(host)` | Host header must be served (`*` = any) | server.py:4325-4328 |
-| `same_site` middleware | bad Host -> 400 `bad_host`; non-GET with foreign Origin, or `/api/` with `Sec-Fetch-Site` not same-origin/none -> 403 `cross_site`; a page reloaded or closed mid-answer (Starlette RuntimeError, request disconnected) -> 204, the work is kept | server.py:4330-4351 |
+| `allowed_hosts()` | loopback + HOST + `ALLOWED_HOSTS`; HOST=0.0.0.0 adds machine names and IPs | server.py:4358-4372 |
+| `served(host)` | Host header must be served (`*` = any) | server.py:4386-4389 |
+| `same_site` middleware | bad Host -> 400 `bad_host`; non-GET with foreign Origin, or `/api/` with `Sec-Fetch-Site` not same-origin/none -> 403 `cross_site`; a page reloaded or closed mid-answer (Starlette RuntimeError, request disconnected) -> 204, the work is kept | server.py:4391-4412 |
 | `mine_off()` | My access off inside Snowflake, `MY_ACCESS=0`, HOST not loopback or `ALLOWED_HOSTS` naming another host (server.py:283-284), key-pair login; `MY_ACCESS=1` forces on | server.py:271-289 |
 | `csv_text()` | a cell starting with `= + - @` tab or CR (not a plain number) gets a leading `'`, so a CSV opened in Excel never runs an object name as a formula | server.py:498-506 |
-| `csv_on()` / `serve_csv` | `CSV=0`: every server CSV download answers 403 `csv_off`, in both versions; the app hides its CSV buttons from `meta.csv`. Whoever can open the app still sees the screen, so app access stays the real control (README.md:230) | server.py:4283-4292 |
-| JSON errors | `ApiError` -> `{detail, message}` with its status; any other exception -> 500 `{detail: "error", message: "Type: text"}` | server.py:4353-4359 |
+| `csv_on()` / `serve_csv` | `CSV=0`: every server CSV download answers 403 `csv_off`, in both versions; the app hides its CSV buttons from `meta.csv`. Whoever can open the app still sees the screen, so app access stays the real control (README.md:230) | server.py:4344-4353 |
+| JSON errors | `ApiError` -> `{detail, message}` with its status; any other exception -> 500 `{detail: "error", message: "Type: text"}` | server.py:4414-4420 |
 
 - Same error shape in Streamlit: `st_react.answer` (st_react.py:50-53); there a `.csv` name is served only when it is a key of `server.CSV`, else 404 (st_react.py:45-46).
-- GZip for answers over 2000 bytes (server.py:4322).
-- `__getattr__("app")` builds the app lazily for `uvicorn server:app` (server.py:4451-4456); `__main__`: `--export` runs `export()`, else `LOG_LINES = True` and uvicorn on HOST / WEB_PORT with `quiet_log()` (its access log leaves out GET /api/progress via `NoProgress`) (server.py:4499-4505, server.py:4459-4470).
+- GZip for answers over 2000 bytes (server.py:4383).
+- `__getattr__("app")` builds the app lazily for `uvicorn server:app` (server.py:4512-4517); `__main__`: `--export` runs `export()`, else `LOG_LINES = True` and uvicorn on HOST / WEB_PORT with `quiet_log()` (its access log leaves out GET /api/progress via `NoProgress`) (server.py:4560-4566, server.py:4520-4531).
 
 ## Activity (rules 24-28, rule 29, Activity tab)
 
@@ -214,9 +214,9 @@ flowchart TD
 | `RULE_INFO` 24-29 | area "Activity" (24-28) or "Sensitive data" (29), plain-word text and fix hint per rule | server.py:524-585 |
 | `SHORT` 24-29 | short rule labels (29: "app opens owner's data") | server.py:1491-1499 |
 | `note_info("activity")` | health note: "No client in Activity" (SESSIONS not readable) or "No table activity" (ACCESS_HISTORY not readable) | server.py:629-632 |
-| `MAX_ACTIVITY` | Activity rows sent (2000) | server.py:2937 |
-| `work` | default business hours from `access.WORK_HOURS` | server.py:2958 |
-| `activity_page` | GET /api/activity; flow in [flows/activity-tab.md](../flows/activity-tab.md) | server.py:2940-2978 |
-| `section_sql` | per Activity section key of `a.ACT_SECTIONS`, the SQL of `a.activity_section_sql(name, what, first, last, key)` | server.py:2971 |
-| `sql_page` | GET /api/sql: `{page, queries}` from `a.page_sql(page, p)`, empty entries dropped; not in WITH_REFS; flow in [flows/show-sql.md](../flows/show-sql.md) | server.py:2981-2983, server.py:4232 |
+| `MAX_ACTIVITY` | Activity rows sent (2000) | server.py:2997 |
+| `work` | default business hours from `access.WORK_HOURS` | server.py:3018 |
+| `activity_page` | GET /api/activity; flow in [flows/activity-tab.md](../flows/activity-tab.md) | server.py:3000-3038 |
+| `section_sql` | per Activity section key of `a.ACT_SECTIONS`, the SQL of `a.activity_section_sql(name, what, first, last, key)` | server.py:3031 |
+| `sql_page` | GET /api/sql: `{page, queries}` from `a.page_sql(page, p)`, empty entries dropped; not in WITH_REFS; flow in [flows/show-sql.md](../flows/show-sql.md) | server.py:3041-3043, server.py:4293 |
 

@@ -5,43 +5,47 @@
 
 ```mermaid
 sequenceDiagram
-  participant S as server.what_if<br/>server.py:3551-3562
-  participant W as access.what_if<br/>access.py:5821-6010
+  participant S as server.what_if<br/>server.py:3612-3623
+  participant W as access.what_if<br/>access.py:5871-6060
   participant L as lookups (build)
   S->>W: changes JSON list
-  W->>W: changes_of(): cut + label/iac/sql (4997-5041)
-  W->>W: before: reach per touched user (5112-5118)
-  W->>L: saved = state(), was = dict(built) (5137)
-  W->>L: build(without_cuts(source.data, cut)) (5140)
-  W->>W: after: lost / kept per user, findings(only) (5154-5180)
-  W->>L: restore(saved), built put back to was, in finally (5181-5184)
+  W->>W: changes_of(): cut + label/iac/sql (5781-5830)
+  W->>W: before: reach per touched user (5902-5908)
+  W->>L: saved = state(), was = dict(built) (5927)
+  W->>L: build(without_cuts(source.data, cut)) (5930)
+  W->>W: after: lost / kept per user, findings(only) (5944-5970)
+  W->>L: restore(saved), built put back to was, in finally (5971-5974)
   W-->>S: summary, users, objects, roles, findings, iac, sql, csv
 ```
 
-## Ops (`WHAT_IF_OPS`, `access.py:5724`)
-- `revoke_role_from_user` (role, user), `revoke_role_from_role` (role, grantee): if held further down, cut where it is granted on the user's paths too (`access.py:5739-5754`).
-- `revoke_priv` (role, privilege, object) (`access.py:5755-5765`).
-- `drop_role` (role): refused for PUBLIC and admin roles (`access.py:5766-5771`).
-- `empty_public`: every grant to PUBLIC (`access.py:5772-5776`).
-- Unknown op or missing grant -> `ValueError` (`access.py:5746`, `5024`, `5029`, `5039`); server answers 400 `bad_change` (`server.py:3559-3562`).
+## Ops (`WHAT_IF_OPS`, `access.py:5774`)
+- `revoke_role_from_user` (role, user), `revoke_role_from_role` (role, grantee): if held further down, cut where it is granted on the user's paths too (`access.py:5789-5804`).
+- `revoke_priv` (role, privilege, object) (`access.py:5805-5815`).
+- `drop_role` (role): refused for PUBLIC and admin roles (`access.py:5816-5821`).
+- `empty_public`: every grant to PUBLIC (`access.py:5822-5826`).
+- Unknown op or missing grant -> `ValueError` (`access.py:5796`, `5813`, `5818`, `5828`); server answers 400 `bad_change` (`server.py:3620-3623`).
+
+## Builder (web/src/pages/Whatif.tsx:47-82)
+- Another kind of change clears the pick; another role keeps the picked user, role or object. Add is off while the new role's holders load and while the pick does not hold the role; a status line then says who does not hold which role (`web/src/pages/Whatif.tsx:62-80`; test `web/src/pages/whatif.test.tsx`).
+- Result: three tiles (users losing access, objects nobody reaches, new findings), then second-level tabs Who loses / Objects / Roles / Findings / Text to apply (`part=`); Download CSV sits in the page head (`web/src/pages/Whatif.tsx:123-152`, `web/src/pages/Whatif.tsx:213-221`).
 
 ## Simulation and restore
-- `without_cuts(d, cut)`: data set minus removed GRANT / USER_ROLE rows (`access.py:5783-5791`).
-- `state()` copies every name in `STATE` (`access.py:5726-5728`, `5842-5845`); `restore()` puts them back in place; `REBOUND` names are rebound (`access.py:6750-6760`).
-- Rebuild in `try`, `restore(saved)` in `finally` (`access.py:5879-5925`), so the loaded data set and its cached results (`memo`) come back.
-- `built` (the `KEEP_BUILT` sets) is copied first and put back after (`built.clear(); built.update(was)`, `access.py:5877`, `5183-5184`): the simulated build stores the loaded set in `built`, which would otherwise keep a stale or simulated entry. `loaded(d)` does the same (`access.py:6767`, `5871-5872`).
-- Rules recheck only scoped names: `only` built from `SCOPED`/`GROW` and touched grantees (`access.py:5862-5869`, `5180`).
+- `without_cuts(d, cut)`: data set minus removed GRANT / USER_ROLE rows (`access.py:5833-5841`).
+- `state()` copies every name in `STATE` (`access.py:5776-5778`, `6794-6797`); `restore()` puts them back in place; `REBOUND` names are rebound (`access.py:6800-6810`).
+- Rebuild in `try`, `restore(saved)` in `finally` (`access.py:5929-5975`), so the loaded data set and its cached results (`memo`) come back.
+- `built` (the `KEEP_BUILT` sets) is copied first and put back after (`built.clear(); built.update(was)`, `access.py:5927`, `5973-5974`): the simulated build stores the loaded set in `built`, which would otherwise keep a stale or simulated entry. `loaded(d)` does the same (`access.py:6817`, `6823-6824`).
+- Rules recheck only scoped names: `only` built from `SCOPED`/`GROW` and touched grantees (`access.py:5912-5919`, `5970`).
 
 ## Output
-- Per user: lost / kept rows, `kept_roles` (roles under a cut still reached) (`access.py:5953-5961`).
-- Objects nobody reaches or without owner; roles left orphan or unreached (`access.py:5970-5973`).
-- Findings `fixed` / `new` / `changed` (`access.py:5962-5969`); summary text (`access.py:5985-5992`); CSV rows (`access.py:5993-6008`).
-- IaC + SQL text from `fix_text()` / `revoke()` (`access.py:4647-4678`); OWNERSHIP gives a transfer text, not REVOKE (`access.py:4664-4666`).
+- Per user: lost / kept rows, `kept_roles` (roles under a cut still reached) (`access.py:6003-6011`).
+- Objects nobody reaches or without owner; roles left orphan or unreached (`access.py:6020-6023`).
+- Findings `fixed` / `new` / `changed` (`access.py:6012-6019`); summary text (`access.py:6035-6042`); CSV rows (`access.py:6043-6058`).
+- IaC + SQL text from `fix_text()` / `revoke()` (`access.py:4690-4721`); OWNERSHIP gives a transfer text, not REVOKE (`access.py:4707-4709`).
 
 ## Example (fake data, verified)
 - Input: `[{"op":"revoke_role_from_user","role":"GRP_ANALYSTS","user":"ANALYST_01"}]`
 - Summary: `1 user loses access to 9 objects; 1 keeps access through another path (most via PUBLIC); 1 finding fixed, 0 new`
 - SQL: `REVOKE ROLE GRP_ANALYSTS FROM USER ANALYST_01;`
 - IaC: `Remove in the infrastructure-as-code repo: role GRP_ANALYSTS granted to user ANALYST_01`
-- Finding fixes feed What if via `fix_changes(edges)` (`access.py:7110-7119`).
+- Finding fixes feed What if via `fix_changes(edges)` (`access.py:7160-7169`).
 - Tests: `test_access.py:1438-1474` (what_if calls).

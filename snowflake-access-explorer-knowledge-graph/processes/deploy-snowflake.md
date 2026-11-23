@@ -41,7 +41,7 @@ flowchart TD
 ## Step 2: sql/2_snapshot.sql
 - `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')`; `AUTO` / `ACCOUNT_USAGE` / `SHOW`; ACCOUNT_USAGE lags ~2 h — sql/2_snapshot.sql:1-12.
 - Verify: last run OK, one run in data, counts per table, OBJECT_USE and ACTIVITY (may fail) — sql/2_snapshot_verify.sql:4-42.
-- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:721-723; not in any sql/ file (only dropped in sql/3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:293.
+- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:728-730; not in any sql/ file (only dropped in sql/3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:293.
 
 ## Step 3 (numbered 4): sql/4_streamlit.sql
 - Two options: `SOURCE=objects` (run 1 + 2 first) or `SOURCE=direct` (this file only; owner role needs IMPORTED PRIVILEGES) — sql/4_streamlit.sql:2-7.
@@ -61,10 +61,10 @@ flowchart TD
 ## Roles and grants needed
 | Role | Needs | Evidence |
 |---|---|---|
-| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:293, README.html:725 |
+| `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:293, README.html:732 |
 | `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:1574-1578 |
 | `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:361-362, sql/4_streamlit.sql:5-7 |
-| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 11 `TBL_ACCESS_` tables (`TBL_ACCESS_FINDING` included, sql/1_setup.sql:1557-1558); USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button, sql/1_setup.sql:1570-1571) | sql/1_setup.sql:1517-1571, README.html:725 |
+| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 11 `TBL_ACCESS_` tables (`TBL_ACCESS_FINDING` included, sql/1_setup.sql:1557-1558); USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button, sql/1_setup.sql:1570-1571) | sql/1_setup.sql:1517-1571, README.html:732 |
 | `APP_ROLE`, SiS | USAGE on the Streamlit `&STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`) (+ DB/schema/WH) | sql/4_streamlit.sql:75-86 |
 - How these grants are given in practice: see access-requests.md.
 

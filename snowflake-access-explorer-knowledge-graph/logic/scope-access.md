@@ -3,9 +3,9 @@
 
 Asked about a database or schema, Can they? answers per table and view inside it; asked about one object and the answer is No, it names the narrowest grant that would give just that.
 
-## Inside a database or schema (`inside_access`, `access.py:4994-5024`)
-- Objects: every data object (`is_data`) in the database, or in the schema when the scope is a schema (`access.py:5010-5015`).
-- Mode `inside=` (`INSIDE_NEEDS`, `access.py:4994`):
+## Inside a database or schema (`inside_access`, `access.py:5037-5067`)
+- Objects: every data object (`is_data`) in the database, or in the schema when the scope is a schema (`access.py:5053-5058`).
+- Mode `inside=` (`INSIDE_NEEDS`, `access.py:5037`):
 
 | Mode | Needs on each object |
 |---|---|
@@ -13,15 +13,32 @@ Asked about a database or schema, Can they? answers per table and view inside it
 | `dml` | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` (only those valid for the kind, `valid_privs`) |
 | `ddl` | `OWNERSHIP` (what ALTER and DROP need) |
 
-- `OWNERSHIP` on the object, or an admin role whose real links reach it (`admin_objects` of `held_admin`), gives everything (`access.py:5008`, `5017`).
-- A row is `ok` when nothing is missing and the person has USAGE on its database and schema; otherwise `blocked` names the gap (`usage_gaps`, `gap_word`; `access.py:5019-5022`).
-- Rows that cannot come first, then by name; `create` lists the CREATE privileges held on the schema itself, for new objects (`access.py:5023-5024`).
-- Page part (`inside_page`, `server.py:2716-2727`): `show_in=` all | can | cannot, `in_q=` words that must all be in the name, `offset=`, `INSIDE_PAGE` 100 rows (`server.py:2713`); counts `total`, `can`, `cannot`, `blocked`, `matched`.
+- `OWNERSHIP` on the object, or an admin role whose real links reach it (`admin_objects` of `held_admin`), gives everything (`access.py:5051`, `5060`).
+- A row is `ok` when nothing is missing and the person has USAGE on its database and schema; otherwise `blocked` names the gap (`usage_gaps`, `gap_word`; `access.py:5062-5065`).
+- Rows that cannot come first, then by name; `create` lists the CREATE privileges held on the schema itself, for new objects (`access.py:5066-5067`).
+- Page part (`inside_page`, `server.py:2775-2786`): `show_in=` all | can | cannot, `in_q=` words that must all be in the name, `offset=`, `INSIDE_PAGE` 100 rows (`server.py:2772`); counts `total`, `can`, `cannot`, `blocked`, `matched`.
 - Example (fake data, `test_check_inside`, `test_server.py:283-294`): HR_01 on `SALES` -> every object cannot; ENGINEER_01 on `SALES.CORE` with `inside=dml` -> some can, and `CREATE TABLE` in `create`; `inside=ddl` needs ownership.
 
-## The narrowest grant (`narrowest`, `access.py:5249-5261`)
+## The narrowest grant (`narrowest`, `access.py:5292-5304`)
 - Candidates: roles the person already reaches (`best_paths`) that hold USAGE on the object's schema, else its database (`usage_reach` of the last container), and may be suggested (`suggestable`).
 - Pick: the role with the fewest grant rows (`role_rows`), then by name, so nothing else comes with the new grant; its holders get it too (`holders`).
 - Returns the role, the holder count, the privilege and the GRANT text (`with_sql`); text only, never run. None when the object has no container or no role fits.
-- Asked only on the Nearest ways in tab (`near=1`), not for My access and not for OWNERSHIP; the ways to own it come apart in `nearest_own` (`server.py:2670-2674`).
+- Asked only on the Ways in tab (`near=1`), not for My access and not for OWNERSHIP; the ways to own it come apart in `nearest_own` (`server.py:2729-2733`).
 - Example (`test_check_narrow`, `test_server.py:275-280`): ANALYST_01 on the Streamlit app `SALES.MART.ST_CUSTOMER_LOOKUP` -> No, ask USAGE; narrowest role `<TECH>SALES_MART_READ`, text `GRANT USAGE ON STREAMLIT ...`.
+
+## Which privileges can be asked (`ask_privs`, `access.py:4237-4240`)
+- Choices: `valid_privs(kind)` first (from the data and the standard ones), then every other privilege Snowflake documents for the type (`SNOWFLAKE_PRIVS`, `access.py:4212-4234`; a schema also every `CREATE <type>` of `CREATES`, `access.py:4202-4211`), sorted. One nobody holds answers No. Only Can they? uses it (`server.py:2655`); the matrix, Has / lacks and the rules keep `valid_privs`.
+- Example (`test_check`, `test_server.py:300-302`): `HR.PEOPLE.TBL_EMPLOYEE` offers `REBUILD`, `EVOLVE SCHEMA`, `APPLYBUDGET`.
+
+## USAGE on a table (`container_usage`, `server.py:2621-2643`)
+- An object in a database and schema with no USAGE privilege of its own offers USAGE too (`check_page`, `server.py:2611-2618`). Asked, the object stays and the answer is USAGE on its database and schema: yes when every container is held, else "No USAGE on ..." with the missing ones.
+- Paths, ownership and admin ways come from `a.can` and `a.admin_can` per container; the graph leads to the containers and keeps `focus=`. No cuts, ways in, held row, rows and columns.
+- Example (`test_check`, `test_server.py:303-308`): `HR.PEOPLE.TBL_EMPLOYEE`, `priv=USAGE` for ENGINEER_01 and ANALYST_01: every path ends at `HR` or `HR.PEOPLE`; a Yes has a path, an ownership or an admin way.
+
+## Blocked: facts and grants (`Blocked`, `web/src/pages/Check.tsx:369-388`)
+- One line per fact: ✓ Has the privileges on the object (OWNERSHIP without paths), ✓ Has or ✕ Missing USAGE per container. Then one + Add line per grant of the smallest fix (`unblock.iac` split) and the SQL one GRANT per line. Text only. Test: `web/src/pages/blocked.test.tsx`.
+
+## Compare: make B equal to A (`compare`, `access.py:5628-5690`)
+- `match`: grants that give B what only A has. `extras`: revokes of A's extras. `trim`: revokes of B's extras. match + trim make B equal to A. A revoke is the first link of the path, or the role's own grant (`cut()`, `access.py:5666-5668`); one change each, never PUBLIC; an admin side has no extras against it.
+- Page: plans equal (match, then trim) / match / extras on the Plan tab (`tab=plan`, old `plan=` links open it), the revokes to What if (`web/src/pages/Compare.tsx:47-102`). Text only.
+- Example (`test_graph_see_compare`, `test_server.py:1024-1025`): A `<FUNC>MARKETING`, B `<FUNC>DEPLOY`: every trim change is a revoke to `<FUNC>DEPLOY`.

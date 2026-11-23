@@ -45,8 +45,8 @@ sequenceDiagram
 
 1. Direct is the default when neither `SOURCE` nor `ACCESS_SNAPSHOT` is set — cache.py:43-56; `DIRECT = SOURCE == "direct"` — server.py:28.
 2. A page request never starts the slow read: `load_shared(ask=True)` raises `409 shared_not_loaded` unless `cache.ready(KEY)` or parts are kept (`cache.parts_read_at`), and `409 shared_loading` while a load runs — server.py:220-241, cache.py:181-187.
-3. `meta()` catches it and sends `error` so the UI shows the load card; the React app posts `reload {what:"load"}` — server.py:4004-4036.
-4. `reload({"what":"load"})` -> `load_shared()` -> `tracked(KEY, "shared", fn)` — server.py:4092-4101, server.py:133-153 ([load-progress.md](load-progress.md)).
+3. `meta()` catches it and sends `error` so the UI shows the load card; the React app posts `reload {what:"load"}` — server.py:4065-4097.
+4. `reload({"what":"load"})` -> `load_shared()` -> `tracked(KEY, "shared", fn)` — server.py:4153-4162, server.py:133-153 ([load-progress.md](load-progress.md)).
 5. `read_shared()` -> `with_query(a.live(q, old, old_use), KEY)` with the ACTIVITY and OBJECT_USE rows of the read before, so a resumed load asks for the same days and every read part is reused — server.py:164-178 ([two-stage-load.md](two-stage-load.md)).
 6. Setup: `USE SECONDARY ROLES ALL` (refused inside SiS, ignored), `CURRENT_TIMESTAMP`, `CURRENT_DATABASE` — access.py:1243-1251.
 7. Wave 1: every `SELECT 1 FROM ACCOUNT_USAGE.<view> LIMIT 1` probe at once through `each()`, `DATABASES` included; a lost session or no warehouse (`lost()`: error 606, an ended session) stops the load; a probe that timed out (`slow()`) counts as readable; why a fallback runs goes to the load log; `ACTIVITY=0` probes neither ACCESS_HISTORY nor SESSIONS — access.py:1273-1288, access.py:626-636.
@@ -63,7 +63,7 @@ sequenceDiagram
 18. Object inventory: every object the account lists, an OWNERSHIP row for each the grants lack; objects without an owner role are counted in the load log — access.py:1644-1654 ([object-inventory.md](object-inventory.md)).
 19. Returns `run = dict(RUN_ID="direct", FINISHED_AT=now, SOURCES, NOTES)`; says `done in N s` — access.py:1655-1656.
 20. Kept with `cache.get` -> `store()` (memory + file) under the key's own lock; SQL copy in a thread — cache.py:125-144.
-21. Must stay in step with `SP_ACCESS_SNAPSHOT` (docstring) — access.py:1223-1226; checked by `test_live` (all three levels), `test_live_inside`, `test_switches`, `test_progress`, `test_inventory` — test_access.py:614, test_access.py:709, test_access.py:528, test_access.py:2452, test_access.py:762; a session lost halfway or no warehouse: `test_lost_session` — test_server.py:707-725.
+21. Must stay in step with `SP_ACCESS_SNAPSHOT` (docstring) — access.py:1223-1226; checked by `test_live` (all three levels), `test_live_inside`, `test_switches`, `test_progress`, `test_inventory` — test_access.py:614, test_access.py:709, test_access.py:528, test_access.py:2452, test_access.py:762; a session lost halfway or no warehouse: `test_lost_session` — test_server.py:715-733.
 
 ## Example (mock query that answers everything empty; no Snowflake)
 

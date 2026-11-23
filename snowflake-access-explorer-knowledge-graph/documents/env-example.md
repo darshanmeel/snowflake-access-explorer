@@ -21,9 +21,9 @@ flowchart LR
 - `SNOWFLAKE_HOST` (commented): the PrivateLink host `<org>-<account>.privatelink` + Snowflake domain, read by sf.connect() as `host=` (sf.py:29); `SNOWFLAKE_ACCOUNT` stays `<org>-<account>` — .env.example:36-37, README.md:192-207, processes/privatelink-login.md.
 - Secret refs: `SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD` (commented) — .env.example:28-29.
 - `ROLE_PREFIXES` (commented) — .env.example:31-32.
-- `CSV=0` (commented): hides every CSV button and refuses CSV downloads (server.csv_on, server.py:4283-4284) — .env.example:38-39.
+- `CSV=0` (commented): hides every CSV button and refuses CSV downloads (server.csv_on, server.py:4344-4345) — .env.example:38-39.
 - `STATEMENT_TIMEOUT` (seconds per statement, the snapshot CALL included in the comment's wording; sf.limit leaves the CALL out), `WORKERS` (heavy reads at once), `ACTIVITY=0`, `HIERARCHY=0`, all commented — .env.example:41-48 (mapped from the commit diff).
 - `QUERY_TAG` (default access-explorer), `STREAMLIT_APP` (default ST_ACCESS_EXPLORER), both commented: the app's own queries left out of the Activity tabs; same values as in settings.local.sql — .env.example:33-35, read at access.py:107-108.
 
 ## Relates to
-- access.py:35-42 (loader), sf.py:19-43, cache.py:43-55, run.py:42-64, server.py:271-287, server.py:4297-4301; README.md:175-240; processes/setup-local.md.
+- access.py:35-42 (loader), sf.py:19-43, cache.py:43-55, run.py:42-64, server.py:271-287, server.py:4358-4362; README.md:175-240; processes/setup-local.md.

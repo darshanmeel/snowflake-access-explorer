@@ -140,7 +140,7 @@
 {"from": "module:access_queries", "to": "file:access_queries/test_queries.py", "type": "contains", "evidence": "access_queries/test_queries.py:1", "status": "verified"}
 {"from": "module:access_queries", "to": "file:access_queries/README.md", "type": "contains", "evidence": "access_queries/README.md:1", "status": "verified"}
 {"from": "process:test", "to": "file:access_queries/test_queries.py", "type": "calls", "evidence": "CLAUDE.md:117", "status": "verified"}
-{"from": "file:access_queries/test_queries.py", "to": "function:access.py:fake", "type": "calls", "evidence": "access_queries/test_queries.py:219", "status": "verified"}
+{"from": "file:access_queries/test_queries.py", "to": "function:access.py:fake", "type": "calls", "evidence": "access_queries/test_queries.py:239", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "module:access_queries", "type": "documents", "evidence": "access_queries/README.md:1-15", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/1_user_roles.sql:1_user_roles", "type": "documents", "evidence": "access_queries/README.md:21", "status": "verified"}
 {"from": "document:access_queries/README.md", "to": "task:access_queries/2_user_access.sql:2_user_access", "type": "documents", "evidence": "access_queries/README.md:22", "status": "verified"}

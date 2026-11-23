@@ -25,3 +25,6 @@ flowchart LR
 
 ## Possibly stale (inferred)
 - "use the container runtime or the local version" — docs/redesign-notes.md:209; web/ST.md now says only "use the local version" — web/ST.md:50, and the review found the container runtime path unusable — docs/review-2026-11-09.md:320.
+
+## Code vs docs
+- The notes keep the first redesign's tab names ("Answer & diagram", "Routes & where to cut", "Nearest ways in", "Diagram, paths & users", "Rule checks", "Risks & change plan", "Trace graph", Make B match A): docs/redesign-notes.md:47-103. The pages now say Answer / Routes / Ways in, Overview / People / Columns, Findings / Change plan, Hierarchy / Trace, Make B equal to A (modules/web.md > Pages).

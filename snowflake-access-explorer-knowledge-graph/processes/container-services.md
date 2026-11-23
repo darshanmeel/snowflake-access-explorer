@@ -15,7 +15,7 @@ flowchart LR
 - Login like a shared server: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, key pair `SNOWFLAKE_PRIVATE_KEY_FILE` mounted as a secret; SSO can't work; My access off — README.md:398-399, server.py:286-287.
 - Behind PrivateLink: the same `SNOWFLAKE_HOST` and private DNS as a shared server — README.md:330, processes/privatelink-login.md.
 - Inside detection is by active Snowpark session or `INSIDE=1`, not by a missing `SNOWFLAKE_ACCOUNT` — access.py:45-56 (fix of docs/review-2026-11-09.md:320-327).
-- Host allow-list: with `HOST=0.0.0.0` the server also answers machine names/IPs; add others to `ALLOWED_HOSTS` — README.md:331-332, server.py:4297-4301.
+- Host allow-list: with `HOST=0.0.0.0` the server also answers machine names/IPs; add others to `ALLOWED_HOSTS` — README.md:331-332, server.py:4358-4362.
 
 ## Not defined
 - No Dockerfile, service spec, compute pool or SQL for SPCS in the repo (tracked files checked); steps are unclear beyond README.md:392-400.

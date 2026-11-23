@@ -23,11 +23,11 @@ flowchart TD
 - Imports `access` first so `.env` values (WEB_PORT, ...) apply — run.py:23.
 - Args: `app` = `web|streamlit`, default `APP` env or `web` — run.py:29; `--fake [1|twin]` — run.py:30; `--scale` — run.py:31; `--port` — run.py:32; `--direct` / `--objects` set `SOURCE` — run.py:33-34; `--export` / `--build` (mutually exclusive) and `--fresh` — run.py:35-38; `--cache-dir` — run.py:39.
 - `--fake` sets `FAKE` (`1`, or `twin`: the synthetic twin of a big account, `twin.py`) and `--scale` sets `FAKE_SCALE` — run.py:42-45, run.py:5; source flag sets `SOURCE` — run.py:46-47.
-- `--cache-dir D` sets `CACHE_DIR` to the absolute path of D (taken from where run.py was started; the app runs in its own folder): its files are used, missing ones written there — run.py:48-49, cache.py:27-28; one shared copy (`shared_data`) and one My access copy per `CACHE_DIR`, so another account or role gets its own folder — server.py:29-30; `test_parts` checks the path is absolute — test_server.py:1598.
-- Stages ([flows/two-stage-load.md](../flows/two-stage-load.md)): `--export [--fresh]` runs `python server.py --export [--fresh]` (Snowflake -> `.cache/reads/<key>/` parts, nothing built, exit 0 when every part is ok, else 1: run it again to resume); `--fresh` alone is an error; `--build` sets `BUILD_ONLY=1`, so the server builds from the parts and never reads Snowflake — run.py:50-55, server.py:4473-4502, README.md:167-171.
-- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:26-65; `__main__` runs it — run.py:68-70; `test_run_address` — test_server.py:1385.
+- `--cache-dir D` sets `CACHE_DIR` to the absolute path of D (taken from where run.py was started; the app runs in its own folder): its files are used, missing ones written there — run.py:48-49, cache.py:27-28; one shared copy (`shared_data`) and one My access copy per `CACHE_DIR`, so another account or role gets its own folder — server.py:29-30; `test_parts` checks the path is absolute — test_server.py:1612.
+- Stages ([flows/two-stage-load.md](../flows/two-stage-load.md)): `--export [--fresh]` runs `python server.py --export [--fresh]` (Snowflake -> `.cache/reads/<key>/` parts, nothing built, exit 0 when every part is ok, else 1: run it again to resume); `--fresh` alone is an error; `--build` sets `BUILD_ONLY=1`, so the server builds from the parts and never reads Snowflake — run.py:50-55, server.py:4534-4563, README.md:167-171.
+- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:26-65; `__main__` runs it — run.py:68-70; `test_run_address` — test_server.py:1399.
 - Streamlit: `streamlit run app.py`, port `--port` or `STREAMLIT_PORT` (8501), `--server.address` = `HOST` (default 127.0.0.1, so Streamlit no longer listens on every address and `mine_off()` sees the same `HOST`), headless, usage stats off — run.py:56-61; a plain `streamlit run app.py` also binds 127.0.0.1 via `.streamlit/config.toml:4-5`.
-- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:62-64; server listens on `HOST` (default 127.0.0.1) — server.py:4505.
+- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:62-64; server listens on `HOST` (default 127.0.0.1) — server.py:4566.
 - Child runs in the repo folder; exit code passed through — run.py:70.
 
 ## Modes (README "Run each mode")
@@ -58,9 +58,9 @@ flowchart TD
 
 ## Gates on a local run
 - My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:271-289.
-- Local API answers only its host names (`allowed_hosts()`) — server.py:4297-4301, README.md:282.
+- Local API answers only its host names (`allowed_hosts()`) — server.py:4358-4362, README.md:282.
 - Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink the account stays `<org>-<account>` and `SNOWFLAKE_HOST` (the private host, passed as `host=`) plus private DNS are added — sf.py:28-29, README.md:192-207, processes/privatelink-login.md.
-- `CSV=0` in `.env` (or `sis/.env`): every CSV button hidden, CSV downloads 403 `csv_off` — server.py:4283-4292, README.md:230.
+- `CSV=0` in `.env` (or `sis/.env`): every CSV button hidden, CSV downloads 403 `csv_off` — server.py:4344-4353, README.md:230.
 - First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:279.
 
 ## Dev mode (inferred)

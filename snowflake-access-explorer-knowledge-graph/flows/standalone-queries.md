@@ -62,7 +62,7 @@ The README's example output uses `access.fake()` alone, so its WAYS can be lower
 
 ## Checks
 
-- `python access_queries/test_queries.py` runs every file on DuckDB and compares rows, depth, path and ways with `access.py` (access_queries/test_queries.py:117-165, 233-267).
+- `python access_queries/test_queries.py` runs every file on DuckDB and compares rows, depth, path and ways with `access.py` (access_queries/test_queries.py:117-165, 253-287).
 
 ## Unclear
 

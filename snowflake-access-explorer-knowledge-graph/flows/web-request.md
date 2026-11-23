@@ -30,22 +30,22 @@ sequenceDiagram
 
 ## Steps
 
-1. Server start: `uvicorn.run(make_app(), host=HOST or 127.0.0.1, port=WEB_PORT or 8000)` — server.py:4499-4505; `uvicorn server:app` builds lazily — server.py:4451-4456.
-2. `make_app()` adds gzip (`minimum_size=2000`) and computes `hosts = allowed_hosts()` once — server.py:4314-4323.
-3. `allowed_hosts()`: loopback + `ALLOWED_HOSTS` (comma list, `*` = any); `HOST=0.0.0.0`/`::` adds hostname, FQDN and IPs; other HOST adds itself — server.py:4297-4311, `LOOPBACK` — server.py:268.
-4. `served(host)` strips the port / IPv6 brackets — server.py:4325-4328.
-5. Middleware `same_site`: Host not served -> 400 `bad_host` (DNS rebinding) — server.py:4330-4338.
-6. Cross-site refusal -> 403 `cross_site`: a non-GET/HEAD whose `Origin` host is not served, or any `/api/` call with `Sec-Fetch-Site` not `same-origin`/`none` (default same-origin when absent) — server.py:4339-4345.
-   Then `call_next`; a page reloaded or closed while a long answer is made (Starlette `RuntimeError` "No response returned", `request.is_disconnected()`) answers 204 instead of a traceback, and the work is kept — server.py:4346-4351.
-7. Exception handlers: `ApiError` -> its status + `{detail, message}`; anything else -> 500 `{detail:"error", message:"Type: text"}` — server.py:4353-4359, `ApiError` — server.py:80-83.
-8. Session id from cookie `ae_sid` — server.py:4361-4362.
-9. Routes: `/api/meta`, `POST /api/reload`, `POST /api/mine/load`, `/api/mine`, every page name as GET and POST (`post_route` / `body_of`: a query too long for a URL comes as a JSON body, server.py:4399-4424), `/api/<name>.csv` as GET and POST for every `CSV` entry (rules, review, whatif, privs, access, held, grantees, who, flow, objuse; server.py:4235-4236, server.py:4432-4434), SPA fallback serving `web/dist` (path kept inside DIST) — server.py:4364-4446. A `.csv` route answers 403 `csv_off` when `CSV=0` (`serve_csv`, server.py:4287-4292). `GET /api/progress` answers the lines of the running read and never starts one; `POST /api/reload` runs in a thread pool so it can answer meanwhile — server.py:4374-4378 ([flows/load-progress.md](load-progress.md)).
-10. `route(name)` returns `JSONResponse(serve(...))` (FastAPI encoder skipped for speed) — server.py:4394-4423.
-11. `serve()`: params to str; an answer already in `ANSWERS` for the same data set (`data_key`) and params comes back without the lock; else `session()`, `ROUTES[name](p, view)`, `refs` for `WITH_REFS`, `clean()`, kept in `ANSWERS` (oldest dropped past `MAX_ANSWERS` 200) — server.py:4254-4280, server.py:75-76; tables — server.py:4228-4237. The page routes include the paged tables `privs`, `held`, `grantees` and `finding` ([paged-tables.md](paged-tables.md)) and `graph` (a lazy box with `group=`, [lazy-graph-box.md](lazy-graph-box.md)) — server.py:4421-4423.
+1. Server start: `uvicorn.run(make_app(), host=HOST or 127.0.0.1, port=WEB_PORT or 8000)` — server.py:4560-4566; `uvicorn server:app` builds lazily — server.py:4512-4517.
+2. `make_app()` adds gzip (`minimum_size=2000`) and computes `hosts = allowed_hosts()` once — server.py:4375-4384.
+3. `allowed_hosts()`: loopback + `ALLOWED_HOSTS` (comma list, `*` = any); `HOST=0.0.0.0`/`::` adds hostname, FQDN and IPs; other HOST adds itself — server.py:4358-4372, `LOOPBACK` — server.py:268.
+4. `served(host)` strips the port / IPv6 brackets — server.py:4386-4389.
+5. Middleware `same_site`: Host not served -> 400 `bad_host` (DNS rebinding) — server.py:4391-4399.
+6. Cross-site refusal -> 403 `cross_site`: a non-GET/HEAD whose `Origin` host is not served, or any `/api/` call with `Sec-Fetch-Site` not `same-origin`/`none` (default same-origin when absent) — server.py:4400-4406.
+   Then `call_next`; a page reloaded or closed while a long answer is made (Starlette `RuntimeError` "No response returned", `request.is_disconnected()`) answers 204 instead of a traceback, and the work is kept — server.py:4407-4412.
+7. Exception handlers: `ApiError` -> its status + `{detail, message}`; anything else -> 500 `{detail:"error", message:"Type: text"}` — server.py:4414-4420, `ApiError` — server.py:80-83.
+8. Session id from cookie `ae_sid` — server.py:4422-4423.
+9. Routes: `/api/meta`, `POST /api/reload`, `POST /api/mine/load`, `/api/mine`, every page name as GET and POST (`post_route` / `body_of`: a query too long for a URL comes as a JSON body, server.py:4460-4485), `/api/<name>.csv` as GET and POST for every `CSV` entry (rules, review, whatif, privs, access, held, grantees, who, flow, objuse; server.py:4296-4297, server.py:4493-4495), SPA fallback serving `web/dist` (path kept inside DIST) — server.py:4425-4507. A `.csv` route answers 403 `csv_off` when `CSV=0` (`serve_csv`, server.py:4348-4353). `GET /api/progress` answers the lines of the running read and never starts one; `POST /api/reload` runs in a thread pool so it can answer meanwhile — server.py:4435-4439 ([flows/load-progress.md](load-progress.md)).
+10. `route(name)` returns `JSONResponse(serve(...))` (FastAPI encoder skipped for speed) — server.py:4455-4484.
+11. `serve()`: params to str; an answer already in `ANSWERS` for the same data set (`data_key`) and params comes back without the lock; else `session()`, `ROUTES[name](p, view)`, `refs` for `WITH_REFS`, `clean()`, kept in `ANSWERS` (oldest dropped past `MAX_ANSWERS` 200) — server.py:4315-4341, server.py:75-76; tables — server.py:4289-4298. The page routes include the paged tables `privs`, `held`, `grantees` and `finding` ([paged-tables.md](paged-tables.md)) and `graph` (a lazy box with `group=`, [lazy-graph-box.md](lazy-graph-box.md)) — server.py:4482-4484.
 12. `session()`: view must be `shared|mine` (else 400 `bad_param`); shared -> `load_shared(ask=True)`; mine -> `mine_entry(sid)` or 409 `mine_not_loaded`; then under `LOCK` `a.build`, clears `a.capped`, caches `sens`, `rows` (rule rows), `breaks` — server.py:325-351.
 13. Page names / labels `PAGES`, nav groups `GROUP`, shared-only `SHARED_ONLY = {review, flow, changes}` — server.py:36-45.
 14. Client side: `get()` memoises per URL, `check()` turns non-2xx into `ApiFail(status, detail, message)` — web/src/api/client.ts:31-62; `post()` sends JSON with `credentials: "same-origin"` — web/src/api/client.ts:70-77.
-15. Tests: `test_same_site` — test_server.py:776; `test_server.py` checks each page's content.
+15. Tests: `test_same_site` — test_server.py:784; `test_server.py` checks each page's content.
 
 ## Example (FAKE=1, FastAPI TestClient, base_url http://localhost)
 

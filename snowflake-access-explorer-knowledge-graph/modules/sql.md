@@ -27,7 +27,7 @@ flowchart LR
 | `QUERY_TAG` | Local app's query tag, default `access-explorer`: `QUERY_TAG` in the procedure (sql/1_setup.sql:210) | settings.sql:18-19 |
 | `STATEMENT_TIMEOUT` | Seconds each procedure statement may run (default 300, 0 = Snowflake's own): `TIMEOUT` / `TIMED` (sql/1_setup.sql:212, 217) | settings.sql:20-21 |
 | `WORKERS` | Heavy INSERT ... SELECT jobs of the procedure at once (default 3): `later()` (sql/1_setup.sql:213) | settings.sql:22-23 |
-| `ACTIVITY` | `0` = the procedure reads no ACCESS_HISTORY (object use, activity SKIPPED): `READ_ACTIVITY` (sql/1_setup.sql:214, 854) | settings.sql:24-25 |
+| `ACTIVITY` | `0` = the procedure reads no ACCESS_HISTORY (object use, activity SKIPPED): `READ_ACTIVITY` (sql/1_setup.sql:214, 1182) | settings.sql:24-25 |
 
 - `run_sql.py` reads `!define` lines of settings.sql, then settings.local.sql over them (run_sql.py:18-19), refuses quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG` (run_sql.py:26-28) and unfilled `<...>` values (run_sql.py:32-34). `STATEMENT_TIMEOUT`, `WORKERS` and `ACTIVITY` must be whole numbers (run_sql.py:29-31).
 
@@ -45,8 +45,8 @@ flowchart LR
 | PROCEDURE | `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, EXECUTE AS OWNER | sql/1_setup.sql:173-1235 |
 | FUNCTION_ACCESS_OF (may fail) | `TF_ACCESS_OF(NAME, MAX_DEPTH)` | sql/1_setup.sql:1251-1310 |
 | FUNCTION_WHO_CAN (may fail) | `TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)`: `HELD` = grants on the object, one walk up per holder role (sql/1_setup.sql:1335-1354) | sql/1_setup.sql:1312-1356 |
-| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)`: its own body, the TF_ACCESS_OF walk with the object / privilege filter in the grant join (sql/1_setup.sql:1364, 1067-1074) | sql/1_setup.sql:1358-1444 |
-| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:1446, 1081 |
+| FUNCTION_CAN (may fail) | `TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)`: its own body, the TF_ACCESS_OF walk with the object / privilege filter in the grant join (sql/1_setup.sql:1364, 1398-1443) | sql/1_setup.sql:1358-1444 |
+| STAGE_CODE, PUT_CODE | code stage + PUT access.py | sql/1_setup.sql:1446, 1450 |
 | PROCEDURE_FINDINGS | `SP_ACCESS_FINDINGS(P_SETTINGS)` runs access.py | sql/1_setup.sql:1453-1515 |
 | GRANT_*_APP (may fail) | USAGE on db / schema / warehouse, SELECT on each table, USAGE on TFs and procedure to `&APP_ROLE` | sql/1_setup.sql:1518-1571 |
 
@@ -87,7 +87,7 @@ flowchart TD
 ## sql/2_snapshot.sql
 
 - `SNAPSHOT`: `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')` (sql/2_snapshot.sql:11-12). P_SOURCE AUTO / ACCOUNT_USAGE / SHOW (sql/2_snapshot.sql:2-3).
-- The app's "rebuild" sends the same CALL (server.py:4146).
+- The app's "rebuild" sends the same CALL (server.py:4207).
 
 ## sql/3_cleanup.sql
 

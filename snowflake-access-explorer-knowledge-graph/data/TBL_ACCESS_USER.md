@@ -24,6 +24,6 @@ DDL: `sql/1_setup.sql:44-54`. Grain: run x user.
 | LAST_SUCCESS_LOGIN | TIMESTAMP_LTZ | last login (personal activity data) | 53 |
 
 - Written: `sql/1_setup.sql:508-511` (`OBJECT_CONSTRUCT(*)`: the secondary-roles column name varies, `sql/1_setup.sql:507`) or `sql/1_setup.sql:518-525` (SHOW, when the full read is refused; a timeout fails the run, `sql/1_setup.sql:513-514`).
-- Read: `access.py:1885` (`profile`); `login_days` `access.py:3254-3256`; service / disabled `access.py:3265-3269`; default role `access.py:2497,3254`.
+- Read: `access.py:1885` (`profile`); `login_days` `access.py:3254-3256`; service / disabled `access.py:3265-3269`; default role `access.py:2497,5100`.
 - My access: from `DESC USER`; LAST_SUCCESS_LOGIN None + `LOGIN_UNKNOWN=True` (`access.py:943-948`).
 - Which rules use which column (dormant, disabled, default role): inferred from CLAUDE.md rule list, not traced per rule here.

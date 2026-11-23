@@ -28,7 +28,7 @@ sequenceDiagram
 
 ## Steps
 
-1. `run.py --export [--fresh]` starts `python server.py --export` (`run.py:52-53`); `server.export(fresh)` clears the parts on `--fresh`, reads the shared data with progress lines on the terminal, builds nothing, prints the parts and the timed-out ones; all ok -> `cache.drop(KEY)` so the next start builds from the new parts, exit 0; else 1 — `server.py:4473-4496`, `server.py:4501-4502`.
+1. `run.py --export [--fresh]` starts `python server.py --export` (`run.py:52-53`); `server.export(fresh)` clears the parts on `--fresh`, reads the shared data with progress lines on the terminal, builds nothing, prints the parts and the timed-out ones; all ok -> `cache.drop(KEY)` so the next start builds from the new parts, exit 0; else 1 — `server.py:4534-4557`, `server.py:4562-4563`.
 2. A page load: `load_shared()` answers from memory / `.pkl` at once; Direct mode with no copy and no parts needs the click (409 `shared_not_loaded`); a load already running answers 409 `shared_loading` (the page never waits) — `server.py:220-241`. Else `tracked(KEY, "shared", stages)` — `server.py:235`.
 3. `stages()`: stage 1 `cache.get(KEY, read_shared)`, stage 2 `built(d)`, then "Ready in N s" — `server.py:186-199`.
 4. `read_shared(key)`: Direct mode starts from `cache.old(key, KEY)` (the earlier ACTIVITY / OBJECT_USE rows, kept as `old.pkl` with the parts, so a resumed load asks for the same days and its part names stay the same) — `server.py:164-176`, `cache.py:351-366`; objects mode passes `old=cache.last(KEY)` and `snapshot()` asks the last OK run through `query.fresh` on every load (never answered from a part), so a newer run shows and an unchanged one reads no table again — `server.py:176`, `access.py:551-553`, `cache.py:587-588`.
@@ -38,15 +38,15 @@ sequenceDiagram
 8. A `USE` answered from its part is replayed before the next statement that goes to Snowflake — `cache.py:525-534`, `cache.py:552-553`.
 9. `cache.get` -> `store(key, d)`: memory; `.pkl` (previous kept as `.prev.pkl`); the SQL copy in a `COPYING` thread; a read with no OK run stays in memory only — `cache.py:125-164`.
 10. `built(d)`: under `LOCK`, `a.step("Building the role graph")` `a.build`, a count line; unless `kept_rules()` put the results back: `a.step("Checking the rules")` `a.rule_rows`, with findings `a.step("Working out what each fix changes")` (rule 17 `a.readonly_writes` as `ro` when `HIERARCHY_ON`, `breaks(rows, ro)`), `a.step("Saving the rule results")` `kept_rules(save=True)`; then `a.step("Preparing the pages")` `a.sensitive` as `sens`. The first page's `session()` finds all of it in `a.memo`, so a page after "Ready" does not sit on Loading — `server.py:202-217`, `server.py:358-377`, `server.py:342-347`.
-11. `run.py --build` sets `BUILD_ONLY=1` (`run.py:54-55`): `OFFLINE` (`server.py:31`) makes `parted(..., offline=True)` fail a missing part as "not exported yet (python run.py --export reads it)" and never connect — `cache.py:526-527`; refreshes answer `BUILD_ONLY_NOTE` — `server.py:4096-4097`.
+11. `run.py --build` sets `BUILD_ONLY=1` (`run.py:54-55`): `OFFLINE` (`server.py:31`) makes `parted(..., offline=True)` fail a missing part as "not exported yet (python run.py --export reads it)" and never connect — `cache.py:526-527`; refreshes answer `BUILD_ONLY_NOTE` — `server.py:4157-4158`.
 12. Parts are read again only on Rebuild snapshot / Read Snowflake again ([background-refresh.md](background-refresh.md)), a fresh My access load (`server.py:304`) or `--export --fresh`; "Data from" shows the oldest part's time (`fetched`, `server.py:250-254`, `cache.py:346-348`).
 
-Test: `test_server.test_built_ready` — `server.built(a.fake())` under `a.progress` leaves `rows`, `ro`, `breaks` and `sens` in `a.memo` and logs "Working out what each fix changes" and "Preparing the pages" — test_server.py:1476-1488.
+Test: `test_server.test_built_ready` — `server.built(a.fake())` under `a.progress` leaves `rows`, `ro`, `breaks` and `sens` in `a.memo` and logs "Working out what each fix changes" and "Preparing the pages" — test_server.py:1490-1502.
 
 ## Example (test_server.test_parts, fake connection)
 
 - A first load keeps every read as a part; one part marked timed out -> the next load reads only that statement.
-- `BUILD_ONLY=1` reads nothing from Snowflake; `--export --fresh` reads every part again; `run.command(["--export", "--fresh"])` -> `python server.py --export --fresh`, `--build` -> `BUILD_ONLY=1` — `test_server.py:1541-1597`.
+- `BUILD_ONLY=1` reads nothing from Snowflake; `--export --fresh` reads every part again; `run.command(["--export", "--fresh"])` -> `python server.py --export --fresh`, `--build` -> `BUILD_ONLY=1` — `test_server.py:1555-1611`.
 
 ## Unclear
 

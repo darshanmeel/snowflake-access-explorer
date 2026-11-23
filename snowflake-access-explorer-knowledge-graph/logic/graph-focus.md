@@ -32,4 +32,4 @@ flowchart TD
 - Lazy boxes, summary folding and the Map roll-up: [graph-input.md](graph-input.md).
 
 ## Tests
-- `test_graph_focus` (`test_server.py:927`): Map focus on a functional role keeps the demo user and its technical role, drops other roles; a database box opens into its objects; an unknown focus gives the whole graph and the note; the same parameter on the User, Role and Object graphs.
+- `test_graph_focus` (`test_server.py:936`): Map focus on a functional role keeps the demo user and its technical role, drops other roles; a database box opens into its objects; an unknown focus gives the whole graph and the note; the same parameter on the User, Role and Object graphs.

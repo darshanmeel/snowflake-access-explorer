@@ -22,20 +22,20 @@ flowchart LR
 - Tests rerun with `ROLE_PREFIXES=ZF_,ZT_` (`test_access.py:2513-2515`).
 
 ## Role links
-- A GRANT row with `GRANTED_ON` in `ROLE_ON` = (`ROLE`, `DATABASE_ROLE`) and `PRIVILEGE = USAGE` is a role link (`access.py:1810`, `1534`).
-- OWNERSHIP on a role is a privilege, not a link; the role stays a role, not an object (`access.py:1856`, `1539-1543`).
-- Links granted to admin roles are dropped ("every custom role is also granted to SYSADMIN") (`access.py:1857-1860`); same in `facts()` (`access.py:6785-6786`).
+- A GRANT row with `GRANTED_ON` in `ROLE_ON` = (`ROLE`, `DATABASE_ROLE`) and `PRIVILEGE = USAGE` is a role link (`access.py:1810`, `1856`).
+- OWNERSHIP on a role is a privilege, not a link; the role stays a role, not an object (`access.py:1856`, `1863-1867`).
+- Links granted to admin roles are dropped ("every custom role is also granted to SYSADMIN") (`access.py:1857-1860`); same in `facts()` (`access.py:6835-6836`).
 
 ## Database roles
 - Named `DB.ROLE`; added to `db_roles` when granted on (`GRANTED_ON = DATABASE_ROLE`) or when a grantee has a dot (`access.py:1868-1871`).
 - `role_db()` reads the DB from `db_roles` membership, not name parsing of account roles (`access.py:2041-2043`).
-- SQL uses `DATABASE ROLE db.r` (`role_sql`, `access.py:4642-4644`); `can()` sets `use_role=None` for a database role (USE ROLE can't take one) (`access.py:5082`).
+- SQL uses `DATABASE ROLE db.r` (`role_sql`, `access.py:4685-4687`); `can()` sets `use_role=None` for a database role (USE ROLE can't take one) (`access.py:5125`).
 - Fake data holds database roles, e.g. `DW.SC_C_CORE` (verified run).
 
 ## Default links / technical roles
 - Schema roles `<TECH><DB>_<SCHEMA>_OWNER|READ|WRITE|EXECUTE`, DB `<TECH><DB>_OWNER`; default links OWNER -> DB OWNER, READ -> WRITE (CLAUDE.md; fake schemas `access.py:203-211`). The link logic itself is data, not code: unclear where fake() builds the default links (not opened: `access.py:218-442`).
 - Rule 18 maps the capability suffix to standard privileges `CAP_PRIVS` (`access.py:134-138`).
-- Never parse names for DB/schema: rule 3 uses grant data only (`access.py:7266-7267`).
+- Never parse names for DB/schema: rule 3 uses grant data only (`access.py:7316-7317`).
 
 ## Admin roles and account privileges (red)
 - `ADMIN = {ACCOUNTADMIN, SECURITYADMIN, SYSADMIN, USERADMIN, ORGADMIN}` (`access.py:61`).
@@ -44,7 +44,7 @@ flowchart LR
 - `admin_paths()`: per admin role at most `MAX_PATHS` paths, shortest first, via `shortest()` + `listed()` + `capped_paths()` (`access.py:3045-3051`), `account_privs()` (`access.py:3128-3134`), `admin_holders()` (`access.py:3148-3156`), `admin_ways()` (`access.py:3169-3176`).
   Example: `admin_holders()` -> `ADMIN_01 > SECURITYADMIN`, `F_SECURITY > SYSADMIN`, `OPS_01 > SYSADMIN`; `account_privs("F_SECURITY")` -> `MANAGE GRANTS`.
 - `admin_holders()` keeps at most `MAX_PATHS` paths per grantee and admin role (`admin_ways()` counts them all) (`access.py:3148-3158`).
-- Object page banner: the admin paths of users (`from_user`) listed up to `MAX_ADMIN_PATHS` (20); `admin_users` and `admin_total` count all of them (`server.py:2370`, `server.py:2392`, `server.py:2446`).
+- Object page banner: the admin paths of users (`from_user`) listed up to `MAX_ADMIN_PATHS` (20); `admin_users` and `admin_total` count all of them (`server.py:2392`, `server.py:2414`, `server.py:2468`).
 
 ## Objects with no holder
 - The object inventory adds an `OWNERSHIP` row for every object the grants miss; one whose owner is no role (an application, or the read named none) has no grantee: `tidy()` keeps it apart in `UNOWNED`, `build()` adds it to `kinds` only, so it is listed with no holder and never walked (`access.py:1991-1992`, `2010`, `1872-1874`; [reads.md](reads.md)).
@@ -54,7 +54,7 @@ flowchart LR
 - `BUILTIN` fnmatch patterns `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*` (`access.py:65-70`).
 - `builtin_grant(g)`: held by a built-in role, or PUBLIC's grant on a built-in (`access.py:1827-1829`); `build(builtin=False)` moves them to `hidden` (`access.py:1852-1855`).
 - `builtin_info()`: label, grants, roles, objects for the fold box (`access.py:2015-2023`). Fake: 367 hidden grants, 353 objects (verified).
-- Graph: one `BUILTIN_NODE` fold box under PUBLIC (`access.py:4488-4491`, `builtin_info` `access.py:2015-2023`).
-- Default PUBLIC account privileges `DEFAULT_PUBLIC` are not rule 9 (`access.py:62-64`, `6416`).
+- Graph: one `BUILTIN_NODE` fold box under PUBLIC (`access.py:4531-4534`, `builtin_info` `access.py:2015-2023`).
+- Default PUBLIC account privileges `DEFAULT_PUBLIC` are not rule 9 (`access.py:62-64`, `7370`).
 - `builtin=1` shows them: `session(view, sid, builtin)` -> `a.build(d, key, builtin)` (`server.py:325-351`, `server.py:339`).
 - Test: `test_builtin` (`test_access.py:1406`).

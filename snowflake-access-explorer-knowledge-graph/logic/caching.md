@@ -19,7 +19,7 @@ flowchart TD
 
 ## Cache key (`cache.name`, `cache.py:59-65`)
 - `SNOWFLAKE_ACCOUNT` (or `local`) + what (source / `mine`) + snapshot location + user + role, + `_noactivity` under `ACTIVITY=0` (`cache.py:65`); another location, user, role or ACTIVITY setting never shares a copy.
-- Shared key: `KEY = cache.name(SOURCE, where=WHERE)` (`server.py:29`); My access: `cache.name("mine", user or sid, WHERE)` (`server.py:300`).
+- Shared key: `KEY` = `shared_data` on Snowflake (one copy per `CACHE_DIR`), `cache.name(SOURCE, where=WHERE)` in fake mode (`server.py:29-30`); My access: `my_data` (`server.py:300`).
 - `config()` picks mode/source/where: `FAKE=1`, `SOURCE=direct|objects`, `ACCESS_SNAPSHOT` (`cache.py:43-56`).
 
 ## Lifetimes
@@ -34,16 +34,16 @@ flowchart TD
 - Every Snowflake read is kept as `.cache/reads/<key>/<label>-<hash>.parquet`, listed in `parts.json`; the next load reads only the missing or timed-out parts; parts have no age and are read again only on a manual refresh (`clear_parts`, `swap`), a fresh My access load or `run.py --export --fresh` (`cache.py:321-590`; [flows/two-stage-load.md](../flows/two-stage-load.md), [business_rule:read_parts](rules.md)).
 - Engine: `engine()` picks `pyarrow` (with `pyarrow.parquet`), else `duckdb`, else none: then no parts are kept and the next load reads everything (`cache.py:370-378`, `cache.py:484-488`). `write_part()` writes `<name>.parquet.tmp` and renames it when complete; the DuckDB path types each column (`duck_type`, a column of mixed Python types is not kept) (`cache.py:381-423`). DuckDB names ignore case, so a column differing from an earlier one only in case (SHOW's `name` next to ACCOUNT_USAGE's `NAME`) is written as `<name>#dup<n>` and `read_part()` drops the tag, keeping both keys (`DUP`, `cache.py:397`, `410-416`, `434`; [business_rule:part_dup_columns](reads.md)).
 - `parted(query, key)` (`cache.py:446-590`): `take(name)` answers from a kept part (a `failed` part only when asked for its timed-out statements); `put(name, results)` keeps rows and per-statement errors (`timeout` or `error`), status `failed` when any statement timed out, never after a lost session (`cache.py:454-513`); `save()` rewrites `parts.json` through a temp file (`cache.py:475-478`); `prune()` drops the parts a whole load did not ask for (an older run's tables, older activity days) (`cache.py:515-523`); a wave reads again only its timed-out statements (`cache.py:572-579`); `q.fresh` is always asked and kept (the last OK run) (`cache.py:587-588`).
-- A refresh reads under `KEY + ".new"` and `swap()`s it in once built, so the pages keep the old data until then (`server.py:4139-4164`, `cache.py:167-178`; [flows/background-refresh.md](../flows/background-refresh.md)).
+- A refresh reads under `KEY + ".new"` and `swap()`s it in once built, so the pages keep the old data until then (`server.py:4200-4225`, `cache.py:167-178`; [flows/background-refresh.md](../flows/background-refresh.md)).
 
 ## Reads that reuse what is held
 - `last(key)`: newest data kept (memory, `OLD`, `.pkl`, `.old.pkl`, `.prev.pkl`) — `cache.py:111-122`.
-- Objects mode: `snapshot(q, WHERE, old=cache.last(KEY))` asks the last OK run on every load (`query.fresh`: always asked, never answered from a part; the answer is kept for `--build`, `cache.py:536-545`, `cache.py:587-588`) and returns `old` after that one `TBL_ACCESS_RUN` query when it is the run held (`access.py:551-573`, [business_rule:snapshot_same_run](rules.md)); a refresh with no new run reads no table again (test_server.test_same_run, test_newer_run, `test_server.py:640-703`).
+- Objects mode: `snapshot(q, WHERE, old=cache.last(KEY))` asks the last OK run on every load (`query.fresh`: always asked, never answered from a part; the answer is kept for `--build`, `cache.py:536-545`, `cache.py:587-588`) and returns `old` after that one `TBL_ACCESS_RUN` query when it is the run held (`access.py:551-573`, [business_rule:snapshot_same_run](rules.md)); a refresh with no new run reads no table again (test_server.test_same_run, test_newer_run, `test_server.py:648-711`).
 - Direct mode: `live(q, old ACTIVITY, old OBJECT_USE)` from `cache.old(key, KEY)` reads only the days / weeks they lack; `old` is kept with the parts so a resumed load asks for the same days (`server.py:172-174`, `cache.py:351-366`).
 
 ## Previous snapshot (`.prev.pkl`)
 - `keep_prev(f, new)`: the replaced file (or `.old.pkl`) becomes `<key>.prev.pkl` unless it is the same run (`run_of`: RUN_ID, FINISHED_AT) (`cache.py:85-99`).
-- `prev(key)`: returns it with its mtime, or None (`cache.py:102-108`); used by What changed (`server.py:3120`).
+- `prev(key)`: returns it with its mtime, or None (`cache.py:102-108`); used by What changed (`server.py:3180`).
 
 ## Built data sets (`access.py`)
 - `memo`: results per data set, cleared by `build()`; `cached(name, fn)` (`access.py:1811`, `access.py:2026-2030`).
@@ -52,7 +52,7 @@ flowchart TD
 - Test: `test_built` (`test_access.py:1369`), `test_cache` (`test_access.py:1839`).
 
 ## Rule results across restarts
-- `server.kept_rules(view, key, builtin, save)`: shared data in Snowflake mode, disk allowed: `findings`, `rows`, `ro`, `breaks` of `a.memo` in `.cache/<key>.rules.pkl` with the stamp `(build key, builtin, a.rules_stamp(), SERVER_STAMP)`; restored while the stamp matches (`server.py:354-377`); `built()` works out and saves all four in the load (`server.py:208-215`). `rules_stamp()` hashes `access.py` and every `environ.get` setting it names with its value (`access.py:4727-4731`); `SERVER_STAMP` hashes `server.py` (`server.py:355`).
+- `server.kept_rules(view, key, builtin, save)`: shared data in Snowflake mode, disk allowed: `findings`, `rows`, `ro`, `breaks` of `a.memo` in `.cache/<key>.rules.pkl` with the stamp `(build key, builtin, a.rules_stamp(), SERVER_STAMP)`; restored while the stamp matches (`server.py:354-377`); `built()` works out and saves all four in the load (`server.py:208-215`). `rules_stamp()` hashes `access.py` and every `environ.get` setting it names with its value (`access.py:4770-4774`); `SERVER_STAMP` hashes `server.py` (`server.py:355`).
 
 ## SQL copy (DuckDB)
 - `DUCKDB` env (unset: after each Snowflake read; `1` also fake); `store()` starts `sql_copy(key, d, at)` in a `COPYING` thread (`cache.py:152-155`, `cache.py:240-307`): one schema per key, the read before as `_PREV`, per table one INSERT from an Arrow table of text columns (pyarrow) or UNNESTed text lists (`text()`: dicts / lists as compact JSON, booleans as true/false, `cache.py:231-237`), all under `SQL_LOCK` because every key writes the one `.cache/access.duckdb` (`cache.py:268-298`). Details: [data/duckdb-copy.md](../data/duckdb-copy.md).

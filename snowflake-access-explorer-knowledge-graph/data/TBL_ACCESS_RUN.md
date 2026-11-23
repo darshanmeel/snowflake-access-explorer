@@ -25,4 +25,4 @@ DDL: `sql/1_setup.sql:13-21`.
 - Busy guard (insert first, then look: the run's RUNNING row goes in, then the earliest RUNNING run of the last hour (ORDER BY STARTED_AT, RUN_ID) goes on and any other deletes its own row and returns SKIPPED, so two CALLs a moment apart can no longer both start): `sql/1_setup.sql:1157-1165`; test `test_run_overlap` (`test_sql.py:559`).
 - Read: `access.py:548-575` (RUN_ID, FINISHED_AT, SOURCES, NOTES; VARIANT parsed from JSON text); `sql/1_setup.sql:1260` (TF LAST_RUN); `sql/2_snapshot_verify.sql:5-6`.
 - Dataset keys in SOURCES: grants, user_roles, future_grants, users, usage, tags, policies, streams, object_use (`sql/1_setup.sql:1187-1203`).
-- Triggered from the app: Rebuild snapshot -> `CALL SP_ACCESS_SNAPSHOT('AUTO')` (`server.py:4092-4149`).
+- Triggered from the app: Rebuild snapshot -> `CALL SP_ACCESS_SNAPSHOT('AUTO')` (`server.py:4153-4210`).

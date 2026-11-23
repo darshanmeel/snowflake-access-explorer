@@ -45,7 +45,7 @@ flowchart LR
 - One type spelling: `spell()` turns `EXTERNAL_TABLE` into `EXTERNAL TABLE`, role links keep theirs; `tidy()` respells every grant row, the procedure writes the inventory rows spelled (`access.py:1946-1949`, `1983-1984`; `sql/1_setup.sql:313-314`, `963`).
 
 ## My access (`mine()`, `access.py:815-974`)
-- ACCOUNT_USAGE grants of the user's roles, roles granted to the user, and the user row in one wave (`access.py:841-855`); SHOW GRANTS TO ROLE per role only when `GRANTS_TO_ROLES` fails (`access.py:859`, `848-849`, `873`).
+- ACCOUNT_USAGE grants of the user's roles, roles granted to the user, and the user row in one wave (`access.py:841-855`); SHOW GRANTS TO ROLE per role only when `GRANTS_TO_ROLES` fails (`access.py:859`, `877-878`, `902`).
 - Usage: ACCOUNT_USAGE `QUERY_HISTORY` (30 days), else `INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER` through `week()`, else UNAVAILABLE with both reasons (`access.py:955-966`).
 
 ## Snapshot procedure (`SP_ACCESS_SNAPSHOT`, `P_SOURCE = AUTO`)
@@ -55,19 +55,19 @@ flowchart LR
 ## Timeouts: busy, not unreadable
 - `slow(e)` = `TimeoutError` or `timed_out(e)` (error 000630, "reached its statement or warehouse timeout") (`access.py:634-642`).
 - A probe that timed out counts as readable: the full read is tried, not the fallback (`access.py:1282-1284`; procedure `sql/1_setup.sql:355-356`).
-- A full ACCOUNT_USAGE read that timed out: Direct mode notes the source UNAVAILABLE, since SHOW would be slower still (`access.py:1389-1390`, `1186-1187`); the procedure fails the run (`sql/1_setup.sql:402-404`, `497-498`).
-- A timed-out statement is kept in its part as `timeout` with status `failed`; the next load reads only those statements again (`cache.py:492`, `501-503`, `563-570`). A refresh with failed parts keeps the old data and says to click again within the hour (`server.py:4154-4157`).
+- A full ACCOUNT_USAGE read that timed out: Direct mode notes the source UNAVAILABLE, since SHOW would be slower still (`access.py:1389-1390`, `1473-1474`); the procedure fails the run (`sql/1_setup.sql:402-404`, `514-515`).
+- A timed-out statement is kept in its part as `timeout` with status `failed`; the next load reads only those statements again (`cache.py:492`, `510-512`, `572-579`). A refresh with failed parts keeps the old data and says to click again within the hour (`server.py:4215-4218`).
 - Message: `timeout_hint()` says how long it ran and whether the app's `STATEMENT_TIMEOUT` or a warehouse / account limit stopped it (`access.py:645-655`; [business_rule:statement_timeout](rules.md)).
 
 ## Lost session or no warehouse
 - `lost(e)`: connection errors, `OperationalError` / `InterfaceError`, errno 606 (no warehouse: every SELECT fails, SHOW still works) or 390111 / 390112 / 390114 (marked "to verify" in the code) (`access.py:626-631`).
-- `live()` and `mine()` raise it after the probe wave instead of minutes of SHOW fallbacks (`access.py:1279-1281`, `827-829`); a part is never kept for it (`cache.py:482-483`).
-- The server answers 503 `shared_unreadable` / `mine_unreadable` with `load_error()`, which adds "Set SNOWFLAKE_WAREHOUSE in .env ..." for 000606 (`server.py:239`, `224-227`, `295`). Test: `test_lost_session` (`test_server.py:707-725`).
+- `live()` and `mine()` raise it after the probe wave instead of minutes of SHOW fallbacks (`access.py:1279-1281`, `856-858`); a part is never kept for it (`cache.py:482-483`).
+- The server answers 503 `shared_unreadable` / `mine_unreadable` with `load_error()`, which adds "Set SNOWFLAKE_WAREHOUSE in .env ..." for 000606 (`server.py:239`, `238-241`, `304`). Test: `test_lost_session` (`test_server.py:715-733`).
 
 ## Paging (server)
-- `window(p, key, n)`: `slice(offset, offset + limit)` from `key=` and `limit=` (`PAGE` by default, `0` = every row, as a CSV export asks); an offset past the end starts at 0 (`server.py:3223-3229`). Used for an object's users (`m_offset`), Sensitive objects and readers (`o_offset`, `r_offset`) and What changed events (`offset`) (`server.py:2400`, `2569-2570`, `2441`).
+- `window(p, key, n)`: `slice(offset, offset + limit)` from `key=` and `limit=` (`PAGE` by default, `0` = every row, as a CSV export asks); an offset past the end starts at 0 (`server.py:3284-3290`). Used for an object's users (`m_offset`), Sensitive objects and readers (`o_offset`, `r_offset`) and What changed events (`offset`) (`server.py:2422`, `3348-3348`, `3192`).
 - `paged(p, rows)`: `offset=` / `limit=` (`PAGE`, at most 1000) for Privileges (`privs`), Access, Held by and Grantees (`server.py:1456-1460`, used at `1288`, `1453`, `1669`, `1897-1900`).
 - `PAGE = 50` (`server.py:77`): the default page size of both `paged()` and `window()`.
-- Risks & fixes: `FINDINGS_PAGE` 100 per answer (`limit=` up to 500); counts and groups cover every finding; one finding's detail and fix through `/api/finding?id=` (`server.py:3334`, `2703`, `2729`).
-- Review: `REVIEW_PAGE` 50 (`limit=` up to 1000) (`server.py:3645`, `2859`).
-- Tests: `test_paged` (`test_server.py:103-150`), `test_rules_paged` (`test_server.py:1021-1050`), `test_big_lanes` (`test_server.py:206-246`).
+- Risks & fixes: `FINDINGS_PAGE` 100 per answer (`limit=` up to 500); counts and groups cover every finding; one finding's detail and fix through `/api/finding?id=` (`server.py:3395`, `3506`, `3544`).
+- Review: `REVIEW_PAGE` 50 (`limit=` up to 1000) (`server.py:3706`, `3770`).
+- Tests: `test_paged` (`test_server.py:103-150`), `test_rules_paged` (`test_server.py:1032-1061`), `test_big_lanes` (`test_server.py:206-246`).

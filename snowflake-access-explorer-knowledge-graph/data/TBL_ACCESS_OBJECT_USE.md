@@ -23,5 +23,5 @@ DDL: `sql/1_setup.sql:98-106`. Grain: run x user x object x week x action (`GROU
 - SQL: `sql/1_setup.sql:969-992`, same text as `access.py:1659-1682`; window `USE_DAYS=180` (`sql/1_setup.sql:208`, `access.py:105`).
 - Written: `sql/1_setup.sql:995-1019`: the last OK run's weeks are copied but its last two, then ACCESS_HISTORY is read from that Monday, normally inside the one `INSERT ALL` of `history()` shared with TBL_ACCESS_ACTIVITY (`sql/1_setup.sql:1119-1149`); not readable -> UNAVAILABLE, `ACTIVITY=0` -> SKIPPED, no fallback, run stays OK.
 - `DATA_RETENTION_TIME_IN_DAYS = 0` (`sql/1_setup.sql:106`, `sql/1_setup.sql:154-155`).
-- Read as optional table (None if missing): `access.py:82` (`OPTIONAL`), `access.py:567`, `access.py:581-589` (a failed read of an OPTIONAL table becomes None); lookups `access.py:1895-1896`; `used_on` `access.py:6531-6543`.
+- Read as optional table (None if missing): `access.py:82` (`OPTIONAL`), `access.py:567`, `access.py:581-589` (a failed read of an OPTIONAL table becomes None); lookups `access.py:1895-1896`; `used_on` `access.py:6581-6593`.
 - `mine()` returns no OBJECT_USE key (`access.py:971-973`); `build` tolerates it (`access.py:1895`).

@@ -47,7 +47,7 @@ flowchart LR
 ## twin.py (synthetic twin of a big account)
 
 - `twin(scale, seed)` returns the same dict as `access.fake()`, shaped like one big account's profile from counts, histograms and ratios only (every name made up), with findings for all 29 rules (twin.py:1-5, twin.py:123-476).
-- `FAKE=twin` loads it instead of `access.fake()`: `data()` (twin.py:616-618) is what `server.read_shared` returns in fake mode (server.py:167); `data_previous()` / `previous()` the twin a week earlier for What changed (twin.py:601-609, twin.py:621-622; server.py:3118). `FAKE_SCALE` (`scale()`, default 1) shrinks every count; the same scale and seed give the same data (twin.py:612-613).
+- `FAKE=twin` loads it instead of `access.fake()`: `data()` (twin.py:616-618) is what `server.read_shared` returns in fake mode (server.py:167); `data_previous()` / `previous()` the twin a week earlier for What changed (twin.py:601-609, twin.py:621-622; server.py:3178). `FAKE_SCALE` (`scale()`, default 1) shrinks every count; the same scale and seed give the same data (twin.py:612-613).
 - With `FAKE=twin` the role prefixes are `R_F_` / `R_T_` unless `ROLE_PREFIXES` is set (access.py:76); the cache key carries `twin<scale>` (cache.py:64-66).
 - Helpers: `spread` / `draw` (values from a histogram, twin.py:101-116), `fill` (rows per user, twin.py:479-485), `activity` (ACTIVITY and OBJECT_USE rows: builders load their schemas, others read what their roles reach, plus person changes, spikes and admin-role use, twin.py:488-598).
 - Started with `python run.py --fake twin --scale 0.1` (run.py:5); checked by `test_twin` (test_access.py:2486-2496).

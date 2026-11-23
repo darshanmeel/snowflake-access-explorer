@@ -24,8 +24,8 @@ sequenceDiagram
 ## Steps
 
 1. A click on a box whose id the server knows (drawn nodes, combined boxes and their members) calls `onPick` and `onOnly(id)` at once; other boxes only open — web/src/components/Graph.tsx:123-135.
-2. Pages keep the focus in the URL: Map `focus` (with `sel`), the User and Role tabs `tfocus`; a new scope or filter clears it (`UNFOCUS`) — web/src/pages/Map.tsx:76, web/src/pages/Map.tsx:105, web/src/pages/User.tsx:39, web/src/pages/Role.tsx:133, web/src/pages/common.tsx:213.
-3. Every graph endpoint passes `focus=p.get("focus")` to `build_graph` / `tab_graph` — server.py:1333, server.py:1338, server.py:2052, server.py:2709, server.py:2831, server.py:3978, server.py:3984.
+2. Pages keep the focus in the URL: Map `focus` (with `sel`), the User and Role tabs `tfocus`; a new scope or filter clears it (`UNFOCUS`) — web/src/pages/Map.tsx:76, web/src/pages/Map.tsx:106, web/src/pages/User.tsx:40, web/src/pages/Role.tsx:143, web/src/pages/common.tsx:213.
+3. Every graph endpoint passes `focus=p.get("focus")` to `build_graph` / `tab_graph` — server.py:1333, server.py:1338, server.py:2074, server.py:2768, server.py:2890, server.py:4039, server.py:4045.
 4. `build_graph(focus=)` narrows first, so a big account sends only those lines; a folded lane of the big graph (`lane:<i>`) is computed once per graph (`later`) — server.py:867-886.
 5. `narrow()`: a combined box opens into its members; a member picked inside an opened box opens it with only that member; a summary fold whose own lines do not reach its members stays one box; a box not drawn gives the whole graph and a note — server.py:807-864.
 6. `through()` keeps the focus and everything upstream and downstream of it; `cut()` drops other nodes, edges and empty lanes — server.py:777-798.
@@ -36,7 +36,7 @@ sequenceDiagram
 11. Bar above the graph: "Only the lines through X", who has access with a link to the object page, Show all (Escape) — web/src/components/Graph.tsx:195-206.
 
 ## Tests
-- `test_graph_focus`: only the lines through the box on every graph; the access graph's filters — test_server.py:927.
+- `test_graph_focus`: only the lines through the box on every graph; the access graph's filters — test_server.py:936.
 - `test_focus_keeps_way_in`: a holder fed only through a summary fold keeps its way in — test_server.py:249.
 - `test_crowded_lane`: a lane over `MAX_LANE` people folds even in a small graph — test_server.py:259.
 - `web/src/components/graphfocus.test.tsx`: the click, Show only this, Show all in the component.

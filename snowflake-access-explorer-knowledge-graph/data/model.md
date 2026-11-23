@@ -65,8 +65,8 @@ erDiagram
 - Role link: `GRANTED_ON IN ('ROLE','DATABASE_ROLE') AND PRIVILEGE='USAGE'`, grantee not an admin role: `sql/1_setup.sql:1271-1275`, `access.py:1856-1860`.
 - Tag inheritance: a tag row counts for an object when its `OBJECT_NAME` equals the object (own or column tag), or equals the object's `DB.SCHEMA` (SCHEMA row) or `DB` (DATABASE row) from `split_name(obj)`: exact matches, not a prefix match (`access.py:3341-3357`).
 - Tag-based policy (`OBJECT_NAME` empty) joins by `TAG_NAME`: `access.py:3412`, `access.py:3423`.
-- Stream → sensitive source (rule 22): `access.py:7517-7529`.
-- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:7583`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:6365-6383`).
+- Stream → sensitive source (rule 22): `access.py:7567-7579`.
+- Activity → grants (inferred): rules 24-28 use only objects known from the grants (`o in kinds`, `access.py:7633`), and `used_path` walks from `ROLE_NAME` to a grant on `OBJECT_NAME` (`access.py:6415-6433`).
 - Full list with evidence: `data/model.json` → `relationships`.
 
 ## What `TBL_ACCESS_GRANT` holds besides grants
@@ -96,11 +96,11 @@ erDiagram
 | snapshot dict (`access.py:546-609`) | TBL_ACCESS_* of last OK run, or live / mine / fake | one list of row dicts per table + `run` |
 | DuckDB `TBL_ACCESS_*` (`cache.py:278-298`) | snapshot dict of one read | same as the Snowflake table |
 | DuckDB `TBL_ACCESS_*_PREV` (`cache.py:280-282`) | DuckDB tables of the read before | same as the Snowflake table |
-| `.cache/<key>.prev.pkl` (`cache.py:90-108`) | replaced `.pkl` of another run | whole dict (What changed, `server.py:3120`) |
+| `.cache/<key>.prev.pkl` (`cache.py:90-108`) | replaced `.pkl` of another run | whole dict (What changed, `server.py:3180`) |
 | `.cache/reads/<key>/<label>-<hash>.parquet` + `parts.json` (`cache.py:321-590`) | one Snowflake read (a heavy ACCOUNT_USAGE read, a SHOW wave, a snapshot table) | the statement's rows, `__i` = statement index (left out for a one-statement part, `cache.py:498-501`); `parts.json`: file, rows, read_at, statements, colsets, errors, status; parts a whole load did not ask for are pruned (`cache.py:515-523`) |
 | `.cache/<key>.rules.pkl` (`server.py:358-377`) | rule checks of the shared data | `stamp` (build key, builtin, `rules_stamp()`, server.py hash) + `memo` findings, rows, ro, breaks |
 | `.cache/<key>.prev.rules.pkl` (`server.py:367-369`, read `server.py:409-416`) | `.rules.pkl` of the data set before, set aside when a new data set's results are saved | same as `.rules.pkl`; What changed takes its findings |
-| `.cache/<key>.diff.pkl` (`server.py:3148-3167`) | `a.diff()` of the loaded shared data set against the previous snapshot, made by the refresh (`server.compared`, `server.py:4167-4178`) | `stamp` (both data sets, builtin, `rules_stamp()`, server.py hash) + `diff` |
+| `.cache/<key>.diff.pkl` (`server.py:3208-3227`) | `a.diff()` of the loaded shared data set against the previous snapshot, made by the refresh (`server.compared`, `server.py:4228-4239`) | `stamp` (both data sets, builtin, `rules_stamp()`, server.py hash) + `diff` |
 
 ## Pages
 

@@ -39,4 +39,4 @@ sequenceDiagram
 - Unknown endpoint -> 404 `not_found` (st_react.py:49).
 - Inside Snowflake: deployed by sql/4_streamlit.sql (`MAIN_FILE = 'app.py'`, sql/4_streamlit.sql:68-73); My access hidden there (server.py:276-278, `mine_off` server.py:271-289).
 - Progress inside Snowflake: Python is busy during a load, so the frame cannot poll `/api/progress`; `shown()` writes the lines itself ([flows/load-progress.md](../flows/load-progress.md)).
-- Tests: `test_pages` hands every page to the component (test_access.py:1038), `test_streamlit_bridge` (test_server.py:472), `test_progress` (`shown` from a thread, test_server.py:1694-1742).
+- Tests: `test_pages` hands every page to the component (test_access.py:1038), `test_streamlit_bridge` (test_server.py:480), `test_progress` (`shown` from a thread, test_server.py:1708-1756).
