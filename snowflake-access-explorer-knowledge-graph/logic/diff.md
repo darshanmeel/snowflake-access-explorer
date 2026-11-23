@@ -5,49 +5,49 @@ What changed compares the loaded snapshot with the previous one: `facts()` per d
 
 ```mermaid
 flowchart LR
-  RN["server.renew: swap, then compared(d)<br/>server.py:3214-3215"] --> CMP["server.compared<br/>server.py:3222-3233"]
-  CP["server.changes_page<br/>server.py:2412-2454"] -->|FAKE| FP["a.fake_previous()<br/>access.py:503-514"]
-  CP -->|snowflake, local| PR["cache.prev(KEY)<br/>cache.py:100-106"]
-  CP --> DO["server.diff_of(prev)<br/>server.py:2457-2474"]
+  RN["server.renew: swap, then compared(d)<br/>server.py:4159-4160"] --> CMP["server.compared<br/>server.py:4167-4178"]
+  CP["server.changes_page<br/>server.py:3108-3145"] -->|FAKE| FP["a.fake_previous()<br/>access.py:532-543"]
+  CP -->|snowflake, local| PR["cache.prev(KEY)<br/>cache.py:102-108"]
+  CP --> DO["server.diff_of(prev)<br/>server.py:3148-3167"]
   CMP --> DO
   DO -->|stamp matches| PK[".cache/&lt;key&gt;.diff.pkl"]
-  DO --> D["a.diff(prev, kept, key, pairs=False)<br/>access.py:6114-6199"]
-  D --> FN["facts() now / old<br/>access.py:5875-5890"]
-  D --> MB["moved_blocks()<br/>access.py:5954-5985"]
-  D --> GE["grant_events()<br/>access.py:6046-6095"]
+  DO --> D["a.diff(prev, kept, key, pairs=False)<br/>access.py:7016-7101"]
+  D --> FN["facts() now / old<br/>access.py:6777-6792"]
+  D --> MB["moved_blocks()<br/>access.py:6856-6887"]
+  D --> GE["grant_events()<br/>access.py:6948-6997"]
 ```
 
-## When it is made (`server.py:3222-3233`, `server.py:2457-2474`)
-- After a refresh swaps in new data, `renew()` calls `compared(d)` (`server.py:3214-3215`).
-- `compared()` runs only while the previous snapshot is still kept built (`a.built` holds its `shared_key`); a same-run refresh keeps an older previous one, and building that again would hold every page behind `LOCK`, so then the first open compares (`server.py:3226-3227`). A failure only says so in the load log (`server.py:3232-3233`).
-- `diff_of(prev)` keeps one result per pair of data sets: `a.cached(("diff", cache.run_of(prev)), ...)` (`server.py:2474`). Stamp = (previous key, loaded key, builtin, `a.rules_stamp()`, `SERVER_STAMP`) (`server.py:2462`); in Snowflake mode with a local cache it reads and writes `.cache/<key>.diff.pkl` (temp file then replace) and reuses it while the stamp matches (`server.py:2463-2472`).
-- The previous snapshot's findings come from `prev_findings()` (`.cache/<key>.prev.rules.pkl` with the same stamp shape), so they are not checked again (`server.py:374-382`, `access.py:6125-6126`).
-- `a.diff` is passed `key` (the previous build key), so `loaded()` restores a data set still kept built instead of building it again (`access.py:5862-5872`).
+## When it is made (`server.py:4167-4178`, `server.py:3148-3167`)
+- After a refresh swaps in new data, `renew()` calls `compared(d)` (`server.py:4159-4160`).
+- `compared()` runs only while the previous snapshot is still kept built (`a.built` holds its `shared_key`); a same-run refresh keeps an older previous one, and building that again would hold every page behind `LOCK`, so then the first open compares (`server.py:4171-4172`). A failure only says so in the load log (`server.py:4177-4178`).
+- `diff_of(prev)` keeps one result per pair of data sets: `a.cached(("diff", cache.run_of(prev)), ...)` (`server.py:3167`). Stamp = (previous key, loaded key, builtin, `a.rules_stamp()`, `SERVER_STAMP`) (`server.py:3155`); in Snowflake mode with a local cache it reads and writes `.cache/<key>.diff.pkl` (temp file then replace) and reuses it while the stamp matches (`server.py:3156-3165`).
+- The previous snapshot's findings come from `prev_findings()` (`.cache/<key>.prev.rules.pkl` with the same stamp shape), so they are not checked again (`server.py:409-416`, `access.py:7027-7028`).
+- `a.diff` is passed `key` (the previous build key), so `loaded()` restores a data set still kept built instead of building it again (`access.py:6764-6774`).
 
-## facts() (`access.py:5875-5890`)
-- `of {user: granted roles}` (PUBLIC too), `kids {role: roles it holds}`, `own {role: own_tables()}`: a user's reach is its roles' reach; no (user, object) pair is built per user (`access.py:5885-5886`).
-- `grants` keyed `(grantee, privilege, granted on, object)` -> `GRANTED_BY`; links to admin roles and hidden built-ins left out (`access.py:5883-5884`).
-- `user_roles`, `findings` (keyed num, grantee, user, detail), `status`, `sens`, `run`, `memo` (`access.py:5887-5889`).
-- `fact_level(side, roles, o)` gives (level, privileges) over the object's few holders (`access.py:5937-5946`).
+## facts() (`access.py:6777-6792`)
+- `of {user: granted roles}` (PUBLIC too), `kids {role: roles it holds}`, `own {role: own_tables()}`: a user's reach is its roles' reach; no (user, object) pair is built per user (`access.py:6787-6788`).
+- `grants` keyed `(grantee, privilege, granted on, object)` -> `GRANTED_BY`; links to admin roles and hidden built-ins left out (`access.py:6785-6786`).
+- `user_roles`, `findings` (keyed num, grantee, user, detail), `status`, `sens`, `run`, `memo` (`access.py:6789-6791`).
+- `fact_level(side, roles, o)` gives (level, privileges) over the object's few holders (`access.py:6839-6848`).
 
-## diff(prev) (`access.py:6114-6199`)
-- Old side built with `loaded(prev, key)` (`access.py:6124`); `kept` findings set first (`access.py:6125-6126`).
-- Gained / lost = `moved_blocks(now, old)` / `moved_blocks(old, now)` (`access.py:6128`): per user (objects, levels) on `LEVELS` (`access.py:1782`), shared by users with the same granted roles on both sides; only roles whose own grants or held roles differ (dirty) are compared, on the objects they differ on (`access.py:5954-5985`).
-- Findings: same (rule, grantee, user) counts as the same finding (`access.py:6129-6131`).
-- Grant events for removed and added grants and user-role links (`access.py:6132-6137`), each with the people, objects and top level of its changed pairs and an impact text (`access.py:6046-6095`, `impact_text` `access.py:6036-6043`).
-- **Names cap:** an event lists its first `EVENT_NAMES` (200) people and objects (`access.py:6106`, `6148-6149`); `capped` is true when either list was cut (`access.py:6159`); the impact text counts them all.
-- User status changes (new, gone, dormant, disabled) (`access.py:6160-6171`); new/fixed findings not tied to a grant event (`access.py:6172-6186`).
-- Sort `risk, gain, lose, user, fixed` (`access.py:6187-6188`); counts per filter `event_counts()` (`access.py:6098-6102`); severity strips (`access.py:6191`, `6195`).
-- `pairs=False` (what the server asks): `gained` / `lost` pairs are None (millions on a big change); `sens_gained` is still computed from the blocks (`access.py:6196-6198`).
+## diff(prev) (`access.py:7016-7101`)
+- Old side built with `loaded(prev, key)` (`access.py:7026`); `kept` findings set first (`access.py:7027-7028`).
+- Gained / lost = `moved_blocks(now, old)` / `moved_blocks(old, now)` (`access.py:7030`): per user (objects, levels) on `LEVELS` (`access.py:2123`), shared by users with the same granted roles on both sides; only roles whose own grants or held roles differ (dirty) are compared, on the objects they differ on (`access.py:6856-6887`).
+- Findings: same (rule, grantee, user) counts as the same finding (`access.py:7031-7033`).
+- Grant events for removed and added grants and user-role links (`access.py:7034-7039`), each with the people, objects and top level of its changed pairs and an impact text (`access.py:6948-6997`, `impact_text` `access.py:6938-6945`).
+- **Names cap:** an event lists its first `EVENT_NAMES` (200) people and objects (`access.py:7008`, `6148-6149`); `capped` is true when either list was cut (`access.py:7061`); the impact text counts them all.
+- User status changes (new, gone, dormant, disabled) (`access.py:7062-7073`); new/fixed findings not tied to a grant event (`access.py:7074-7088`).
+- Sort `risk, gain, lose, user, fixed` (`access.py:7089-7090`); counts per filter `event_counts()` (`access.py:7000-7004`); severity strips (`access.py:7093`, `6195`).
+- `pairs=False` (what the server asks): `gained` / `lost` pairs are None (millions on a big change); `sens_gained` is still computed from the blocks (`access.py:7098-7100`).
 
-## changes_page (`server.py:2412-2454`)
-- Not available on My access, inside Snowflake, or with `CACHE_HOURS=0` (`server.py:2419-2431`).
-- `subject=` keeps the events about one node; `f=` (all, gain, lose, risk, sensitive) keeps one filter (`server.py:2434`, `2438-2440`).
-- **Paging:** `window(p, "offset", n)` sends `limit=` events (`PAGE`, 0 = all) from `offset=`, with `events_total` (`server.py:2447`, `2508-2514`).
-- Each event sends its first `NAMES` (20) people, objects and subjects, plus the subject asked for (`server.py:2409`, `2442-2443`).
-- **Capped note:** with `subject=` and any capped event, the text adds "Big changes name only their first EVENT_NAMES people and objects, so some about <subject> may be missing here" (`server.py:2442-2443`).
+## changes_page (`server.py:3108-3145`)
+- Not available on My access, inside Snowflake, or with `CACHE_HOURS=0` (`server.py:3115-3122`).
+- `subject=` keeps the events about one node; `f=` (all, gain, lose, risk, sensitive) keeps one filter (`server.py:3125`, `2438-2440`).
+- **Paging:** `window(p, "offset", n)` sends `limit=` events (`PAGE`, 0 = all) from `offset=`, with `events_total` (`server.py:3138`, `2508-2514`).
+- Each event sends its first `NAMES` (20) people, objects and subjects, plus the subject asked for (`server.py:3105`, `2442-2443`).
+- **Capped note:** with `subject=` and any capped event, the text adds "Big changes name only their first EVENT_NAMES people and objects, so some about <subject> may be missing here" (`server.py:3133-3134`).
 
 ## Example (fake data, verified)
-- `fake_previous()`: a week earlier, GRP_ANALYSTS without F_ANALYST, READ role without INSERT, F_MARKETING with SALES.CORE write, F_ANALYST with an OWNER role, ANALYST_02 not dormant (`access.py:503-514`).
+- `fake_previous()`: a week earlier, GRP_ANALYSTS without F_ANALYST, READ role without INSERT, F_MARKETING with SALES.CORE write, F_ANALYST with an OWNER role, ANALYST_02 not dormant (`access.py:532-543`).
 - `diff(fake_previous())` -> counts `all 11, gain 2, lose 2, risk 6, sensitive 7`; new 9, fixed 2; runs `2026-10-26 07:00` -> `2026-11-02 07:00`; no event capped.
 - First event: `risk` - `New high finding · #7 Dormant or disabled person can read sensitive data: ANALYST_02`.

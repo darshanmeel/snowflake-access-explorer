@@ -12,14 +12,14 @@ Markdown pages plus a JSON-lines graph of the access explorer repo; every fact c
 ## Rebuild
 
 1. `.venv\Scripts\python -E -s snowflake-access-explorer-knowledge-graph\_scripts\extract.py [<repo> <graph>]` writes `graph/parts/structure.*` (script facts: Python, TypeScript, SQL `-- name:` statements, plain query files and `CREATE FUNCTION` blocks, notebook code cells), then runs `merge.py`.
-2. Hand-written meaning lives in `_scripts/parts/{data,logic,flows,modules,processes,access_queries}.{nodes,edges}.jsonl` and the markdown pages; edit them by hand or regenerate them with an agent. Fixes go there, never only into `graph/*.jsonl`.
+2. Hand-written meaning lives in `_scripts/parts/{data,logic,flows,modules,processes,access_queries,tests,summaries}.{nodes,edges}.jsonl` (`tests`: test cases as input -> expected output with `illustrates` edges; `summaries`: repo and folder summaries) and the markdown pages; edit them by hand or regenerate them with an agent. Fixes go there, never only into `graph/*.jsonl`.
 3. `_scripts/merge.py` merges structure and parts into `graph/nodes.jsonl` / `edges.jsonl` and normalises ids.
 4. `.venv\Scripts\python -E -s snowflake-access-explorer-knowledge-graph\_scripts\validate.py` prints one coverage line: files mapped, nodes, edges, problems (paths, line ranges, dangling edges, edge types), secret hits; exit code 1 on any problem.
 5. Incremental updates: the skill's `update.py` (state in `meta.json`: `commit`, `file_hashes`, `scripts_hash`, `pending`) remaps `path:line` refs of changed files, reruns the extractor and writes `_update/worklist.json`.
 
 Stats and counts per type: `meta.json` (`counts`).
 
-Last update: 2026-11-18, commit a7fa7a5 (2197 nodes, 6789 edges, 17 flows, 194 file nodes; counts in `meta.json`). Files whose sha256 in `meta.json` `file_hashes` differs from the repo are stale: update the pages that cite them.
+Last update: 2026-11-23, commit df69583 (2438 nodes, 7728 edges, 24 flows, 206 file nodes, 158 test cases; counts in `meta.json`, recomputed by every merge). Files whose sha256 in `meta.json` `file_hashes` differs from the repo are stale: update the pages that cite them.
 
 ## Notes
 

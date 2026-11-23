@@ -19,12 +19,12 @@ flowchart LR
 - server.py (ROUTES), access.py, web/src/api/client.ts, web/src/api/types.ts; processes/access-requests.md (request endpoint).
 
 ## Caching as documented
-- Shared data and My access: 24 h in memory (`TTL`), `.cache/` for `CACHE_HOURS`, cookie `Max-Age` 86400, answers kept in `ANSWERS` — web/API.md:65-95; matches cache.py:28-29, server.py:30, server.py:72-73.
+- Shared data and My access: 24 h in memory (`TTL`), `.cache/` for `CACHE_HOURS`, cookie `Max-Age` 86400, answers kept in `ANSWERS` — web/API.md:65-95; matches cache.py:29-30, server.py:33, server.py:75-76.
 - `/api/home` and `/api/access` have their own sections.
 
 ## Added with the progress lines and switches
 - `GET /api/progress?view=`: `{running, view, lines: [{t, text}], job}` of the read running now; `job` = the last background refresh `{id, what, state, ok, message}`, null before any; never starts a load; producer `server.progress()`, lines from `a.say()` — web/API.md:261-268.
-- `POST /api/reload`: `load` reads the missing parts and answers when done; `page` / `rebuild` read every part again under their own key and swap it in — locally in a thread (`{ok, started, job}`), inside Streamlit (`server.BACKGROUND = False`) when done; a second refresh while one runs gives `ok: false`; a page that would wait for a load answers 409 `shared_loading` — web/API.md:247-259 (server.py:3147-3219, server.py:217).
+- `POST /api/reload`: `load` reads the missing parts and answers when done; `page` / `rebuild` read every part again under their own key and swap it in — locally in a thread (`{ok, started, job}`), inside Streamlit (`server.BACKGROUND = False`) when done; a second refresh while one runs gives `ok: false`; a page that would wait for a load answers 409 `shared_loading` — web/API.md:247-259 (server.py:4092-4164, server.py:231).
 - `skipped` on `/api/home` and `/api/rules`: rules that did not run (`a.skipped_rules()`, HIERARCHY=0 / ACTIVITY=0) — web/API.md:282, web/API.md:714-734.
 
 ## Paged on the server, lazy graph boxes
@@ -34,9 +34,11 @@ flowchart LR
 - `/api/flow?sel=`: counts instead of user lists, `follow` for the selected box — web/API.md:688-710.
 
 ## What changed at refresh time
-- `/api/changes` compares reach per granted role (`a.facts`, `a.moved`); the previous snapshot's findings from `.cache/<key>.prev.rules.pkl`; a refresh that brings a new run makes the diff while the replaced run is still built (`server.compared`) and keeps it in `.cache/<key>.diff.pkl`; events one page at a time (`f`, `offset`, `limit`, `events_total`), the first 20 people / objects per event; a same-run refresh leaves the diff to the first open; the event itself lists its first `a.EVENT_NAMES` (200) with `capped: true` past that, and with `subject` the text says some may be missing — web/API.md:911-924 (server.py:2457-2474, server.py:3222-3233, access.py:6106).
-- Paged tables default to `limit=50` (`PAGE`, server.py:74) — web/API.md:288, web/API.md:389, web/API.md:401.
+- `/api/changes` compares reach per granted role (`a.facts`, `a.moved`); the previous snapshot's findings from `.cache/<key>.prev.rules.pkl`; a refresh that brings a new run makes the diff while the replaced run is still built (`server.compared`) and keeps it in `.cache/<key>.diff.pkl`; events one page at a time (`f`, `offset`, `limit`, `events_total`), the first 20 people / objects per event; a same-run refresh leaves the diff to the first open; the event itself lists its first `a.EVENT_NAMES` (200) with `capped: true` past that, and with `subject` the text says some may be missing — web/API.md:911-924 (server.py:3148-3167, server.py:4167-4178, access.py:7008).
+- Paged tables default to `limit=50` (`PAGE`, server.py:77) — web/API.md:288, web/API.md:389, web/API.md:401.
 - Errors: 503 `shared_unreadable` / `mine_unreadable` carry `server.load_error()` (`a.line(error)`, plus the `SNOWFLAKE_WAREHOUSE` hint for 000606) — web/API.md:28.
 
 ## Code vs docs
 
+- `GET /api/compare` still names `pair_rows` (the old Compare two roles table) — web/API.md:638; the function is gone from server.py, `compare_page` (server.py:3182) answers from `a.compare`.
+- Not in web/API.md: the Object activity page `GET /api/objuse` and `/api/objuse.csv` (server.py:3073, server.py:3091, routes server.py:4421-4434), the graph `focus=` parameter (server.py:807), Can they? `inside=` / `show_in=` / `in_q=` on a database or schema (server.py:2716-2727) and the `risks` strip on Access, Role, Who has access and Can they? (server.py:1707, server.py:2198, server.py:2533, server.py:2710).

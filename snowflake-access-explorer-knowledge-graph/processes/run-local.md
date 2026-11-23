@@ -5,10 +5,12 @@ Run the app locally with `run.py`: web (FastAPI + React, port 8000, default) or 
 flowchart TD
   R[python run.py args] --> E[import access: loads .env]
   E --> F{--fake?}
-  F -->|yes| F1[env FAKE=1]
+  F -->|yes| F1[env FAKE=1, or FAKE=twin with --scale -> FAKE_SCALE]
   R --> X{--export / --build?}
   X -->|--export| X1[python server.py --export: parts only, exit 0 / 1]
   X -->|--build| X2[env BUILD_ONLY=1: serve from the parts]
+  R --> CD{--cache-dir D?}
+  CD -->|yes| CD1[env CACHE_DIR = absolute D: local copies read there, missing ones written there]
   R --> S{--direct / --objects?}
   S --> S1[env SOURCE=direct|objects]
   R --> A{app arg or APP}
@@ -17,15 +19,16 @@ flowchart TD
 ```
 
 ## run.py
-- Usage text: run.py:1-15.
-- Imports `access` first so `.env` values (WEB_PORT, ...) apply — run.py:21.
-- Args: `app` = `web|streamlit`, default `APP` env or `web` — run.py:27; `--fake` — run.py:28; `--port` — run.py:29; `--direct` / `--objects` set `SOURCE` — run.py:30-31; `--export` / `--build` (mutually exclusive) and `--fresh` — run.py:32-35.
-- `--fake` sets `FAKE=1` in the child env — run.py:38-39; source flag sets `SOURCE` — run.py:40-41.
-- Stages ([flows/two-stage-load.md](../flows/two-stage-load.md)): `--export [--fresh]` runs `python server.py --export [--fresh]` (Snowflake -> `.cache/reads/<key>/` parts, nothing built, exit 0 when every part is ok, else 1: run it again to resume); `--fresh` alone is an error; `--build` sets `BUILD_ONLY=1`, so the server builds from the parts and never reads Snowflake — run.py:42-47, server.py:3489-3518, README.md:162-165.
-- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:24-57; `__main__` runs it — run.py:60-62; `test_run_address` — test_server.py:1051.
-- Streamlit: `streamlit run app.py`, port `--port` or `STREAMLIT_PORT` (8501), `--server.address` = `HOST` (default 127.0.0.1, so Streamlit no longer listens on every address and `mine_off()` sees the same `HOST`), headless, usage stats off — run.py:48-53; a plain `streamlit run app.py` also binds 127.0.0.1 via `.streamlit/config.toml:4-5`.
-- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:54-56; server listens on `HOST` (default 127.0.0.1) — server.py:3521.
-- Child runs in the repo folder; exit code passed through — run.py:62.
+- Usage text: run.py:1-17.
+- Imports `access` first so `.env` values (WEB_PORT, ...) apply — run.py:23.
+- Args: `app` = `web|streamlit`, default `APP` env or `web` — run.py:29; `--fake [1|twin]` — run.py:30; `--scale` — run.py:31; `--port` — run.py:32; `--direct` / `--objects` set `SOURCE` — run.py:33-34; `--export` / `--build` (mutually exclusive) and `--fresh` — run.py:35-38; `--cache-dir` — run.py:39.
+- `--fake` sets `FAKE` (`1`, or `twin`: the synthetic twin of a big account, `twin.py`) and `--scale` sets `FAKE_SCALE` — run.py:42-45, run.py:5; source flag sets `SOURCE` — run.py:46-47.
+- `--cache-dir D` sets `CACHE_DIR` to the absolute path of D (taken from where run.py was started; the app runs in its own folder): its files are used, missing ones written there — run.py:48-49, cache.py:27-28; one shared copy (`shared_data`) and one My access copy per `CACHE_DIR`, so another account or role gets its own folder — server.py:29-30; `test_parts` checks the path is absolute — test_server.py:1598.
+- Stages ([flows/two-stage-load.md](../flows/two-stage-load.md)): `--export [--fresh]` runs `python server.py --export [--fresh]` (Snowflake -> `.cache/reads/<key>/` parts, nothing built, exit 0 when every part is ok, else 1: run it again to resume); `--fresh` alone is an error; `--build` sets `BUILD_ONLY=1`, so the server builds from the parts and never reads Snowflake — run.py:50-55, server.py:4473-4502, README.md:162-165.
+- All of it is `command(argv, env)` -> `(cmd, env)`, so tests can check the command without starting it — run.py:26-65; `__main__` runs it — run.py:68-70; `test_run_address` — test_server.py:1385.
+- Streamlit: `streamlit run app.py`, port `--port` or `STREAMLIT_PORT` (8501), `--server.address` = `HOST` (default 127.0.0.1, so Streamlit no longer listens on every address and `mine_off()` sees the same `HOST`), headless, usage stats off — run.py:56-61; a plain `streamlit run app.py` also binds 127.0.0.1 via `.streamlit/config.toml:4-5`.
+- Web: sets `WEB_PORT` (8000) and runs `server.py` — run.py:62-64; server listens on `HOST` (default 127.0.0.1) — server.py:4505.
+- Child runs in the repo folder; exit code passed through — run.py:70.
 
 ## Modes (README "Run each mode")
 | Mode | Command | Open | Evidence |
@@ -44,20 +47,20 @@ flowchart TD
 | Shared server | `HOST=0.0.0.0` + key pair (behind PrivateLink: `SNOWFLAKE_HOST` + private DNS, README.md:323) | `http://<server>:8000` | README.md:118 |
 
 ## Source selection
-- `cache.config()`: `SOURCE` or `objects` when `ACCESS_SNAPSHOT` set, else `direct` — cache.py:42-47; anything else is an error — cache.py:49; objects without a location errors — cache.py:54.
+- `cache.config()`: `SOURCE` or `objects` when `ACCESS_SNAPSHOT` set, else `direct` — cache.py:43-48; anything else is an error — cache.py:50; objects without a location errors — cache.py:55.
 - Direct vs objects comparison — README.md:128-133.
 - `FAKE=1` forces not-inside — access.py:48; `INSIDE=0|1` explicit — access.py:50-51.
 
 ## Data freshness
-- Kept 24 h in memory and in `.cache/`; previous run kept as `<name>.prev.pkl` for What changed — README.md:142; `TTL = 24 * 3600` — cache.py:29; `CACHE_HOURS` — cache.py:28.
+- Kept in memory and in `.cache/` (or `CACHE_DIR`) until a refresh or rebuild reads again; previous run kept as `<name>.prev.pkl` for What changed — cache.py:4-5; `CACHE_HOURS=0` = memory only (`local()`) — cache.py:29, cache.py:69-71; `TTL = 24 * 3600` is now only the My access session cookie — cache.py:30, server.py:33. Possible issue (not verified): README.md:135, README.md:142 and CLAUDE.md:10-13, CLAUDE.md:81 still describe a 24 h lifetime of the copy.
 - Direct mode reads on "Load shared data"; `SHOW_THREADS` (16) when ACCOUNT_USAGE is not readable — README.md:135-138.
 - Every Snowflake read is kept as a part, so a stopped load resumes; Rebuild snapshot / Read Snowflake again read every part again in the background while the pages keep the data they have ([flows/background-refresh.md](../flows/background-refresh.md)).
 
 ## Gates on a local run
-- My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:260-278.
-- Local API answers only its host names (`allowed_hosts()`) — server.py:3337-3341, README.md:275.
+- My access off on non-loopback `HOST` or an `ALLOWED_HOSTS` entry other than loopback, key-pair login, or inside Snowflake; `MY_ACCESS=1|0` decides — server.py:271-289.
+- Local API answers only its host names (`allowed_hosts()`) — server.py:4297-4301, README.md:275.
 - Login: browser SSO or key pair from `.env` via `sf.connect()`; over PrivateLink the account stays `<org>-<account>` and `SNOWFLAKE_HOST` (the private host, passed as `host=`) plus private DNS are added — sf.py:28-29, README.md:186-201, processes/privatelink-login.md.
-- `CSV=0` in `.env` (or `sis/.env`): every CSV button hidden, CSV downloads 403 `csv_off` — server.py:3323-3332, README.md:222.
+- `CSV=0` in `.env` (or `sis/.env`): every CSV button hidden, CSV downloads 403 `csv_off` — server.py:4283-4292, README.md:222.
 - First run without `.env`: error telling you to copy `.env.example` — sf.py:23-25, README.md:272.
 
 ## Dev mode (inferred)

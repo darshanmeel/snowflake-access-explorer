@@ -28,5 +28,5 @@ flowchart LR
 - Read order: ACCOUNT_USAGE, then INFORMATION_SCHEMA (query history, tags, policies), then `SHOW`; a timed-out full ACCOUNT_USAGE read gets no fallback (unread under Incomplete; `P_SOURCE=AUTO` fails the run); no warehouse (000606) stops the load — README.html:672-673, README.html:757.
 
 ## Relates to
-- Generated parts: docs/make_readme.py — docs/make_readme.py:125-155; checked by test_readme_rules — test_access.py:2173-2183.
+- Generated parts: docs/make_readme.py — docs/make_readme.py:125-155; checked by test_readme_rules — test_access.py:2400-2410.
 - The daily task SQL is in README.html:692-694 and README.md:289-291 (Objects in Snowflake); no setup script creates the task.

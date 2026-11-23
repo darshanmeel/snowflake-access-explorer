@@ -30,28 +30,28 @@ sequenceDiagram
 
 ## Steps
 
-1. UI: "My access" button shown unless `meta.mine_available === false`; click -> `post("mine/load")` (Reload: `?fresh=1`) then switch view; switching to My access from `review`, `flow`, `changes` (SHARED_ONLY, same set as `server.SHARED_ONLY`, server.py:42) lands on `access`; `home` stays home (`viewPage`) — web/src/App.tsx:371-373, web/src/App.tsx:294, web/src/App.tsx:282, web/src/App.tsx:27-30.
-2. Endpoint: new random sid, `load_mine(sid, fresh)`, drop old sid, set cookie `ae_sid` (`max_age=TTL`, httponly, samesite strict, path `/api`) — server.py:3420-3428. Streamlit bridge does the same without cookie — st_react.py:38-42.
-3. `mine_off()` order: inside Snowflake -> off (owner's rights); `MY_ACCESS=1|0` decides; `HOST` not loopback, or `ALLOWED_HOSTS` naming any host besides loopback (a proxy or tunnel) -> off (shared server) — server.py:272-273; Snowflake mode with `SNOWFLAKE_PRIVATE_KEY_FILE` -> off (service user); else on — server.py:260-278.
-4. `load_mine`: refused -> 409 `mine_unavailable`; expired entries dropped; Snowflake: cache key `cache.name("mine", SNOWFLAKE_USER or sid, WHERE)`, `fresh` drops it, reads `a.mine(q, WHERE db or None)`; errors -> 503 `mine_unreadable`; fake: `a.only(load_shared(), DEMO_USER)` — server.py:281-306.
-5. Build under a random key so sessions never share lookups; store `MINE[sid]` with data, key, user, time, cache key — server.py:307-312.
-6. `a.mine(query, db)`: writes nothing; `USE SECONDARY ROLES ALL` (refused: a note), then one statement for `CURRENT_USER`, `CURRENT_DATABASE` (when no db) and `CURRENT_AVAILABLE_ROLES` — access.py:786-807.
-7. ACCOUNT_USAGE first, in one wave: `GRANTS_TO_ROLES` of the available roles, `GRANTS_TO_USERS` of the user, `USERS` (last login included); a statement that lost the session or found no warehouse (`lost()`, error 606) stops the read instead of hundreds of SHOWs — access.py:812-829.
-8. Second wave: `SHOW GRANTS TO ROLE` per available role only when `GRANTS_TO_ROLES` failed (each failed role noted), plus `SHOW GRANTS TO USER`, `DESC USER` and ACCOUNT_USAGE usage (30 days); database roles held come from `SHOW GRANTS TO DATABASE ROLE`, wave by wave; `src.grants` = ACCOUNT_USAGE or SHOW GRANTS TO ROLE — access.py:830-873.
-9. `APPLICABLE_ROLES` from the first database whose INFORMATION_SCHEMA works (`info_schema`; fills links of roles whose SHOW failed) — access.py:874-885, access.py:775-783.
-10. Directly granted roles: ACCOUNT_USAGE `GRANTS_TO_USERS`, else `SHOW GRANTS TO USER`, else APPLICABLE_ROLES, else available roles no other role holds — access.py:886-898.
-10a. Profile: ACCOUNT_USAGE `USERS` row, else `DESC USER` (last login unknown, `LOGIN_UNKNOWN=True`); usage from ACCOUNT_USAGE 30 days, else `INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER` over 7 windows (`week()`, 167 h); tags / policies `UNAVAILABLE` — access.py:899-929, access.py:766-772.
-11. Fake demo: `a.only(d, user)` = one user's slice of the fake data, `RUN_ID="live"` — access.py:1469-1478; `DEMO_USER` default `ENGINEER_01` — server.py:29.
-12. Pages with `view=mine`: `session()` takes `MINE[sid]`, else 409 `mine_not_loaded` — server.py:324-328; `mine_entry` expires after `TTL` — server.py:242-247; `meta` drops `SHARED_ONLY` pages — server.py:3090-3091.
-13. Home in mine view: no `risks`, `per_rule`, `protection` — server.py:1524-1531. What changed refuses — server.py:2419-2420.
-14. Tests: `test_mine` — test_server.py:353; `test_mine_shared_server` — test_server.py:602.
+1. UI: "My access" button shown unless `meta.mine_available === false`; click -> `post("mine/load")` (Reload: `?fresh=1`) then switch view; switching to My access from `review`, `flow`, `changes` (SHARED_ONLY, same set as `server.SHARED_ONLY`, server.py:45) lands on `access`; `home` stays home (`viewPage`) — web/src/App.tsx:503-506, web/src/App.tsx:421, web/src/App.tsx:409, web/src/App.tsx:29-32.
+2. Endpoint: new random sid, `load_mine(sid, fresh)`, drop old sid, set cookie `ae_sid` (`max_age=TTL`, httponly, samesite strict, path `/api`) — server.py:4380-4388. Streamlit bridge does the same without cookie — st_react.py:38-42.
+3. `mine_off()` order: inside Snowflake -> off (owner's rights); `MY_ACCESS=1|0` decides; `HOST` not loopback, or `ALLOWED_HOSTS` naming any host besides loopback (a proxy or tunnel) -> off (shared server) — server.py:283-284; Snowflake mode with `SNOWFLAKE_PRIVATE_KEY_FILE` -> off (service user); else on — server.py:271-289.
+4. `load_mine`: refused -> 409 `mine_unavailable`; expired entries dropped; Snowflake: cache key `cache.name("mine", SNOWFLAKE_USER or sid, WHERE)`, `fresh` drops it, reads `a.mine(q, WHERE db or None)`; errors -> 503 `mine_unreadable`; fake: `a.only(load_shared(), DEMO_USER)` — server.py:292-315.
+5. Build under a random key so sessions never share lookups; store `MINE[sid]` with data, key, user, time, cache key — server.py:316-321.
+6. `a.mine(query, db)`: writes nothing; `USE SECONDARY ROLES ALL` (refused: a note), then one statement for `CURRENT_USER`, `CURRENT_DATABASE` (when no db) and `CURRENT_AVAILABLE_ROLES` — access.py:815-836.
+7. ACCOUNT_USAGE first, in one wave: `GRANTS_TO_ROLES` of the available roles, `GRANTS_TO_USERS` of the user, `USERS` (last login included); a statement that lost the session or found no warehouse (`lost()`, error 606) stops the read instead of hundreds of SHOWs — access.py:841-858.
+8. Second wave: `SHOW GRANTS TO ROLE` per available role only when `GRANTS_TO_ROLES` failed (each failed role noted), plus `SHOW GRANTS TO USER`, `DESC USER` and ACCOUNT_USAGE usage (30 days); database roles held come from `SHOW GRANTS TO DATABASE ROLE`, wave by wave; `src.grants` = ACCOUNT_USAGE or SHOW GRANTS TO ROLE — access.py:859-902.
+9. `APPLICABLE_ROLES` from the first database whose INFORMATION_SCHEMA works (`info_schema`; fills links of roles whose SHOW failed) — access.py:918-929, access.py:804-812.
+10. Directly granted roles: ACCOUNT_USAGE `GRANTS_TO_USERS`, else `SHOW GRANTS TO USER`, else APPLICABLE_ROLES, else available roles no other role holds — access.py:930-942.
+10a. Profile: ACCOUNT_USAGE `USERS` row, else `DESC USER` (last login unknown, `LOGIN_UNKNOWN=True`); usage from ACCOUNT_USAGE 30 days, else `INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER` over 7 windows (`week()`, 167 h); tags / policies `UNAVAILABLE` — access.py:943-973, access.py:795-801.
+11. Fake demo: `a.only(d, user)` = one user's slice of the fake data, `RUN_ID="live"` — access.py:1785-1794; `DEMO_USER` default `ENGINEER_01` — server.py:32.
+12. Pages with `view=mine`: `session()` takes `MINE[sid]`, else 409 `mine_not_loaded` — server.py:333-337; `mine_entry` expires after `TTL` — server.py:257-258; `meta` drops `SHARED_ONLY` pages — server.py:4008-4009.
+13. Home in mine view: no `risks`, `per_rule`, `protection` (early return in `home_page`) — server.py:1866-1867. What changed refuses — server.py:3115-3116.
+14. Tests: `test_mine` — test_server.py:440; `test_mine_shared_server` — test_server.py:748.
 
 ## Example (FAKE=1)
 
 - `server.mine_off()` -> `None` (local, loopback, fake).
 - With `HOST=0.0.0.0`: `"My access is off on a shared server: it would read with the server's login, not yours. ..."`; with `MY_ACCESS=0`: `"My access is turned off here (MY_ACCESS=0)."`.
 - `load_mine("sid1")` -> `loaded=True, user="ENGINEER_01"`; `GET /api/home?view=mine` -> `me.counts = {read:6, change:5, own:2, admin:0, usage:8, runnable:4, account:3}`, `risks = None`.
-- `POST /api/mine/load` -> 200, `Set-Cookie: ae_sid=<32 hex>; HttpOnly; Max-Age=86400; Path=/api; SameSite=strict` (attributes from server.py:3427).
+- `POST /api/mine/load` -> 200, `Set-Cookie: ae_sid=<32 hex>; HttpOnly; Max-Age=86400; Path=/api; SameSite=strict` (attributes from server.py:4387).
 - Statements `a.mine(q, "DB1")` sends with a mock that refuses every ACCOUNT_USAGE view (roles `F_ENGINEER`, `PUBLIC`; values are mock data):
   `USE SECONDARY ROLES ALL`, `SELECT CURRENT_USER() AS U, CURRENT_DATABASE() AS D, CURRENT_AVAILABLE_ROLES() AS R`, then `ACCOUNT_USAGE.GRANTS_TO_ROLES`, `GRANTS_TO_USERS`, `USERS` (refused), `SHOW GRANTS TO ROLE "F_ENGINEER"`, `SHOW GRANTS TO ROLE "PUBLIC"`, `SHOW GRANTS TO USER "ENGINEER_01"`, `DESC USER "ENGINEER_01"`, `WITH Q AS (... ACCOUNT_USAGE.QUERY_HISTORY ...)` (refused), `SELECT GRANTEE, ROLE_NAME FROM "DB1".INFORMATION_SCHEMA.APPLICABLE_ROLES`, `WITH Q AS (... TABLE("DB1".INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER(...)) UNION ALL ...)`.
   Result `run.SOURCES = {grants: "SHOW GRANTS TO ROLE", user_roles: "SHOW GRANTS TO USER", users: "DESC USER", usage: "INFORMATION_SCHEMA", tags: "UNAVAILABLE", policies: "UNAVAILABLE"}`.

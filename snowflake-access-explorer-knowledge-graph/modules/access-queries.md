@@ -23,10 +23,10 @@ flowchart LR
 
 | File | Answers | Mirrors in the app | path:line |
 |---|---|---|---|
-| `1_user_roles.sql` | Every role a user holds, shortest PATH, WAYS | `access.walk()` (access.py:2154) | access_queries/1_user_roles.sql:1-76 |
-| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:2663) | access_queries/2_user_access.sql:1-85 |
-| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:2663) | access_queries/3_role_access.sql:1-72 |
-| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:2081) | access_queries/4_role_holders.sql:1-79 |
+| `1_user_roles.sql` | Every role a user holds, shortest PATH, WAYS | `access.walk()` (access.py:2504) | access_queries/1_user_roles.sql:1-76 |
+| `2_user_access.sql` | Every privilege a user reaches, via which role | `access.access_of(user=True)` (access.py:3040) | access_queries/2_user_access.sql:1-85 |
+| `3_role_access.sql` | Every privilege a role reaches, downwards | `access.access_of()` (access.py:3040) | access_queries/3_role_access.sql:1-72 |
+| `4_role_holders.sql` | Every role and user above a role | `access.up()` (access.py:2431) | access_queries/4_role_holders.sql:1-79 |
 | `5_object_users.sql` | Who reaches one exact object (and privilege) | `access.on` + `up()` | access_queries/5_object_users.sql:1-94 |
 | `functions.sql` | The five as table functions `AQ_USER_ROLES` ... `AQ_OBJECT_USERS` in `AQ_DB.AQ_SCHEMA` | | access_queries/functions.sql:1-339 |
 | `access_examples.ipynb` | Snowflake Notebook: inputs cell, 5 `create_N` cells, 8 examples twice (`a_*` call the functions, `b_*` plain queries) | | access_queries/access_examples.ipynb:1-1329 |
@@ -38,7 +38,7 @@ Graph ids: each query file is `task:access_queries/<file>:<stem>` (the query fro
 
 ## How a query is built (same CTEs in every file)
 
-- `ARGS`: the `SET` values; `MAX_DEPTH` NULL = 50, the app's `MAX_HOPS` (access.py:71) (access_queries/2_user_access.sql:26-27).
+- `ARGS`: the `SET` values; `MAX_DEPTH` NULL = 50, the app's `MAX_HOPS` (access.py:74) (access_queries/2_user_access.sql:26-27).
 - `G`: active `GRANTS_TO_ROLES` rows; a database role is named `DB.ROLE` from `NAME` / `TABLE_CATALOG` (access_queries/2_user_access.sql:28-37).
 - `GR`: hides Snowflake built-ins via PUBLIC unless `SHOW_BUILTIN`, the `BUILTIN` patterns of access.py:68 (access_queries/2_user_access.sql:38-44).
 - `EDGE`: role links = USAGE on ROLE / DATABASE_ROLE; links granted to `ADMIN` roles (access.py:61) left out (access_queries/2_user_access.sql:45-49).
@@ -76,12 +76,12 @@ Example (test data of test_queries.py): `1_user_roles.sql` for `ANALYST_01` give
 
 ## Relation to the app's table functions
 
-- `sql/1_setup.sql` has the same walks as `TF_ACCESS_OF` (sql/1_setup.sql:963) and `TF_WHO_CAN` (sql/1_setup.sql:1024), but over the `TBL_ACCESS_` snapshot tables (edges marked inferred).
+- `sql/1_setup.sql` has the same walks as `TF_ACCESS_OF` (sql/1_setup.sql:1252) and `TF_WHO_CAN` (sql/1_setup.sql:1313), but over the `TBL_ACCESS_` snapshot tables (edges marked inferred).
 - `access_queries/` reads ACCOUNT_USAGE directly: no future grants, up to about 2 hours behind (access_queries/README.md:88-94, 124-131).
 
 ## Used by the app's SQL panel
 
-- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:5397-5406`, `access.py:5541-5569`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:45-46`). Flow: [flows/show-sql.md](../flows/show-sql.md).
+- `access.query_file` serves files 1-5 with their SET lines filled in for the page shown (`access.py:6147-6156`, `access.py:6296-6324`); inside Snowflake they come from the app stage (`PUT_QUERIES`, `sql/4_streamlit.sql:48-49`). Flow: [flows/show-sql.md](../flows/show-sql.md).
 
 ## Unclear
 

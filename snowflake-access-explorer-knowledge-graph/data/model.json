@@ -4,13 +4,13 @@
    "name": "TBL_ACCESS_RUN",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per CALL of SP_ACCESS_SNAPSHOT that ran (kept; a SKIPPED call deletes its own row, sql/1_setup.sql:879)",
+   "grain": "one row per CALL of SP_ACCESS_SNAPSHOT that ran (kept; a SKIPPED call deletes its own row, sql/1_setup.sql:1164)",
    "columns": [
     {
      "name": "RUN_ID",
      "type": "VARCHAR(36)",
      "nullable": true,
-     "key": "PK (logical, uuid4 at 1_setup.sql:514)",
+     "key": "PK (logical, uuid4 at sql/1_setup.sql:1156)",
      "desc": "run id",
      "pii": false,
      "evidence": "sql/1_setup.sql:14"
@@ -78,14 +78,14 @@
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:726-731",
-    "sql/1_setup.sql:846-849"
+    "sql/1_setup.sql:1159 (RUNNING row)",
+    "sql/1_setup.sql:1224-1227 (status, sources, counts, notes)"
    ],
    "read_by": [
-    "access.py:519-522 snapshot()",
-    "sql/1_setup.sql:963-1021 TF_ACCESS_OF",
-    "sql/1_setup.sql:1024-1067 TF_WHO_CAN",
-    "sql/1_setup.sql:875-879 busy check",
+    "access.py:552-553 snapshot()",
+    "sql/1_setup.sql:1252-1310 TF_ACCESS_OF",
+    "sql/1_setup.sql:1313-1356 TF_WHO_CAN",
+    "sql/1_setup.sql:1160-1164 busy check",
     "sql/2_snapshot_verify.sql:5-6"
    ],
    "evidence": "sql/1_setup.sql:13-21"
@@ -94,7 +94,7 @@
    "name": "TBL_ACCESS_GRANT",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x grantee role x privilege x granted_on x object x is_future (inferred, no constraint)",
+   "grain": "one row per run x grantee role x privilege x granted_on x object x is_future (inferred, no constraint); plus one OWNERSHIP row per inventory object the grant read lacks (sql/1_setup.sql:949-966)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -110,9 +110,9 @@
      "type": "VARCHAR(255)",
      "nullable": true,
      "key": "",
-     "desc": "account role, or database role as DB.ROLE",
+     "desc": "account role, or database role as DB.ROLE; NULL on an inventory OWNERSHIP row whose owner is no role (an application, or the read named none): the app lists that object with no holder (access.py:1991-1992, 1872-1874)",
      "pii": false,
-     "evidence": "sql/1_setup.sql:26"
+     "evidence": "sql/1_setup.sql:26, 963"
     },
     {
      "name": "PRIVILEGE",
@@ -128,9 +128,9 @@
      "type": "VARCHAR(255)",
      "nullable": true,
      "key": "",
-     "desc": "TABLE, VIEW, ROLE, DATABASE_ROLE, SCHEMA, ACCOUNT, ...",
+     "desc": "object type, one spelling: underscores as spaces (EXTERNAL TABLE), role links keep theirs (ROLE, DATABASE_ROLE, APPLICATION_ROLE); spell() in the procedure and in access.tidy (sql/1_setup.sql:313-314; access.py:1946-1949, 1983-1984)",
      "pii": false,
-     "evidence": "sql/1_setup.sql:28"
+     "evidence": "sql/1_setup.sql:28, 313-314"
     },
     {
      "name": "OBJECT_NAME",
@@ -171,19 +171,20 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:374-382",
-    "sql/1_setup.sql:433",
-    "sql/1_setup.sql:480"
+    "sql/1_setup.sql:389-397 (grants)",
+    "sql/1_setup.sql:448 (SHOW grants)",
+    "sql/1_setup.sql:494 (future grants)",
+    "sql/1_setup.sql:963 (object inventory: OWNERSHIP rows)"
    ],
    "read_by": [
-    "access.py:551 snapshot()",
-    "sql/1_setup.sql:963-1021 TF_ACCESS_OF",
-    "sql/1_setup.sql:1024-1067 TF_WHO_CAN",
-    "sql/1_setup.sql:549-551 data_objects()"
+    "access.py:581 snapshot()",
+    "sql/1_setup.sql:1252-1310 TF_ACCESS_OF",
+    "sql/1_setup.sql:1313-1356 TF_WHO_CAN",
+    "sql/1_setup.sql:566-568 data_objects()"
    ],
    "evidence": "sql/1_setup.sql:24-33"
   },
@@ -232,17 +233,17 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:383-384",
-    "sql/1_setup.sql:434"
+    "sql/1_setup.sql:398-399",
+    "sql/1_setup.sql:449"
    ],
    "read_by": [
-    "access.py:551 snapshot()",
-    "sql/1_setup.sql:963-1021 TF_ACCESS_OF",
-    "sql/1_setup.sql:1024-1067 TF_WHO_CAN"
+    "access.py:581 snapshot()",
+    "sql/1_setup.sql:1252-1310 TF_ACCESS_OF",
+    "sql/1_setup.sql:1313-1356 TF_WHO_CAN"
    ],
    "evidence": "sql/1_setup.sql:36-41"
   },
@@ -339,17 +340,17 @@
     "USER_NAME"
    ],
    "pk_status": "logical",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:491-494",
-    "sql/1_setup.sql:508"
+    "sql/1_setup.sql:508-511",
+    "sql/1_setup.sql:525"
    ],
    "read_by": [
-    "access.py:551 snapshot()",
-    "sql/1_setup.sql:963-1021 TF_ACCESS_OF",
-    "sql/1_setup.sql:1024-1067 TF_WHO_CAN"
+    "access.py:581 snapshot()",
+    "sql/1_setup.sql:1252-1310 TF_ACCESS_OF",
+    "sql/1_setup.sql:1313-1356 TF_WHO_CAN"
    ],
    "evidence": "sql/1_setup.sql:44-54"
   },
@@ -357,7 +358,7 @@
    "name": "TBL_ACCESS_USAGE",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x user x kind x name (GROUP BY at 1_setup.sql:321-329)",
+   "grain": "one row per run x user x kind x name (GROUP BY at sql/1_setup.sql:533-545)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -416,14 +417,14 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:517-544"
+    "sql/1_setup.sql:534-561"
    ],
    "read_by": [
-    "access.py:551 snapshot()"
+    "access.py:581 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:57-64"
   },
@@ -499,15 +500,15 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:580-587",
-    "sql/1_setup.sql:614"
+    "sql/1_setup.sql:597-604",
+    "sql/1_setup.sql:631"
    ],
    "read_by": [
-    "access.py:551 snapshot()"
+    "access.py:581 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:67-75"
   },
@@ -592,15 +593,15 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:630-641",
-    "sql/1_setup.sql:671"
+    "sql/1_setup.sql:647-658",
+    "sql/1_setup.sql:688"
    ],
    "read_by": [
-    "access.py:551 snapshot()"
+    "access.py:581 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:78-87"
   },
@@ -649,14 +650,14 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:683-685"
+    "sql/1_setup.sql:699-707 (ACCOUNT_USAGE.STREAMS, else SHOW STREAMS IN ACCOUNT)"
    ],
    "read_by": [
-    "access.py:551 snapshot()"
+    "access.py:581 snapshot()"
    ],
    "evidence": "sql/1_setup.sql:90-95"
   },
@@ -664,7 +665,7 @@
    "name": "TBL_ACCESS_OBJECT_USE",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x user x object x ISO week x action (GROUP BY at 1_setup.sql:491)",
+   "grain": "one row per run x user x object x ISO week x action (GROUP BY at sql/1_setup.sql:992)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -732,14 +733,14 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
+   "versioning": "RUN_ID; after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT",
-    "sql/1_setup.sql:706-707"
+    "sql/1_setup.sql:990-991"
    ],
    "read_by": [
-    "access.py:552-556 snapshot() (optional, None when missing)"
+    "access.py:581-585 snapshot() (optional, None when missing)"
    ],
    "evidence": "sql/1_setup.sql:98-106"
   },
@@ -747,7 +748,7 @@
    "name": "TBL_ACCESS_ACTIVITY",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per run x UTC day x user x role x client x object x action x query type x app (final GROUP BY of activity_sql, sql/1_setup.sql:783)",
+   "grain": "one row per run x UTC day x user x role x client x object x action x query type x app (final GROUP BY of activity_sql, sql/1_setup.sql:1067)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -860,22 +861,22 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL); logical key = RUN_ID + the GROUP BY columns",
    "pk_status": "inferred",
-   "versioning": "RUN_ID; rows of the last OK run older than since are copied into the new run (sql/1_setup.sql:800-801); after an OK run every row of other runs is deleted (sql/1_setup.sql:939-944); a FAILED run deletes its own rows (sql/1_setup.sql:932-934)",
-   "retention": "ACTIVITY_DAYS = 60 days (sql/1_setup.sql:209, sql/1_setup.sql:795)",
+   "versioning": "RUN_ID; rows of the last OK run older than since are copied into the new run (sql/1_setup.sql:1084-1085); after an OK run every row of other runs is deleted (sql/1_setup.sql:1228-1233); a FAILED run deletes its own rows (sql/1_setup.sql:1221-1223)",
+   "retention": "ACTIVITY_DAYS = 60 days (sql/1_setup.sql:209, sql/1_setup.sql:1079)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_SNAPSHOT activity()",
-    "sql/1_setup.sql:785-809"
+    "sql/1_setup.sql:1069-1093"
    ],
    "read_by": [
-    "access.py:552-556 snapshot() (optional, None when missing)",
-    "access.py:1570 build() -> acts",
+    "access.py:581-585 snapshot() (optional, None when missing)",
+    "access.py:1897 build() -> acts",
     "sql/2_snapshot_verify.sql:39-42"
    ],
    "sources": [
-    "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY (sql/1_setup.sql:758)",
-    "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY (sql/1_setup.sql:772-773)",
-    "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS (sql/1_setup.sql:752-753)"
+    "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY (sql/1_setup.sql:1042)",
+    "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY (sql/1_setup.sql:1056-1057)",
+    "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS (sql/1_setup.sql:1036-1037)"
    ],
    "evidence": "sql/1_setup.sql:108-122"
   },
@@ -883,7 +884,7 @@
    "name": "TBL_ACCESS_FINDING",
    "type": "table",
    "schema": "&DB.&SCHEMA (settings.local.sql)",
-   "grain": "one row per rule finding of the last SP_ACCESS_FINDINGS run (the call deletes every row first, sql/1_setup.sql:1175)",
+   "grain": "one row per rule finding of the last SP_ACCESS_FINDINGS run (the call deletes every row first, sql/1_setup.sql:1502)",
    "columns": [
     {
      "name": "RUN_ID",
@@ -969,356 +970,356 @@
    ],
    "pk": "none declared (no PK/UNIQUE in DDL)",
    "pk_status": "unclear",
-   "versioning": "every row deleted at the start of each CALL, then the findings of the last OK run appended, in one transaction: only the last run is kept (sql/1_setup.sql:1173-1181)",
+   "versioning": "every row deleted at the start of each CALL, then the findings of the last OK run appended, in one transaction: only the last run is kept (sql/1_setup.sql:1500-1508)",
    "partition": "none (no clustering key in DDL)",
    "written_by": [
     "procedure:SP_ACCESS_FINDINGS",
-    "sql/1_setup.sql:1175-1180"
+    "sql/1_setup.sql:1502-1507"
    ],
    "read_by": [
-    "no reader in the app found (grep of access.py, server.py); SELECT granted to APP_ROLE at sql/1_setup.sql:1230-1231; test_sql.py:236 parses its DDL"
+    "no reader in the app found (grep of access.py, server.py); SELECT granted to APP_ROLE at sql/1_setup.sql:1557-1558; test_sql.py:273 parses its DDL"
    ],
    "evidence": "sql/1_setup.sql:161-171"
   },
   {
    "name": "TBL_ACCESS_RUN",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_RUN; this read",
-   "columns": "cache.COLUMNS['RUN'] (cache.py:201)",
+   "columns": "cache.COLUMNS['RUN'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:201"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_RUN_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_RUN; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['RUN'] (cache.py:201)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_RUN; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['RUN'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:201"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_GRANT",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_GRANT; this read",
-   "columns": "cache.COLUMNS['GRANT'] (cache.py:203)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_GRANT; this read, plus the objects no role owns (d[\"UNOWNED\"], cache.py:260)",
+   "columns": "cache.COLUMNS['GRANT'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:203"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_GRANT_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_GRANT; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['GRANT'] (cache.py:203)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_GRANT; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['GRANT'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:203"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_USER_ROLE",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_USER_ROLE; this read",
-   "columns": "cache.COLUMNS['USER_ROLE'] (cache.py:204)",
+   "columns": "cache.COLUMNS['USER_ROLE'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_USER_ROLE_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_USER_ROLE; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['USER_ROLE'] (cache.py:204)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_USER_ROLE; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['USER_ROLE'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_USER",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_USER; this read",
-   "columns": "cache.COLUMNS['USER'] (cache.py:204)",
+   "columns": "cache.COLUMNS['USER'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_USER_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_USER; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['USER'] (cache.py:204)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_USER; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['USER'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_USAGE",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_USAGE; this read",
-   "columns": "cache.COLUMNS['USAGE'] (cache.py:204)",
+   "columns": "cache.COLUMNS['USAGE'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_USAGE_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_USAGE; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['USAGE'] (cache.py:204)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_USAGE; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['USAGE'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_TAG",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_TAG; this read",
-   "columns": "cache.COLUMNS['TAG'] (cache.py:204)",
+   "columns": "cache.COLUMNS['TAG'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_TAG_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_TAG; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['TAG'] (cache.py:204)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_TAG; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['TAG'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_POLICY",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_POLICY; this read",
-   "columns": "cache.COLUMNS['POLICY'] (cache.py:204)",
+   "columns": "cache.COLUMNS['POLICY'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_POLICY_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_POLICY; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['POLICY'] (cache.py:204)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_POLICY; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['POLICY'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_STREAM",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_STREAM; this read",
-   "columns": "cache.COLUMNS['STREAM'] (cache.py:204)",
+   "columns": "cache.COLUMNS['STREAM'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_STREAM_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_STREAM; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['STREAM'] (cache.py:204)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_STREAM; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['STREAM'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_OBJECT_USE",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
    "grain": "same as TBL_ACCESS_OBJECT_USE; this read",
-   "columns": "cache.COLUMNS['OBJECT_USE'] (cache.py:204)",
+   "columns": "cache.COLUMNS['OBJECT_USE'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "name": "TBL_ACCESS_OBJECT_USE_PREV",
    "type": "duckdb_table",
-   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:208-210)",
-   "grain": "same as TBL_ACCESS_OBJECT_USE; the read before (cache.py:272-274)",
-   "columns": "cache.COLUMNS['OBJECT_USE'] (cache.py:204)",
+   "schema": "schema(cache key) in .cache/access.duckdb (cache.py:214-216)",
+   "grain": "same as TBL_ACCESS_OBJECT_USE; the read before (cache.py:280-282)",
+   "columns": "cache.COLUMNS['OBJECT_USE'] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID = rid per read (cache.py:245-247, 224); _PREV holds the prior run",
+   "versioning": "RUN_ID = rid per read (cache.py:254-257); _PREV holds the prior run",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:270-284)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "the user with SQL (README.md:246-261); not the app (cache.py:7-8)"
+    "the user with SQL (README.md:233-262); not the app (cache.py:7-8)"
    ],
-   "evidence": "cache.py:204"
+   "evidence": "cache.py:205"
   },
   {
    "type": "duckdb_table",
    "schema": "schema(cache key) in .cache/access.duckdb",
-   "columns": "cache.COLUMNS[\"ACTIVITY\"] (cache.py:204-204)",
+   "columns": "cache.COLUMNS[\"ACTIVITY\"] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID per read; _PREV holds the prior run (cache.py:274-279)",
+   "versioning": "RUN_ID per read; _PREV holds the prior run (cache.py:276-282)",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:258-297)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
     "the user with SQL; not the app"
    ],
-   "evidence": "cache.py:204-204",
+   "evidence": "cache.py:205",
    "name": "TBL_ACCESS_ACTIVITY",
    "grain": "same as TBL_ACCESS_ACTIVITY; this read"
   },
   {
    "type": "duckdb_table",
    "schema": "schema(cache key) in .cache/access.duckdb",
-   "columns": "cache.COLUMNS[\"ACTIVITY\"] (cache.py:204-204)",
+   "columns": "cache.COLUMNS[\"ACTIVITY\"] (cache.py:205)",
    "pk": "none declared",
-   "versioning": "RUN_ID per read; _PREV holds the prior run (cache.py:274-279)",
+   "versioning": "RUN_ID per read; _PREV holds the prior run (cache.py:276-282)",
    "partition": "one schema per cache key",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:258-297)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
     "the user with SQL; not the app"
    ],
-   "evidence": "cache.py:204-204",
+   "evidence": "cache.py:205",
    "name": "TBL_ACCESS_ACTIVITY_PREV",
-   "grain": "same as TBL_ACCESS_ACTIVITY; the read before (cache.py:277-279)"
+   "grain": "same as TBL_ACCESS_ACTIVITY; the read before (cache.py:280-282)"
   },
   {
    "name": "COPIES",
@@ -1330,10 +1331,10 @@
      "name": "SCHEMA_NAME",
      "type": "VARCHAR",
      "nullable": true,
-     "key": "PK (logical; delete+insert at cache.py:285-287)",
+     "key": "PK (logical; delete+insert at cache.py:299-301)",
      "desc": "schema of the copy",
      "pii": false,
-     "evidence": "cache.py:265-266"
+     "evidence": "cache.py:273-274"
     },
     {
      "name": "CACHE_KEY",
@@ -1342,7 +1343,7 @@
      "key": "",
      "desc": "cache.name() key: account, source, location, user, role",
      "pii": true,
-     "evidence": "cache.py:265-266"
+     "evidence": "cache.py:273-274"
     },
     {
      "name": "RUN_ID",
@@ -1351,7 +1352,7 @@
      "key": "",
      "desc": "run of the current tables",
      "pii": false,
-     "evidence": "cache.py:265-266"
+     "evidence": "cache.py:273-274"
     },
     {
      "name": "READ_AT",
@@ -1360,7 +1361,7 @@
      "key": "",
      "desc": "read time",
      "pii": false,
-     "evidence": "cache.py:265-266"
+     "evidence": "cache.py:273-274"
     },
     {
      "name": "PREV_RUN_ID",
@@ -1369,7 +1370,7 @@
      "key": "",
      "desc": "run of the _PREV tables",
      "pii": false,
-     "evidence": "cache.py:265-266"
+     "evidence": "cache.py:273-274"
     }
    ],
    "pk": [
@@ -1378,12 +1379,12 @@
    "versioning": "replaced per read",
    "partition": "none",
    "written_by": [
-    "function:cache.py:sql_copy (cache.py:265-287)"
+    "function:cache.py:sql_copy (cache.py:240-307)"
    ],
    "read_by": [
-    "README.md:248,203"
+    "README.md:248, 258-259"
    ],
-   "evidence": "cache.py:265-266"
+   "evidence": "cache.py:273-274"
   }
  ],
  "relationships": [
@@ -1398,7 +1399,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",
@@ -1411,7 +1412,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_USER",
@@ -1424,7 +1425,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_USAGE",
@@ -1437,7 +1438,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_TAG",
@@ -1450,7 +1451,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_POLICY",
@@ -1463,7 +1464,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1476,7 +1477,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1489,7 +1490,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:551 (WHERE RUN_ID = last OK run); 1_setup.sql:586,579"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1156-1159 (one run id per CALL)"
   },
   {
    "from": "TBL_ACCESS_FINDING",
@@ -1502,7 +1503,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:1169-1171"
+   "evidence": "sql/1_setup.sql:1496-1498"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",
@@ -1515,7 +1516,7 @@
    ],
    "cardinality": "N:1 (user may lack a profile row)",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:975-978; access.py:1552-1562"
+   "evidence": "sql/1_setup.sql:1264-1267; access.py:1879-1889"
   },
   {
    "from": "TBL_ACCESS_USER_ROLE",
@@ -1528,7 +1529,7 @@
    ],
    "cardinality": "N:M",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:982-986,595; access.py:1561"
+   "evidence": "sql/1_setup.sql:1262-1263, 1271-1275; access.py:1879-1881, 1888"
   },
   {
    "from": "TBL_ACCESS_GRANT",
@@ -1541,7 +1542,7 @@
    ],
    "cardinality": "N:M (role hierarchy, GRANTED_ON in ROLE/DATABASE_ROLE, PRIVILEGE USAGE)",
    "status": "logical",
-   "evidence": "sql/1_setup.sql:982-986; access.py:1534-1538"
+   "evidence": "sql/1_setup.sql:1271-1275; access.py:1856-1860"
   },
   {
    "from": "TBL_ACCESS_USAGE",
@@ -1554,7 +1555,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:1559-1560"
+   "evidence": "access.py:1886-1887"
   },
   {
    "from": "TBL_ACCESS_USAGE",
@@ -1567,7 +1568,7 @@
    ],
    "cardinality": "N:M (KIND ROLE / SECONDARY ROLE)",
    "status": "inferred",
-   "evidence": "access.py:2839-2842"
+   "evidence": "access.py:3308-3311"
   },
   {
    "from": "TBL_ACCESS_TAG",
@@ -1580,7 +1581,7 @@
    ],
    "cardinality": "N:M (also exact match on the object's DB / DB.SCHEMA from split_name for inherited tags)",
    "status": "logical",
-   "evidence": "access.py:2861-2888"
+   "evidence": "access.py:3341-3357"
   },
   {
    "from": "TBL_ACCESS_POLICY",
@@ -1593,7 +1594,7 @@
    ],
    "cardinality": "N:M",
    "status": "logical",
-   "evidence": "access.py:2933-2941"
+   "evidence": "access.py:3417-3432"
   },
   {
    "from": "TBL_ACCESS_POLICY",
@@ -1606,7 +1607,7 @@
    ],
    "cardinality": "N:M (tag-based policy, OBJECT_NAME empty, case-insensitive)",
    "status": "logical",
-   "evidence": "access.py:2942-2945"
+   "evidence": "access.py:3412, 3423"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1619,7 +1620,7 @@
    ],
    "cardinality": "1:N",
    "status": "logical",
-   "evidence": "access.py:6584"
+   "evidence": "access.py:1894, 7517-7534"
   },
   {
    "from": "TBL_ACCESS_STREAM",
@@ -1632,7 +1633,7 @@
    ],
    "cardinality": "N:1 (sensitive source table, rule 22)",
    "status": "logical",
-   "evidence": "access.py:6580-6581"
+   "evidence": "access.py:7517-7534"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1645,7 +1646,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:1568-1569"
+   "evidence": "access.py:1895-1897"
   },
   {
    "from": "TBL_ACCESS_OBJECT_USE",
@@ -1658,7 +1659,7 @@
    ],
    "cardinality": "N:M (name as ACCESS_HISTORY gives it)",
    "status": "inferred",
-   "evidence": "access.py:5263-5267"
+   "evidence": "access.py:6654-6658"
   },
   {
    "from": "TBL_ACCESS_FINDING",
@@ -1684,7 +1685,7 @@
    ],
    "cardinality": "1:10 tables (+10 _PREV)",
    "status": "logical",
-   "evidence": "cache.py:204-204, cache.py:267-287"
+   "evidence": "cache.py:273-276, 299-301"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1697,7 +1698,7 @@
    ],
    "cardinality": "N:1",
    "status": "logical",
-   "evidence": "access.py:554 (WHERE RUN_ID = last OK run); sql/1_setup.sql:803-804"
+   "evidence": "access.py:581 (WHERE RUN_ID = last OK run); sql/1_setup.sql:1087-1088"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1710,7 +1711,7 @@
    ],
    "cardinality": "N:1",
    "status": "inferred",
-   "evidence": "access.py:6671 (u in profile)"
+   "evidence": "access.py:7583 (u in profile)"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1723,7 +1724,7 @@
    ],
    "cardinality": "N:M (name as ACCESS_HISTORY gives it)",
    "status": "inferred",
-   "evidence": "access.py:6671 (o in kinds), access.py:5626"
+   "evidence": "access.py:7583 (o in kinds), access.py:6365-6383"
   },
   {
    "from": "TBL_ACCESS_ACTIVITY",
@@ -1736,7 +1737,7 @@
    ],
    "cardinality": "N:M",
    "status": "inferred",
-   "evidence": "access.py:5624 (data_use(role) walks the role grants)"
+   "evidence": "access.py:7584-7585 (data_use(role) walks the role grants)"
   }
  ],
  "views": [
@@ -1751,7 +1752,7 @@
    ],
    "filter": "last OK run (MAX_BY FINISHED_AT); role links USAGE on ROLE/DATABASE_ROLE minus admin grantees; simple paths, 50 hops",
    "grain": "one row per path x privilege reached (PRIVILEGE, GRANTED_ON, DATABASE_NAME, SCHEMA_NAME, OBJECT_NAME, DEPTH, PATH, HOLDER)",
-   "evidence": "sql/1_setup.sql:963-1021"
+   "evidence": "sql/1_setup.sql:1252-1310"
   },
   {
    "name": "TF_WHO_CAN(OBJECT_NAME, PRIVILEGE, MAX_DEPTH)",
@@ -1764,7 +1765,7 @@
    ],
    "filter": "last OK run; grants on the object (PRIVILEGE NULL = any); walk up role links; every user holds PUBLIC",
    "grain": "one row per grantee (role or user) x path (GRANTEE, GRANTEE_KIND, PRIVILEGE, DEPTH, PATH)",
-   "evidence": "sql/1_setup.sql:1024-1067"
+   "evidence": "sql/1_setup.sql:1313-1356"
   },
   {
    "name": "TF_CAN(USER_NAME, PRIVILEGE, OBJECT_NAME)",
@@ -1774,7 +1775,7 @@
    ],
    "filter": "OBJECT_NAME match and PRIVILEGE or OWNERSHIP",
    "grain": "one row per path (PATH, HOPS, HOLDER, VIA_OWNERSHIP); no rows = no",
-   "evidence": "sql/1_setup.sql:1070-1116"
+   "evidence": "sql/1_setup.sql:1359-1443"
   },
   {
    "name": "snapshot dict (in memory)",
@@ -1784,9 +1785,9 @@
     "live sources (live / mine)",
     "fake()"
    ],
-   "filter": "RUN_ID = last OK run (access.py:519-551)",
+   "filter": "RUN_ID = last OK run (access.py:552-581)",
    "grain": "key per table: list of row dicts; run = one TBL_ACCESS_RUN row",
-   "evidence": "access.py:517-580, 560-836, 470-553, 130-345"
+   "evidence": "access.py:546-609 (snapshot), 1222-1656 (live), 815-973 (mine), 218-440 (fake)"
   },
   {
    "name": "TBL_ACCESS_*_PREV (DuckDB)",
@@ -1796,7 +1797,7 @@
    ],
    "filter": "renamed when the run id changes",
    "grain": "same as the current table",
-   "evidence": "cache.py:268-274"
+   "evidence": "cache.py:276-282"
   }
  ]
 }

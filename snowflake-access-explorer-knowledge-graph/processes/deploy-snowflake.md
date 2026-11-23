@@ -33,45 +33,45 @@ flowchart TD
 - Data tables get `DATA_RETENTION_TIME_IN_DAYS = 0` (no Time Travel copies of rows each run deletes), also on existing tables via `RETENTION_*` `(may fail)` — sql/1_setup.sql:133-158.
 - Procedure settings from settings.local.sql: `STATEMENT_TIMEOUT` (300 s per statement), `WORKERS` (3 heavy INSERTs at once), `ACTIVITY` (0 = no ACCESS_HISTORY reads); whole numbers, checked by run_sql.py — settings.sql:20-25, sql/1_setup.sql:212-214, run_sql.py:29-31. Changing one means running sql/1_setup.sql again (the values are pasted into the procedure).
 - `SP_ACCESS_SNAPSHOT(P_SOURCE DEFAULT 'AUTO')`, Python 3.11, `EXECUTE AS OWNER` — sql/1_setup.sql:173-183; its `QUERY_TAG` / `APP_ST` come from `&QUERY_TAG` / `&STREAMLIT_APP` (defaults access-explorer / ST_ACCESS_EXPLORER), so the activity read leaves the app's own queries out — sql/1_setup.sql:210-211.
-- `TF_ACCESS_OF` / `TF_WHO_CAN` / `TF_CAN` `(may fail)` — sql/1_setup.sql:962-1117.
-- `STG_ACCESS_CODE` + `PUT access.py` + `SP_ACCESS_FINDINGS` importing it — sql/1_setup.sql:1118-1135.
-- Grants to `APP_ROLE` (all `may fail`) — sql/1_setup.sql:1190-1245.
+- `TF_ACCESS_OF` / `TF_WHO_CAN` / `TF_CAN` `(may fail)` — sql/1_setup.sql:1251-1444.
+- `STG_ACCESS_CODE` + `PUT access.py` + `SP_ACCESS_FINDINGS` importing it — sql/1_setup.sql:1445-1462.
+- Grants to `APP_ROLE` (all `may fail`) — sql/1_setup.sql:1517-1572.
 - Verify: `python run_sql.py sql/1_setup_verify.sql` — TABLES expect 11, procedures, functions, stage, function calls, ACCOUNT_USAGE readability probes, SHOW STREAMS, DEV_ROLE grants — sql/1_setup_verify.sql:4-65.
 
 ## Step 2: sql/2_snapshot.sql
 - `CALL &DB.&SCHEMA.SP_ACCESS_SNAPSHOT('AUTO')`; `AUTO` / `ACCOUNT_USAGE` / `SHOW`; ACCOUNT_USAGE lags ~2 h — sql/2_snapshot.sql:1-12.
 - Verify: last run OK, one run in data, counts per table, OBJECT_USE and ACTIVITY (may fail) — sql/2_snapshot_verify.sql:4-42.
-- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:692-694; not in any sql/ file (only dropped in 3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:286.
+- Freshness: daily task `TSK_ACCESS_SNAPSHOT` (`USING CRON 0 6 * * * UTC`, then `ALTER TASK ... RESUME`) — README.html:692-694; not in any sql/ file (only dropped in sql/3_cleanup.sql:17-18). Or rerun 2_snapshot.sql / **Rebuild snapshot** button — README.md:286.
 
 ## Step 3 (numbered 4): sql/4_streamlit.sql
 - Two options: `SOURCE=objects` (run 1 + 2 first) or `SOURCE=direct` (this file only; owner role needs IMPORTED PRIVILEGES) — sql/4_streamlit.sql:2-7.
 - Prereq `sis/.env` (required, git-ignored, template `sis.env.example`): `mkdir sis; copy sis.env.example sis\.env` — README.md:346-355, sql/4_streamlit.sql:9-10, .gitignore:8.
 - Stage `STG_ACCESS_APP` — sql/4_streamlit.sql:19-20.
-- PUT `app.py`, `access.py`, `cache.py`, `server.py`, `sf.py`, `st_react.py`, `ui.py` — sql/4_streamlit.sql:22-41.
-- PUT `environment.yml` — sql/4_streamlit.sql:48-49; `.streamlit/config.toml` not uploaded — sql/4_streamlit.sql:44.
-- PUT `web/dist-st/index.html`, `REMOVE` old assets `(may fail)`, PUT assets — sql/4_streamlit.sql:51-59.
-- PUT `sis/.env` as the app's `.env` — sql/4_streamlit.sql:61-62.
-- `CREATE OR REPLACE STREAMLIT &DB.&SCHEMA.&STREAMLIT_APP ... MAIN_FILE='app.py' QUERY_WAREHOUSE=&WH`; `STREAMLIT_APP` is a setting, default `ST_ACCESS_EXPLORER` (settings.sql:16-17) — sql/4_streamlit.sql:64-72. Set the same name as `STREAMLIT_APP` in `sis/.env` and `.env` (sis.env.example:16-18, .env.example:33-35).
-- Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:72-83.
+- PUT `app.py`, `access.py`, `cache.py`, `server.py`, `sf.py`, `st_react.py`, `ui.py` — sql/4_streamlit.sql:22-44.
+- PUT `environment.yml` — sql/4_streamlit.sql:51-52; `.streamlit/config.toml` not uploaded — sql/4_streamlit.sql:47.
+- PUT `web/dist-st/index.html`, `REMOVE` old assets `(may fail)`, PUT assets — sql/4_streamlit.sql:54-62.
+- PUT `sis/.env` as the app's `.env` — sql/4_streamlit.sql:64-65.
+- `CREATE OR REPLACE STREAMLIT &DB.&SCHEMA.&STREAMLIT_APP ... MAIN_FILE='app.py' QUERY_WAREHOUSE=&WH`; `STREAMLIT_APP` is a setting, default `ST_ACCESS_EXPLORER` (settings.sql:16-17) — sql/4_streamlit.sql:67-75. Set the same name as `STREAMLIT_APP` in `sis/.env` and `.env` (sis.env.example:16-18, .env.example:33-35).
+- Grants to `APP_ROLE`: USAGE on DB/schema/WH `(may fail)`, USAGE on the Streamlit — sql/4_streamlit.sql:75-86.
 - Safe to rerun; rerun after every `git pull` — sql/4_streamlit.sql:11, README.md:364.
 - Verify: Streamlit exists (expect 1), stage files, exactly 4 assets, grants on the app — sql/4_streamlit_verify.sql:3-15.
-- Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:971-978, web/ST.md:54-55.
+- Upload list checked against `app.py` imports by `test_sis_upload` — test_access.py:1071-1078, web/ST.md:54-55.
 - Manual check in Snowsight: hint disappears, Home shows data, no CSP errors — web/ST.md:45-50.
 
 ## Roles and grants needed
 | Role | Needs | Evidence |
 |---|---|---|
 | `DEV_ROLE` (owner) | USAGE on DB, schema, WH; CREATE TABLE / PROCEDURE / FUNCTION / STAGE on schema; CREATE STREAMLIT (SiS); CREATE TASK + account EXECUTE TASK (task) | README.md:286, README.html:696 |
-| `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:1247-1251 |
+| `DEV_ROLE`, read whole account | `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE`, or DB roles `SECURITY_VIEWER` + `GOVERNANCE_VIEWER`, or `MANAGE GRANTS` for SHOW | sql/1_setup.sql:1574-1578 |
 | `DEV_ROLE`, SiS direct | must hold IMPORTED PRIVILEGES itself (USE SECONDARY ROLES refused inside) | README.md:354-355, sql/4_streamlit.sql:5-7 |
-| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 10 `TBL_ACCESS_` tables; USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button) | sql/1_setup.sql:1190-1190, README.html:696 |
-| `APP_ROLE`, SiS | USAGE on the Streamlit `&STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`) (+ DB/schema/WH) | sql/4_streamlit.sql:72-83 |
+| `APP_ROLE` | USAGE DB/schema/WH; SELECT on 11 `TBL_ACCESS_` tables (`TBL_ACCESS_FINDING` included, sql/1_setup.sql:1557-1558); USAGE on `TF_*`; USAGE on `SP_ACCESS_SNAPSHOT` (rebuild button, sql/1_setup.sql:1570-1571) | sql/1_setup.sql:1517-1571, README.html:696 |
+| `APP_ROLE`, SiS | USAGE on the Streamlit `&STREAMLIT_APP` (default `ST_ACCESS_EXPLORER`) (+ DB/schema/WH) | sql/4_streamlit.sql:75-86 |
 - How these grants are given in practice: see access-requests.md.
 
 ## Rollback / removal
 - No step-wise rollback is defined. Only full removal: `python run_sql.py sql/3_cleanup.sql` drops the Streamlit `&STREAMLIT_APP` (sql/3_cleanup.sql:12), app stage, task, both procedures, 3 functions, code stage and the `TBL_ACCESS_` tables with data; schema stays; "Cannot be undone" — sql/3_cleanup.sql:1-69.
 - Verify removal: `sql/3_cleanup_verify.sql` (every check expect 0) — sql/3_cleanup_verify.sql:3-25.
-- Redeploy of the app = rerun 4_streamlit.sql (replaces app) — sql/4_streamlit.sql:11. Previous app version is not kept (inferred from `CREATE OR REPLACE`, sql/4_streamlit.sql:65).
+- Redeploy of the app = rerun 4_streamlit.sql (replaces app) — sql/4_streamlit.sql:11. Previous app version is not kept (inferred from `CREATE OR REPLACE`, sql/4_streamlit.sql:68).
 
 ## Unclear / inconsistent
 - Grants created by 1_setup.sql / 4_streamlit.sql are not revoked by 3_cleanup.sql (inferred: dropping the objects removes their grants; DB/schema/WH USAGE grants remain) — sql/3_cleanup.sql:11-69.

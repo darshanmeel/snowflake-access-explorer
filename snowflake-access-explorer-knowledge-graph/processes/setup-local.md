@@ -32,7 +32,7 @@ flowchart LR
 | `requirements-dev.txt` | tests — requirements-dev.txt:1 | `-r requirements.txt`, `-r requirements-web.txt`, httpx `==0.28.1` — requirements-dev.txt:2-4 |
 | `environment.yml` | Streamlit in Snowflake only, uploaded by sql/4_streamlit.sql — environment.yml:1 | channel `snowflake`, `streamlit=1.52.*` pinned, `snowflake-snowpark-python`, `duckdb` (the rule checks' role walk; without it they walk in Python, slower) — environment.yml:4-10 |
 
-- duckdb is in both requirements files and environment.yml: the rule checks over every user and role walk role path counts in it (`access.duck`), and the SQL copy `.cache/access.duckdb` needs it; without it the app runs, slower on big accounts, and notes why there is no SQL copy — requirements-web.txt:5, requirements.txt:4, environment.yml:10, CLAUDE.md:11-13, CLAUDE.md:80.
+- duckdb is in both requirements files and environment.yml: the rule checks over every user and role walk role path counts in it (`access.duck`), and the SQL copy `.cache/access.duckdb` needs it; without it the app runs, slower on big accounts, and notes why there is no SQL copy — requirements-web.txt:5, requirements.txt:4, environment.yml:10, CLAUDE.md:11-13, CLAUDE.md:82.
 
 ## `.env` (from `.env.example`, git-ignored)
 - Copy: `copy .env.example .env` — README.md:172. `.env` is git-ignored — .gitignore:3.
@@ -41,7 +41,7 @@ flowchart LR
   - Source/data: `FAKE`, `SOURCE`, `ACCESS_SNAPSHOT`, `CACHE_HOURS` — .env.example:4-10.
   - Runner: `APP`, `WEB_PORT`, `STREAMLIT_PORT` — .env.example:12-14.
   - Shared server: `HOST` (comment), `ALLOWED_HOSTS`, `MY_ACCESS` — .env.example:15-18.
-  - Login: `SNOWFLAKE_ACCOUNT` (`<org>-<account>`, README.md:180), `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` — .env.example:21-27; `SNOWFLAKE_HOST` (commented; PrivateLink host) — .env.example:36-37; `CSV=0` (commented) turns every CSV export off — .env.example:38-39, server.py:3323-3324; read by sf.connect() — sf.py:27-36.
+  - Login: `SNOWFLAKE_ACCOUNT` (`<org>-<account>`, README.md:180), `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` — .env.example:21-27; `SNOWFLAKE_HOST` (commented; PrivateLink host) — .env.example:36-37; `CSV=0` (commented) turns every CSV export off — .env.example:38-39, server.py:4283-4284; read by sf.connect() — sf.py:27-36.
   - Secret refs: `SNOWFLAKE_PRIVATE_KEY_FILE`, `SNOWFLAKE_PRIVATE_KEY_PWD` (key pair; else browser SSO) — .env.example:28-29, sf.py:37-42.
   - Optional: `ROLE_PREFIXES` (and others listed in README.html > Settings) — .env.example:31-32.
 - Missing `SNOWFLAKE_ACCOUNT` outside Snowflake raises "copy .env.example to .env" — sf.py:23-25.
@@ -55,7 +55,7 @@ flowchart LR
 - run_sql.py falls back to settings.sql if no local file, and per name for names the local file lacks; it stops on quotes, `$` or backslash in `STREAMLIT_APP` / `QUERY_TAG`, then if any `<placeholder>` is left — run_sql.py:17-19, run_sql.py:23-34.
 
 ## Local-only files
-- `.cache/` (git-ignored) holds the pickled data (`<key>.pkl`, the previous snapshot `<key>.prev.pkl`), the read parts `reads/<key>/*.parquet` (a refresh reads into `reads/<key>.new/` and swaps it in), the kept rule results `<key>.rules.pkl` (`<key>.prev.rules.pkl` for the replaced data set), What changed `<key>.diff.pkl` and `access.duckdb` — .gitignore:7, CLAUDE.md:9-15, cache.py:156, cache.py:165-176, server.py:354-360, server.py:2463.
+- `.cache/` (git-ignored) holds the pickled data (`<key>.pkl`, the previous snapshot `<key>.prev.pkl`), the read parts `reads/<key>/*.parquet` (a refresh reads into `reads/<key>.new/` and swaps it in), the kept rule results `<key>.rules.pkl` (`<key>.prev.rules.pkl` for the replaced data set), What changed `<key>.diff.pkl` and `access.duckdb` — .gitignore:7, CLAUDE.md:9-15, cache.py:158, cache.py:167-178, server.py:363-369, server.py:3156.
 - Also git-ignored: the graph update scratch `snowflake-access-explorer-knowledge-graph/_update/`, `reviews/` and agent worktrees `.claude/worktrees/` — .gitignore:10-17.
-- `.streamlit/config.toml`: local runs only, not uploaded to SiS — .streamlit/config.toml:1-10, sql/4_streamlit.sql:44.
+- `.streamlit/config.toml`: local runs only, not uploaded to SiS — .streamlit/config.toml:1-10, sql/4_streamlit.sql:47.
 - `local.ps1` is git-ignored — .gitignore:5; its purpose is unclear (no tracked file describes it).
