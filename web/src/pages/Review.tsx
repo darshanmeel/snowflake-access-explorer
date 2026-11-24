@@ -47,7 +47,7 @@ function OldReview() {
         return (
           <>
             {csvOn && <div className="ae-row ae-right">{big && <span className="ae-muted">Too many rows for one file: pick one database or schema.</span>}
-              <button className="ae-btn" disabled={big} onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV ({k.csv_rows.toLocaleString()} rows, with reviewer columns)</button></div>}
+              <button className="ae-btn" disabled={big} onClick={() => download("review.csv", apiParams(c), "access_review.csv")}>Download CSV ({k.csv_rows.toLocaleString("en-US")} rows, with reviewer columns)</button></div>}
             <Controls>
               <div className="ae-pick-all">
                 <Pick label="Database" value={f.db === "*" ? "" : f.db} what="databases" width={200} onPick={(v) => c.set({ db: v, schema: null, object: null })} />

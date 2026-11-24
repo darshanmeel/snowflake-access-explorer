@@ -67,9 +67,11 @@ describe("Home page", () => {
     await screen.findByText("1 inactive person can still read sensitive data");
     expect(heads()[0]).toBe("H2:1 inactive person can still read sensitive data");
     expect(screen.getByRole("img", { name: "Inactive 1, Admin 2, Service 1, Active 3" }).children).toHaveLength(7);
-    inOrder(["1 inactive person", "1 of the 7 readers of sensitive data is inactive", "What to do first", "Most findings are medium: 4 of 7", "Ask who can access what"]);
-    fireEvent.click(screen.getByRole("tab", { name: "At a glance" }));
-    inOrder(["Admin holders", "Dormant", "Sensitive data", "Findings by area", "People", "Role chain depth", "Activity", "Object activity"]);
+    inOrder(["1 inactive person", "1 of the 7 readers of sensitive data is inactive", "What to do first"]);
+    expect(screen.getByText("Take admin roles from 2 people")).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull(); // Now is one page
+    fireEvent.click(screen.getByRole("button", { name: "At a glance" }));
+    inOrder(["Most findings are medium: 4 of 7", "Admin holders", "Dormant", "Sensitive data", "Findings by area", "People", "Role chain depth", "Activity", "Object activity"]);
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     expect(screen.getByText("No earlier snapshot yet.")).toBeTruthy();
   });
@@ -78,10 +80,8 @@ describe("Home page", () => {
     const nav = view();
     fireEvent.click(await screen.findByRole("button", { name: /3\s*critical or high findings/ }));
     expect(nav).toHaveBeenCalledWith("rules", { sev: "Critical" });
-    fireEvent.click(screen.getByRole("button", { name: /Not used\s*4/ }));
-    expect(nav).toHaveBeenCalledWith("objuse", {});
+    fireEvent.click(screen.getByRole("button", { name: "At a glance" }));
     expect(screen.getByRole("group", { name: "Ask a question" }).querySelectorAll("button")).toHaveLength(4);
-    fireEvent.click(screen.getByRole("tab", { name: "At a glance" }));
     const objects = screen.getAllByRole("button", { name: "Objects" })[0];
     fireEvent.click(objects);
     expect(objects.getAttribute("aria-pressed")).toBe("true");
@@ -94,9 +94,9 @@ describe("Home page", () => {
     expect(await screen.findByRole("img", { name: /busiest 2026-11-16 with 9 queries/ })).toBeTruthy();
     expect(screen.getByText(/75% active/)).toBeTruthy();
     expect(screen.getByText("NAME_03")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: /Now/ }));
-    expect(screen.getAllByText(/Admin role on a person/).length).toBeGreaterThan(0);
     await act(async () => { fireEvent.keyDown(window, { key: "/" }); });
     expect(document.activeElement).toBe(screen.getByLabelText("Search"));
+    fireEvent.click(screen.getByRole("tab", { name: /Now/ }));
+    expect(screen.getAllByText(/Admin role on a person/).length).toBeGreaterThan(0);
   });
 });

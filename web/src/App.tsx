@@ -182,7 +182,7 @@ function PrintHead({ meta, page, params }: { meta: Meta; page: Page; params: Par
     <header className="ae-print-head">
       <div className="ae-ph-title">{LABEL[page]}{who ? `: ${who}` : ""}</div>
       <div className="ae-ph-scope">Access explorer · {meta.view === "mine" ? "My access" : "shared snapshot"}{meta.run ? ` · data ${meta.run.when}` : ""} · printed {new Date().toISOString().slice(0, 16).replace("T", " ")}</div>
-      {per.length > 0 && <div className="ae-ph-sev">Findings: {per.map(([s, v]) => <span key={s} className={`ae-sevpill ae-sev-${s}`}>{v.toLocaleString()} {s.toLowerCase()}</span>)}</div>}
+      {per.length > 0 && <div className="ae-ph-sev">Findings: {per.map(([s, v]) => <span key={s} className={`ae-sevpill ae-sev-${s}`}>{v.toLocaleString("en-US")} {s.toLowerCase()}</span>)}</div>}
     </header>
   );
 }
@@ -191,9 +191,9 @@ function PrintHead({ meta, page, params }: { meta: Meta; page: Page; params: Par
 export const short = (n: number) => n < 1000 ? String(n) : n < 1e6 ? `${+(n / 1e3).toFixed(n < 1e4 ? 1 : 0)}k` : `${+(n / 1e6).toFixed(1)}M`;
 
 /** The menu: one entry per question. An entry with several pages opens its first; the others are tabs on top of it. */
-const MENU: [string, { label: string; pages: Page[] }[]][] = [
+const MENU: [string, { label: string; pages: Page[]; role?: boolean }[]][] = [
   ["", [{ label: "Home", pages: ["home"] }]],
-  ["Ask", [{ label: "Can they?", pages: ["check"] }, { label: "A person or role", pages: ["access", "see", "user", "role"] },
+  ["Ask", [{ label: "Can they?", pages: ["check"] }, { label: "A person", pages: ["access", "see", "user"] }, { label: "A role", pages: ["access", "see", "role"], role: true },
     { label: "An object", pages: ["object"] }, { label: "Access graph", pages: ["graph"] }, { label: "Activity", pages: ["activity"] }, { label: "Compare & request", pages: ["compare", "request"] }]],
   ["Act", [{ label: "Risks", pages: ["rules"] }, { label: "Sensitive data", pages: ["sensitive", "flow"] },
     { label: "Used or not", pages: ["objuse", "usage"] }, { label: "Change plan", pages: ["whatif"] }]],
@@ -208,7 +208,7 @@ export function family(page: Page, here: Page[]): Page[] {
   return xs.length > 1 ? xs : [];
 }
 
-function Side({ meta, page, nav, onShut, foot }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void; onShut: () => void; foot: ReactNode }) {
+function Side({ meta, page, params, nav, onShut, foot, asked }: { meta: Meta; page: Page; params: Params; nav: (p: Page, params?: Params) => void; onShut: () => void; foot: ReactNode; asked: Asked }) {
   const wide = useWide();
   const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
@@ -224,8 +224,9 @@ function Side({ meta, page, nav, onShut, foot }: { meta: Meta; page: Page; nav: 
             <nav key={title} aria-label={title || undefined}>
               {title && <h4>{title}</h4>}
               {xs.map((e) => {
-                const on = e.pages.includes(page);
-                return <button key={e.label} type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => nav(e.first!)}><span>{e.label}</span></button>;
+                const on = e.pages.includes(page) && (e.role == null && e.label !== "A person" ? true : !!e.role === (page === "role" || !!params.role || params.kind === "role"));
+                return <button key={e.label} type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined}
+                  onClick={() => nav(e.first!, e.role ? (asked.role ? { role: asked.role } : { kind: "role" }) : e.label === "A person" ? (asked.user ? { user: asked.user } : {}) : undefined)}><span>{e.label}</span></button>;
               })}
             </nav>
           ) : null;
@@ -431,6 +432,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => setShut(false)}
               title={meta.notes.map((n) => `${n.title}: ${n.meaning}`).join("\n")}><span className="side-notes-dot" aria-hidden />Incomplete · {meta.notes.length}</button>}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
+            {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
             {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (every card has its own </> mark too)">{"</>"} SQL</button>}
             {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
             <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
@@ -456,7 +458,6 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           </div>
           {meta?.mine_available === false && <span className="ae-muted top-chip" title={meta.mine_note ?? undefined}>My access: off{meta.inside ? " (owner's rights)" : ""}</span>}
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} disabled={!!busy} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
-          {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
           {bg && (
             <button type="button" className="ae-btn top-bg" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen}
               title="The pages keep the data they have until the new read is ready. Click for the full log.">
@@ -469,7 +470,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
         <div className="top-lock" {...lock}>
         {!meta ? <aside className="side">{controls}</aside> : shut
           ? <aside className="side side-rail"><button type="button" className="side-open" onClick={() => setShut(false)} title="Show the menu" aria-label="Show the menu">»</button></aside>
-          : <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} foot={controls} />}
+          : <Side meta={meta} page={loc.page} params={loc.params} asked={loc.mine ? {} : asked.current} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} foot={controls} />}
         </div>
         </div>
         <main className="main">

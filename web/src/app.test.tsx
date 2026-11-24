@@ -62,7 +62,7 @@ describe("No default person on shared data", () => {
     const asked: string[] = [];
     serve((url) => { asked.push(url); return url.startsWith("/api/meta") ? { ...loaded, default_user: null } : undefined; });
     render(<App />);
-    expect(await screen.findByText("The data is ready: pick a person or role")).toBeTruthy();
+    expect(await screen.findByText("The data is ready: pick a person")).toBeTruthy();
     expect(asked.some((u) => u.startsWith("/api/access"))).toBe(false);
     window.history.pushState({}, "", "/");
   });

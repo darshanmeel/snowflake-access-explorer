@@ -183,7 +183,7 @@ export function RiskStrip({ items, onOpen, top = 3 }: { items: RiskLine[]; onOpe
         {shown.map((x) => (
           <li key={x.text} className={`ae-risk ae-tone-${x.severity}`}>
             <span className="ae-risk-word">{RISK_WORD[x.severity]}</span>
-            <b className="ae-risk-n">{x.n.toLocaleString()}</b>
+            <b className="ae-risk-n">{x.n.toLocaleString("en-US")}</b>
             {x.table ? (
               <button type="button" className="ae-risk-text ae-risk-toggle" title={x.text} aria-expanded={open === x.text}
                 onClick={() => setOpen(open === x.text ? null : x.text)}>{open === x.text ? "▾" : "▸"} {x.text}</button>
@@ -196,7 +196,7 @@ export function RiskStrip({ items, onOpen, top = 3 }: { items: RiskLine[]; onOpe
                   <tbody>{x.table.rows.map((r, i) => <tr key={i}>{r.map((v, j) => <td key={j}>{v}</td>)}</tr>)}</tbody>
                 </table>
                 {x.table.total > x.table.rows.length && <button type="button" className="ae-link" onClick={() => onOpen(x.link)}>
-                  +{(x.table.total - x.table.rows.length).toLocaleString()} more: {x.link.label} →</button>}
+                  +{(x.table.total - x.table.rows.length).toLocaleString("en-US")} more: {x.link.label} →</button>}
               </div>
             )}
           </li>
@@ -301,7 +301,7 @@ export function NameList({ items, total = items.length, max = 8, onOpen, onMore,
   if (!items.length && total <= 0) return null;
   const xs = items.map((x) => (typeof x === "string" ? { key: x } as NameItem : x));
   const shown = all ? xs : xs.slice(0, max), rest = total - shown.length;
-  const more = `+${rest.toLocaleString()} more`;
+  const more = `+${rest.toLocaleString("en-US")} more`;
   return (
     <span className="ae-names">
       {shown.map((x) => {

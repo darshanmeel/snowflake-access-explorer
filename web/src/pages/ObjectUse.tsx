@@ -8,7 +8,7 @@ import { useApp } from "../ctx";
 import { col, Controls, Load, Pick, Sel } from "./common";
 
 const TABS = ["unused", "read_only", "write_only", "all"] as const;
-const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? "" : "s"}`;
+const plural = (n: number, w: string) => `${n.toLocaleString("en-US")} ${w}${n === 1 ? "" : "s"}`;
 
 export function ObjectUsePageView() {
   const c = useApp();
@@ -36,7 +36,7 @@ function Body({ d }: { d: ObjUsePage }) {
   return (
     <>
       <p className="ae-answer">
-        <b>{plural(d.tabs.unused, "object")}</b> not used in the last {d.days} days{d.unused_new > 0 && <> ({d.unused_new.toLocaleString()} of them new or changed)</>}
+        <b>{plural(d.tabs.unused, "object")}</b> not used in the last {d.days} days{d.unused_new > 0 && <> ({d.unused_new.toLocaleString("en-US")} of them new or changed)</>}
         {d.new > 0 && <> · {plural(d.new, "object")} created or changed in the activity window</>}.
       </p>
       {!d.available && d.reason && <p className="ae-warn-word">{d.reason}</p>}

@@ -30,7 +30,7 @@ export function RulesPageView() {
   return (
     <>
       <Head title="Risks" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
-        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString()} rows${s.data.filters.sev ? `, ${s.data.filters.sev.toLowerCase()} only` : ""})` : ""}</button>} />
+        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString("en-US")} rows${s.data.filters.sev ? `, ${s.data.filters.sev.toLowerCase()} only` : ""})` : ""}</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
         const chips = scope.length > 0 && (
@@ -131,8 +131,8 @@ function RuleHead({ d }: { d: RulesPage }) {
       </div>
       <p>{r.why}{r.critical && <> <span className="ae-sevpill ae-sev-Critical">Critical</span> when {r.critical}.</>}</p>
       <dl className="ae-rulehead-n">
-        <div><dt>Findings</dt><dd>{(d.per_rule[r.num] ?? 0).toLocaleString()}</dd></div>
-        <div><dt>Roles and users</dt><dd>{d.groups_total.toLocaleString()}</dd></div>
+        <div><dt>Findings</dt><dd>{(d.per_rule[r.num] ?? 0).toLocaleString("en-US")}</dd></div>
+        <div><dt>Roles and users</dt><dd>{d.groups_total.toLocaleString("en-US")}</dd></div>
         {r.area && <div><dt>Area</dt><dd>{r.area}</dd></div>}
       </dl>
       {(r.meaning || r.fix) && (
@@ -154,13 +154,13 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
       <button className="ae-fg-head" onClick={() => setOn(!on)} aria-expanded={on}>
         <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
         <span className={`ae-chip ae-chip-${g.kind ?? "plain"}`}>{g.key.replace(/ \(user\)$/, "")}</span>
-        <span className="ae-muted">{plural(g.findings, "finding")}{g.objects ? ` on ${plural(g.objects, "object")}` : ""}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people.toLocaleString()} people`} affected` : ""}</span>
+        <span className="ae-muted">{plural(g.findings, "finding")}{g.objects ? ` on ${plural(g.objects, "object")}` : ""}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people.toLocaleString("en-US")} people`} affected` : ""}</span>
         {g.tags?.map((t) => <span key={t} className="ae-tag">{t}</span>)}
       </button>
       {!on && ( // open, the findings below say it
         <ul className="ae-fg-said">
           {g.said.map((x) => <li key={x.text}>{x.findings == null && g.findings > 1 && <span className="ae-muted">e.g. </span>}<span className="ae-mono">{x.text}</span>
-            {x.findings != null && g.findings > 1 && <span className="ae-muted"> · {x.findings.toLocaleString()}×</span>}</li>)}
+            {x.findings != null && g.findings > 1 && <span className="ae-muted"> · {x.findings.toLocaleString("en-US")}×</span>}</li>)}
           {(g.said_total ?? 0) > g.said.length && <li className="ae-muted">and {plural(g.said_total! - g.said.length, "other pattern")}</li>}
         </ul>
       )}
@@ -177,7 +177,7 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
         <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
         <span className="ae-fg-num">{g.key}</span>
         <span className="ae-fg-title">{g.title}</span>
-        <span className="ae-muted">{plural(g.findings, "finding")}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people.toLocaleString()} people`}` : ""}</span>
+        <span className="ae-muted">{plural(g.findings, "finding")}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people.toLocaleString("en-US")} people`}` : ""}</span>
       </button>
       {on && (
         <>
@@ -200,7 +200,7 @@ function Line({ f, refs, onOpen, view }: { f: FindingRow; refs: Refs; onOpen: (i
   const [fix, setFix] = useState(false);
   const [names, setNames] = useState(false);
   const [short, who] = (f.impact?.text ?? "").split(/ lose(?:s)? access: /); // "3 users lose access: A, B, C": the names open on a click
-  const n = who ? Number(short.split(" ")[0]).toLocaleString() : "";
+  const n = who ? Number(short.split(" ")[0]).toLocaleString("en-US") : "";
   const k = refs.kinds[f.grantee] ?? f.kind;
   return (
     <li className="ae-fd">
@@ -231,7 +231,7 @@ function StaleTable({ d }: { d: RulesPage }) {
       <StackBar parts={[{ key: "disabled", label: "Disabled", value: n("disabled"), cls: "high" }, { key: "dormant", label: "Dormant", value: n("dormant"), cls: "medium" },
         { key: "never", label: "Never logged in", value: n("never"), cls: "low" }]} />
       <div className="ae-row"><input type="search" className="ae-input" aria-label="Find a person" placeholder="Find a person" value={q} onChange={(e) => setQ(e.target.value)} />
-        <span className="ae-muted">{d.stale_matched < d.stale_total ? `${d.stale_matched.toLocaleString()} of ${d.stale_total.toLocaleString()} people match` : `${d.stale_total.toLocaleString()} people`}</span></div>
+        <span className="ae-muted">{d.stale_matched < d.stale_total ? `${d.stale_matched.toLocaleString("en-US")} of ${d.stale_total.toLocaleString("en-US")} people match` : `${d.stale_total.toLocaleString("en-US")} people`}</span></div>
       <PagedTable path="rules" at="s_offset" total={d.stale_matched} offset={d.stale_offset} pick={(x: RulesPage) => x.stale} csv="stale_people.csv" rows={d.stale} rowTone={(r: StalePerson) => (r.sensitive ? "bad" : null)} onRowClick={(r: StalePerson) => c.nav("access", { user: r.user })}
         columns={[
           col("u", "User", (r: StalePerson) => r.user, { wrap: "nowrap", render: (r: StalePerson) => <span className="ae-mono">{r.user}</span> }),

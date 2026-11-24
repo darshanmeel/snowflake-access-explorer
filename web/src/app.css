@@ -1015,3 +1015,10 @@ div.ae-tile { cursor: default; }
 .ae-card:has(> .ae-card-sql) > .ae-card-head { padding-right: 66px; }
 .ae-card-right { margin-right: 0; }
 .ae-identity { border-radius: 12px; }
+
+.ae-act-kind { justify-self: stretch; text-align: center; font-size: 12.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--ae-line); }
+.ae-act-kind.ae-tone-bad { background: var(--ae-bad_bg); border-color: var(--ae-bad_bd); color: var(--ae-bad_ink); }
+.ae-act-kind.ae-tone-warn { background: var(--ae-warn_bg); border-color: var(--ae-warn_bd); color: var(--ae-warn_ink); }
+.ae-act-row > summary { grid-template-columns: minmax(220px, 1.25fr) minmax(240px, 1.6fr) 112px minmax(130px, .8fr); }
+.left .side { scrollbar-width: thin; }
+.left .top-right .ae-btn { font-size: 11.5px; padding: 3px 8px; }

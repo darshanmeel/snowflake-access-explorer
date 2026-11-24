@@ -187,14 +187,14 @@ export function AgeBars({ types, onPick }: { types: { type: string; buckets: Rec
               : <span className="ae-area-name" title={label}>{label}</span>}
             <span className="ae-area-track" role="img" style={{ width: `${(100 * n) / max}%` }}
               aria-label={`${label}: ${AGE.filter((a) => t.buckets[a.key]).map((a) => `${a.label} ${t.buckets[a.key]}`).join(", ")}`}>
-              {AGE.map((a) => (t.buckets[a.key] ?? 0) > 0 && <span key={a.key} className={`ae-bar-${a.cls}`} style={{ flex: t.buckets[a.key] }} title={`${a.label}: ${t.buckets[a.key].toLocaleString()}`} />)}
+              {AGE.map((a) => (t.buckets[a.key] ?? 0) > 0 && <span key={a.key} className={`ae-bar-${a.cls}`} style={{ flex: t.buckets[a.key] }} title={`${a.label}: ${t.buckets[a.key].toLocaleString("en-US")}`} />)}
             </span>
-            <b className="ae-area-n">{n.toLocaleString()}</b>
+            <b className="ae-area-n">{n.toLocaleString("en-US")}</b>
           </div>
         );
       })}
       <div className="ae-bar-legend">
-        {AGE.filter((a) => total[a.key]).map((a) => <span key={a.key}><span className={`ae-dot2 ae-bar-${a.cls}`} />{a.label} <b>{total[a.key].toLocaleString()}</b></span>)}
+        {AGE.filter((a) => total[a.key]).map((a) => <span key={a.key}><span className={`ae-dot2 ae-bar-${a.cls}`} />{a.label} <b>{total[a.key].toLocaleString("en-US")}</b></span>)}
       </div>
     </div>
   );

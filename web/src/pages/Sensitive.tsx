@@ -116,11 +116,11 @@ export function PolicyNote() {
 function SensAnswer({ d, polOff }: { d: SensitivePage; polOff: boolean }) {
   const c = useApp();
   const k = d.kpis;
-  const n = (x: number, w: string, ws = `${w}s`) => `${x.toLocaleString()} ${x === 1 ? w : ws}`;
+  const n = (x: number, w: string, ws = `${w}s`) => `${x.toLocaleString("en-US")} ${x === 1 ? w : ws}`;
   return (
     <p className="ae-answer">
       <b>{n(k.objects, "sensitive object")}</b>{polOff ? "" : <>, <b className={k.unmasked ? "ae-bad" : ""}>{n(k.unmasked, "column")} not masked</b></>}.{" "}
-      {n(k.readers, "user")} can read them{k.admin > 0 && <>, <button type="button" className="ae-link ae-bad" onClick={() => c.nav("rules", { part: "admins" })}>{k.admin.toLocaleString()} only through an admin role</button></>}
+      {n(k.readers, "user")} can read them{k.admin > 0 && <>, <button type="button" className="ae-link ae-bad" onClick={() => c.nav("rules", { part: "admins" })}>{k.admin.toLocaleString("en-US")} only through an admin role</button></>}
       {k.stale_total > 0 && <>; <button type="button" className="ae-link ae-warn-word" onClick={() => c.nav("rules", { part: "stale" })}>
         {n(k.stale_total, "dormant or disabled person", "dormant or disabled people")} still {k.stale_total === 1 ? "holds" : "hold"} that access</button></>}.
     </p>

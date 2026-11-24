@@ -1,7 +1,7 @@
 // Home's pure helpers: the Needs attention tiles and the one-line takeaways, each computed from the server's numbers.
 import type { HomePage, Page } from "../api/types";
 
-const n0 = (n: number) => n.toLocaleString();
+const n0 = (n: number) => n.toLocaleString("en-US");
 const plural = (n: number, w: string, ws = `${w}s`) => `${n0(n)} ${n === 1 ? w : ws}`;
 
 /** Share as a whole percent; a non-zero share under 1% says "<1%", so it never reads as none. */
@@ -47,7 +47,7 @@ export function areaTakeaway(rows: { area: string; total: number }[]): string {
 
 /** Home's headline: the worst thing true now, with its number. */
 export function headline(d: HomePage, off: (source: string) => boolean): string {
-  const crit = d.risks?.Critical ?? 0, high = d.risks?.High ?? 0, n = d.protection?.dormant ?? 0;
+  const crit = d.risks?.Critical ?? 0, high = d.risks?.High ?? 0, n = d.cards?.readers?.risky ?? d.protection?.dormant ?? 0; // the same number as the picture
   if (!d.risks || off("grants")) return "The grants were not read";
   if (n && !off("users")) return `${plural(n, "inactive person", "inactive people")} can still read sensitive data`;
   if (crit) return `${plural(crit, "critical finding")} to fix`;
@@ -59,6 +59,26 @@ export interface Reader { id: "risky" | "admin" | "service" | "active"; label: s
 export function readers(r: Partial<Record<Reader["id"], number>> | undefined): Reader[] {
   const L: [Reader["id"], string][] = [["risky", "Inactive"], ["admin", "Admin"], ["service", "Service"], ["active", "Active"]];
   return L.map(([id, label]) => ({ id, label, n: r?.[id] ?? 0 })).filter((x) => x.n > 0);
+}
+
+/** What to do about a rule, counted: the first words of an action, its kind. n: the roles or users it is about. */
+const DO: Record<string, [(n: string, one: boolean) => string, string]> = {
+  4: [(n, o) => `Take the owner role from ${n} consumer ${o ? "role" : "roles"}`, "Revoke"],
+  5: [(n, o) => `Take admin roles from ${n} ${o ? "person" : "people"}`, "Revoke"],
+  7: [(n, o) => `Remove the roles of ${n} inactive ${o ? "person" : "people"}`, "Revoke"],
+  9: [() => "Stop granting to everyone through PUBLIC", "Revoke"],
+  12: [(n, o) => `Give ${n} ${o ? "person" : "people"} a default role that is not admin`, "Change default"],
+  17: [(n, o) => `Take write access from ${n} read-only ${o ? "role" : "roles"}`, "Revoke"],
+  20: [(n, o) => `Take task OPERATE from ${n} ${o ? "role" : "roles"}`, "Revoke"],
+  22: [(n, o) => `Take the stream from ${n} ${o ? "role" : "roles"} that cannot read the table`, "Revoke"],
+  23: [(n, o) => `Take CREATE from ${n} read-only ${o ? "role" : "roles"}`, "Revoke"],
+  25: [(n, o) => `Stop people using ${n} service ${o ? "user" : "users"}`, "Change use"],
+  26: [(n, o) => `Move the data work of ${n} ${o ? "person" : "people"} off admin roles`, "Change use"],
+  29: [(n, o) => `Check what ${n} ${o ? "role sees" : "roles see"} through an app`, "Protect"],
+};
+export function action(num: string, subjects: number, fix: string | null | undefined, title: string): { text: string; kind: string } {
+  const d = DO[num];
+  return d ? { text: d[0](n0(subjects), subjects === 1), kind: d[1] } : { text: fix?.split(/(?<=[.;])\s/)[0].replace(/[.;]$/, "") || title, kind: "Fix" };
 }
 
 /** "Most findings are medium: 33 of 68." */

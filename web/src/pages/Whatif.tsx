@@ -111,7 +111,7 @@ function UserRow({ u, refs, changes }: { u: WhatIfUser; refs: WhatIfPage["refs"]
       {on && <Load s={r}>{({ user: x }) => (
         <div className="ae-wi-user">
           {x.lost_rows.length > 0 && <><h4>Loses</h4><ObjRows rows={x.lost_rows} refs={refs} />
-            {x.lost_rows.length < x.objects && <p className="ae-muted">First {x.lost_rows.length} of {x.objects.toLocaleString()} objects: the CSV has all.</p>}</>}
+            {x.lost_rows.length < x.objects && <p className="ae-muted">First {x.lost_rows.length} of {x.objects.toLocaleString("en-US")} objects: the CSV has all.</p>}</>}
           {x.kept_rows.length > 0 && <><h4>Keeps through another path</h4><ObjRows rows={x.kept_rows} refs={refs} kept /></>}
           {x.kept_roles.length > 0 && <><h4>Roles still reached</h4>{x.kept_roles.map((k) => <div key={k.role}><PathCell path={k.via} refs={refs} /></div>)}</>}
         </div>

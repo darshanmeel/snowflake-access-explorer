@@ -79,7 +79,7 @@ export function LossGroups({ gs, total, changes, refs, max = 50 }: { gs: LossGro
             </div>
             {g.where.length > 1 || (g.where[0]?.objects ?? 0) > 1 ? (
               <table className="ae-lgroup-where">
-                <tbody>{g.where.map((w) => <tr key={w.where}><td className="ae-mono">{w.where}</td><td className="ae-num">{w.objects.toLocaleString()} object{w.objects === 1 ? "" : "s"}</td><td>{w.privileges.join(" ")}</td></tr>)}</tbody>
+                <tbody>{g.where.map((w) => <tr key={w.where}><td className="ae-mono">{w.where}</td><td className="ae-num">{w.objects.toLocaleString("en-US")} object{w.objects === 1 ? "" : "s"}</td><td>{w.privileges.join(" ")}</td></tr>)}</tbody>
                 {g.where_total > g.where.length && <tfoot><tr><td colSpan={3} className="ae-muted">and {g.where_total - g.where.length} more places: the CSV has every object</td></tr></tfoot>}
               </table>) : null}
             {on && (

@@ -240,7 +240,7 @@ function RouteTable({ d }: { d: CheckPage }) {
   return (
     <>
       {d.paths.length > 0 && (
-        <Card title="Routes, one row per privilege" sub={`${(d.paths_total ?? d.paths.length).toLocaleString()} row(s) for ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}${
+        <Card title="Routes, one row per privilege" sub={`${(d.paths_total ?? d.paths.length).toLocaleString("en-US")} row(s) for ${d.priv === "*" ? "any privilege" : d.priv} on ${d.object}${
           (d.paths_total ?? 0) > d.paths.length ? `: first ${d.paths.length} listed` : ""}`}>
           <DataTable csv="check_paths.csv" rows={d.paths}
             columns={[...(d.priv === "*" ? [col("p", "Privilege", (r: CheckPage["paths"][number]) => r.privilege, { wrap: "nowrap" })] : []),
@@ -309,7 +309,7 @@ function WayList({ d, ways: all, priv, first, title }: { d: CheckPage; ways: Non
                 <b>{nearestTitle(n)}</b> · <span className="ae-muted">{nearestNote(n, d.approver)}</span>
                 {n.extra > 0 && <div className={n.extra >= WIDE ? "ae-warn-word" : "ae-muted"}>
                   <MiniBar of={n.extra + 1} parts={[{ key: "need", label: "Needed", value: 1, cls: "lvl-read" }, { key: "extra", label: "Also brings", value: n.extra, cls: n.extra >= WIDE ? "medium" : "low" }]}
-                    text={`${(n.extra + 1).toLocaleString()} privileges, you need 1`} />{n.extra >= WIDE && " · much more than asked for"}</div>}
+                    text={`${(n.extra + 1).toLocaleString("en-US")} privileges, you need 1`} />{n.extra >= WIDE && " · much more than asked for"}</div>}
                 {n.broad && <div className="ae-warn-word">Too broad: {n.broad}. Not recommended.</div>}
               </div>
               <div className="ae-row">

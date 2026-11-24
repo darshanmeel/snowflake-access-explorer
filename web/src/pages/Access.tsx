@@ -31,20 +31,21 @@ export function AccessPageView() {
   const role = c.params.role ?? "";
   const user = c.params.user ?? (role ? "" : c.meta.default_user ?? "");
   const s = useApi<AccessPage>(role || user ? "access" : null, subjectOf(c));
-  const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null } : { user: v, role: null });
+  const kind = role || c.params.kind === "role" ? "role" : "person"; // the menu has an entry for each
+  const pick = (v: string, i: ListItem) => c.set(i.kind !== "user" ? { role: v, user: null, kind: null } : { user: v, role: null, kind: null });
   return (
     <>
       <div className="ae-headrow">
         <div>
           {mine ? <h2 className="ae-h1">My access</h2> : (
-            <div className="ae-h1 ae-h1-pick">What can <Pick label="Person or role" value={role || user} user={!role} what="users,roles" onPick={pick} width={260} /> {role ? "open?" : "do?"}
+            <div className="ae-h1 ae-h1-pick">What can <Pick label={kind === "role" ? "Role" : "Person"} value={role || user} user={!role} what={kind === "role" ? "roles" : "users"} onPick={pick} width={300} /> {kind === "role" ? "open?" : "do?"}
               {recent().filter((r) => (r.page === "user" || r.page === "role") && r.id !== (role || user)).slice(0, 4).map((r) => (
                 <button type="button" key={r.id} className="ae-pchip" title="Recently viewed" onClick={() => c.set(r.page === "role" ? { role: r.id, user: null } : { user: r.label, role: null })}>{r.label}</button>))}
             </div>
           )}
         </div>
       </div>
-      {role || user ? <Load s={s}>{(d) => <Body key={`${d.who.kind}:${d.who.id}`} d={d} />}</Load> : <PickFirst />}
+      {role || user ? <Load s={s}>{(d) => <Body key={`${d.who.kind}:${d.who.id}`} d={d} />}</Load> : <PickFirst what={kind === "role" ? "a role" : "a person"} />}
     </>
   );
 }

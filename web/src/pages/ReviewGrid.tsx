@@ -142,10 +142,10 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
           </div>
         )}
       </Card>
-      {partial && <p className="ae-signwarn" role="note">Not the whole review: {d.rows.length < d.matched ? `${d.rows.length.toLocaleString()} of ${d.matched.toLocaleString()} people listed` : ""}{d.rows.length < d.matched && d.columns.length < d.total ? ", " : ""}{d.columns.length < d.total ? `${d.columns.length} of ${d.total.toLocaleString()} objects drawn` : ""}. A sign-off here covers only these: pick a database or search for the rest.</p>}
+      {partial && <p className="ae-signwarn" role="note">Not the whole review: {d.rows.length < d.matched ? `${d.rows.length.toLocaleString("en-US")} of ${d.matched.toLocaleString("en-US")} people listed` : ""}{d.rows.length < d.matched && d.columns.length < d.total ? ", " : ""}{d.columns.length < d.total ? `${d.columns.length} of ${d.total.toLocaleString("en-US")} objects drawn` : ""}. A sign-off here covers only these: pick a database or search for the rest.</p>}
       <section className="ae-signbar">
         <span className="ae-signbar-prog">
-          <span><b>{done}</b> of {d.matched.toLocaleString()} decided · <b>{revokes.length}</b> marked revoke</span>
+          <span><b>{done}</b> of {d.matched.toLocaleString("en-US")} decided · <b>{revokes.length}</b> marked revoke</span>
           <span className="ae-signbar-track" role="img" aria-label={`${done} of ${d.matched} people decided`}><span style={{ width: `${(100 * done) / Math.max(1, d.matched)}%` }} /></span>
         </span>
         {sleepy.length > 0 && <button type="button" className="ae-btn" onClick={() => decideAll(sleepy, "revoke")}

@@ -37,8 +37,8 @@ export function ComparePageView() {
 
 /** The answer first: what B lacks of A, and the reverse. */
 export function compareLine(n: ComparePage["counts"], a: string, b: string): string {
-  if (!n.only_a && !n.only_b && !n.different) return `${a} and ${b} reach the same ${n.same.toLocaleString()} object${n.same === 1 ? "" : "s"} with the same access.`;
-  const objs = (x: number) => `${x.toLocaleString()} object${x === 1 ? "" : "s"}`;
+  if (!n.only_a && !n.only_b && !n.different) return `${a} and ${b} reach the same ${n.same.toLocaleString("en-US")} object${n.same === 1 ? "" : "s"} with the same access.`;
+  const objs = (x: number) => `${x.toLocaleString("en-US")} object${x === 1 ? "" : "s"}`;
   return [n.only_a ? `${b} is missing ${objs(n.only_a)} that ${a} reaches` : `${b} reaches everything ${a} reaches`,
     n.only_b ? `${b} also reaches ${objs(n.only_b)} that ${a} does not` : `${b} reaches nothing extra`,
     ...(n.different ? [`${objs(n.different)} reached by both with different access`] : [])].join("; ") + ".";

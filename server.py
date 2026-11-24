@@ -1968,7 +1968,7 @@ def home_cards():
                         account_only=sum(not x["roles"] for x in adm),
                         names=[holder(x) for x in adm[:NAMES]],
                         service_names=[holder(x) for x in adm if x["service"]][:NAMES]),  # Home: service users with admin
-            readers={g["id"]: g["count"] for g in a.sens_flow()["groups"]} if S["sens"] else {},  # who can read sensitive data, each once
+            readers=sens_readers_by(),
             stale=dict(total=len(stale), by_status=dict(Counter(a.status(u) for u in stale)), of_status=status, names=stale[:NAMES]),
             people=dict(by_status=status, service=sum(map(a.is_service, a.users))),
             roles=dict(Counter(a.role_kind(r) for r in a.roles)),
@@ -1992,6 +1992,17 @@ def home_cards():
         return out | dict(changes=dict(counts=a.event_counts(d["events"]), high=d["high"], before=d["runs"]["before"], reason=None))
     kept = MODE == "fake" or (not a.INSIDE and cache.local() and cache.file(KEY).with_suffix(".prev.pkl").is_file())
     return out | dict(changes=dict(counts=None, high=0, before=None, reason=None if kept else no_prev()))
+
+
+def sens_readers_by():
+    """Who can read sensitive data, each user once: {active, risky (dormant, disabled or never logged in, admins too),
+    admin, service: users}."""
+    if not S["sens"]:
+        return {}
+    by = {g: set(us) for g, _, us in a.flow_sets(None)["groups"]}
+    idle = {u for us in by.values() for u in us if a.status(u) != "active" and not a.is_service(u)}
+    risky = by.pop("risky", set()) | idle
+    return {g: len(us - risky) for g, us in by.items()} | dict(risky=len(risky))
 
 
 def no_prev():

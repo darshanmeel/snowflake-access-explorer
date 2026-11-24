@@ -66,7 +66,7 @@ describe("races, pickers and keys", () => {
       return new Promise(() => {});
     });
     const nav = vi.fn();
-    render(<AppCtx.Provider value={ctx(nav)}><HomePageView /></AppCtx.Provider>);
+    render(<AppCtx.Provider value={{ ...ctx(nav), params: { show: "glance" } }}><HomePageView /></AppCtx.Provider>);
     const box = screen.getByLabelText("Search");
     fireEvent.change(box, { target: { value: "eng" } });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
