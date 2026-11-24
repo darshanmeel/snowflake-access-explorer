@@ -158,7 +158,7 @@ function Body({ d }: { d: AccessPage }) {
         ...rtabs.slice(1).filter((t) => t.key !== "held"),
         { key: "runs", label: "Can run", count: d.runs_total + d.powers_total, tone: d.powers_total > 0 ? "bad" as const : null },
       ]} />
-      {show === "detail" && <p className="ae-answer"><span className="ae-mono">{w.name}</span> {user ? "reaches" : "opens"} {plural(tb.read, "table and view", "tables and views")} through {plural(d.roles, "role")}</p>}
+      {show === "detail" && <p className="ae-answer"><span className="ae-mono">{w.name}</span> {user ? "reaches" : "opens"} {plural(tb.read, "table or view", "tables and views")} through {plural(d.roles, "role")}</p>}
       {show === "held" && <p className="ae-answer">{plural(w.held_by?.users ?? 0, "person", "people")}{(w.held_by?.roles ?? 0) > 0 && <> and {plural(w.held_by!.roles, "role")}</>} {(w.held_by?.users ?? 0) + (w.held_by?.roles ?? 0) === 1 ? "holds" : "hold"} <span className="ae-mono">{w.name}</span></p>}
       {show === "detail" ? <Detail name={w.name} user={user} pane="diagram" />
         : ROLE_PARTS.includes(show) ? <Detail name={w.name} user={user} pane={show} /> : null}
@@ -170,15 +170,15 @@ function Body({ d }: { d: AccessPage }) {
         {" "}Only its own account powers are listed. <button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button>
       </p> : <p className="ae-answer">
         {adm.length > 0 && <><span className="ae-mono">{w.name}</span> <b className="ae-bad">holds {adm.join(", ")}: can do everything below {adm.length > 1 ? "them" : "it"}, not counted here.</b>
-          {" "}<button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button> Without {adm.length > 1 ? "them" : "it"}: </>}
-        <span className="ae-mono">{w.name}</span> {!tb.read ? "reads no tables or views" : user ? <>can change {tb.change.toLocaleString("en-US")} of {plural(tb.read, "table and view", "tables and views")}{tb.own > 0 && <>, owns {tb.own.toLocaleString("en-US")}</>}{tb.clear > 0 && <>, {tb.clear === tb.read ? "all" : tb.clear.toLocaleString("en-US")} with sensitive columns in clear</>}</> : <>opens {plural(tb.read, "table and view", "tables and views")}{tb.clear > 0 && <>, {tb.clear.toLocaleString("en-US")} of them sensitive</>}</>}
+          {" "}<button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button>. Without {adm.length > 1 ? "them" : "it"}, </>}
+        <span className="ae-mono">{w.name}</span> {!tb.read ? "reads no tables or views" : user ? <>can change {tb.change.toLocaleString("en-US")} of {plural(tb.read, "table or view", "tables and views")}{tb.own > 0 && <>, owns {tb.own.toLocaleString("en-US")}</>}{tb.clear > 0 && <>, {tb.clear === tb.read ? "all" : tb.clear.toLocaleString("en-US")} with sensitive columns in clear</>}</> : <>opens {plural(tb.read, "table or view", "tables and views")}{tb.clear > 0 && <>, {tb.clear.toLocaleString("en-US")} of them sensitive</>}</>}
         {n.admin > 0 && <>, <b className="ae-bad">{n.admin} through an admin role</b></>}
       </p>}
       <Figs items={[
         user ? { key: "read", n: tb.read.toLocaleString("en-US"), text: "tables and views they can read", note: nm.schemas.join(", ") || undefined }
           : { key: "held", n: (w.held_by?.users ?? 0).toLocaleString("en-US"), text: w.held_by?.users === 1 ? "person holds it" : "people hold it", note: w.held_by?.roles ? `and ${plural(w.held_by.roles, "role")}` : undefined, go: () => c.set({ show: "held" }) },
         user ? { key: "sens", n: tagsOff ? "not read" : tb.clear.toLocaleString("en-US"), text: "with sensitive columns seen in clear", bad: !tagsOff && tb.clear > 0, note: tagsOff ? `${tagsOff.title}: sensitivity unknown` : nm.clear.join(", ") || undefined }
-          : { key: "chg", n: tb.change.toLocaleString("en-US"), text: "objects it can change", note: nm.change.join(", ") || undefined },
+          : { key: "chg", n: tb.change.toLocaleString("en-US"), text: tb.change === 1 ? "object it can change" : "objects it can change", note: nm.change.join(", ") || undefined },
         d.risks?.length ? { key: "risk", n: d.risks.reduce((t, r) => t + r.n, 0).toLocaleString("en-US"), text: "risks to look at", bad: d.risks.some((r) => r.severity === "bad"), note: d.risks[0].text }
           : { key: "run", n: d.runs_total.toLocaleString("en-US"), text: "things to run", go: () => c.set({ show: "runs" }) },
       ]} />

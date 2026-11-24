@@ -2133,7 +2133,7 @@ def held_rows(p, c):
             iac, sql = a.fix_text([a.role_edge(a.node_name(cut), r, a.node_kind(cut) == "user")])
             revoke = dict(grantee=a.node_name(cut), lost=len(lost), users=len(loses), iac=iac, sql=sql)
         rows = [dict(grantee=x["grantee"], id=a.uid(x["grantee"], x["kind"] == "user"), kind=norm(x["kind"]),
-                     kind_label=kind_label(x["grantee"], x["kind"]) + (" · granted directly" if x["direct"] else ""),
+                     kind_label=kind_label(x["grantee"], x["kind"]),
                      status=a.status(x["grantee"]) if x["kind"] == "user" else None, depth=x["depth"],
                      direct=x["direct"], only_via=x["only_via"], path=x["path"], count=x["count"],
                      # no grantee picked: a direct holder loses the role when its own grant is its only path

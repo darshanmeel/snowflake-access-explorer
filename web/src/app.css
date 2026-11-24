@@ -1035,7 +1035,7 @@ div.ae-tile { cursor: default; }
 .ae-ask-w { font-size: 20px; font-weight: 400; padding: 0; }
 .ae-h1-pick .ae-field > span:first-child, .ae-ask .ae-field > span:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .ae-h1-pick .ae-input, .ae-ask .ae-input { font: 600 17px var(--ae-mono); color: var(--ae-ink); background: var(--ae-accent_soft); border: 0; border-bottom: 2px solid var(--ae-accent); border-radius: 6px 6px 0 0; padding: 5px 12px; min-height: 36px; }
-.ae-h1-pick select.ae-input, .ae-ask select.ae-input { max-width: 210px; text-overflow: ellipsis; }
+.ae-h1-pick select.ae-input, .ae-ask select.ae-input { max-width: 260px; text-overflow: ellipsis; }
 .ae-h1-pick .ae-field:nth-of-type(n+2) select.ae-input { font-size: 13px; background: none; border-bottom: 1px solid var(--ae-line_strong); font-weight: 400; }
 .ae-pagehead-quiet { justify-content: flex-end; margin: 0; }
 .ae-pagehead-quiet:not(:has(.ae-btn)) { display: none; }
@@ -1213,3 +1213,7 @@ div.ae-tile { cursor: default; }
 .ae-ev { border: 0; border-top: 1px solid var(--ae-line); border-radius: 0; background: none; padding: 9px 0; } .ae-feed .ae-ev:first-child { border-top: 0; } .ae-feed { gap: 0; } .ae-ev-icon { width: 22px; height: 22px; font-size: 13px; }
 .ae-ev-key { display: inline-flex; width: 18px; height: 18px; border-radius: 50%; align-items: center; justify-content: center; margin: 0 4px 0 10px; } .ae-ev-key.more { background: var(--ae-bad_bg); color: var(--ae-bad_ink); margin-left: 0; } .ae-ev-key.less { background: var(--ae-ok_bg); color: var(--ae-ok_ink); }
 .ae-req.ae-req-one { grid-template-columns: minmax(0, 1fr); } .ae-reqtab { width: 100%; } .ae-reqtab tr.on td { background: var(--ae-accent_soft); } .ae-req-form h3 { margin: 0; font-size: 15px; }
+
+.ae-who2-list { grid-template-columns: minmax(0, 1fr); } .ae-who2-list .ae-mono { min-width: 0; } .ae-who2-list .ae-lvl { flex: none; }
+.ae-who2-how .ae-route { min-width: 0; } .ae-who2-how .ae-route-step { min-width: 0; max-width: 100%; } .ae-who2-how .ae-route-node { max-width: 240px; min-width: 0; } .ae-who2-how .ae-route-node .ae-mono, .ae-who2-how .ae-route-node .ae-muted { white-space: normal; overflow-wrap: anywhere; }
+.ae-cuttab td { vertical-align: middle; } .ae-cuttab .ae-link { text-align: left; }

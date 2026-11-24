@@ -95,6 +95,7 @@ function Who({ d }: { d: WhoPage }) {
       </>}
       {show === "columns" && <>
         {d.columns.length > 0 && <p className="ae-answer">{bare} of {plural(d.columns.length, "sensitive column")} {bare === 1 ? "has" : "have"} no mask</p>}
+        {!d.columns.length && o.sensitive && <p className="ae-answer">The whole object is tagged sensitive, not single columns</p>}
         <Detail id={o.id ?? ""} part={part} />
         {part === "sens" && d.columns.length > 0 && <Fold label="How many see each column"><ColumnsCard d={d} /></Fold>}
         {d.by_role && lvl2([{ key: "sens", label: "Per column" }, { key: "sees", label: "By role" }], "sens")}
@@ -116,6 +117,9 @@ function Who({ d }: { d: WhoPage }) {
   );
 }
 
+/** The first n names, then how many more. */
+const some = (xs: string[], n: number) => xs.slice(0, n).join(", ") + (xs.length > n ? ` and ${xs.length - n} more` : "");
+
 /** Who has access in one sentence: how many, who can do more than read, who is inactive. */
 function Answer({ d }: { d: WhoPage }) {
   const n = d.counts, lv = (k: (typeof ORDER)[number]) => n.levels[k] ?? 0;
@@ -130,7 +134,7 @@ function Answer({ d }: { d: WhoPage }) {
     <Figs items={[
       { key: "all", n: n.people.toLocaleString("en-US"), text: n.people === 1 ? "user can reach it" : "users can reach it", note: lv("admin") ? `${lv("admin").toLocaleString("en-US")} through an admin role` : undefined },
       { key: "change", n: (lv("own") + lv("change")).toLocaleString("en-US"), text: "can change or own it", note: names(["own", "change"]) || (lv("admin") ? "only admins" : "nobody") },
-      { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: d.people.filter(off).slice(0, 3).map((x) => x.name).join(", ") || undefined },
+      { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: some(d.people.filter(off).map((x) => x.name), 3) || undefined },
     ]} />
     </>
   );
@@ -412,7 +416,7 @@ export function ObjectDetail({ part }: { part: string }) {
                 <KpiRow items={[
                   { label: "Users with access", value: k.people + k.disabled + k.service + k.admin, caption: `${k.people} people · ${k.disabled} disabled · ${k.service} service · ${k.admin} only through an admin role`, tone: k.admin ? "bad" : null },
                   { label: "Read / Write / Own", value: `${k.read} / ${k.write} / ${k.own}` },
-                  { label: "Roles on the way", value: k.roles, caption: `${k.direct} direct holders` },
+                  { label: "Roles on the way", value: k.roles, caption: `${k.direct} direct ${k.direct === 1 ? "holder" : "holders"}` },
                   { label: "Longest chain", value: k.longest },
                 ]} />
                 {k.owners.length > 0 && <p>Owner: <Chips items={k.owners.map((r) => ({ id: r, kind: "technical" }))} /></p>}

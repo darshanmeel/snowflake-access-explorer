@@ -57,8 +57,8 @@ function HeldBy({ d }: { d: RolePage }) {
         { key: "all", label: "All", count: h.total },
       ]} />
       {d.usage.holders > 0 && (
-        <div className="ae-muted"><p>{d.usage.used} of {d.usage.holders} users who hold it used it in the query history{d.usage.unused.length > 0 && ", not used by:"}</p>
-          <NameList items={d.usage.unused} total={d.usage.holders - d.usage.used} onOpen={(u) => c.nav("access", { user: u })} /></div>
+        <div className="ae-muted"><p>{d.usage.used} of {d.usage.holders} users who hold it used it in the query history</p>
+          {d.usage.unused.length > 0 && <Fold label={`Not used by ${(d.usage.holders - d.usage.used).toLocaleString("en-US")}`}><NameList items={d.usage.unused} total={d.usage.holders - d.usage.used} onOpen={(u) => c.nav("access", { user: u })} /></Fold>}</div>
       )}
       <DataTable csv={`${d.role.name}_held_by_${tab}.csv`} rows={[]} server={{ path: "held", params: { ...apiParams(c), name: d.role.name, tab } }} rowTone={(r: HeldRow) => (r.kind === "admin" ? "bad" : r.loses_it ? "warn" : null)}
         columns={[
@@ -147,7 +147,7 @@ export function RolePageView() {
             {d.filters.cuts_total > 0 && (
               <Controls><Pick label="If revoked from" value={d.filters.cut} what="direct_holders" params={{ role: d.role.name }} onPick={(v) => c.set({ cut: v })} />
                 {d.filters.cut ? <button type="button" className="ae-link" onClick={() => c.set({ cut: null })}>Clear</button>
-                  : <span className="ae-muted">{d.filters.cuts_total} direct holders: type to search</span>}</Controls>
+                  : <span className="ae-muted">{d.filters.cuts_total} direct {d.filters.cuts_total === 1 ? "holder" : "holders"}: type to search</span>}</Controls>
             )}
             {d.held_by.revoke && (
               <Banner tone="warn" title={`Revoking from ${d.held_by.revoke.grantee} loses ${d.held_by.revoke.lost} privileges for ${d.held_by.revoke.users} users`}>

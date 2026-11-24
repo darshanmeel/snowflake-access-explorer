@@ -2113,10 +2113,12 @@ def test_nearest():  # screens 3, 12, 15: lanes and cuts, nearest ways in, sugge
     assert any(x["path"][1] == "<NEW_ROLE>" and x["cost"] == 2 for x in n)  # a database role can't go to a user
     assert all(x["role"] not in a.ADMIN and not a.reaches_admin(x["role"]) and x["role"] != "PUBLIC" for x in n)
     s = a.suggest(["SELECT"], "SALES.CORE.TBL_CUSTOMER", "FIN_09")
-    assert s[0]["role"] == F + "ANALYST" and [x["extra"] for x in s] == sorted(x["extra"] for x in s), s
+    assert s[0]["role"] == F + "ANALYST" and [x["extra"] + len(x["here"]) for x in s] == sorted(x["extra"] + len(x["here"]) for x in s), s
     assert s[0]["holders"] >= 1 and "PHONE" in s[0]["unmasked"] and all(a.role_kind(x["role"]) == "functional" for x in s)
     assert not any(x["role"] == F + "ENGINEER" for x in a.suggest(["SELECT"], o, "ENGINEER_01"))  # already held
     assert a.suggest(["INSERT", "UPDATE"], o, "FIN_09")[0]["role"] == F + "ENGINEER"
+    s = a.suggest(["SELECT"], "FINANCE.REPORT.TBL_REVENUE", "SUPPORT_01")
+    assert s[0]["here"] == ["DELETE", "INSERT", "TRUNCATE", "UPDATE"], s[0]  # a role for reading that writes says so
     assert a.approver(o) == "HR data owner" and a.approver("SALES.CORE.TBL_CUSTOMER") is None
     assert a.need_privs("TABLE", "change") == ["INSERT", "UPDATE"] and a.need_privs("WAREHOUSE", "read") == ["USAGE"]
     assert a.basic_priv("VIEW") == "SELECT" and a.need_privs("TABLE", "own") == ["OWNERSHIP"]

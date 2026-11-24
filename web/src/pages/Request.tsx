@@ -60,7 +60,7 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
   const now = d.level ? (LEVEL_WORD[d.level] ?? d.level).toLowerCase() : null;
   return (
     <>
-    <p className="ae-answer">{d.has ? `${d.user} already has it` : choices.length ? <><span className="ae-mono">{d.suggestions[0]?.role ?? choices[0].role}</span> is the smallest existing role that lets {d.user} {d.need === "change" ? "change" : "read"} it</> : "No existing role fits"}</p>
+    <p className="ae-answer">{d.has ? `${d.user} already has it` : choices.length ? <><span className="ae-mono">{d.suggestions[0]?.role ?? choices[0].role}</span> is the smallest existing role that lets {d.user} {d.need === "change" ? "change" : "read"} it{(d.suggestions[0]?.here.length ?? 0) > 0 && <b className="ae-bad">, and it also gives {d.suggestions[0].here.join(", ")}</b>}</> : "No existing role fits"}</p>
     <div className="ae-req ae-req-one">
       <section className="ae-card ae-req-form" aria-label="Request">
         <h3>{d.suggestions[0] ? `${d.suggestions[0].role} brings least extra` : "The request"}</h3>
@@ -90,8 +90,8 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
                 <tr key={x.role} className={pick === x.role ? "on" : ""}>
                   <td><label><input type="radio" name="role" checked={pick === x.role} onChange={() => setPick(x.role)} /> <b className="ae-mono">{x.role}</b></label></td>
                   <td className="num">{x.holders.toLocaleString("en-US")}</td>
-                  <td className="num">+{x.extra.toLocaleString("en-US")}</td>
-                  <td>{[...x.also.map((a) => `${(LEVEL_WORD[a.level] ?? a.level).toLowerCase()} ${a.count} in ${a.where}`)].join("; ") || "nothing else"}{x.unmasked.length > 0 && <span className="ae-bad">; {x.unmasked.join(", ")} unmasked</span>}
+                  <td className="num">+{(x.extra + x.here.length).toLocaleString("en-US")}</td>
+                  <td>{x.here.length > 0 && <b className="ae-bad">{x.here.join(", ")} on it too; </b>}{[...x.also.map((a) => `${(LEVEL_WORD[a.level] ?? a.level).toLowerCase()} ${a.count} in ${a.where}`)].join("; ") || (x.here.length ? "no other object" : "nothing else")}{x.unmasked.length > 0 && <span className="ae-bad">; {x.unmasked.join(", ")} unmasked</span>}
                     {x.broad && <span className="ae-warn-word">; too broad: everyone holding {d.user} ({x.people} people) gets it</span>}{forRole && !x.broad && <span className="ae-muted">; its {x.people} {x.people === 1 ? "holder gets" : "holders get"} it too</span>}</td>
                 </tr>))}</tbody>
             </table>

@@ -2342,8 +2342,10 @@ def who_entry(name, rows, kind):
 
 def person(u, e, adm, ps=None):
     """A user's entry with status and login; a user holding an admin role that reaches the object (ps: its
-    admin_ways_to() paths) is "admin", shown by the shortest path user->...->admin role->...->holder->object."""
+    admin_ways_to() paths) is "admin", shown by the shortest path of the highest step user->...->admin role->...->holder->object."""
     if ps:
+        step = lambda q: max((OBJ_LEVELS.index(obj_level(pv, k)) for h, pv, k in on.get(q[-1], []) if h == q[-2]), default=-1)
+        ps = sorted(ps, key=lambda q: (-step(q), len(q), q))  # the route that gives the most
         pvs = [pv for h, pv, _ in on.get(ps[0][-1], []) if h == ps[0][-2]]
         e = e | dict(level="admin", path=ps[0], first=ps[0][1], holder=ps[0][-2], ways=len(ps),
                      depth=depth(ps[0][:-1], True), privileges=e.get("privileges") or sorted(set(pvs)))
@@ -5406,7 +5408,7 @@ def suggest(privs, obj, user=None, limit=5, is_user=True):
     """Request access: existing functional roles that reach every one of privs on obj (no build role, nothing reaching
     an admin role), smallest first (fewest other privileges), the ones the user already reaches left out. Entry: role,
     path (role->...->holder->obj), holders (users holding it), extra, also, unmasked (sensitive columns of obj the role
-    sees in clear). is_user=False: for the role user (GRANT ROLE r TO ROLE user), never a role that holds it (a
+    sees in clear), here (what else it gives on obj itself, counted in the order and not in extra). is_user=False: for the role user (GRANT ROLE r TO ROLE user), never a role that holds it (a
     loop), none for a database role (an account role can't be granted to one)."""
     if user and not is_user and role_kind(user) == "database":
         return []
@@ -5415,8 +5417,9 @@ def suggest(privs, obj, user=None, limit=5, is_user=True):
     revs = [reverse(obj, pv) for pv in privs]
     rs = [r for r in revs[0] if all(r in x for x in revs) and r not in have and r not in loop
           and role_kind(r) == "functional" and suggestable(r)]
-    out = sorted((dict(role=r, path=revs[0][r] + [obj], holders=len(ups(r)[1]), extra=extra_of(r, obj)) for r in rs),
-                 key=lambda e: (e["extra"], len(e["path"]), e["role"]))[:limit]
+    here = lambda r: sorted({pv for pv, _, o in role_rows(r)["keys"] if o == obj} - set(privs))
+    out = sorted((dict(role=r, path=revs[0][r] + [obj], holders=len(ups(r)[1]), extra=extra_of(r, obj), here=here(r)) for r in rs),
+                 key=lambda e: (e["extra"] + len(e["here"]), len(e["path"]), e["role"]))[:limit]
     for e in out:  # the levels and the data view only for the ones shown
         v = data_view(e["role"], obj, False) if is_data(kinds.get(obj, "")) else None
         e.update(also=brings(e["role"], obj)["also"],
@@ -6976,7 +6979,7 @@ def granted_used(name, user=True, days=90):
         out.append(dict(object=x["object"], type=x["type"], database=x["database"], schema=x["schema"],
                         sensitive=x["object"] in sens, level=x["level"], used=used, privileges=x["privileges"],
                         unused=unused, weeks=u["weeks"] if u else [0] * n, reads=u["read"] if u else 0,
-                        writes=u["write"] if u else 0, last=str(u["last"])[:16] if u and u["last"] else None,
+                        writes=u["write"] if u else 0, last=str(u["last"])[:16] if u and u["last"] else seen[2][:16] if kind == "check" else None,
                         people=sorted(u["users"]) if u else [], holder=x["holder"], suggest=kind, text=text, through=through,
                         changes=[dict(op="revoke_priv", role=h, privilege=p, object=x["object"])
                                  for p in cut for h in sorted(hold.get((x["object"], p), ()))]))

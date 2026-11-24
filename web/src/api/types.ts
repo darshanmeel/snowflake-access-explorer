@@ -757,7 +757,7 @@ export interface RequestPage {
   has: boolean;
   via_admin?: string[]; // has it through the roles granted to these admin roles (their real links)
   asked: { role: string; kind: NodeKind; to: string | null; rule1: boolean; people: number; broad: boolean; change: CompareChange } | null; // picked on Can they?
-  suggestions: { role: string; path: Path; holders: number; extra: number; also: Also[]; unmasked: string[]; people: number; broad: boolean; change: CompareChange }[];
+  suggestions: { role: string; path: Path; holders: number; extra: number; here: string[]; also: Also[]; unmasked: string[]; people: number; broad: boolean; change: CompareChange }[];
   approver: string | null;
   owners: string[];
   refs: Refs;
