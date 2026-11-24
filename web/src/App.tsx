@@ -252,7 +252,6 @@ function Side({ meta, page, params, nav, onShut, foot, asked }: { meta: Meta; pa
           </ul>
         </details>
       )}
-      <DataInfo meta={meta} />
       {foot}
     </aside>
   );
@@ -432,11 +431,17 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => setShut(false)}
               title={meta.notes.map((n) => `${n.title}: ${n.meaning}`).join("\n")}><span className="side-notes-dot" aria-hidden />Incomplete · {meta.notes.length}</button>}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
-            {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
             {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (every card has its own </> mark too)">{"</>"} SQL</button>}
-            {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
             <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
-            <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
+            {meta?.mine_available !== false && <button className="ae-btn" aria-pressed={loc.mine} disabled={!!busy && !loc.mine && !meta?.mine.loaded} title={loc.mine ? "Back to everyone: the shared snapshot" : "Only what you can reach, read as you"}
+              onClick={() => (loc.mine ? setView(false) : meta?.mine.loaded ? setView(true) : loadMine())}>{loc.mine ? "Everyone" : "My access"}</button>}
+            <details className="rail-more"><summary>More</summary>
+              <div>
+                {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
+                <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
+                {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
+                {meta && <DataInfo meta={meta} />}
+              </div></details>
           </span>
   );
   return (
@@ -452,10 +457,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           </button>
           <div className="top-lock" {...lock}>
           <Find view={view} onOpen={(i) => openFound(i, nav)} />
-          <div className="seg" role="group" aria-label="Data">
-            <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)} title="Everyone: the shared snapshot">Everyone</button>
-            {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} disabled={!!busy && !meta?.mine.loaded} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
-          </div>
+          {loc.mine && <span className="top-demo">My access</span>}
           {meta?.mine_available === false && <span className="ae-muted top-chip" title={meta.mine_note ?? undefined}>My access: off{meta.inside ? " (owner's rights)" : ""}</span>}
           {loc.mine && meta?.mine.loaded && <button className="ae-btn" onClick={() => loadMine(true)} disabled={!!busy} title={`Loaded ${meta.mine.loaded_at ?? ""}`}>Reload my access</button>}
           {bg && (

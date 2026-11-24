@@ -61,6 +61,25 @@ export function readers(r: Partial<Record<Reader["id"], number>> | undefined): R
   return L.map(([id, label]) => ({ id, label, n: r?.[id] ?? 0 })).filter((x) => x.n > 0);
 }
 
+/** Dots for the readers: up to 66, each one person; more people: each dot stands for 5, 10, 20, 50, 100 ... people. */
+export function dots(rs: Reader[], most = 66): { per: number; rows: (Reader & { dots: number })[] } {
+  const all = rs.reduce((n, x) => n + x.n, 0);
+  let per = 1;
+  for (let k = 1; all / per > most; k *= 10) for (const m of [1, 2, 5]) if (all / per > most) per = m * k;
+  return { per, rows: rs.map((x) => ({ ...x, dots: Math.max(1, Math.round(x.n / per)) })) };
+}
+
+/** What a rule's people or roles do wrong, after their names. */
+const WHY: Record<string, string> = {
+  4: "own objects as consumers", 5: "hold an admin role", 7: "still read sensitive data", 9: "has privileges everyone gets",
+  12: "log in with an admin role by default", 17: "can write, though read-only", 20: "can operate tasks", 22: "read a stream on a table they cannot read",
+  23: "can create, though read-only", 25: "used from a person's client", 26: "used an admin role to read or change data", 29: "see data through an app they cannot read",
+};
+export const why = (num: string, title: string) => WHY[num] ?? title.toLowerCase();
+
+/** The work an action takes: by how many it touches; a change of use or protection is never small. */
+export const effort = (n: number, kind: string): string => (n > 50 ? "large" : n > 5 || kind !== "Revoke" ? "medium" : "small");
+
 /** What to do about a rule, counted: the first words of an action, its kind. n: the roles or users it is about. */
 const DO: Record<string, [(n: string, one: boolean) => string, string]> = {
   4: [(n, o) => `Take the owner role from ${n} consumer ${o ? "role" : "roles"}`, "Revoke"],

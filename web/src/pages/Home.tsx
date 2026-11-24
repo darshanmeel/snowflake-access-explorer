@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
 import { AgeBars, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, Tabs, type BarPart } from "../components";
-import { action, areaTakeaway, attention, busiest, depthRows, depthTakeaway, headline, peopleTakeaway, readers, severityTakeaway, weekend } from "./homedata";
+import { action, areaTakeaway, attention, busiest, depthRows, depthTakeaway, dots, effort, headline, peopleTakeaway, readers, severityTakeaway, weekend, why } from "./homedata";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
@@ -203,7 +203,7 @@ function Attention({ d }: { d: HomePage }) {
   const tiles = attention(d, off), t = (k: string) => tiles.find((x) => x.key === k);
   const risk = t("risk"), mask = t("mask"), rs = readers(d.cards?.readers), all = rs.reduce((n, x) => n + x.n, 0);
   const idle = rs.find((x) => x.id === "risky")?.n ?? 0;
-  const bare = d.protection?.unmasked_names ?? [];
+  const bare = d.protection?.unmasked_names ?? [], pic = dots(rs);
   const figs: { key: string; n: number; text: string; note: string; bad: boolean; go: () => void }[] = [];
   if (risk) figs.push({ key: "risk", n: risk.n, text: "critical or high findings", note: `${(d.risks!.Critical ?? 0).toLocaleString("en-US")} critical, ${(d.risks!.High ?? 0).toLocaleString("en-US")} high, ${risk.text.replace(/^findings /, "")}`, bad: risk.n > 0, go: () => c.nav(risk.page, risk.params) });
   if (all && !off("tags")) figs.push({ key: "read", n: all, text: "people and services can read sensitive data", note: idle ? `${idle.toLocaleString("en-US")} of them ${idle === 1 ? "is" : "are"} inactive` : "none of them is inactive", bad: false, go: () => c.nav("sensitive", {}) });
@@ -220,10 +220,9 @@ function Attention({ d }: { d: HomePage }) {
       </div>
       {all > 0 && !off("tags") && (
         <Card title={idle ? `${idle.toLocaleString("en-US")} of the ${all.toLocaleString("en-US")} readers of sensitive data ${idle === 1 ? "is" : "are"} inactive` : `${all.toLocaleString("en-US")} can read sensitive data, all in use`}>
-          {all <= 66
-            ? <div className="ae-dots" role="img" aria-label={rs.map((x) => `${x.label} ${x.n}`).join(", ")}>{rs.flatMap((x) => Array.from({ length: x.n }, (_, k) => <i key={`${x.id}${k}`} className={`ae-d-${x.id}`} />))}</div>
-            : <div className="ae-dotbar" role="img" aria-label={rs.map((x) => `${x.label} ${x.n}`).join(", ")}>{rs.map((x) => <i key={x.id} className={`ae-d-${x.id}`} style={{ flex: x.n }} />)}</div>}
-          <div className="ae-dotkey">{rs.map((x) => <span key={x.id}><i className={`ae-d-${x.id}`} />{x.label}: {x.n.toLocaleString("en-US")}</span>)}</div>
+          <div className="ae-dots" role="img" aria-label={rs.map((x) => `${x.label} ${x.n}`).join(", ")}>{pic.rows.flatMap((x) => Array.from({ length: x.dots }, (_, k) => <i key={`${x.id}${k}`} className={`ae-d-${x.id}`} />))}</div>
+          <div className="ae-dotkey">{rs.map((x) => <span key={x.id}><i className={`ae-d-${x.id}`} />{x.label}: {x.n.toLocaleString("en-US")}</span>)}
+            {pic.per > 1 && <span>1 dot = about {pic.per.toLocaleString("en-US")} people</span>}</div>
         </Card>
       )}
     </section>
@@ -233,18 +232,22 @@ function Attention({ d }: { d: HomePage }) {
 type Act = NonNullable<HomePage["act_first"]>[number];
 
 /** One thing to do: the rule, who it is about, what fixing it closes; opens to why, the steps and the findings. */
-function ActRow({ r }: { r: Act }) {
+function ActRow({ r, prot }: { r: Act; prot: NonNullable<HomePage["protection"]> }) {
   const c = useApp();
   const rule = c.meta.rules.find((x) => x.num === r.num);
-  const act = action(r.num, r.subjects, rule?.fix, r.title);
+  const mask = r.num === "6", cols = prot.unmasked_columns;
+  const act = mask ? { text: `Mask ${cols.toLocaleString("en-US")} sensitive ${cols === 1 ? "column" : "columns"}`, kind: "Protect" } : action(r.num, r.subjects, rule?.fix, r.title);
+  const some = r.names.slice(0, TOP).map((x) => x.id.replace(/ \(user\)$/, "")).join(", ") + (r.subjects > TOP ? ` and ${(r.subjects - TOP).toLocaleString("en-US")} more` : "");
+  const reason = mask ? `${prot.unmasked_names.slice(0, TOP).map((x) => `${x.column} in ${x.object.split(".").pop()}`).join(", ")}${cols > TOP ? ` and ${(cols - TOP).toLocaleString("en-US")} more` : ""}` : `${some} ${why(r.num, r.title)}`;
   const go = () => c.nav("rules", { rule: r.num, sev: r.severity });
   return (
     <details className="ae-act-row">
       <summary>
         <b className="ae-act-t">{act.text}</b>
-        <span className="ae-act-why">{r.title}: {r.names.slice(0, TOP).map((x) => x.id.replace(/ \(user\)$/, "")).join(", ")}{r.subjects > TOP ? ` and ${(r.subjects - TOP).toLocaleString("en-US")} more` : ""}</span>
+        <span className="ae-act-why">{reason}</span>
         <span className={`ae-act-kind ae-tone-${r.severity === "Critical" ? "bad" : "warn"}`}>{act.kind}</span>
         <span className="ae-act-n">closes {r.findings.toLocaleString("en-US")} {r.severity.toLowerCase()} {r.findings === 1 ? "finding" : "findings"}</span>
+        <span className="ae-act-eff" title="Work: by how many people, roles or columns it touches">{effort(mask ? cols : r.subjects, act.kind)}</span>
       </summary>
       <div className="ae-act-more">
         {rule?.why && <p><b>Why.</b> {rule.why}</p>}
@@ -282,8 +285,8 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
         { key: "changes", label: "Changes", count: k.changes?.counts?.all ?? null }]} />}
       {tab === "risks" && <>
       <Attention d={d} />
-      <Card title="What to do first" sub="Critical, then high; the shortest list first. Open a line for the steps. Nothing changes in Snowflake.">
-        {d.act_first && d.act_first.length > 0 ? <div className="ae-act" aria-label="What to do first">{d.act_first.map((r) => <ActRow key={`${r.severity}${r.num}`} r={r} />)}</div>
+      <Card title="What to do first" sub="Biggest effect first. Open a line for the steps. Nothing changes in Snowflake.">
+        {d.act_first && d.act_first.length > 0 ? <div className="ae-act" aria-label="What to do first">{d.act_first.map((r) => <ActRow key={`${r.severity}${r.num}`} r={r} prot={prot} />)}</div>
           : <p className="ae-muted">No critical or high findings.</p>}
       </Card>
       <p className="ae-home-also">

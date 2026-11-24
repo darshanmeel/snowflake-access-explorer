@@ -6,6 +6,7 @@ import type { HomePage, Meta } from "../api/types";
 import { clearCache, setTransport } from "../api/client";
 import { AppCtx, type Ctx } from "../ctx";
 import { HomePageView } from "./Home";
+import { dots } from "./homedata";
 
 afterEach(() => { cleanup(); clearCache(); setTransport(null as never); });
 
@@ -61,6 +62,15 @@ const inOrder = (names: string[]) => {
   expect(hs.every((h) => h.startsWith("H2") || h.startsWith("H3"))).toBe(true);
 };
 
+describe("readers as dots", () => {
+  it("draws one dot per person, and one per 100 for thousands; no group disappears", () => {
+    const r = (id: "risky" | "admin" | "active", n: number) => ({ id, label: id, n });
+    expect(dots([r("risky", 4), r("active", 15)]).per).toBe(1);
+    const big = dots([r("risky", 3200), r("admin", 12), r("active", 440)]);
+    expect([big.per, big.rows.map((x) => x.dots)]).toEqual([100, [32, 1, 4]]);
+  });
+});
+
 describe("Home page", () => {
   it("keeps the sections of each tab in order with headings that never skip a level", async () => {
     view();
@@ -97,6 +107,6 @@ describe("Home page", () => {
     await act(async () => { fireEvent.keyDown(window, { key: "/" }); });
     expect(document.activeElement).toBe(screen.getByLabelText("Search"));
     fireEvent.click(screen.getByRole("tab", { name: /Now/ }));
-    expect(screen.getAllByText(/Admin role on a person/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/hold an admin role/).length).toBeGreaterThan(0);
   });
 });

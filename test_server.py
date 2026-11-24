@@ -1117,10 +1117,11 @@ def test_rules_paged():
     for g in js("/api/rules?sev=all&rule=17&by=grantee")["groups"]:
         assert len(g["said"]) == 1 and g["said"][0]["findings"] is None and "heuristic" not in g["said"][0]["text"]
         assert g["tags"] and set(g["tags"]) <= set(server.RO_HOW.values()) and sum(g["sevs"].values()) == g["findings"]
-    # Home: what to act on first (Critical, then High, fewest findings first) and people / roles per severity
+    # Home: what to act on first (Critical, masking, then High; most findings first) and people / roles per severity
     h = js("/api/home", ["act_first", "subjects", "rule_sev"])
-    first = [(x["severity"], x["findings"]) for x in h["act_first"]]
-    assert first == sorted(first, key=lambda t: (server.SEV_RANK[t[0]], t[1])) and first[0][0] == "Critical"
+    first = [(x["severity"], x["findings"]) for x in h["act_first"] if x["num"] != "6"]
+    assert "6" in [x["num"] for x in h["act_first"]]
+    assert first == sorted(first, key=lambda t: (server.SEV_RANK[t[0]], -t[1])) and first[0][0] == "Critical"
     assert len(h["act_first"]) == server.ACT_FIRST and all(x["names"] and x["subjects"] >= len(x["names"]) for x in h["act_first"])
     assert h["subjects"]["Critical"] == dict(people=5, roles=0) and h["rule_sev"] == m["rule_sev"]
     adm = js("/api/rules", ["admins"])["admins"]  # riskiest first: ACCOUNTADMIN / SECURITYADMIN holders

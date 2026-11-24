@@ -1900,7 +1900,7 @@ def home_page(p, view):
 def home_summary():
     """Home's numbers once per data set, one pass over the findings: per severity, per rule, the distinct unmasked
     sensitive columns (rule 6) and the dormant readers (rule 7); per severity the distinct people and roles, and the
-    rules to act on first (Critical, then High, rarest first: rule 17's thousands do not bury rule 5's few). The
+    rules to act on first (Critical, biggest first, then masking (rule 6), then High). The
     row-policy tables are listed on Sensitive data."""
     def make():
         sev, per_rule, unmasked, dormant, n6 = dict.fromkeys(SEVS, 0), {}, set(), set(), 0
@@ -1917,7 +1917,9 @@ def home_summary():
             elif x["num"] == "7":
                 dormant.add(x["grantee"])
         g, um, dm = a.governance_kpis(), sorted(unmasked), sorted(dormant)
-        top = sorted((k for k in per if k[0] in ("Critical", "High")), key=lambda k: (SEV_RANK[k[0]], len(per[k]), int(k[1])))
+        big = sorted((k for k in per if k[0] in ("Critical", "High")), key=lambda k: (SEV_RANK[k[0]], -len(per[k]), int(k[1])))
+        mask = sorted((k for k in per if k[1] == "6"), key=lambda k: SEV_RANK[k[0]])[:1]
+        top = [k for k in big if k[0] == "Critical" and k not in mask] + mask + [k for k in big if k[0] == "High" and k not in mask]
         first = [dict(num=n, severity=v, title=a.RULES[n][0], findings=len(per[(v, n)]),
                       names=[dict(id=a.uid(x["grantee"], x["kind"] == "user"), kind=norm(x["kind"]))
                              for x in list({(x["grantee"], x["kind"]): x for x in per[(v, n)]}.values())[:NAMES]],

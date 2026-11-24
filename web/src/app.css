@@ -142,6 +142,7 @@ body { background: #F8FAFE; }
   .app.side-shut .left .side .top-right { margin: 0 0 0 12px; padding: 0; flex-wrap: nowrap; }
   .app.side-shut .left .top-time { flex: none; }
   .main { padding: 32px 32px 48px; max-width: 1240px; }
+  .left .top-demo { justify-self: start; margin: 0 12px; }
   .st-embed .left { position: relative; height: auto; }
 }
 /* below 1000px (Streamlit width): side nav becomes a menu above the page */
@@ -1152,3 +1153,24 @@ div.ae-tile { cursor: default; }
 .ae-graph .react-flow__controls:hover { opacity: 1; }
 .ae-req-role, .ae-cmp-side { background: none; }
 .ae-steps { grid-template-columns: minmax(0, 1fr); } .ae-steps li, .ae-steps li > div { min-width: 0; overflow-wrap: anywhere; } .ae-steps li .ae-link { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* Home and the rail as drawn */
+@media (min-width: 1001px) { .app:not(.side-shut) { grid-template-columns: 226px minmax(0, 1fr); } }
+.ae-home .ae-card { margin-bottom: 24px; }
+.ae-act-row > summary { grid-template-columns: minmax(220px, 1.3fr) minmax(230px, 1.6fr) 100px minmax(150px, 1.1fr) 60px; gap: 12px; }
+.ae-act-eff { font-size: 13px; color: var(--ae-muted); text-align: right; }
+.ae-act-row > summary .ae-act-kind { border: 1px solid var(--ae-line); font-size: 12px; padding: 1px 8px; border-radius: 999px; text-align: center; }
+.ae-act-row > summary .ae-act-kind.ae-tone-bad { background: color-mix(in oklab, #ff6b5e 22%, var(--ae-panel)); }
+.ae-act-row > summary .ae-act-kind.ae-tone-warn { background: color-mix(in oklab, #ffc83d 38%, var(--ae-panel)); }
+.ae-act-why { overflow-wrap: anywhere; }
+.rail-more { flex: 1 1 100%; font-size: 12px; } .rail-more > summary { cursor: pointer; color: var(--ae-muted); width: max-content; }
+.rail-more > div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .rail-more .side-data { flex: 1 1 100%; margin: 0; }
+.left .top-right .ae-btn { border-radius: 6px; font-size: 12px; padding: 2px 8px; }
+.side-rail .rail-more { position: relative; flex: none; align-self: center; }
+.side-rail .rail-more[open] > div { position: absolute; top: 24px; left: 0; width: 260px; background: var(--ae-panel); border: 1px solid var(--ae-line); border-radius: 8px; padding: 10px; z-index: 30; }
+@media (min-width: 1001px) and (max-height: 800px) {
+  .left .top { padding-top: 14px; gap: 6px; } .left .side { padding-bottom: 8px; }
+  .side nav { margin-bottom: 2px; } .side nav h4 { margin-top: 4px; } .side nav button { min-height: 25px; font-size: 14px; }
+  .left .side-hide { top: 8px; }
+}
+@media (max-width: 1000px) { .ae-act-row > summary { grid-template-columns: minmax(0, 1fr) auto; } }
