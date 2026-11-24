@@ -15,7 +15,7 @@ describe("answer first", () => {
     expect(answerLine(check({}))).toBe("Through 4 routes, all via F_A · shortest 2 roles deep.");
     expect(answerLine(check({ lanes_total: 0, answer: { yes: true, title: "Yes, via ownership", text: "ANN reaches OWNERSHIP of DB.S.T.", stats: [] } as never })))
       .toBe("ANN reaches OWNERSHIP of DB.S.T.");
-    expect(answerLine(check({ verdict: "no", lanes_total: 0 }))).toMatch(/^None of ANN's 2 roles leads to DB.S.T\./);
+    expect(answerLine(check({ verdict: "no", lanes_total: 0 }))).toMatch(/^By the grants in this data, none of ANN's 2 roles leads to DB.S.T\./);
   });
   it("Compare says what B lacks of A first", () => {
     expect(compareLine({ only_a: 0, only_b: 3, different: 0, same: 2 }, "A1", "B1")).toBe("B1 reaches everything A1 reaches; B1 also reaches 3 objects that A1 does not.");

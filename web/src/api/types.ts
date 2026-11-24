@@ -681,7 +681,16 @@ export interface Inside {
   rows: { object: string; type: string; ok: boolean; has: string[]; missing: string[]; blocked: string | null }[];
 }
 
+/** Built-in grants left out on an object or its database and schema, and the roles holding them. */
+export interface BuiltinOn { grants: number; roles: string[] }
+
+/** Use in the activity window beside the grants. how: app (the query names the app) | role (a role held now) | owner (a
+ * role not held now: likely an app or owner's-rights code). */
+export interface UsedRow { user: string; app: string | null; role: string | null; how: "app" | "owner" | "role"; queries: number; last: string; objects: number }
+
 export interface CheckPage {
+  used_anyway: { days: number; total: number; queries: number; last: string; rows: UsedRow[] } | null; // No or Blocked only; null: activity not read
+  builtin: BuiltinOn | null; // null: none left out (always with builtin=1)
   risks: RiskItem[]; // the subject's and the object's, each line prefixed with its name; [] = no strip
   verdict: "yes" | "partly" | "no" | "blocked"; // blocked: the privilege is held, USAGE on its database or schema is not
   subject: Subject;
@@ -1188,6 +1197,7 @@ export interface WhoColumn {
 }
 
 export interface WhoPage {
+  builtin: BuiltinOn | null; // as CheckPage.builtin; null for the admin preset
   view: View;
   object: {
     id: string | null; preset: "admin" | null; type: string; database: string | null; schema: string | null; name: string;
@@ -1200,6 +1210,7 @@ export interface WhoPage {
   st: WhoState | ""; // people of one state only, filtered before the cap
   /** A Streamlit app: it runs with its owner's rights, so viewers see what the owner role reads. */
   app: { owner: string[]; sensitive: Record<string, string[]>; holders: Record<string, string[]>; exposed: Record<string, string[]> } | null;
+  used: { days: number; total: number; users: number; rows: UsedRow[] } | null; // used it, no grant reaches them; never in people or counts; null: not read
   roles: WhoRole[];
   groups: { level: ObjLevel; privileges: string[]; route: string[]; blocked?: string | null; names: string[] }[];
   counts: { levels: Record<ObjLevel, number>; blocked: number; people: number; roles: number; disabled: number; dormant: number; states: Partial<Record<WhoState, number>> };
@@ -1511,6 +1522,7 @@ export interface ActivityRow {
   user: string; role: string; client: string; type: string; object: string; action: "READ" | "WRITE" | "DDL";
   queries: number; days: number; first_day: string; last: string; daily: number[];
   hours: number[]; weekend: number; weekend_hours: number[]; dh?: number[][]; // dh: [day index, UTC hour, queries] // weekday queries per UTC hour (24); weekend total and per hour
+  likely?: boolean; // an app: the query names no app, it ran as its owner role, which the user does not hold
   kind: "person" | "service" | "system"; interactive: boolean; // the user's type; run from Snowsight, SnowSQL or the CLI
 }
 /** Sensitive data of one object used: columns, policies, and per user and role used what they see. */
@@ -1523,7 +1535,7 @@ export interface ActivityPage {
   what: "object" | "user" | "role" | "app" | "scope" | "warehouse"; // app: a Streamlit app's queries for its viewers;
   // scope: every object in a database or schema; warehouse: who ran queries on it (QUERY_HISTORY)
   kind?: string | null; // the object's type (TABLE, STREAMLIT, SCHEMA, WAREHOUSE, ...)
-  app?: { can: Record<string, string>; opened: Record<string, { queries: number; last: string }>; never: string[]; saw: Record<string, string[]> } | null;
+  app?: { can: Record<string, string>; opened: Record<string, { queries: number; last: string; likely: boolean }>; never: string[]; saw: Record<string, string[]> } | null;
   warehouse?: { used: { user: string; queries: number; last: string }[]; unused: string[] };
   source?: string;
   name: string;
@@ -1538,6 +1550,7 @@ export interface ActivityPage {
   last?: string;
   daily?: number[]; // queries per day, oldest first
   by?: Record<ActivityKey, ActivityBy[]>;
+  likely?: number; // queries of the rows marked likely
   rows?: ActivityRow[]; // first MAX_ACTIVITY of total
   total?: number;
   ddl?: ActivityRow[];

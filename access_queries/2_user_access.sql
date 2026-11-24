@@ -39,9 +39,9 @@ GR AS (   -- Snowflake's own grants (SNOWFLAKE.* database roles, system compute 
     SELECT G.* FROM G CROSS JOIN ARGS A
     WHERE A.A_BUILTIN
        OR NOT (LEFT(G.GRANTEE, 10) = 'SNOWFLAKE.' OR LEFT(G.GRANTEE, 7) = 'SYSTEM$'
-               OR LEFT(G.GRANTEE, 20) = 'SYSTEM_COMPUTE_POOL_' OR LEFT(G.GRANTEE, 19) = 'SNOWFLAKE_LEARNING_'
+               OR LEFT(G.GRANTEE, 20) = 'SYSTEM_COMPUTE_POOL_'
                OR (G.GRANTEE = 'PUBLIC' AND (LEFT(G.OBJ, 10) = 'SNOWFLAKE.' OR LEFT(G.OBJ, 7) = 'SYSTEM$'
-                   OR LEFT(G.OBJ, 20) = 'SYSTEM_COMPUTE_POOL_' OR LEFT(G.OBJ, 19) = 'SNOWFLAKE_LEARNING_')))),
+                   OR LEFT(G.OBJ, 20) = 'SYSTEM_COMPUTE_POOL_')))),
 EDGE AS (   -- role links; links granted to an admin role are left out: every custom role sits under SYSADMIN
     SELECT G.GRANTEE AS PARENT, G.OBJ AS CHILD
     FROM GR G

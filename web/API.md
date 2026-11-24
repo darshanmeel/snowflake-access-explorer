@@ -25,7 +25,7 @@ TypeScript types: `web/src/api/types.ts` (keep both in step).
   `"group"` with the raw value kept in `raw_kind`. Object types (`a.kinds`) pass through as strings; the UI falls back
   to a plain grey box for a type it does not know.
 - **Errors:** `{"detail": "<code>", "message": "<plain words>"}` with HTTP 400 (bad param), 404 (name not in the data:
-  `not_found`), 409 (`mine_not_loaded`; `mine_unavailable` inside Snowflake, where the app has its owner's rights and `meta.mine_available` is false), 503 (`shared_unreadable` / `mine_unreadable`, message = `server.load_error()`: `a.line(error)`, plus "Set SNOWFLAKE_WAREHOUSE in .env ..." for 000606).
+  `not_found`; `builtin_hidden`: an object of `check` or `who` that only Snowflake's built-in grants reach, shown with `builtin=1`), 409 (`mine_not_loaded`; `mine_unavailable` inside Snowflake, where the app has its owner's rights and `meta.mine_available` is false), 503 (`shared_unreadable` / `mine_unreadable`, message = `server.load_error()`: `a.line(error)`, plus "Set SNOWFLAKE_WAREHOUSE in .env ..." for 000606).
 
 ## Common query params
 
@@ -35,9 +35,9 @@ TypeScript types: `web/src/api/types.ts` (keep both in step).
 | `builtin` | `1` | off | Keep Snowflake's built-in grants (see below); switching it rebuilds the lookups and rule checks |
 
 **Snowflake built-in grants.** Grants Snowflake makes to every account through PUBLIC (fnmatch patterns `BUILTIN`,
-default `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*`: the SNOWFLAKE.* database roles and their
-functions / views, application role SNOWFLAKE.PUBLIC, system compute pools and warehouses, the learning role,
-warehouse and database). `a.build(d, key, builtin=False)` leaves them out of every walk, count, table and rule
+default `SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*`: the SNOWFLAKE.* database roles and their
+functions / views, application role SNOWFLAKE.PUBLIC, system compute pools and warehouses). The learning role
+(SNOWFLAKE_LEARNING_ROLE) is not among them: its grants count for everyone, only its link from PUBLIC is no rule 9 finding. `a.build(d, key, builtin=False)` leaves them out of every walk, count, table and rule
 (kept in `a.hidden`); never rule 9 or 13 either way. Graphs (`a.graph_input`, the PUBLIC role graph) then show one
 box `a.BUILTIN_NODE` = "Snowflake built-in (via PUBLIC)" under PUBLIC: kind `fold`, edge `PUBLIC -> box` class `use`
 with the object count, note `("hidden", tooltip)`, info `{count: grants, noun: "built-in grants"}`. `builtin=1`
@@ -258,8 +258,8 @@ kept in `.cache/`, else 0 (the My access card says where your access is kept).
   "governance": {"Row access policies used": "2 tables", "Masking": "5 columns", "Tags": "not used"},
   "tokens": {"light": {"...": "ui.TOKENS"}, "dark": {}}, "help": {"Depth": "ui.HELP"},
   "type_icon": {"TABLE": ["▦", "table"]}, "pclass": {"read": "Read"},
-  "builtin": {"label": "Snowflake built-in (via PUBLIC)", "grants": 367, "objects": 353,
-              "roles": ["SNOWFLAKE.CORTEX_USER", "SNOWFLAKE.PUBLIC", "SNOWFLAKE_LEARNING_ROLE", "..."]},
+  "builtin": {"label": "Snowflake built-in (via PUBLIC)", "grants": 364, "objects": 351,
+              "roles": ["SNOWFLAKE.CORTEX_USER", "SNOWFLAKE.PUBLIC", "..."]},
   "what_if_ops": ["revoke_role_from_user", "revoke_role_from_role", "revoke_priv", "drop_role", "empty_public"]
 }
 ```
@@ -578,6 +578,10 @@ Screen 2 (page key `object`): who has access to one object, or with `preset=admi
   groups: [{ level, privileges[], route[], names[] }],   // people with the same route ("12 people via PUBLIC")
   counts: { levels: {level: n}, people, roles, disabled, dormant },
   columns: [{ column, tags[], sensitive, policies[], clear[], masked[], unknown[] }],
+  used,      // {days, total, users, rows: [{user, app, role, how, queries, last, objects}]} (a.used_by; how as in /api/check
+             // used_anyway): used it in the window, no grant reaches them; first 200, never in people, counts or the CSV;
+             // SYSTEM left out; null for the admin preset, in mine, or when the activity is not read
+  builtin,   // a.builtin_on: {grants, roles[]} left out on the object or its database and schema; null when none
   default_user, refs }
 ```
 `app` is set for a Streamlit app (else null), from `a.app_exposure`: `{owner: [roles holding OWNERSHIP], sensitive: {object: [sensitive
@@ -630,6 +634,7 @@ reaches. A change of person or role keeps the object.
   "status": "active", "dormant_days": null,         // status null for a role
   "usage": [{"type": "DATABASE", "name": "SALES", "held": true}, {"type": "SCHEMA", "name": "SALES.CORE", "held": true}],
   "blocked": [], "unblock": null,                   // blocked: {"iac", "sql"}, never run
+  "builtin": null,                                  // a.builtin_on: {"grants": 2, "roles": ["..."]} left out on the object or its database and schema
   "admin_paths": [],
   "paths": [{"path": ["..."], "depth": 3, "holder": "T_SALES_CORE_READ", "how": "direct grant on T_SALES_CORE_READ", "privilege": "SELECT"}],
   "paths_total": 2,                                 // paths lists the first MAX_PATHS
@@ -657,6 +662,13 @@ reaches. A change of person or role keeps the object.
 ```
 `do` picks the privilege when `priv` is not given: read = `a.basic_priv`, change = the first of `a.need_privs(type, "change")`,
 own = OWNERSHIP, else every privilege (`*`).
+
+`used_anyway` (verdict `no` or `blocked`, shared, activity read; else null): what the subject did on the object, or in it,
+in the last `days` although the grants say No (`a.used_anyway`). Evidence beside the answer: the verdict and the counts
+stay the grants'. `{days, total, queries, last, rows: [{user, app, role, how, queries, last, objects}]}`, the first 10 rows
+(app and role), most queries first; only rows that show the privilege asked (a read is no DELETE). `how`: `app` (the query
+names the Streamlit app), `role` (a role held now) or `owner` (a role not held now: likely an app or owner's-rights code,
+or a role held then).
 
 ### GET /api/request?view=&name=|user=|for_role=&obj=&need=read|change&role=&to=
 
@@ -1061,7 +1073,9 @@ questions are kept in the browser (localStorage `ae-watch`) and asked again thro
 Activity tab of an object (`name`), a person (`user`) or a role (`role`): use over the last `days` (60,
 `ACTIVITY_DAYS`) from `TBL_ACCESS_ACTIVITY` (ACCESS_HISTORY, QUERY_HISTORY, SESSIONS: query metadata, never query
 text). `what` follows the object type: `object` (table, view, ...), `app` (a Streamlit app: the queries it ran for its
-viewers, matched on the table's `APP`), `scope` (a database or schema: every object in it), `warehouse` (see below),
+viewers, matched on the row's `APP`; rows without one that ran as the app's owner role for a user who does not hold it
+count too, marked `likely`, with their queries in the page's `likely`; the copy SQL lists only named ones), `scope` (a
+database or schema: every object in it, and what its apps ran), `warehouse` (see below),
 `user`, `role`; `kind` is the object's type as the snapshot has it (`STREAMLIT`, `DATABASE`, `SCHEMA`, `WAREHOUSE`, ...,
 null for a person or role). Producers: `a.activity(name, what, user)`, `a.activity_graph`, `a.activity_sensitive`,
 `a.query_sql`, `a.app_use`, `a.warehouse_use`, `a.mark_sensitive`; the findings are the rule 24-28 rows of `a.rule_rows`
@@ -1120,7 +1134,7 @@ it, which the app never runs (else null). `findings` are the rule 24-28 findings
 `tiles`, `client`, `kinds`, `matrix`, `type_day`, `by_day`, `hours`, `off`, `touched`, `objects`, `who`, `ddl`); `hours` and `off`
 have `WORK_START`, `WORK_END` and `TZ_HOURS` lines for business time. The app never runs them.
 `app` is set only for a Streamlit app (else null), from `a.app_use`: `{can: {user: role holding USAGE}, opened:
-{user: {queries, last}}, never: [users who can open it and did not], saw: {user: [sensitive objects they opened it for
+{user: {queries, last, likely}}, never: [users who can open it and did not], saw: {user: [sensitive objects they opened it for
 but cannot read themselves]}}`. Opening an app without a table query leaves no row, so `opened` only has users whose
 queries touched an object. A user in `opened` but not in `can` opened it without access now.
 When `available` is false, only the head fields are returned (`view` to `note`).

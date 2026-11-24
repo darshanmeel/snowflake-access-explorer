@@ -3,7 +3,7 @@ import { redirect } from "../App";
 import type { CheckPage, Nearest } from "../api/types";
 import { expiryOf, newRoleOf } from "../components/codegen";
 import { parseQuestion } from "./Home";
-import { cutLabel, cutTexts, cutWhatIf, doOf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, verdictLine, warehouseNote } from "./verdict";
+import { cutLabel, cutTexts, cutWhatIf, doOf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, usedAnyway, verdictLine, warehouseNote } from "./verdict";
 
 const roleEdge = { grantee: "F_ENGINEER", to: "HR.SC_W_PEOPLE", priv: null, user: false };
 const userEdge = { grantee: "ENGINEER_01", to: "F_ENGINEER", priv: null, user: true };
@@ -13,7 +13,7 @@ const near = (o: Partial<Nearest>): Nearest => ({
   extra: 5, also: [{ level: "read", count: 2, where: "DB.S" }], rule1: false, broad: null, ...o,
 });
 const base = { user: "FIN_09", object: "DB.S.T", roles_count: 11, lanes_total: 0, cut: [], layers: null, nearest: [] as Nearest[],
-  answer: { yes: false, how: "none", title: "No, not through any role", text: "", tone: null, stats: [] } } as const;
+  answer: { yes: false, how: "none", title: "No, by the grants in this data", text: "", tone: null, stats: [] } } as const;
 
 describe("Can they? helpers", () => {
   it("labels cuts and turns them into What if changes", () => {
@@ -28,7 +28,7 @@ describe("Can they? helpers", () => {
     expect(sideEffects(3, 19).map((b) => b.tone)).toEqual(["warn", "bad"]);
   });
   it("writes the verdict line for Yes, Partly and No", () => {
-    expect(verdictLine({ ...base, verdict: "no" } as unknown as CheckPage)).toBe("None of FIN_09's 11 roles leads to DB.S.T.");
+    expect(verdictLine({ ...base, verdict: "no" } as unknown as CheckPage)).toBe("By the grants in this data, none of FIN_09's 11 roles leads to DB.S.T.");
     expect(verdictLine({ ...base, verdict: "no", nearest: [near({})] } as unknown as CheckPage)).toContain("one grant away");
     expect(verdictLine({ ...base, verdict: "yes", lanes_total: 2, cut: ["F_ENGINEER"] } as unknown as CheckPage)).toBe("through 2 routes, all via F_ENGINEER");
     const layers = [{ step: "Grant", ok: true, result: "Allowed", reason: "" }, { step: "Rows", ok: false, result: "No rows", reason: "" },
@@ -36,6 +36,17 @@ describe("Can they? helpers", () => {
     expect(verdictLine({ ...base, verdict: "partly", layers } as unknown as CheckPage)).toBe("The query runs, but returns no rows.");
     const title = "Has SELECT, but no USAGE on schema DB.S: blocked";
     expect(verdictLine({ ...base, verdict: "blocked", lanes_total: 1, answer: { ...base.answer, how: "blocked", title } } as unknown as CheckPage)).toBe(title);
+  });
+  it("says a No was used all the same, certain only for a named app", () => {
+    const line = (how: string, more: object = {}, total = 1, user = true) => usedAnyway({ subject: { user },
+      used_anyway: { days: 60, total, queries: 42, last: "2026-10-29 10:15", rows: [{ user: "U", app: null, role: "T_O", how, queries: 42, last: "", objects: 1, ...more }] } } as unknown as CheckPage);
+    expect(line("app", { app: "D.S.APP" })).toBe("But used: 42 queries in 60 days, last 2026-10-29, through app D.S.APP (runs as T_O)");
+    expect(line("owner")).toContain("as T_O, a role not held now: likely a Streamlit app");
+    expect(line("owner", { role: null })).toContain("with no role recorded: likely");
+    expect(line("role", {}, 3)).toMatch(/as T_O, a role held now: .* \(\+2 more ways\)$/);
+    expect(line("role", {}, 1, false)).toContain("as T_O: the grant");
+    expect(usedAnyway({ subject: { user: true }, used_anyway: null } as unknown as CheckPage)).toBeNull();
+    expect(usedAnyway({ subject: { user: true }, used_anyway: { days: 60, total: 0, queries: 0, last: "", rows: [] } } as unknown as CheckPage)).toBeNull();
   });
   it("notes the warehouses a query can run on", () => {
     expect(warehouseNote({ names: ["WH_A"], total: 1, admin: false })).toEqual({ text: "Can run queries on warehouse WH_A", bad: false });
@@ -109,7 +120,7 @@ describe("Request access text", () => {
     expect(subjectLink({ name: "F_X", user: false }, "request")).toEqual({ for_role: "F_X" });
     expect(subjectLink({ name: "U", user: true })).toEqual({ name: "U" });
     expect(parseQuestion("can f_marketing read finance.report.tbl_revenue?")).toEqual({ who: "f_marketing", what: "finance.report.tbl_revenue", priv: "SELECT" });
-    expect(verdictLine({ ...base, user: "F_X", verdict: "no", subject: { user: false } } as unknown as CheckPage)).toBe("Neither F_X nor any of its 11 roles leads to DB.S.T.");
+    expect(verdictLine({ ...base, user: "F_X", verdict: "no", subject: { user: false } } as unknown as CheckPage)).toBe("By the grants in this data, neither F_X nor any of its 11 roles leads to DB.S.T.");
     const t = newRoleOf("F_X", ["SELECT"], "TABLE", "D.S.T", {}, undefined, true);
     expect(t.sql).toContain("-- GRANT ROLE <NEW_ROLE> TO ROLE F_X;");
     expect(t.tf).toContain('parent_role_name = "F_X"');

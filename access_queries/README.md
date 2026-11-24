@@ -91,6 +91,7 @@ names), then one path:
   `SNOWFLAKE.SECURITY_VIEWER` (or `SNOWFLAKE.GOVERNANCE_VIEWER`) granted to your role, plus a warehouse.
 - ACCOUNT_USAGE lags up to about 2 hours: a grant made a minute ago may not show yet.
 - Reads only `GRANTS_TO_USERS`, `GRANTS_TO_ROLES` and `USERS`, active rows only (`DELETED_ON IS NULL`). No business data.
+- No `SHOW`: grants on Streamlit apps that `GRANTS_TO_ROLES` does not list (the app adds them from `SHOW GRANTS ON STREAMLIT`) are missing here.
 
 ## Rules (the same as the app's `access.py`)
 
@@ -107,8 +108,8 @@ names), then one path:
   `ACCOUNTADMIN` is not listed under `SECURITYADMIN` or `SYSADMIN`: check `ROLE_NAME = 'ACCOUNTADMIN'` as well.
 - **PUBLIC**: every user holds it, granted or not (users from `USERS` and `GRANTS_TO_USERS`). An unknown user name
   returns no rows.
-- **Snowflake's own grants** through PUBLIC (`SNOWFLAKE.*` database roles, `SYSTEM_COMPUTE_POOL_*`, `SYSTEM$*`,
-  `SNOWFLAKE_LEARNING_*`) are hidden; `SHOW_BUILTIN = TRUE` shows them (hundreds of rows).
+- **Snowflake's own grants** through PUBLIC (`SNOWFLAKE.*` database roles, `SYSTEM_COMPUTE_POOL_*`, `SYSTEM$*`)
+  are hidden; `SHOW_BUILTIN = TRUE` shows them (hundreds of rows).
 - **Cycles** stop by themselves (a role never repeats on a path).
 - **`MAX_DEPTH`** cuts longer chains with no sign in the output: roles past it are left out and `WAYS` counts only
   the paths within it. To check, rerun with a higher value and compare the row count.

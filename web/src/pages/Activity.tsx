@@ -54,7 +54,7 @@ const initials = (n?: string | null) => { const w = (n ?? "").split(/[_\s.]+/).f
 
 export function ActivityTab({ what, name, user }: { what: "object" | "user" | "role"; name: string; user?: string }) {
   const c = useApp();
-  const s = useApi<ActivityPage>("activity", { view: c.view, [what === "object" ? "name" : what]: name, as: user, focus: c.params.afocus });
+  const s = useApi<ActivityPage>("activity", { view: c.view, builtin: c.params.builtin, [what === "object" ? "name" : what]: name, as: user, focus: c.params.afocus });
   return <Load s={s}>{(d) => <>{d.user && <Only d={d} />}<Activity d={d} /></>}</Load>;
 }
 
@@ -72,7 +72,7 @@ function Only({ d }: { d: ActivityPage }) {
 /** One line for the "Access for" strip: what this person did on the object in the activity window. */
 export function UseLine({ name, user }: { name: string; user: string }) {
   const c = useApp();
-  const s = useApi<ActivityPage>(user ? "activity" : null, { view: c.view, name, as: user });
+  const s = useApi<ActivityPage>(user ? "activity" : null, { view: c.view, builtin: c.params.builtin, name, as: user });
   const d = s.data;
   if (!d || d.what === "warehouse") return null;
   if (!d.available) return <span className="ae-muted" title={d.reason ?? ""}>Use: –</span>;
@@ -81,7 +81,7 @@ export function UseLine({ name, user }: { name: string; user: string }) {
   const last = d.by!.user[0]?.last.slice(0, 10);
   return (
     <button type="button" className="ae-link" onClick={() => c.set({ show: "activity", as: user })}>
-      Used: {n} quer{n === 1 ? "y" : "ies"} in {d.days} days as {d.by!.role.map((r) => r.key).join(", ")} ({d.by!.client.map((r) => r.key).join(", ")}), last {last}
+      {d.likely && d.rows!.every((r) => r.likely) ? "Likely used" : "Used"}: {n} quer{n === 1 ? "y" : "ies"} in {d.days} days as {d.by!.role.map((r) => r.key).join(", ")} ({d.by!.client.map((r) => r.key).join(", ")}), last {last}
     </button>
   );
 }
@@ -163,7 +163,8 @@ function Activity({ d: raw }: { d: ActivityPage }) {
       </div>
       <p className="ae-log-lead">{lead(d, objs, total)}</p>
       <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} · days and hours in business time {tzl(work)} · reads, writes and DDL · no query text
-        {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}</p>
+        {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}
+        {!!d.likely && ` · ${fmt(d.likely)} likely: they name no app, but ran as its owner role, which the user does not hold (another app or owner's-rights code of that role looks the same)`}</p>
       {d.what === "app" ? <AppViewers d={d} /> : <Tiles d={d} work={work} open={open} />}
       {one && d.rows?.some((r) => offOf(r, work) > 0) && <OffHours d={d} work={work} open={open} />}  {/* the tile's details */}
       {!one && <>  {/* one table, view or app: the PDF's one-object layout, without the overview sections */}
@@ -242,14 +243,15 @@ function AppViewers({ d }: { d: ActivityPage }) {
   const c = useApp();
   const a = d.app!;
   const can = Object.keys(a.can), opened = Object.keys(a.opened), saw = Object.keys(a.saw);
+  const someLikely = (us: string[]) => (us.some((u) => a.opened[u]?.likely) ? " · some likely" : "");
   const people = [...new Set([...can, ...opened])].sort((x, y) => (a.opened[y]?.queries ?? 0) - (a.opened[x]?.queries ?? 0));
   return (
     <>
       <div className="ae-log-tiles">
-        <Tile label="Opened it" value={opened.length} cap={`of ${can.length === 1 ? "1 person" : `${can.length} people`} who can · ${d.days} days`} />
+        <Tile label="Opened it" value={opened.length} cap={`of ${can.length === 1 ? "1 person" : `${can.length} people`} who can · ${d.days} days${someLikely(opened)}`} />
         <Tile label="Can open, never did" value={a.never.length} cap={a.never.length ? "access nobody uses: worth trimming" : "everyone with access used it"} tone={a.never.length ? "warn" : null} />
-        <Tile label="Saw data they can't read" value={saw.length} cap="sensitive data its owner reads, through the app" tone={saw.length ? "bad" : null} />
-        <Tile label="Opened without access now" value={opened.filter((u) => !a.can[u]).length} cap="used it, but no longer hold USAGE" tone={opened.some((u) => !a.can[u]) ? "warn" : null} />
+        <Tile label="Saw data they can't read" value={saw.length} cap={`sensitive data its owner reads, through the app${someLikely(saw)}`} tone={saw.length ? "bad" : null} />
+        <Tile label="Opened without access now" value={opened.filter((u) => !a.can[u]).length} cap={`used it, but hold no USAGE${someLikely(opened.filter((u) => !a.can[u]))}`} tone={opened.some((u) => !a.can[u]) ? "warn" : null} />
         <Warn d={d} />
       </div>
       <Sec title="Who can open it, and who did" sub="Everyone holding USAGE on the app (through which role) next to who ran it in the window. The app runs with its owner's rights.">
@@ -259,9 +261,9 @@ function AppViewers({ d }: { d: ActivityPage }) {
             <tr key={u} className={a.saw[u] ? "bad" : !a.opened[u] ? "muted" : ""}>
               <td><button type="button" className="ae-link ae-mono" onClick={() => c.nav("access", { user: u })}>{u}</button></td>
               <td className="ae-mono">{a.can[u] ?? <span className="ae-bad">no USAGE now</span>}</td>
-              <td className="num">{a.opened[u] ? fmt(a.opened[u].queries) : <span className="ae-muted">never</span>}</td>
+              <td className="num">{a.opened[u] ? `${a.opened[u].likely ? "likely " : ""}${fmt(a.opened[u].queries)}` : <span className="ae-muted">never</span>}</td>
               <td className="ae-muted">{a.opened[u]?.last.slice(0, 16) ?? "—"}</td>
-              <td>{a.saw[u] ? <b className="ae-bad">{a.saw[u].join(", ")}</b> : <span className="ae-muted">—</span>}</td>
+              <td>{a.saw[u] ? <b className="ae-bad">{a.opened[u]?.likely && "likely "}{a.saw[u].join(", ")}</b> : <span className="ae-muted">—</span>}</td>
             </tr>
           ))}</tbody>
         </table>

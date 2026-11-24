@@ -280,6 +280,35 @@ def test_check_narrow():  # No: a Streamlit app asks USAGE; the narrowest grant 
     assert js("/api/check?name=ANALYST_01&obj=SALES.MART.ST_CUSTOMER_LOOKUP&priv=OWNERSHIP&near=1")["nearest_own"] is None
 
 
+def test_used_anyway():  # a No beside use the activity shows: Can they? and Who has access
+    view, app = "SALES.MART.VW_CUSTOMER", "SALES.MART.ST_CUSTOMER_LOOKUP"
+    d = js(f"/api/check?name=SUPPORT_01&obj={view}")
+    u = d["used_anyway"]
+    assert d["verdict"] == "no" and "by the grants in this data" in d["answer"]["title"] and u["queries"] == 42 and u["days"] == a.ACTIVITY_DAYS
+    assert [(r["how"], r["app"]) for r in u["rows"]] == [("app", app)] and u["total"] == 1 and u["last"]
+    assert js(f"/api/check?name=SUPPORT_01&obj={view}&priv=OWNERSHIP")["used_anyway"]["total"] == 0
+    assert js(f"/api/check?name=ANALYST_01&obj={view}")["used_anyway"] is None  # a Yes
+    us = js(f"/api/check?name=SUPPORT_01&obj={view}&priv=USAGE")
+    assert (us["used_anyway"] is None) == (us["verdict"] == "yes")
+    assert js(f"/api/check?name=HR_01&obj={view}&priv=USAGE")["used_anyway"]["total"] == 0  # No, and no use
+    w = js(f"/api/who?name={view}")
+    assert [r["user"] for r in w["used"]["rows"]] == ["SUPPORT_01"] and w["used"]["users"] == 1
+    assert "SUPPORT_01" not in {x["name"] for x in w["people"]} and w["counts"]["people"] == len(w["people"])
+    assert "SUPPORT_01" not in get(f"/api/who.csv?name={view}").text
+    assert js("/api/who?preset=admin")["used"] is None
+    act = js(f"/api/activity?name={app}")
+    assert act["likely"] == 0 and act["app"]["opened"]["SUPPORT_01"]["likely"] is False
+    keep = a.act_state
+    try:  # activity not read
+        a.act_state = lambda: (False, "not read")
+        a.memo.clear()
+        r = server.check_page(dict(name="SUPPORT_01", obj=view), "shared")
+        assert r["verdict"] == "no" and r["used_anyway"] is None and server.who_page(dict(name=view), "shared")["used"] is None
+    finally:
+        a.act_state = keep
+        a.memo.clear()
+
+
 def test_check_inside():  # Can they? on a database or schema: each table and view inside, read / DML / DDL; USAGE chips
     t = js("/api/check?name=HR_01&obj=SALES.CORE.TBL_CUSTOMER")
     assert t["inside"] is None and [(u["type"], u["held"]) for u in t["usage"]] == [("DATABASE", False), ("SCHEMA", False)]
@@ -874,6 +903,7 @@ def test_who():  # screen 2: who has access to an object, the admin preset, ware
     for o in a.objects:
         js(f"/api/who?name={o}", keys)
     assert js("/api/who?view=mine")["people"] is not None
+    assert js("/api/who?view=mine")["used"] is None and js("/api/check?view=mine")["used_anyway"] is None  # My access reads no activity
     assert js("/api/check?view=mine")["nearest"] == [] and js("/api/request?view=mine")["user"]  # Can they? / Request in mine
     get("/api/who?name=NOPE", 404)
 
@@ -891,9 +921,10 @@ def test_access_home():  # screens 0 and 1: one row per object at its highest le
     assert sum(x["read"] for x in h) == js("/api/access?user=ENGINEER_01&filter=read")["total"]
     assert js("/api/access?user=ENGINEER_01&hq=zzz")["heat"] == [] and d["heat_total"] == len(h)
     assert all(len(r["kids"]) <= server.KIDS and r["kids_total"] >= len(r["kids"]) for r in d["why"])
-    assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (5, 5, 2, 3, 5, 8), n  # the future grant on SALES.CORE is not an object
+    assert (n["read"], n["change"], n["own"], n["sensitive"], n["runnable"], n["usage"]) == (5, 5, 2, 3, 6, 9), n  # learning role via PUBLIC: its warehouse and database; the future grant on SALES.CORE is not an object
     powers = {(x["privileges"][0], x["object"]) for x in d["powers"]}
-    assert powers == {("EXECUTE TASK", "ACCOUNT"), ("VIEW LINEAGE", "ACCOUNT"), ("CREATE TABLE", "SALES.CORE")}, powers
+    assert powers == {("EXECUTE TASK", "ACCOUNT"), ("VIEW LINEAGE", "ACCOUNT"), ("CREATE TABLE", "SALES.CORE"),
+                      ("CREATE SCHEMA", "SNOWFLAKE_LEARNING_DB")}, powers
     log = next(x for x in d["objects"] if x["object"] == "SHARED.LOGGING.TBL_LOGGING")
     assert log["findings"][0] == dict(num="17", severity="High", label="read role can write") and log["level"] == "change"
     wh = next(x for x in d["runs"] if x["object"] == "WH_SALES_XS")
@@ -957,7 +988,7 @@ def test_graph_focus():  # focus=<box>: only the lines through it, on every grap
     assert all(n["id"].startswith("HR.") for n in hr["nodes"] if n["kind"] == "object") and len(hr["nodes"]) < len(whole["nodes"])
     assert server.DEMO_USER in ids(hr) and f"{a.FUNC}ANALYST" not in ids(hr)
     wh = js("/api/map?otype=WAREHOUSE")["graph"]
-    assert [n["id"] for n in wh["nodes"] if n["kind"] == "object"] == ["WH_SALES_XS"]
+    assert [n["id"] for n in wh["nodes"] if n["kind"] == "object"] == ["SNOWFLAKE_LEARNING_WH", "WH_SALES_XS"]
     own = js("/api/map?access=own")["graph"]
     objs = {n["id"] for n in own["nodes"] if n["kind"] == "object"}
     assert objs and all(e["cls"] == "own" for e in own["edges"] if e["target"] in objs)
@@ -1222,7 +1253,7 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
 
 def test_objuse():  # Object activity: counts per type and age, the tabs, server paging, filters, CSV, Home's card
     d = js("/api/objuse", ["available", "days", "periods", "tab", "types", "tabs", "patterns", "new", "rows", "total", "notes", "refs"])
-    assert d["available"] and d["tab"] == "unused" and d["days"] == 90 and d["tabs"] == dict(unused=30, read_only=5, write_only=1, all=49)
+    assert d["available"] and d["tab"] == "unused" and d["days"] == 90 and d["tabs"] == dict(unused=30, read_only=5, write_only=1, all=50)  # with the learning warehouse
     assert d["total"] == 30 and all(r["bucket"] in ("180", "none") for r in d["rows"]) and d["rows"][0]["days_since"] is None  # never used first
     assert d["unused_new"] == sum(r["new"] for r in d["rows"]) and all(r["history"] == 180 for r in d["rows"])
     t = {x["type"]: x["buckets"] for x in d["types"]}
@@ -1234,10 +1265,10 @@ def test_objuse():  # Object activity: counts per type and age, the tabs, server
     wo = js("/api/objuse?tab=write_only&days=180")["rows"]
     assert {r["object"] for r in wo} == {"SALES.CLEAN.TBL_ORDER", "SALES.PIPELINE.TBL_CUSTOMER_CHANGES"}
     one = js("/api/objuse?tab=all&limit=2&offset=2&sort=object&dir=1")
-    assert one["total"] == 49 and len(one["rows"]) == 2 and one["offset"] == 2
+    assert one["total"] == 50 and len(one["rows"]) == 2 and one["offset"] == 2
     assert [r["object"] for r in one["rows"]] == sorted(r["object"] for r in js("/api/objuse?tab=all&limit=100&sort=object")["rows"])[2:4]
     sc = js("/api/objuse?tab=all&scope=SALES.PIPELINE&type=TABLE&q=changes")
-    assert [r["object"] for r in sc["rows"]] == ["SALES.PIPELINE.TBL_CUSTOMER_CHANGES"] and sc["tabs"]["all"] < 49
+    assert [r["object"] for r in sc["rows"]] == ["SALES.PIPELINE.TBL_CUSTOMER_CHANGES"] and sc["tabs"]["all"] < 50
     assert any(r["new"] for r in js("/api/objuse?tab=all&q=core.tbl_customer")["rows"])
     get("/api/objuse?days=7", 400)
     csv = get("/api/objuse.csv?tab=write_only&days=180").text.splitlines()
@@ -1963,6 +1994,23 @@ def test_risks():  # the risk strip at the top of Access Overview, Role paths, W
     t = ok(js("/api/check?name=ANALYST_02&obj=SALES.CORE.TBL_CUSTOMER")["risks"])
     assert t[0] == "ANALYST_02: Reads 2 sensitive objects unmasked" and any(x.startswith("SALES.CORE.TBL_CUSTOMER: ") for x in t), t
     assert js("/api/check?name=DW_BI_01&obj=HR.PAYROLL.TBL_PAY_00")["risks"] == []  # no strip
+
+
+def test_builtin_hidden():  # Can they? and Who has access: the note on left-out built-in grants, and builtin=1 that brings them in
+    o = "SYSTEM_COMPUTE_POOL_CPU"
+    for url in (f"/api/check?name=ANALYST_01&obj={o}", f"/api/who?name={o}", f"/api/who.csv?name={o}"):
+        r = c.get(url)
+        assert r.status_code == 404 and r.json()["detail"] == "builtin_hidden", url
+        assert c.get(url + "&builtin=1").status_code == 200, url
+    assert js(f"/api/check?name=ANALYST_01&obj={o}&builtin=1")["verdict"] == "yes"
+    for url in ("/api/check?name=ANALYST_01&obj=NOPE", "/api/who?name=NOPE"):
+        assert c.get(url).json()["detail"] == "not_found", url
+    assert js("/api/check?name=ANALYST_01&obj=SALES.CORE.TBL_CUSTOMER")["builtin"] is None
+    assert js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["builtin"] is None and js("/api/who?preset=admin")["builtin"] is None
+    ids = lambda more: {i["id"] for i in js(f"/api/list?what=objects&q={o}{more}")["items"]}
+    assert o not in ids("") and o in ids("&builtin=1")  # what the pickers ask
+    d = js("/api/check?name=ANALYST_01&obj=SNOWFLAKE_LEARNING_DB&priv=CREATE+SCHEMA")
+    assert d["verdict"] == "yes" and d["paths"][0]["path"] == ["ANALYST_01", "PUBLIC", "SNOWFLAKE_LEARNING_ROLE", "SNOWFLAKE_LEARNING_DB"], d
 
 
 if __name__ == "__main__":

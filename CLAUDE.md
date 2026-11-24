@@ -21,7 +21,9 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   sources with the user's role into memory, same dict as `snapshot()`. Keep it in step with `SP_ACCESS_SNAPSHOT`; `test_live` checks it.
 - No credentials, account names or company names in code or the repo. Real values live in git-ignored
   `settings.local.sql` and `.env` (env vars, template `.env.example`). Connection via `sf.py` (`connect()`), all files at the repo root.
-- The procedure uses only the read sources in README > "Data sources". No queries on business data.
+- The procedure uses only the read sources in README > "Data sources". No queries on business data. Grants on Streamlit
+  apps also come from `SHOW GRANTS ON STREAMLIT` per app (`app_grants`, the same text in `access.py` and the procedure,
+  also in My access; may fail with a note; a grant to a user is only counted per app in the note).
 - Don't commit or push unless asked.
 
 ## Two versions, one logic
@@ -61,6 +63,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
 - Never parse role names to get the DB or schema (names contain underscores). Use grant data.
 - Snowflake built-ins (`BUILTIN` patterns: SNOWFLAKE.*, system compute pools, ...) reached via PUBLIC are hidden from walks,
   counts and rules (`a.hidden`), drawn as one fold box under PUBLIC; `builtin=1` shows them. Never rule 9 / 13 findings.
+  `SNOWFLAKE_LEARNING_*` is not one: it counts in walks, only its PUBLIC > `SNOWFLAKE_LEARNING_ROLE` link is no rule 9 finding.
 - What if (`a.what_if`): simulation only, restores every lookup afterwards; prints REVOKE / IaC text, never runs it.
 - Admin roles `ACCOUNTADMIN`, `SECURITYADMIN`, `SYSADMIN`, `USERADMIN`, `ORGADMIN`: hide the "every role -> SYSADMIN"
   hierarchy in graphs (`a.admin_links`, kept out of the walks). An admin role reaches only what its real links reach

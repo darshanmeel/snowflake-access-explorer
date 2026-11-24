@@ -63,9 +63,10 @@ ADMIN = {"ACCOUNTADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "ORGADMIN"}
 DEFAULT_PUBLIC = set(os.environ.get("DEFAULT_PUBLIC",
                                     "VIEW LINEAGE,USE AI FUNCTIONS,INGEST LINEAGE,BIND SERVICE ENDPOINT").split(","))
 # Snowflake's own roles and objects every account gets through PUBLIC (fnmatch on the name): the SNOWFLAKE.* database
-# roles and application role, system compute pools and warehouses, the learning role / warehouse / database. Their
-# grants are hidden by default (build(builtin=False)): no counts, one fold box in graphs, never rule 9 or 13
-BUILTIN = os.environ.get("BUILTIN", "SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*,SNOWFLAKE_LEARNING_*").split(",")
+# roles and application role, system compute pools and warehouses. Their grants are hidden by default
+# (build(builtin=False)): no counts, one fold box in graphs, never rule 9 or 13. The learning role is not one: people
+# use its database and warehouse, so it counts like any role; only its default link from PUBLIC is no rule 9 finding
+BUILTIN = os.environ.get("BUILTIN", "SNOWFLAKE.*,SYSTEM_COMPUTE_POOL_*,SYSTEM$*").split(",")
 BUILTIN_RE = re.compile("|".join(fnmatch.translate(b) for b in BUILTIN))
 BUILTIN_NODE = "Snowflake built-in (via PUBLIC)"
 # INFORMATION_SCHEMA views: every query of a tool or driver that reads metadata touches them, so they flood activity,
@@ -349,7 +350,7 @@ def fake():
         pv += [(c, p, "SCHEMA", f"DW.{sc}") for p in ("CREATE TABLE", "CREATE VIEW") if c in caps]
     ur += [("GRP_DW_ENGINEERS", "DW_DEV_01"), ("GRP_DW_READERS", "DW_BI_01"), ("GRP_DW_READERS", "DW_BI_02")]
     # Snowflake's own grants to PUBLIC (BUILTIN, hidden by default): system database roles reaching a few hundred
-    # functions and views, the application role, system compute pools and warehouse, the learning role
+    # functions and views, the application role, system compute pools and warehouse; the learning role is visible
     for r, sc, k, n in [("CORE_VIEWER", "CORE", "VIEW", 12), ("DATA_METRIC_USER", "CORE", "FUNCTION", 260),
                         ("CORTEX_USER", "CORTEX", "FUNCTION", 40), ("ML_USER", "ML", "FUNCTION", 20),
                         ("ALERT_VIEWER", "ALERT", "VIEW", 5), ("SPCS_VIEWER", "SPCS", "VIEW", 5)]:
@@ -362,7 +363,8 @@ def fake():
            ("PUBLIC", "USAGE", "COMPUTE POOL", "SYSTEM_COMPUTE_POOL_GPU"),
            ("PUBLIC", "USAGE", "WAREHOUSE", "SYSTEM$STREAMLIT_NOTEBOOK_WH"),
            ("SNOWFLAKE_LEARNING_ROLE", "USAGE", "WAREHOUSE", "SNOWFLAKE_LEARNING_WH"),
-           ("SNOWFLAKE_LEARNING_ROLE", "USAGE", "DATABASE", "SNOWFLAKE_LEARNING_DB")]
+           ("SNOWFLAKE_LEARNING_ROLE", "USAGE", "DATABASE", "SNOWFLAKE_LEARNING_DB"),
+           ("SNOWFLAKE_LEARNING_ROLE", "CREATE SCHEMA", "DATABASE", "SNOWFLAKE_LEARNING_DB")]
     rg.append(("SNOWFLAKE_LEARNING_ROLE", "PUBLIC"))
     grants = [dict(GRANTEE_ROLE=p, PRIVILEGE="USAGE", GRANTED_ON="ROLE", OBJECT_NAME=c, IS_FUTURE=False) for c, p in rg]
     grants += [dict(GRANTEE_ROLE=p, PRIVILEGE="USAGE", GRANTED_ON="DATABASE_ROLE", OBJECT_NAME=c, IS_FUTURE=False)
@@ -903,18 +905,28 @@ def mine(query, db):
     # objects the grant reads miss (Streamlit apps, notebooks, ...): the inventory's kinds with no ACCOUNT_USAGE view,
     # by SHOW, those your roles own
     steps = [(name, kind, s) for name, _, sql, _, show in inventory_sql() if sql is None for s, kind in show]
-    bad, have = [], set(roles) | {g["GRANTEE_ROLE"] for g in grants}
+    bad, have, apps = [], set(roles) | {g["GRANTEE_ROLE"] for g in grants}, set()
     seen = inventory_seen((g.get("OBJECT_NAME"), g.get("GRANTED_ON"), g.get("PRIVILEGE")) for g in grants)
     for (name, kind, _), got in zip(steps, each(query, [x[2] for x in steps], what="Object inventory")):
         if isinstance(got, Exception):
             bad.append(f"{name}: {line(got)}")
             continue
+        own = inventory_rows(seen, kind, [{c.lower(): v for c, v in x.items()} for x in got])
         grants += [dict(GRANTEE_ROLE=who, PRIVILEGE="OWNERSHIP", GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False)
-                   for who, k, o in inventory_rows(seen, kind, [{c.lower(): v for c, v in x.items()} for x in got])
-                   if who in have]
+                   for who, k, o in own if who in have]
+        apps |= {o for _, k, o in own if k == "STREAMLIT"}  # those your roles do not own too: they may open them
     src["objects"] = "SHOW" if len(bad) < len(steps) else "UNAVAILABLE"
     if bad:
         notes["objects"] = f"{len(bad)} of {len(steps)} reads failed: " + " | ".join(bad[:20])
+    on_app = [(g["GRANTEE_ROLE"], g["PRIVILEGE"], g["OBJECT_NAME"]) for g in grants if g["GRANTED_ON"] == "STREAMLIT"]
+    more, src["app_grants"], why = app_grants(
+        apps | {x[2] for x in on_app}, on_app,
+        lambda s: [r if isinstance(r, Exception) else [{c.lower(): v for c, v in x.items()} for x in r]
+                   for r in each(query, s, what="SHOW GRANTS ON STREAMLIT")], line)
+    grants += [dict(GRANTEE_ROLE=who, PRIVILEGE=pv, GRANTED_ON="STREAMLIT", OBJECT_NAME=o, IS_FUTURE=False)
+               for who, pv, o, _, _ in more if who in have or who == "PUBLIC"]
+    if why:
+        notes["app_grants"] = why
     # SNOWFLAKE last: without IMPORTED PRIVILEGES the user can't even see it, any usable database works
     dbs = list(dict.fromkeys(([db] if db else []) + [g["OBJECT_NAME"] for g in grants if g["GRANTED_ON"] == "DATABASE"]
                              + ["SNOWFLAKE"]))
@@ -1090,6 +1102,36 @@ def inventory_rows(seen, kind, found):
         out.append((who if typ in ("ROLE", "DATABASE_ROLE") else None, got[0] if got else k, name))
         seen[name.split("(", 1)[0]] = [out[-1][1], True]
     return out
+
+
+def app_grants(apps, have, many, text):
+    """Grants on Streamlit apps, which GRANTS_TO_ROLES may not list: SHOW GRANTS ON STREAMLIT per app (DB.SCHEMA.NAME).
+    have: the (grantee, privilege, object) already read; an app whose owner is read keeps it. many, text: as
+    database_list. A refused app is noted and skipped; a grant to anything but a role (a user, an application) is
+    counted per app in the note, no row holds it. -> ([(grantee, privilege, object, grant option, granted by)], source,
+    note). The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql). to verify: granted_to's values."""
+    apps, have, out, bad, other = sorted({o for o in apps if o and o.count(".") >= 2}), set(have), [], [], {}
+    owned = {o for who, pv, o in have if who and pv == "OWNERSHIP"}
+    got = many(["SHOW GRANTS ON STREAMLIT " + ".".join(ident(p) for p in o.split(".", 2)) for o in apps])
+    for o, r in zip(apps, got):
+        if isinstance(r, Exception):
+            bad.append(f"{o}: {text(r)}")
+            continue
+        for x in r:
+            typ = str(x.get("granted_to") or "ROLE").upper().replace("_", " ")
+            who, pv, db = (x.get("grantee_name") or "").replace('"', ""), x.get("privilege"), o.split(".")[0]
+            if typ not in ("ROLE", "ACCOUNT ROLE", "DATABASE ROLE"):
+                other[(o, typ)] = other.get((o, typ), 0) + 1
+                continue
+            if typ == "DATABASE ROLE" and who and not who.startswith(db + "."):
+                who = f"{db}.{who}"
+            if who and pv and (who, pv, o) not in have and not (pv == "OWNERSHIP" and o in owned):
+                have.add((who, pv, o))
+                out.append((who, pv, o, str(x.get("grant_option")).lower() == "true", x.get("granted_by")))
+    note = [f"{len(bad)} of {len(apps)} apps unread: " + " | ".join(bad[:20])] * bool(bad)
+    note += ["grants not to a role, not shown: "
+             + " | ".join(f"{o} to {k}: {n}" for (o, k), n in sorted(other.items()))] * bool(other)
+    return out, "UNAVAILABLE" if apps and len(bad) == len(apps) else "SHOW", "; ".join(note) or None
 
 
 def unseen(e):
@@ -1408,7 +1450,7 @@ def live(query, old=None, old_use=None):
             d["GRANT"] += [dict(GRANTEE_ROLE=role, PRIVILEGE=x.get("privilege"), GRANTED_ON=x.get("granted_on"),
                                 OBJECT_NAME=clean(x.get("name")), IS_FUTURE=False,
                                 GRANT_OPTION=str(x.get("grant_option")).lower() == "true", GRANTED_BY=x.get("granted_by"))
-                           for x in to if x.get("granted_to") in ("ROLE", None)]
+                           for x in to if x.get("granted_to") in ("ROLE", "ACCOUNT ROLE", None)]
             d["USER_ROLE"] += [dict(USER_NAME=x.get("grantee_name"), ROLE_NAME=role, GRANTED_BY=x.get("granted_by"))
                                for x in of if x.get("granted_to") == "USER"]
         how, found, dwhy = databases()  # none listed: no database roles here; the future grants below note it too
@@ -1650,6 +1692,13 @@ def live(query, old=None, old_use=None):
     d["GRANT"] += [dict(GRANTEE_ROLE=who, PRIVILEGE="OWNERSHIP", GRANTED_ON=k, OBJECT_NAME=o, IS_FUTURE=False,
                         GRANT_OPTION=False, GRANTED_BY=None) for who, k, o in added]
     note("objects", how, why)
+    # grants on the Streamlit apps the grant read and the inventory list (as SP_ACCESS_SNAPSHOT's app_grants_step())
+    on_app = [(g.get("GRANTEE_ROLE"), g.get("PRIVILEGE"), g.get("OBJECT_NAME")) for g in d["GRANT"]
+              if g.get("GRANTED_ON") == "STREAMLIT" and not g.get("IS_FUTURE")]
+    more, how, why = app_grants({x[2] for x in on_app}, on_app, lambda s: many(s, "SHOW GRANTS ON STREAMLIT"), line)
+    d["GRANT"] += [dict(GRANTEE_ROLE=who, PRIVILEGE=pv, GRANTED_ON="STREAMLIT", OBJECT_NAME=o, IS_FUTURE=False,
+                        GRANT_OPTION=go, GRANTED_BY=by) for who, pv, o, go, by in more]
+    note("app_grants", how, why)
     if lone := sum(1 for who, _, _ in added if not who):  # an app owns them, or the read named no owner: listed, no holder
         say(f"Object inventory: {lone:,} objects without an owner role, listed with no holder")
     say(f"done in {took(t0)}")
@@ -2021,6 +2070,15 @@ def builtin_info():
     rs = {g["OBJECT_NAME"] for g in hidden if g["GRANTED_ON"] in role_on} | {g["GRANTEE_ROLE"] for g in hidden} - {"PUBLIC"}
     return dict(label=BUILTIN_NODE, grants=len(hidden), roles=sorted(rs),
                 objects=len({g["OBJECT_NAME"] for g in hidden if g["GRANTED_ON"] not in role_on}))
+
+
+def builtin_on(o):
+    """Built-in grants left out by build() on o or on its database and schema: dict(grants, roles [holding them]), None
+    when there are none."""
+    at = set(containers(o))
+    gs = [g for g in hidden if g["OBJECT_NAME"] == o and g["GRANTED_ON"] not in ROLE_ON
+          or (g["GRANTED_ON"], g["OBJECT_NAME"]) in at]
+    return dict(grants=len(gs), roles=sorted({g["GRANTEE_ROLE"] for g in gs if g["GRANTEE_ROLE"]})) if gs else None
 
 
 def cached(name, fn):
@@ -6092,23 +6150,31 @@ def client_label(c):
 
 def activity(name, what, user=None):
     """Activity tab: name's table use over ACTIVITY_DAYS up to the snapshot. what: object | user | role | app (the
-    queries a Streamlit app ran for its viewers) | scope (a database or schema: every object in it); user: only
-    that user's use (the object page's "Access for").
+    queries a Streamlit app ran for its viewers) | scope (a database or schema: every object in it, and every query an
+    app in it ran); user: only that user's use (the object page's "Access for").
     dict(first, last (days), daily [queries per day, oldest first], by {user|role|client|type|object: [dict(key, read,
     write, ddl, last, daily)], most first}, rows [one per user, role, client, object, statement and action: queries, days,
     first_day, last, daily, hours (weekday queries per UTC hour, 24), weekend (queries on Saturday or Sunday),
     weekend_hours (those per UTC hour, 24), dh ([day index, UTC hour, queries]: lets the page move queries to the local
     day and hour of any business time), kind
-    (person | service | system, of the user), interactive (from Snowsight, SnowSQL, ...)], ddl [the DDL rows, newest
-    first]). Counts are queries per action: a MERGE that reads and changes a table
+    (person | service | system, of the user), interactive (from Snowsight, SnowSQL, ...), likely (of an app:
+    app_owner_run)], likely [queries of those rows], ddl [the DDL rows, newest first]). Counts are queries per action: a MERGE that reads and changes a table
     counts in both."""
-    field = dict(object="OBJECT_NAME", user="USER_NAME", role="ROLE_NAME", app="APP", scope="OBJECT_NAME")[what]
-    inside = (lambda v: (v or "").startswith(name + ".")) if what == "scope" else (lambda v: v == name)
+    field = dict(object="OBJECT_NAME", user="USER_NAME", role="ROLE_NAME", app="APP", scope=None)[what]
+    pre = name + "."
+    if what == "scope":
+        inside = lambda x: x["OBJECT_NAME"].startswith(pre) or (x.get("APP") or "").startswith(pre)
+    else:
+        inside = lambda x: x.get(field) == name
+    own = app_owners(name) if what == "app" else {}
     end = day(ref_time())
     first = end - timedelta(days=ACTIVITY_DAYS - 1)
     daily, by, rows = [0] * ACTIVITY_DAYS, {k: {} for k in ("user", "role", "client", "type", "object")}, {}
     for x in acts:
-        if not inside(x[field]) or (user and x["USER_NAME"] != user):
+        if user and x["USER_NAME"] != user:
+            continue
+        likely = not inside(x)
+        if likely and not app_owner_run(x, own):
             continue
         d, q, last, act = day(x["DAY"]), int(x["QUERIES"] or 0), str(x["LAST_USED"] or "")[:16], x["ACTION"].lower()
         hrs = x.get("HOURS") or {}  # older snapshots have none
@@ -6123,8 +6189,8 @@ def activity(name, what, user=None):
             b["last"] = max(b["last"], last)
             if 0 <= i < ACTIVITY_DAYS:
                 b["daily"][i] += q
-        r = rows.setdefault(tuple(keys.values()) + (x["ACTION"],),
-                            dict(keys, action=x["ACTION"], queries=0, days=set(), last="", daily=[0] * ACTIVITY_DAYS,
+        r = rows.setdefault(tuple(keys.values()) + (x["ACTION"], likely),
+                            dict(keys, action=x["ACTION"], likely=likely, queries=0, days=set(), last="", daily=[0] * ACTIVITY_DAYS,
                                  hours=[0] * 24, weekend=0, weekend_hours=[0] * 24, dh=[], interactive=x["CLIENT"] in INTERACTIVE,
                                  kind="system" if x["USER_NAME"] == "SYSTEM" else "service" if is_service(x["USER_NAME"])
                                  else "person"))
@@ -6143,7 +6209,7 @@ def activity(name, what, user=None):
            for r in sorted(rows.values(), key=lambda r: -r["queries"])]
     return dict(first=first.isoformat(), last=end.isoformat(), daily=daily,
                 by={k: sorted(v.values(), key=lambda b: -(b["read"] + b["write"] + b["ddl"])) for k, v in by.items()},
-                rows=out, ddl=sorted((r for r in out if r["action"] == "DDL"), key=lambda r: r["last"], reverse=True))
+                rows=out, likely=sum(r["queries"] for r in out if r["likely"]), ddl=sorted((r for r in out if r["action"] == "DDL"), key=lambda r: r["last"], reverse=True))
 
 
 def query_sql(name, what, first, last):
@@ -6152,7 +6218,7 @@ def query_sql(name, what, first, last):
     q = quoted(name)
     where = {"object": f"""O.VALUE:"objectName"::STRING = '{q}'""", "user": f"A.USER_NAME = '{q}'",
              "role": f"Q.ROLE_NAME = '{q}'", "app": f"TRY_PARSE_JSON(Q.QUERY_TAG):StreamlitName::STRING = '{q}'",
-             "scope": f"""O.VALUE:"objectName"::STRING LIKE '{q}.%'"""}[what]
+             "scope": f"""(O.VALUE:"objectName"::STRING LIKE '{q}.%' OR {APP_OF} LIKE '{q}.%')"""}[what]
     return f"""-- Every query behind the Activity tab of {q}, one by one, {first} to {last} (UTC). Read-only.
 SELECT DISTINCT A.QUERY_ID, A.QUERY_START_TIME, A.USER_NAME, Q.ROLE_NAME, Q.QUERY_TYPE,
        O.VALUE:"objectName"::STRING AS OBJECT_NAME, S.CLIENT_APPLICATION_ID
@@ -6218,7 +6284,7 @@ LOOKS = ("DESCRIBE", "SHOW")  # statement types that only look at an object, tho
 ACT_FILTER = {  # inside X's own WHERE: H. / Q. columns (USER_NAME is in both), not X.
     "object": ("OBJECT_NAME", "H.OBJECT_NAME = $OBJECT_NAME"), "user": ("USER_NAME", "H.USER_NAME = $USER_NAME"),
     "role": ("ROLE_NAME", "Q.ROLE_NAME = $ROLE_NAME"), "app": ("APP_NAME", f"{APP_OF} = $APP_NAME"),
-    "scope": ("IN_SCOPE", "H.OBJECT_NAME LIKE $IN_SCOPE || '.%'")}
+    "scope": ("IN_SCOPE", f"(H.OBJECT_NAME LIKE $IN_SCOPE || '.%' OR {APP_OF} LIKE $IN_SCOPE || '.%')")}
 ACT_BASE = """WITH A AS (   -- one row per query in the window (UTC days); L: its time in business time (TZ_HOURS)
     SELECT QUERY_ID, USER_NAME, QUERY_START_TIME AS T, DATEADD(HOUR, $TZ_HOURS, CONVERT_TIMEZONE('UTC', QUERY_START_TIME)) AS L,
            DIRECT_OBJECTS_ACCESSED, OBJECTS_MODIFIED, OBJECT_MODIFIED_BY_DDL
@@ -6483,17 +6549,101 @@ def app_exposure(app):
 
 def app_use(app, rows):
     """A Streamlit app's viewers: can (users who can open it, with the role holding USAGE), opened (users with
-    activity() rows for it: queries, last), never (can open it, did not in the window), saw (opened it and can't read
+    activity() rows for it: queries, last, likely: no query names the app, see app_owner_run), never (can open it, did not in the window), saw (opened it and can't read
     some sensitive data its owner reads: those objects)."""
     x = app_exposure(app) or dict(holders={}, exposed={})
     can = {u: r for r, us in x["holders"].items() for u in us}
     opened = {}
     for r in rows:
-        o = opened.setdefault(r["user"], dict(queries=0, last=""))
+        o = opened.setdefault(r["user"], dict(queries=0, last="", likely=True))
         o["queries"] += r["queries"]
+        o["likely"] = o["likely"] and r["likely"]
         o["last"] = max(o["last"], r["last"])
     return dict(can=can, opened=opened, never=sorted(set(can) - set(opened)),
                 saw={u: x["exposed"][u] for u in opened if u in x["exposed"]})
+
+
+def role_people(r):
+    """Users who reach role r, through the real links of an admin role too, once per data set."""
+    return cached(("role_people", r), lambda: ups(r)[1] | {u for u, xs in admin_users().items()
+                                                           if any(r in admin_below(x) for x in xs)})
+
+
+def app_owners(app):
+    """{owner role of a Streamlit app: the users who reach it}; empty for any other object."""
+    return {r: role_people(r) for r, pv, _ in on.get(app, []) if pv == "OWNERSHIP"} if kinds.get(app) == "STREAMLIT" else {}
+
+
+def app_owner_run(x, own):
+    """Whether ACTIVITY row x is likely a query of the app with owner roles own (app_owners): it names no app and ran as
+    an owner role its user does not reach. An owner's-rights procedure or another app of that role looks the same."""
+    return x["ROLE_NAME"] in own and not x.get("APP") and x["USER_NAME"] not in own[x["ROLE_NAME"]]
+
+
+def acts_of():
+    """ACTIVITY rows by (True, user) and (False, role), once per data set: one person's use without a scan of all."""
+    def make():
+        out = {}
+        for x in acts:
+            out.setdefault((True, x["USER_NAME"]), []).append(x)
+            if x["ROLE_NAME"]:
+                out.setdefault((False, x["ROLE_NAME"]), []).append(x)
+        return out
+    return cached("acts_of", make)
+
+
+def used_rows(rows, obj, priv=None):
+    """The ACTIVITY rows that used obj (a table, an app, or a database or schema: anything in it) in a way that needs
+    priv (None = any): a read is no use of DELETE, an INSERT neither; a privilege no row can show gives none."""
+    k = kinds.get(obj)
+    seen = priv in (None, "USAGE")  # opening an app is USAGE on it, nothing more
+    pre = obj + "." if k in ("DATABASE", "SCHEMA") else None
+    own = app_owners(obj) if seen else {}
+    want = {"READ", "WRITE", "DDL"} if seen else {"WRITE"} if priv in WRITE_PRIVS else \
+        {"DDL"} if priv == "OWNERSHIP" or priv.startswith("CREATE ") else {"READ"} if priv in READ_PRIVS else set()
+    skip = (WRITE_PRIVS | {"TRUNCATE_TABLE"}) - {priv, f"{priv}_TABLE"} if want == {"WRITE"} else ()
+    for x in rows if want else ():
+        o, app = x["OBJECT_NAME"], x.get("APP")
+        hit = o == obj or (pre and o.startswith(pre)) or (seen and app and (app == obj or (pre and app.startswith(pre)))) \
+            or (own and app_owner_run(x, own))
+        if hit and x["ACTION"] in want and x["QUERY_TYPE"] not in skip:
+            yield x
+
+
+def used_anyway(name, user, obj, priv=None):
+    """What name (a user or a role) did on obj, or in it, in the activity window, next to a No from the grants:
+    [dict(app, role, how, queries, last, objects)], most first. how: app (the query names the Streamlit app) | role (a
+    role name reaches now) | owner (a role it does not reach now: likely an app or owner's-rights code, or a role it
+    held then)."""
+    out = {}
+    for x in used_rows(acts_of().get((user, name), []), obj, priv):
+        use_add(out, (x.get("APP"), x["ROLE_NAME"]), x, not user)
+    return use_list(out)
+
+
+def used_by(obj, people):
+    """Users not in people (those a grant reaches) who used obj, or something in it, in the activity window: used_anyway
+    rows with user, one per user, app and role, most first. SYSTEM (tasks) is no user."""
+    out = {}
+    for x in used_rows((x for x in acts if x["USER_NAME"] not in people and x["USER_NAME"] != "SYSTEM"), obj):
+        use_add(out, (x["USER_NAME"], x.get("APP"), x["ROLE_NAME"]), x)
+    return use_list(out)
+
+
+def use_add(out, key, x, held=False):
+    """Add ACTIVITY row x to out[key]. held: the use is a role's own, so it holds the role."""
+    app, r = x.get("APP"), x["ROLE_NAME"]
+    g = out.get(key)
+    if not g:
+        how = "app" if app else "role" if held or (r and x["USER_NAME"] in role_people(r)) else "owner"
+        g = out[key] = dict(user=x["USER_NAME"], app=app, role=r, how=how, queries=0, last="", objects=set())
+    g["queries"] += int(x["QUERIES"] or 0)
+    g["last"] = max(g["last"], str(x["LAST_USED"] or x["DAY"])[:16])
+    g["objects"].add(x["OBJECT_NAME"])
+
+
+def use_list(out):
+    return [g | dict(objects=len(g["objects"])) for g in sorted(out.values(), key=lambda g: -g["queries"])]
 
 
 def warehouse_use(wh):
@@ -7372,7 +7522,7 @@ def rules_admin(only=None):
             out.append(find("9", r, f"{pv} on {k} {o}", [r, o], [priv_edge(r, pv, k, o)],
                             critical=k == "ACCOUNT" and pv in ADMIN_LEVEL))
     for child, parent in role_grants:
-        if parent == "PUBLIC" and not is_builtin(child):
+        if parent == "PUBLIC" and not is_builtin(child) and child != "SNOWFLAKE_LEARNING_ROLE":  # a Snowflake default
             out.append(find("9", parent, f"role {child}", [parent, child], [role_edge(parent, child)]))
     for u in users:
         dr = (profile.get(u) or {}).get("DEFAULT_ROLE")

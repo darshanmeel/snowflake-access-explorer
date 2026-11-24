@@ -626,6 +626,9 @@ def note_info(k, source, view):
         "streams": ("Streams unread", "The stream rule (22) can't run.", f"{IP}."),
         "objects": ("Object list partly read", "Objects of the kinds in the error show only where a grant names them.",
                     f"{IP}; for SHOW kinds (Streamlit apps, notebooks, ...) MONITOR or USAGE on them."),
+        "app_grants": ("App grants partly read", "Who can open the apps in the error may be incomplete: their grants were "
+                       "refused, or go to something other than a role (a user, an application), which no path shows.",
+                       "For refused apps: MANAGE GRANTS, or a privilege on them."),
         "activity": ("No client in Activity", "SESSIONS is not readable: the Activity tabs show no client and rule 25 "
                      "can't run.", f"{IP}.") if source == "ACCOUNT_USAGE" else
                     ("No table activity", "The Activity tabs and rules 24-28 can't run: ACCESS_HISTORY is not readable "
@@ -2478,6 +2481,13 @@ MAX_WHO = 200  # Who has access: people and roles sent, highest step first (q= f
 MAX_WHO_GROUPS = 100  # groups of people with the same route sent, biggest first
 
 
+def need_object(o):
+    """404 when o is not in the data; builtin_hidden when only Snowflake's built-in grants, left out, reach it."""
+    if o not in a.kinds and any(g["OBJECT_NAME"] == o and g["GRANTED_ON"] not in a.ROLE_ON for g in a.hidden):
+        raise ApiError(404, "builtin_hidden", f"{o} is reached only through Snowflake's built-in grants, which are hidden.")
+    need(o in a.kinds, f"{o} is not in this snapshot")
+
+
 def who_all(p, view):
     """Everything screen 2 shows of one object (or the admin preset), once per data set: the people (5,941 on a
     big account: PUBLIC reaches everyone) are walked, dressed and grouped once; who_page sends a part of them."""
@@ -2486,11 +2496,11 @@ def who_all(p, view):
     else:
         need(a.objects, "No objects in this data.")
         o = p.get("name") or next((x for x in a.objects if a.kinds[x] == "TABLE"), a.objects[0])
-        need(o in a.kinds, f"{o} is not in this snapshot")
-    return a.cached(("who_all", o), lambda: who_data(o))
+        need_object(o)
+    return a.cached(("who_all", o), lambda: who_data(o, view))
 
 
-def who_data(o):
+def who_data(o, view):
     if o is None:
         w, t, cols, seen = a.admin_access(), None, [], {}
         head = dict(id=None, preset="admin", type="Admin roles", database=None, schema=None, name="Admin roles",
@@ -2523,6 +2533,7 @@ def who_data(o):
     # blocked (the privilege without USAGE on the database or schema) are not readers: counted on their own
     levels = {lv: sum(x["level"] == lv and not x["blocked"] for x in w["people"]) for lv in a.OBJ_LEVELS[::-1]}
     return dict(o=o, head=head, people=w["people"], roles=w["roles"], groups=a.same_paths(w["people"]),
+                used=a.used_by(o, {x["name"] for x in w["people"]}) if o and view == "shared" and a.act_state()[0] else None,
                 app=a.app_exposure(o) if o and a.kinds.get(o) == "STREAMLIT" else None, columns=cols,
                 counts=dict(levels=levels, blocked=sum(bool(x["blocked"]) for x in w["people"]),
                             people=len(w["people"]), roles=len(w["roles"]),
@@ -2536,7 +2547,8 @@ def who_page(p, view):
     """Screen 2: who has access to one object (name=), or the Admin holders preset (preset=admin): people and roles at
     their highest step, people with the same route grouped, the object's tags and policies, and who sees each sensitive
     column unmasked. Big objects: the first MAX_WHO people and roles matching q= (plus as= and sel=) and the first
-    MAX_WHO_GROUPS groups; shown counts the people and roles that match."""
+    MAX_WHO_GROUPS groups; shown counts the people and roles that match. used: users who used it though no grant
+    reaches them (never in people or counts), null when the activity is not read."""
     x = who_all(p, view)
     q = p.get("q", "").lower()
     st = p.get("st") if p.get("st") in ("active", "dormant", "disabled", "service") else ""  # people: before the cap
@@ -2556,7 +2568,10 @@ def who_page(p, view):
     by_role = bool(o and view == "shared" and a.is_data(a.kinds[o]) and (ps["rows"] or ps["columns"] or a.sensitive_cols(o)))  # object_page's sees
     return dict(view=view, object=x["head"], by_role=by_role, risks=object_risks(x["o"]) if x["o"] else None, people=sent, roles=roles[:MAX_WHO] + sel, groups=groups,
                 shown=dict(people=len(people), roles=len(roles), groups=len(every)), st=st,
-                app=x["app"], counts=x["counts"], columns=x["columns"], default_user=du)
+                used=None if x["used"] is None else dict(days=a.ACTIVITY_DAYS, total=len(x["used"]), rows=x["used"][:MAX_WHO],
+                                                         users=len({r["user"] for r in x["used"]})),
+                app=x["app"], counts=x["counts"], columns=x["columns"], default_user=du,
+                builtin=a.builtin_on(x["o"]) if x["o"] else None)
 
 
 def who_csv(p, view):
@@ -2615,6 +2630,11 @@ def check_page(p, view):
         r["privileges"].append("USAGE")
         if p.get("priv") == "USAGE":
             r |= container_usage(r, p.get("focus"))
+    r["used_anyway"] = None
+    if view != "mine" and r["verdict"] in ("no", "blocked") and a.act_state()[0]:  # evidence beside the grants, no verdict
+        x = a.used_anyway(r["user"], r["subject"]["user"], r["object"], None if r["priv"] == ALL else r["priv"])
+        r["used_anyway"] = dict(days=a.ACTIVITY_DAYS, total=len(x), queries=sum(g["queries"] for g in x),
+                                last=max((g["last"] for g in x), default=""), rows=x[:MAX_WH])
     return r
 
 
@@ -2651,7 +2671,7 @@ def check_object(p, view):
     mine_rows = a.grants(u, user)  # once: a big account takes a second per walk
     o = named(p.get("obj"), a.kinds, "objects") or (p.get("on") if p.get("on") in a.kinds else next(
         (r["object"] for r in mine_rows if a.is_data(r["type"])), tables[0] if tables else a.objects[0]))
-    need(o in a.kinds, f"{o} is not in this snapshot")
+    need_object(o)
     opts = a.ask_privs(a.kinds[o])
     do = {"read": a.basic_priv(a.kinds[o]), "change": a.need_privs(a.kinds[o], "change")[0], "own": "OWNERSHIP"}
     pv = p.get("priv") if p.get("priv") in opts else do.get(p.get("do"), ALL)
@@ -2698,9 +2718,9 @@ def check_object(p, view):
                    text=f"{u} can {pv} {o} through the roles granted to admin role {via[0]}: {' > '.join(admin[0])}.{note}",
                    tone=tone, stats=[["Paths", 0], ["Via admin", len(admin)]])
     elif not ps:
-        ans = dict(yes=False, how="none", title="No, not through any role",
+        ans = dict(yes=False, how="none", title="No, by the grants in this data",
                    text=f"No role {'granted to' if user else 'held by'} {u}, at any depth, "
-                   f"{'' if user else f'and not {u} itself, '}holds {'any privilege' if pv == ALL else pv} on {o}.{note}{power}", tone="low",
+                   f"{'' if user else f'and not {u} itself, '}holds {'any privilege' if pv == ALL else pv} on {o}, by the grants in this data.{note}{power}", tone="low",
                    stats=[["Paths", 0], ["Shortest depth", "—"]])
     else:
         ends = {x["holder"] for x in ps}
@@ -2764,7 +2784,7 @@ def check_object(p, view):
                                  for x in r["options"]],
         use_role=r["use_role"], warehouse=r["warehouse"], read=read,
         blocked=[dict(type=t, name=c) for t, c in gaps], unblock=dict(iac=r["unblock"][0], sql=r["unblock"][1]) if gaps else None,
-        warehouses=dict(names=whs[:MAX_WH], total=len(whs), admin=bool(wa)),
+        warehouses=dict(names=whs[:MAX_WH], total=len(whs), admin=bool(wa)), builtin=a.builtin_on(o),
         graph=g and build_graph("Paths combined", g[0], g[1], g[2], focus=p.get("focus")) or None, capped=sorted(a.capped),
         risks=ranked([x | dict(text=f"{n}: {x['text']}") for n, xs in ((u, subject_risks(u, user)), (o, object_risks(o))) for x in xs]))
 

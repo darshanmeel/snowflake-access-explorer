@@ -419,7 +419,7 @@ def grants(session, run_id, mode):
             continue
         g += [[run_id, role, x.get("privilege"), spell(x.get("granted_on")), clean(x.get("name")), False,
                str(x.get("grant_option")).lower() == "true", x.get("granted_by")]
-              for x in to if x.get("granted_to") in ("ROLE", None)]
+              for x in to if x.get("granted_to") in ("ROLE", "ACCOUNT ROLE", None)]
         u += [[run_id, x.get("grantee_name"), role, x.get("granted_by")] for x in of if x.get("granted_to") == "USER"]
     # database roles: per database, their grants under DB.ROLE
     how, found, dwhy = databases(session, run_id, mode)  # none listed: no database roles; future() notes it too
@@ -819,6 +819,36 @@ def inventory_rows(seen, kind, found):
     return out
 
 
+def app_grants(apps, have, many, text):
+    """Grants on Streamlit apps, which GRANTS_TO_ROLES may not list: SHOW GRANTS ON STREAMLIT per app (DB.SCHEMA.NAME).
+    have: the (grantee, privilege, object) already read; an app whose owner is read keeps it. many, text: as
+    database_list. A refused app is noted and skipped; a grant to anything but a role (a user, an application) is
+    counted per app in the note, no row holds it. -> ([(grantee, privilege, object, grant option, granted by)], source,
+    note). The same text is in access.py and SP_ACCESS_SNAPSHOT (sql/1_setup.sql). to verify: granted_to's values."""
+    apps, have, out, bad, other = sorted({o for o in apps if o and o.count(".") >= 2}), set(have), [], [], {}
+    owned = {o for who, pv, o in have if who and pv == "OWNERSHIP"}
+    got = many(["SHOW GRANTS ON STREAMLIT " + ".".join(ident(p) for p in o.split(".", 2)) for o in apps])
+    for o, r in zip(apps, got):
+        if isinstance(r, Exception):
+            bad.append(f"{o}: {text(r)}")
+            continue
+        for x in r:
+            typ = str(x.get("granted_to") or "ROLE").upper().replace("_", " ")
+            who, pv, db = (x.get("grantee_name") or "").replace('"', ""), x.get("privilege"), o.split(".")[0]
+            if typ not in ("ROLE", "ACCOUNT ROLE", "DATABASE ROLE"):
+                other[(o, typ)] = other.get((o, typ), 0) + 1
+                continue
+            if typ == "DATABASE ROLE" and who and not who.startswith(db + "."):
+                who = f"{db}.{who}"
+            if who and pv and (who, pv, o) not in have and not (pv == "OWNERSHIP" and o in owned):
+                have.add((who, pv, o))
+                out.append((who, pv, o, str(x.get("grant_option")).lower() == "true", x.get("granted_by")))
+    note = [f"{len(bad)} of {len(apps)} apps unread: " + " | ".join(bad[:20])] * bool(bad)
+    note += ["grants not to a role, not shown: "
+             + " | ".join(f"{o} to {k}: {n}" for (o, k), n in sorted(other.items()))] * bool(other)
+    return out, "UNAVAILABLE" if apps and len(bad) == len(apps) else "SHOW", "; ".join(note) or None
+
+
 def unseen(e):
     """A database or object this role cannot see ("does not exist or not authorized"): ACCOUNT_USAGE lists every
     database, SHOW and INFORMATION_SCHEMA only those the role sees, so such a read is skipped without a note."""
@@ -961,6 +991,20 @@ def objects(session, run_id, mode):
         for _, kind, got in found:
             added += inventory_rows(seen, kind, got)
         save(session, GRANT, GRANT_COLS, [[run_id, who, "OWNERSHIP", spell(k), o, False, False, None] for who, k, o in added])
+        return how, why
+    except Exception as e:
+        return "UNAVAILABLE", first_line(e)
+
+
+def app_grants_step(session, run_id):
+    """Grants on the Streamlit apps the grant read and the inventory list (app_grants, as access.live), added to
+    TBL_ACCESS_GRANT; after objects(), which lists the apps. An error: UNAVAILABLE, the run stays OK."""
+    try:
+        on_app = [(r["grantee_role"], r["privilege"], r["object_name"]) for r in rows(session, f"""
+            SELECT DISTINCT GRANTEE_ROLE, PRIVILEGE, OBJECT_NAME FROM {GRANT}
+            WHERE RUN_ID = '{run_id}' AND GRANTED_ON = 'STREAMLIT' AND NOT IS_FUTURE""")]
+        more, how, why = app_grants({x[2] for x in on_app}, on_app, lambda s: many(session, s), first_line)
+        save(session, GRANT, GRANT_COLS, [[run_id, who, pv, "STREAMLIT", o, False, go, by] for who, pv, o, go, by in more])
         return how, why
     except Exception as e:
         return "UNAVAILABLE", first_line(e)
@@ -1200,6 +1244,8 @@ def run(session, p_source):
         keep("streams", *streams(session, run_id, mode))
         step = "objects"
         keep("objects", *objects(session, run_id, mode))
+        step = "app_grants"
+        keep("app_grants", *app_grants_step(session, run_id))
         step = "usage"
         keep("usage", *waits[2]())
         step = "object_use"

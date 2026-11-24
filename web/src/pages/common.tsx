@@ -1,8 +1,8 @@
 // Pieces shared by the pages: pickers, load/error frame, graph card, findings, data views, usage.
 import { useEffect, useState, type ReactNode } from "react";
 import { clearCache, get, useApi, type ApiFail, type State } from "../api/client";
-import type { Banner as B, ListItem, Meta, Note, Page, RiskItem, Sees, Finding, Graph as G, Refs, Severity, StateWhy, UsageCard } from "../api/types";
-import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, RiskStrip, Waiting, type Column } from "../components";
+import type { Banner as B, BuiltinOn, ListItem, Meta, Note, Page, RiskItem, Sees, Finding, Graph as G, Refs, Severity, StateWhy, UsageCard } from "../api/types";
+import { Banner, Card, Combo, copyText, DataTable, EmptyState, FindingList, Graph, PathText, RiskStrip, Toggle, Waiting, type Column } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
@@ -37,6 +37,12 @@ export function ErrorBox({ e }: { e: ApiFail }) {
         <button className="ae-btn" onClick={clearCache}>Try again</button>
       </Banner>
     );
+  if (e.detail === "builtin_hidden")
+    return (
+      <Banner tone="warn" title="Snowflake's built-in grants are hidden" lines={[e.message]}>
+        <button type="button" className="ae-btn" onClick={() => c.set({ builtin: "1" })}>Show them</button>
+      </Banner>
+    );
   return <Banner tone={e.status === 404 ? "warn" : "bad"} title={e.status === 404 ? "Not found" : "Something went wrong"} lines={[e.message]} />;
 }
 
@@ -61,6 +67,20 @@ export function Risks({ list, quiet = false }: { list: RiskItem[] | null | undef
   const c = useApp();
   if (!list || (quiet && !list.length)) return null;
   return <RiskStrip items={list} onOpen={(l) => c.nav(l.page as Page, l.params)} />;
+}
+
+/** Can they? and Who has access: built-in grants left out of this answer, with the switch that brings them in. */
+export function BuiltinNote({ b }: { b: BuiltinOn | null | undefined }) {
+  const c = useApp();
+  const on = c.params.builtin === "1";
+  if (!b && !on) return null;
+  return (
+    <Banner title={on ? "Snowflake's built-in grants are included"
+      : `${b!.grants === 1 ? "1 built-in grant" : `${b!.grants} built-in grants`} here ${b!.grants === 1 ? "is" : "are"} left out of this answer`}
+      lines={on ? [] : [`Held by ${b!.roles.slice(0, 5).join(", ")}${b!.roles.length > 5 ? ` and ${b!.roles.length - 5} more` : ""}`]}>
+      <Toggle label="Show built-in grants" on={on} onPick={(v) => c.set({ builtin: v ? "1" : null })} />
+    </Banner>
+  );
 }
 
 export function Banners({ list }: { list: B[] }) {
@@ -92,12 +112,12 @@ export function Pick({ label, value, what, params, options, onPick, width = 240,
   const c = useApp();
   const search = (q: string): Promise<ListItem[]> => options
     ? Promise.resolve(options.filter((o) => o.toLowerCase().includes(q.toLowerCase())).slice(0, 50).map((o) => ({ id: o, name: o, kind: null, type: null, status: null })))
-    : get<{ items: ListItem[] }>("list", { what: what ?? "objects", q, limit: "50", view: c.view, ...params }).then((r) => r.items);
+    : get<{ items: ListItem[] }>("list", { what: what ?? "objects", q, limit: "50", view: c.view, builtin: c.params?.builtin, ...params }).then((r) => r.items);
   return (
     <label className="ae-field">
       <span>{label}</span>
       {/* keyed by what it searches: a picker reused on another page or type never shows the last one's list */}
-      <Combo<ListItem> key={`${what}|${JSON.stringify(params ?? {})}|${options ? "o" : ""}`} label={label} value={value} width={width}
+      <Combo<ListItem> key={`${what}|${c.params?.builtin ?? ""}|${JSON.stringify(params ?? {})}|${options ? "o" : ""}`} label={label} value={value} width={width}
         placeholder="type to search" search={search} keyOf={(i) => i.id}
         onPick={(i) => { if (i.id !== value || (user !== undefined && (i.kind === "user") !== user)) onPick(i.id, i); }}
         render={(i) => <><span className="ae-mono">{i.id}</span>{(i.kind || i.type) && <span className="ae-muted">{i.kind && i.kind !== "object" ? KIND_SHORT[i.kind] ?? i.kind : (i.type ?? "").toLowerCase()}</span>}</>} />

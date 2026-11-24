@@ -5,7 +5,7 @@ import { download as saveCsv, useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole, WhoState } from "../api/types";
 import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
-import { col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Risks, Sel, StateTag, Tog } from "./common";
+import { BuiltinNote, col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Risks, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { remember } from "./Home";
@@ -13,7 +13,7 @@ import { PagedTable } from "./paged";
 import { AdminTable } from "./Rules";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 import { byLevel, NOTE, ORDER, sameLabel, stepsOf, TITLE } from "./who";
-import { doOf } from "./verdict";
+import { doOf, usedHow } from "./verdict";
 
 const STATES: [WhoState, string][] = [["active", "Active"], ["dormant", "Dormant"], ["disabled", "Disabled"], ["service", "Service"]];
 const STATUS: Record<string, string> = { active: "Active", dormant: "Dormant", never: "Never logged in", disabled: "Disabled" };
@@ -27,10 +27,10 @@ export function ObjectPageView() {
   const c = useApp();
   const admin = c.params.preset === "admin";
   // a big object sends the first people matching the search (wq), plus the person picked (as, sel)
-  const s = useApi<WhoPage>("who", { view: c.view, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }),
+  const s = useApi<WhoPage>("who", { view: c.view, builtin: c.params.builtin, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }),
     q: c.params.wq, st: c.params.st, as: c.params.as, sel: c.params.sel });
   const id = s.data?.object.id ?? c.params.name ?? "";
-  const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view });
+  const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view, builtin: c.params.builtin });
   const type = c.params.type || undefined; // narrows the Object search only
   return (
     <>
@@ -40,7 +40,7 @@ export function ObjectPageView() {
             <Sel label="Type" value={c.params.type ?? ""} onPick={(v) => c.set({ type: v || null })}
               options={[["", "Any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id])]} />
             <Pick label="Object" value={id} width={360} what="objects" params={{ type }}
-              onPick={(v) => c.nav("object", type ? { name: v, type } : { name: v })} /></>}
+              onPick={(v) => c.nav("object", { name: v, ...(type && { type }), ...(c.params.builtin && { builtin: c.params.builtin }) })} /></>}
         </div>
       </div>
       <Load s={s}>{(d) => <Who d={d} />}</Load>
@@ -61,7 +61,7 @@ function Who({ d }: { d: WhoPage }) {
     : (sh === "history" || sh === "activity") && !admin ? sh
     : !sh && !admin && (pp === "users" || pp === "who") ? "people" : !sh && cols && (pp === "sens" || pp === "sees") ? "columns" : "detail";
   const part = show === "people" ? (!admin && (pp === "who" || pp === "users") ? pp : "level") : show === "columns" ? (pp === "sees" ? "sees" : "sens") : "summary";
-  const save = () => saveCsv("who.csv", { view: c.view, ...(admin ? { preset: "admin" } : { name: o.id }) }, `${o.id ?? "admin_roles"}_who.csv`);
+  const save = () => saveCsv("who.csv", { view: c.view, builtin: c.params.builtin, ...(admin ? { preset: "admin" } : { name: o.id }) }, `${o.id ?? "admin_roles"}_who.csv`);
   const tags = [
     <span key="type" className="ae-otag">{o.type.toLowerCase()}</span>,
     o.owners.length > 0 ? <span key="own" className="ae-otag">Owner {o.owners.join(", ")}</span>
@@ -86,6 +86,7 @@ function Who({ d }: { d: WhoPage }) {
         </div>
         {csvOn && <button type="button" className="ae-btn" onClick={save}>Export CSV</button>}
       </div>
+      <BuiltinNote b={d.builtin} />
       <Risks list={d.risks} />
       {d.app && <AppNote app={d.app} />}
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k, part: null })} tabs={[
@@ -97,7 +98,7 @@ function Who({ d }: { d: WhoPage }) {
       {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} part="summary" />)}
       {show === "people" && <>
         {!admin && lvl2([{ key: "level", label: "By level", count: d.counts.people }, { key: "who", label: "By path" }, { key: "users", label: "Users × privileges" }], "level")}
-        {part === "level" ? <><For d={d} /><List d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
+        {part === "level" ? <><For d={d} /><List d={d} /><UsedNoGrant d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
       </>}
       {show === "columns" && <>
         {lvl2([{ key: "sens", label: "Sensitivity" }, ...(d.by_role ? [{ key: "sees", label: "By role" }] : [])], "sens")}
@@ -154,6 +155,26 @@ function For({ d }: { d: WhoPage }) {
       </>}
       {who && d.object.id && <UseLine name={d.object.id} user={who} />}
     </section>
+  );
+}
+
+/** Used in the activity window though no grant reaches them: apart from the people and their counts. */
+function UsedNoGrant({ d }: { d: WhoPage }) {
+  const c = useApp();
+  const u = d.used;
+  if (!u?.rows.length) return null;
+  const inside = d.object.type === "DATABASE" || d.object.type === "SCHEMA";
+  type R = (typeof u.rows)[number];
+  return (
+    <Card title="Used it, no grant found" sub={`${plural(u.users, "user")} in ${u.days} days, not counted as having access${u.total > u.rows.length ? ` · first ${u.rows.length} of ${u.total} rows` : ""}`}>
+      <DataTable csv="used_no_grant.csv" rows={u.rows} columns={[
+        col("u", "User", (r: R) => r.user, { wrap: "nowrap", render: (r: R) => (
+          <button type="button" className="ae-link ae-mono" title="Their use of it" onClick={() => c.set({ show: "activity", as: r.user, part: null })}>{r.user}</button>) }),
+        col("h", "How", (r: R) => usedHow(r), { wrap: "wrap" }),
+        col("q", "Queries", (r: R) => r.queries, { num: true }),
+        ...(inside ? [col("o", "Objects", (r: R) => r.objects, { num: true })] : []),
+        col("l", "Last", (r: R) => r.last, { wrap: "nowrap" })]} />
+    </Card>
   );
 }
 
@@ -325,7 +346,7 @@ function AdminRoleLine({ g, refs }: { g: ObjectPage["admin_roles"][number]; refs
 /** Admin preset: the Risks & fixes "Admin holders" table (admin roles and account privileges). */
 function AdminDetail() {
   const c = useApp();
-  const s = useApi<RulesPage>("rules", { view: c.view });
+  const s = useApi<RulesPage>("rules", { view: c.view, builtin: c.params.builtin });
   return <Load s={s}>{(r) => <Card title="People with admin roles or account privileges" scroll><AdminTable admins={r.admins} refs={r.refs} /></Card>}</Load>;
 }
 

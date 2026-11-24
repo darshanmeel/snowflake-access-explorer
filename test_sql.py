@@ -403,8 +403,10 @@ def test_show_fallback():
     out = ns["grants"](session, "run-9", "SHOW")
     assert out["grants"][0] == "SHOW" and f"{bad}: Insufficient privileges" in out["grants"][1], out
     assert ns["objects"](session, "run-9", "SHOW")[0] == "SHOW"  # the Streamlit apps and notebooks SHOW GRANTS lacks
+    assert ns["app_grants_step"](session, "run-9") == ("SHOW", None)  # and the grants on the apps
     proc = Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                    for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-9'"))
+    assert any(k[1:3] == ("USAGE", "STREAMLIT") for k in proc)
     proc_users = Counter((r["USER_NAME"], r["ROLE_NAME"]) for r in query(con, "SELECT * FROM TBL_ACCESS_USER_ROLE WHERE RUN_ID = 'run-9'"))
     live = a.live(answer)
     direct = Counter((g["GRANTEE_ROLE"], g["PRIVILEGE"], g["GRANTED_ON"], g["OBJECT_NAME"]) for g in live["GRANT"] if not g["IS_FUTURE"])
@@ -426,6 +428,7 @@ def test_show_fallback():
     ns["ASYNC"], sent[:] = False, []  # run()'s probe job gave no rows: the same result, one statement after another
     assert ns["grants"](session, "run-11", "SHOW") == out and not sent
     ns["objects"](session, "run-11", "SHOW")
+    ns["app_grants_step"](session, "run-11")
     assert Counter((r["GRANTEE_ROLE"], r["PRIVILEGE"], r["GRANTED_ON"], r["OBJECT_NAME"])
                    for r in query(con, "SELECT * FROM TBL_ACCESS_GRANT WHERE RUN_ID = 'run-11'")) == proc
     ns["ASYNC"] = True
@@ -471,7 +474,7 @@ def test_objects():
     OWNERSHIP row of its owner, one already owned in the grant read adds nothing, one no role owns is kept with no
     grantee, a refused read leaves a note and the rest still loads."""
     import inspect
-    for f in (a.inventory_sql, a.inventory_seen, a.inventory_rows, a.inventory_read, a.schema_list):
+    for f in (a.inventory_sql, a.inventory_seen, a.inventory_rows, a.inventory_read, a.schema_list, a.app_grants):
         assert inspect.getsource(f) in SETUP, f.__name__
     con = load(a.fake(), build=False)
     for c, k in (("GRANT_OPTION", "BOOLEAN"), ("GRANTED_BY", "VARCHAR")):
@@ -575,7 +578,7 @@ def test_run_overlap():
 
     session.sql = sql
     step = lambda *x: ("SHOW", None)  # noqa: E731
-    ns.update({k: step for k in ("users", "tags", "policies", "streams", "objects")})
+    ns.update({k: step for k in ("users", "tags", "policies", "streams", "objects", "app_grants_step")})
     ns["future"] = lambda *x: {"schemas": ("SHOW", None), "future_grants": ("SHOW", None)}
     ns.update({k: lambda *x: lambda: ("SHOW", None) for k in ("usage", "object_use", "activity")})  # wait() of a job
 
@@ -766,7 +769,7 @@ def test_proc_settings():
         re.sub(r"DATEADD\((\w+), (-?\d+), CURRENT_TIMESTAMP\(\)\)", r"(current_timestamp + INTERVAL (\2) \1)", text)
         .replace("CURRENT_TIMESTAMP()", "current_timestamp"), params))
     ns, seen = snapshot_proc(), []
-    ns.update({k: lambda *x: ("SHOW", None) for k in ("users", "tags", "policies", "streams", "objects")})
+    ns.update({k: lambda *x: ("SHOW", None) for k in ("users", "tags", "policies", "streams", "objects", "app_grants_step")})
     ns["future"] = lambda *x: {"schemas": ("SHOW", None), "future_grants": ("SHOW", None)}
     ns["usage"] = lambda *x: lambda: ("SHOW", None)
     ns["grants"] = lambda *x: {"grants": ("SHOW", None), "user_roles": ("SHOW", None)}

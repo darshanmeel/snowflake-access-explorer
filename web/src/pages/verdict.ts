@@ -1,6 +1,6 @@
 // Can they? (screens 3, 12) and Request access (15) helpers without React: cut labels and changes, verdict lines,
 // nearest-way titles and notes.
-import type { CheckPage, Nearest, Subject, WhatIfChange } from "../api/types";
+import type { CheckPage, Nearest, Subject, UsedRow, WhatIfChange } from "../api/types";
 
 type Patch = Record<string, string | null>;
 
@@ -46,8 +46,8 @@ export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "
   if (d.verdict === "blocked") return d.answer.title;
   if (d.verdict === "no") {
     const n = d.nearest?.[0];
-    return (d.subject && !d.subject.user ? `Neither ${d.user} nor any of its ${plural(d.roles_count, "role")} leads to ${d.object}.`
-      : `None of ${d.user}'s ${plural(d.roles_count, "role")} leads to ${d.object}.`)
+    return (d.subject && !d.subject.user ? `By the grants in this data, neither ${d.user} nor any of its ${plural(d.roles_count, "role")} leads to ${d.object}.`
+      : `By the grants in this data, none of ${d.user}'s ${plural(d.roles_count, "role")} leads to ${d.object}.`)
       + (n ? ` The nearest route is ${n.cost === 1 ? "one grant" : `${n.cost} grants`} away.` : "");
   }
   if (d.verdict === "partly") {
@@ -56,6 +56,22 @@ export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "
   }
   if (!d.lanes_total) return d.answer.title;
   return `through ${plural(d.lanes_total, "route")}` + (d.cut.length && d.lanes_total > 1 ? `, all via ${d.cut[0]}` : "");
+}
+
+/** How a use came about when no grant explains it: certain only for an app the query names. */
+export function usedHow(r: UsedRow, user = true): string {
+  const as = r.role ? `as ${r.role}` : "with no role recorded";
+  if (r.how === "app") return `through app ${r.app}${r.role ? ` (runs as ${r.role})` : ""}`;
+  if (r.how === "owner") return `${as}${r.role ? ", a role not held now" : ""}: likely a Streamlit app or owner's-rights code, or a role held then`;
+  return `${as}${user ? ", a role held now" : ""}: the grant may be gone, or left out here`;
+}
+
+/** The line under a No or Blocked when the activity shows use all the same. */
+export function usedAnyway(d: Pick<CheckPage, "used_anyway" | "subject">): string | null {
+  const u = d.used_anyway;
+  if (!u?.rows.length) return null;
+  const more = u.total - 1;
+  return `But used: ${plural(u.queries, "query", "queries")} in ${u.days} days, last ${u.last.slice(0, 10)}, ${usedHow(u.rows[0], d.subject.user)}${more ? ` (+${plural(more, "more way")})` : ""}`;
 }
 
 /** The note under the answer: the warehouses a query can run on (it needs one); none = it can't run queries. */
