@@ -8,7 +8,7 @@ import { CodeOutput, copyText, EmptyState, FilterChips, MiniBar, Pager, PathText
 import { useApp, useOpen } from "../ctx";
 import { Load } from "./common";
 import { changeText, findingKey, inPlan, muted, plan, planTexts, rulesOff, toggleFix, useSaved, visible } from "./changeplan";
-import { LoseKeep, LossGroups } from "./Plan";
+import { LoseKeep, LossGroups, Wider } from "./Plan";
 import { startOf } from "./screens";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -164,7 +164,7 @@ export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string
   const rules = c.meta.rules;
   const pass = rules.filter((r) => !d.per_rule[r.num] && !d.skipped[r.num]).length;
   const top = (d.counts.Critical ?? 0) + d.counts.High; // findings to act on: Critical and High
-  const topRules = new Set(d.groups.filter((g) => by === "rule" && (g.sevs?.Critical || g.sevs?.High)).map((g) => g.key)).size;
+  const topRules = new Set((["Critical", "High"] as const).flatMap((s) => Object.keys(c.meta.rule_sev?.[s] ?? {}))).size; // the whole account, whatever is filtered below
   const info = (num: string) => rules.find((r) => r.num === num);
   // per person the bar is that person's findings (counted over rules); else the people the findings reach
   const groups = d.groups.map((g) => ({ ...g, count: by === "person" ? g.rules : g.findings, n: (by === "person" ? g.findings : g.people) ?? 0 }));
@@ -175,7 +175,7 @@ export function RisksTab({ d, q, all, setAll }: { d: RulesPage; q: Record<string
     <>
       <div className="ae-headrow">
         <p className="ae-answer">
-          {plural(rules.length - Object.keys(d.skipped).length, "rule")} checked, {pass} pass.{skipNote(d.skipped)} {top > 0 && <b className="ae-bad">{plural(top, "critical or high finding")}</b>}
+          {plural(rules.length - Object.keys(d.skipped).length, "rule")} checked{pass > 0 && `, ${pass} pass`}.{skipNote(d.skipped)} {top > 0 && <b className="ae-bad">{plural(top, "critical or high finding")}</b>}
           {top > 0 && (topRules ? ` across ${plural(topRules, "rule")}.` : ".")} Fixes go into a plan you can test before touching Snowflake.
         </p>
         <FilterChips label="Group findings by" value={by} onPick={(k) => { c.set({ by: k === "rule" ? null : k }); setOpen(null); }}
@@ -303,13 +303,14 @@ export function PlanPanel() {
             <>
               <div className="ae-plan-tiles">
                 <div className={`ae-tile${d.counts.users ? " ae-tile-bad" : ""}`}><span className="ae-tile-l">People lose access</span><span className="ae-tile-v">{d.counts.users}</span></div>
-                <div className="ae-tile"><span className="ae-tile-l">Keep it another way</span><span className="ae-tile-v">{d.counts.kept}</span></div>
+                <div className="ae-tile"><span className="ae-tile-l">Of them keep some of it</span><span className="ae-tile-v">{d.counts.kept}</span></div>
                 <div className="ae-tile"><span className="ae-tile-l">Findings fixed</span><span className="ae-tile-v">{d.counts.fixed}</span></div>
                 <div className={`ae-tile${d.counts.new ? " ae-tile-warn" : ""}`}><span className="ae-tile-l">New findings</span><span className="ae-tile-v">{d.counts.new}</span></div>
               </div>
               {d.users.length > 0 && (
                 <div>
                   <h4>Who loses what</h4>
+                  <Wider d={d} />
                   <LoseKeep d={d} />
                   <LossGroups gs={d.groups} total={d.groups_total} changes={list} refs={d.refs} max={4} />
                 </div>

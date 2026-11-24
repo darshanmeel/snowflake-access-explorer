@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { ListItem, LossGroup, Refs, WhatIfChange, WhatIfPage } from "../api/types";
-import { Card, CodeOutput, CutPath, EmptyState, FilterChips, MiniBar, StackBar, useCsv } from "../components";
+import { Banner, Card, CodeOutput, CutPath, EmptyState, FilterChips, MiniBar, StackBar, useCsv } from "../components";
 import { useApp, useOpen } from "../ctx";
 import { Load, Pick, Sel } from "./common";
 import { addTo, changeText, cutLinks, plan, planTexts, useSaved } from "./changeplan";
@@ -36,6 +36,13 @@ function AddForm() {
       <button type="button" className="ae-btn ae-btn-primary" disabled={!ch} onClick={() => { if (ch) { plan.set(addTo(plan.get(), [ch])); setOther(""); } }}>Add to plan</button>
     </div>
   );
+}
+
+/** Changes that take the role from others too: a role held through a group is revoked from the group. */
+export const wider = (d: Pick<WhatIfPage, "changes">) => d.changes.map((x) => x.label).filter((l) => l.includes("other holders lose it"));
+export function Wider({ d }: { d: Pick<WhatIfPage, "changes"> }) {
+  const xs = wider(d);
+  return xs.length ? <Banner tone="warn" title="This reaches more people than the one named" lines={xs} /> : null;
 }
 
 /** Lose vs keep for the whole plan: privileges taken away against privileges still reached another way. */
@@ -98,11 +105,12 @@ function Impact({ d, list }: { d: WhatIfPage; list: WhatIfChange[] }) {
   const objs = d.impact;
   const by = (["people", "objects", "roles", "findings"] as const).find((x) => x === c.params.by) ?? "people";
   const tiles: [string, number, string][] = [["People lose access", k.users, k.users ? " ae-tile-bad" : ""], ["Objects affected", k.objects, ""],
-    ["Kept another way", k.kept, ""], ["Nobody reaches", k.unreached, k.unreached ? " ae-tile-bad" : ""], ["Roles orphaned", k.orphans, k.orphans ? " ae-tile-warn" : ""],
+    ["Of them keep some of it", k.kept, ""], ["Nobody reaches", k.unreached, k.unreached ? " ae-tile-bad" : ""], ["Roles orphaned", k.orphans, k.orphans ? " ae-tile-warn" : ""],
     ["Findings fixed", k.fixed, ""], ["New findings", k.new, k.new ? " ae-tile-warn" : ""]];
   return (
     <>
       <p className="ae-answer"><b>{d.summary}.</b> A simulation: nothing changes in Snowflake.</p>
+      <Wider d={d} />
       <LoseKeep d={d} />
       <div className="ae-tiles">{tiles.map(([l, v, t]) => <div key={l} className={`ae-tile${t}`}><span className="ae-tile-l">{l}</span><span className="ae-tile-v">{v}</span></div>)}</div>
       <Card title="Impact" right={
@@ -151,10 +159,10 @@ export function PlanTab({ fromUrl }: { fromUrl: WhatIfChange[] }) {
         {!list.length && <span className="ae-muted">nothing yet</span>}
         {extra.length > 0 && <button type="button" className="ae-btn" onClick={() => plan.set(addTo(list, extra))}>Add the {plural(extra.length, "change")} from the Changes tab</button>}
         {list.length > 0 && <button type="button" className="ae-link" onClick={() => plan.set([])}>Clear</button>}
-        <span className="ae-muted">· the same plan as on Risks & fixes, saved in this browser</span>
+        <span className="ae-muted">· the same plan as on Risks, saved in this browser</span>
       </div>
       {list.length > 0 ? <Load s={s}>{(d) => <Impact d={d} list={list} />}</Load>
-        : <EmptyState title="Add a change to see its impact" art="plan">Pick a change above, or add fixes from findings on Risks & fixes.</EmptyState>}
+        : <EmptyState title="Add a change to see its impact" art="plan">Pick a change above, or add fixes from findings on Risks.</EmptyState>}
     </>
   );
 }

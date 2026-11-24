@@ -65,3 +65,15 @@ describe("change plan", () => {
     expect(redirect("rules", { st: "stale" })).toEqual({ page: "rules", params: { part: "stale" } }); // the side menu's old Dormant & disabled link
   });
 });
+
+describe("a role held through a group", () => {
+  it("is crossed out where it is granted, and the plan says who else loses it", async () => {
+    const { cutLinks } = await import("./changeplan");
+    const { wider } = await import("./Plan");
+    const ch = { op: "revoke_role_from_user" as const, role: "F_X", user: "U1" };
+    expect([...cutLinks(["U1 (user)", "GRP", "F_X", "T_READ", "DB.S.T"], [ch])]).toEqual([1]);
+    expect([...cutLinks(["U1 (user)", "F_X", "T_READ", "DB.S.T"], [ch])]).toEqual([0]);
+    const step = (label: string) => ({ change: ch, label, iac: "", sql: "" });
+    expect(wider({ changes: [step("Revoke role F_X from user U1"), step("Revoke role F_X from user U1 (held through GRP: revoked there, so their other holders lose it as well)")] })).toHaveLength(1);
+  });
+});

@@ -2013,7 +2013,7 @@ def test_risks():  # the risk strip at the top of Access Overview, Role paths, W
                                           {"label": "Column by column", "page": "see", "params": {"role": a.FUNC + "ENGINEER", "show": "cards"}}]
     assert ok(js("/api/role?name=SYSADMIN")["risks"])[0].startswith("Is admin role SYSADMIN")
     t = ok(js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["risks"])
-    assert t[:3] == ["2 sensitive columns without masking (BIRTH_DATE, PHONE): in clear for the 6 users who can read it",
+    assert t[:3] == ["2 sensitive columns without masking (BIRTH_DATE, PHONE): in clear for the 6 users who can read it (admin roles aside)",
                      "1 person can change this sensitive object", "1 disabled or dormant user can still read it"], t
     f = js("/api/who?name=SALES.CORE.TBL_CUSTOMER")["risks"][-1]
     assert f["text"].startswith("8 rule findings (1 Critical, 1 High") and f["link"]["params"] == {"q": "SALES.CORE.TBL_CUSTOMER", "sev": "all"}

@@ -62,7 +62,7 @@ export function CutPath({ path, cuts, kinds, first, onOpen }: {
             ? <span className="ae-cutpath-cut" title="The link this change removes"><span aria-hidden>✕</span><span className="ae-sr">cut</span></span>
             : <span className="ae-sep" aria-hidden>›</span>)}
           {i === 0 && first ? <span className="ae-pchip ae-pchip-user ae-cutpath-who" title={typeof first === "string" ? first : undefined}>{first}</span>
-            : <button type="button" className={`ae-pchip ae-pchip-${kinds[n] === "object" ? "obj" : kinds[n] ?? "plain"}`} onClick={() => onOpen?.(n)} title={n}>{n.replace(/ \(user\)$/, "")}</button>}
+            : <button type="button" className={`ae-pchip ae-pchip-${kinds[n] === "object" ? "obj" : kinds[n] ?? "plain"}`} onClick={() => onOpen?.(n)} title={n}>{n.replace(/ \(user\)$/, "").replace(/^(.*)\.<([A-Z ]+)>$/, (_, where: string, t: string) => `future ${t.toLowerCase()}s in ${where}`)}</button>}
         </span>
       ))}
     </span>
@@ -169,7 +169,7 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
  * total, so a big type reads big and a small one still shows its parts. The real numbers are in the legend and tips. */
 export const AGE: { key: string; label: string; cls: string }[] = [
   { key: "30", label: "Used in 30 days", cls: "keep" }, { key: "90", label: "31–90 days ago", cls: "lvl-change" },
-  { key: "180", label: "91–180 days ago", cls: "medium" }, { key: "none", label: "Not used", cls: "high" },
+  { key: "180", label: "91–180 days ago", cls: "medium" }, { key: "none", label: "Never used in this data", cls: "high" },
   { key: "nodata", label: "No activity data", cls: "lvl-names" }];
 
 export function AgeBars({ types, onPick }: { types: { type: string; buckets: Record<string, number> }[]; onPick?: (type: string) => void }) {

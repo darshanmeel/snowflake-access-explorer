@@ -54,7 +54,7 @@ export function SensitivePageView() {
               <Sel label="Database" value={d.filters.db} onPick={(v) => c.set({ db: v, ...first })} options={[["", "All databases"], ...d.filters.dbs.map((t): [string, string] => [t, t])]} />
               <Tog label="People only" on={d.filters.people} onPick={(v) => c.set({ people: v ? "1" : null, ...first })} />
             </Controls>
-            <p className="ae-muted">{`${k.columns} columns, ${k.whole} whole-object · readers: ${k.people} people, ${k.disabled} disabled, ${k.service} service`}</p>
+            <p className="ae-muted">{`${k.columns} columns, ${k.whole} whole-object · readers: ${k.people} people, ${k.disabled} disabled, ${k.service} service${k.admin ? `, ${k.admin} only through an admin role` : ""}`}</p>
             {d.filters.people && <p className="ae-muted">Counts are every reader; People only filters the tables.</p>}
             <PolicyNote />
             <Tabs nav active={part} onChange={(k) => { setPart(k); c.set({ show: LINKED.includes(k) ? k : null }); }} tabs={[

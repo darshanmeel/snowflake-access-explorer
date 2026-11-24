@@ -30,7 +30,7 @@ export function RulesPageView() {
   return (
     <>
       <Head title="Risks" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
-        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString()} rows)` : ""}</button>} />
+        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString()} rows${s.data.filters.sev ? `, ${s.data.filters.sev.toLowerCase()} only` : ""})` : ""}</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
         const chips = scope.length > 0 && (
@@ -47,7 +47,7 @@ export function RulesPageView() {
               <NameList items={unknown} onOpen={(o) => c.nav("object", { name: o })} /></Banner>}
             <Tabs nav active={tab} onChange={pick} tabs={[
               { key: "checks", label: "Findings", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
-              { key: "fixes", label: "Change plan" },
+              { key: "fixes", label: "Plan fixes" },
               { key: "admins", label: "Admin holders", count: d.admins_total, tone: d.admins_total ? "bad" : null },
               { key: "stale", label: "Dormant & disabled", count: d.stale_total, tone: d.stale_total ? "warn" : null },
               { key: "list", label: "Rules", count: c.meta.rules.length },
@@ -59,7 +59,7 @@ export function RulesPageView() {
               <Card>
                 {d.filters.rule ? <RuleHead d={d} /> : chips}
                 <FindingGroups key={scope.join()} d={d} q={q} f={f} setF={setF} />
-                <p className="ae-muted">{d.counts.Passing} of {c.meta.rules.length} rules pass.{skipNote(d.skipped)}</p>
+                <p className="ae-muted">{d.counts.Passing > 0 && `${d.counts.Passing} of ${c.meta.rules.length} rules pass.`}{skipNote(d.skipped)}</p>
               </Card>
             )}
             {tab === "admins" && (

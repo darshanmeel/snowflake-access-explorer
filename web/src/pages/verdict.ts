@@ -53,7 +53,7 @@ export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "
   }
   if (d.verdict === "partly") {
     const [, rows, cols] = d.layers ?? [];
-    return rows && !rows.ok && rows.result === "No rows" ? "The query runs, but returns no rows." : `The query runs; ${cols?.result.toLowerCase() ?? "some columns masked"}.`;
+    return rows && !rows.ok && rows.result === "No rows" ? "The query runs, but returns no rows." : `The query runs; ${(cols?.result ?? "some columns masked").toLowerCase().replace(/^(\d+) masked$/, (_, n) => `${n} column${n === "1" ? "" : "s"} masked`)}.`;
   }
   if (!d.lanes_total) return d.answer.title;
   return `through ${plural(d.lanes_total, "route")}` + (d.cut.length && d.lanes_total > 1 ? `, all via ${d.cut[0]}` : "");

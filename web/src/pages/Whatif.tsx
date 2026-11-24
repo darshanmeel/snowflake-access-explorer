@@ -6,7 +6,7 @@ import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, 
 import { Banner, Card, DataTable, EmptyState, KpiRow, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
 import { col, Controls, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
-import { LoseKeep, LossGroups, PlanTab } from "./Plan";
+import { LoseKeep, LossGroups, PlanTab, Wider } from "./Plan";
 import { addTo, changeText, plan } from "./changeplan";
 
 const OPS: [WhatIfOp, string][] = [
@@ -137,8 +137,9 @@ function Result({ d }: { d: WhatIfPage }) {
   return (
     <>
       <Banner tone={k.unreached || k.orphans ? "warn" : "info"} title="If these changes were made" lines={[d.summary]} />
+      <Wider d={d} />
       <KpiRow items={[
-        { label: "Users lose access", value: k.users, caption: `${k.kept} kept another way` },
+        { label: "Users lose access", value: k.users, caption: `${k.kept} keep some of it another way` },
         { label: "Objects nobody reaches", value: k.unreached, tone: k.unreached ? "bad" : null, caption: `${k.objects} objects lost · ${k.orphans} roles orphaned` },
         { label: "New findings", value: k.new, tone: k.new ? "bad" : null, caption: `${k.fixed} fixed` },
       ]} />
@@ -211,13 +212,13 @@ export function WhatIfPageView() {
   const csvOn = useCsv();
   return (
     <>
-      <Head title="What if" sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake."
+      <Head title="Change plan" sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake."
         right={<>
           {csvOn && list.length > 0 && <button className="ae-btn" onClick={() => download("whatif.csv", apiParams(c), "what_if.csv")}>Download CSV</button>}
-          <button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks & fixes</button></>} />
+          <button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks</button></>} />
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "changes" ? null : k, by: null, part: null })} tabs={[
-        { key: "changes", label: "Impact", count: list.length || null },
-        { key: "plan", label: "Plan" },
+        { key: "changes", label: "Try a change", count: list.length || null },
+        { key: "plan", label: "My plan" },
       ]} />
       {show === "plan" && <PlanTab fromUrl={list} />}
       {show === "changes" && <>

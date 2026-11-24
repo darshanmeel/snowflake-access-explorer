@@ -1855,7 +1855,7 @@ def object_risks_of(o):
     bare = [c for c in a.sensitive_cols(o) if c not in a.policies_of(o)["columns"]] if a.is_data(k) else []
     if bare and readers:
         out.append(risk(True, f"{plural(len(bare), 'sensitive column')} without masking ({more(bare)}): "
-                              f"in clear for the {plural(len(readers), 'user')} who can read it", len(bare), who,
+                              f"in clear for the {plural(len(readers), 'user')} who can read it (admin roles aside)", len(bare), who,
                         ["Column without masking"], [(c,) for c in bare]))
     pub = sorted({pv for r, pv, _ in grants if r == "PUBLIC"})
     if pub:
