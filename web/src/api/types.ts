@@ -22,7 +22,7 @@ export type TabKey =
   | "execute" | "read" | "write" | "own" | "manage" | "all";
 
 export type UserStatus = "active" | "dormant" | "never" | "disabled";
-export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "flow" | "rules" | "review" | "whatif" | "usage" | "objuse" | "changes";
+export type Page = "home" | "access" | "user" | "role" | "object" | "check" | "graph" | "see" | "compare" | "request" | "sensitive" | "flow" | "rules" | "review" | "whatif" | "usage" | "objuse" | "activity" | "changes";
 
 /** Node ids from start to end: user/role ... grant holder, then the object when there is one. */
 export type Path = string[];
@@ -1532,6 +1532,18 @@ export interface ActivityRow {
 export interface ActivitySensitive {
   object: string; sensitive: boolean; columns: string[]; whole: boolean; masking: Record<string, string[]>; row_policies: string[];
   people: { user: string; role: string; read: boolean; clear: string[]; masked: string[]; rows: "all" | "filtered" | "none" | "unknown" }[];
+}
+export type ActDim = "user" | "role" | "client" | "object";
+/** Activity page: the whole account's table use in the last `days`. */
+export interface AllActivityPage {
+  view: View; available: boolean; reason: string | null; note: string | null; days: number; periods: number[]; last: string;
+  work: { start: number; end: number };
+  total?: number; reads?: number; writes?: number; ddl?: number; off?: number;
+  dims?: Record<ActDim, { key: string; n: number }[]>; // the busiest 12
+  n?: Record<ActDim, number>;
+  cross?: { r: ActDim; c: ActDim; rows: string[]; cols: string[]; cells: number[][]; off: number[][] }; // the quiet rest: one "Other (n)"
+  who?: { user: string; role: string; client: string; object: string; queries: number; read: number; write: number; ddl: number; off: number; last: string; kind: string; sensitive: boolean }[];
+  who_total?: number;
 }
 export interface ActivityPage {
   view: View;

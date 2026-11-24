@@ -6227,6 +6227,66 @@ def activity(name, what, user=None):
                 rows=out, likely=sum(r["queries"] for r in out if r["likely"]), ddl=sorted((r for r in out if r["action"] == "DDL"), key=lambda r: r["last"], reverse=True))
 
 
+ACT_DIMS = dict(user="USER_NAME", role="ROLE_NAME", client="CLIENT", object="OBJECT_NAME")
+ACT_PERIODS = (7, 30, ACTIVITY_DAYS)  # Activity page: days to look back
+
+
+def activity_cube(days):
+    """The whole account's table use in the last days (Activity page): {(user, role, client, object): [queries, reads,
+    writes, ddl, off-hours queries (weekends or outside WORK_HOURS, UTC), last]}, one pass, kept per loaded data."""
+    def make():
+        end, cube = day(ref_time()), {}
+        for x in acts:
+            d = day(x["DAY"])
+            if not 0 <= (end - d).days < days:
+                continue
+            k = (x["USER_NAME"], x["ROLE_NAME"] or "–", client_label(x["CLIENT"]), x["OBJECT_NAME"])
+            v = cube.setdefault(k, [0, 0, 0, 0, 0, ""])
+            q = int(x["QUERIES"] or 0)
+            v[0] += q
+            v[{"READ": 1, "WRITE": 2, "DDL": 3}[x["ACTION"]]] += q
+            h = x.get("HOURS") or {}
+            v[4] += q if d.weekday() >= 5 else sum(int(n) for k2, n in h.items() if not WORK_HOURS[0] <= int(k2) < WORK_HOURS[1])
+            v[5] = max(v[5], str(x["LAST_USED"] or "")[:16])
+        return cube
+    return cached(("activity_cube", days), make)
+
+
+def activity_all(days, r, c, rows=11, cols=7, who=50):
+    """Activity page: dict(total, reads, writes, ddl, off, dims {dim: [dict(key, n)], busiest first, 12 at most}, n {dim: how
+    many}, cross dict(r, c, rows [names], cols [names], cells [[queries]], off [[off-hours queries]]; the quiet rest is one
+    "Other (n)" row / column), who [the busiest (user, role, client, object)], who_total). r, c: two of ACT_DIMS."""
+    cube, names = activity_cube(days), list(ACT_DIMS)
+    sums = {k: {} for k in names}
+    tot = [0] * 5
+    for k, v in cube.items():
+        for i, dim in enumerate(names):
+            sums[dim][k[i]] = sums[dim].get(k[i], 0) + v[0]
+        for i in range(5):
+            tot[i] += v[i]
+    top = {dim: sorted(m.items(), key=lambda kv: (-kv[1], kv[0])) for dim, m in sums.items()}
+
+    def axis(dim, most):
+        ks = [k for k, _ in top[dim]]
+        if len(ks) <= most + 1:
+            return ks, {k: i for i, k in enumerate(ks)}
+        return ks[:most] + [f"Other ({len(ks) - most})"], {k: min(i, most) for i, k in enumerate(ks)}
+    rn, ri = axis(r, rows)
+    cn, ci = axis(c, cols)
+    cells, off = [[0] * len(cn) for _ in rn], [[0] * len(cn) for _ in rn]
+    ra, ca = names.index(r), names.index(c)
+    for k, v in cube.items():
+        i, j = ri[k[ra]], ci[k[ca]]
+        cells[i][j] += v[0]
+        off[i][j] += v[4]
+    best = sorted(cube.items(), key=lambda kv: (-kv[1][0], kv[0]))[:who]
+    return dict(total=tot[0], reads=tot[1], writes=tot[2], ddl=tot[3], off=tot[4],
+                dims={d: [dict(key=k, n=n) for k, n in xs[:12]] for d, xs in top.items()}, n={d: len(xs) for d, xs in top.items()},
+                cross=dict(r=r, c=c, rows=rn, cols=cn, cells=cells, off=off), who_total=len(cube),
+                who=[dict(zip(names, k), queries=v[0], read=v[1], write=v[2], ddl=v[3], off=v[4], last=v[5],
+                          kind="service" if is_service(k[0]) else "person", sensitive=k[3] in sens) for k, v in best])
+
+
 def query_sql(name, what, first, last):
     """Copy-only SQL that lists every query behind the Activity tab, one by one (query id, time, user, role, statement,
     client; never the query text), to run in Snowflake. The app never runs it."""
@@ -6409,6 +6469,20 @@ def page_sql(page, p, first=None, last=None):
     end = day(ref_time())
     first, last = first or (end - timedelta(days=ACTIVITY_DAYS - 1)).isoformat(), last or end.isoformat()
     out = []
+    if page == "activity":
+        return [plain("Who used what, with which role and client", [
+            "Queries per user, role, client and object over the last DAYS days (ACCESS_HISTORY with QUERY_HISTORY and SESSIONS),",
+            "a query that reads and changes an object counted once here. No query text."], {"DAYS": 30}, """
+SELECT A.USER_NAME, Q.ROLE_NAME, S.CLIENT_APPLICATION_ID, O.VALUE:"objectName"::STRING AS OBJECT_NAME,
+       COUNT(DISTINCT A.QUERY_ID) AS QUERIES, MAX(A.QUERY_START_TIME) AS LAST_USED
+FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY A
+JOIN LATERAL FLATTEN(ARRAY_CAT(ARRAY_CAT(A.DIRECT_OBJECTS_ACCESSED, A.OBJECTS_MODIFIED),
+                               ARRAY_CONSTRUCT_COMPACT(A.OBJECT_MODIFIED_BY_DDL))) O
+JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY Q ON Q.QUERY_ID = A.QUERY_ID
+  AND Q.START_TIME >= DATEADD(DAY, -$DAYS, CURRENT_TIMESTAMP())
+LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.SESSIONS S ON S.SESSION_ID = Q.SESSION_ID
+WHERE A.QUERY_START_TIME >= DATEADD(DAY, -$DAYS, CURRENT_TIMESTAMP())
+GROUP BY 1, 2, 3, 4 ORDER BY QUERIES DESC LIMIT 1000;""")]
     if p.get("show") == "activity" and kinds.get(obj) == "WAREHOUSE":
         return [plain(f"Who ran queries on {obj}", [f"Queries per user and role on warehouse {obj}, last {DAYS_USAGE} days (QUERY_HISTORY)."],
                       {"WAREHOUSE_NAME": obj, "DAYS": DAYS_USAGE}, """

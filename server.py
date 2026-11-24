@@ -36,13 +36,13 @@ DIST = pathlib.Path(__file__).with_name("web") / "dist"
 PAGES = {"home": "Home", "access": "A person or role", "object": "An object", "check": "Can they?",
          "graph": "Access graph", "see": "What they see", "compare": "Compare", "request": "Request access",
          "rules": "Risks", "whatif": "Change plan", "review": "Review & sign-off", "sensitive": "Sensitive data",
-         "flow": "Sensitive data flow", "usage": "Grants to trim", "objuse": "Used or not", "changes": "What changed",
+         "flow": "Sensitive data flow", "usage": "Grants to trim", "objuse": "Used or not", "activity": "Activity", "changes": "What changed",
          "user": "User paths", "role": "Role paths"}
 GROUP = {"home": "home", "access": "access", "object": "access", "see": "access", "user": "access", "role": "access",
          "check": "ask", "compare": "ask", "request": "ask", "graph": "ask", "whatif": "ask",
-         "rules": "risk", "sensitive": "risk", "flow": "risk", "usage": "risk", "objuse": "risk",
+         "rules": "risk", "sensitive": "risk", "flow": "risk", "usage": "risk", "objuse": "risk", "activity": "risk",
          "review": "govern", "changes": "govern"}  # side nav groups
-SHARED_ONLY = {"review", "flow", "changes", "objuse"}
+SHARED_ONLY = {"review", "flow", "changes", "objuse", "activity"}
 KIND = {"functional": "Functional role", "technical": "Technical role", "group": "Group role",
         "database": "Database role", "admin": "Admin role", "object": "Object"}
 KNOWN = {"user", "functional", "technical", "group", "admin", "object"}
@@ -3039,7 +3039,22 @@ MAX_ACTIVITY = 2000  # Activity rows sent (user, role, client, object, statement
 
 def activity_page(p, view):
     """Activity tab of an object (name=), a person (user=) or a role (role=): table use per day over ACTIVITY_DAYS,
-    by user, role, client and statement, DDL changes and the rule 24-28 findings on it; else why there is none."""
+    by user, role, client and statement, DDL changes and the rule 24-28 findings on it; else why there is none. None of
+    them: the whole account (Activity page), days= back, r= by c= (a.ACT_DIMS)."""
+    if not (p.get("name") or p.get("user") or p.get("role")):
+        ok, why = a.act_state()
+        if view == "mine":
+            ok, why = False, "My access reads no ACCESS_HISTORY: open Activity on the shared data."
+        days = p.get("days", "30")
+        if not days.isdigit() or int(days) not in a.ACT_PERIODS:
+            raise ApiError(400, "bad_param", f"days must be one of {a.ACT_PERIODS}")
+        r, c = p.get("r", "user"), p.get("c", "client")
+        if r == c or not {r, c} <= set(a.ACT_DIMS):
+            raise ApiError(400, "bad_param", f"r and c must be two of {list(a.ACT_DIMS)}")
+        out = dict(view=view, what="all", name="", available=ok, reason=why, days=int(days), periods=list(a.ACT_PERIODS),
+                   work=dict(start=a.WORK_HOURS[0], end=a.WORK_HOURS[1]), note=(a.run.get("NOTES") or {}).get("activity"),
+                   last=a.day(a.ref_time()).isoformat())
+        return out | a.activity_all(int(days), r, c) if ok else out
     what = "object" if p.get("name") else "user" if p.get("user") else "role"
     name = p.get("name") or p.get("user") or p.get("role") or ""
     kind = a.kinds.get(name) if what == "object" else None

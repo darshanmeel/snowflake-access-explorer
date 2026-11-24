@@ -9,7 +9,7 @@ import { useApi } from "../api/client";
 import type { ActivityBy, ActivityKey, ActivityPage, ActivityRow, ActivitySensitive } from "../api/types";
 import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips, NameList, Pager } from "../components";
 import { useApp } from "../ctx";
-import { col, GraphCard, Load, Pick } from "./common";
+import { col, GraphCard, Load } from "./common";
 
 const LABEL: Record<ActivityKey, string> = { user: "User", role: "Role", client: "Client", type: "Statement", object: "Table" };
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -26,21 +26,30 @@ export const offOf = (r: Pick<ActivityRow, "hours" | "weekend">, w: Work) =>  //
   r.weekend + r.hours.reduce((n, v, h) => n + (h < w.start || h >= w.end ? v : 0), 0);
 
 /** Rows moved from UTC to business time (UTC + tz hours): each query to its local day and hour (dh), weekends by the
- * local day; queries shifted out of the window at either end drop out. */
-export function localize(rows: ActivityRow[], tz: number, first: string, days: number): ActivityRow[] {
-  if (!tz) return rows;
+ * local day; queries shifted out of the window at either end drop out, and those before day `from`. */
+export function localize(rows: ActivityRow[], tz: number, first: string, days: number, from = 0): ActivityRow[] {
+  if (!tz && !from) return rows;
   const wd0 = new Date(first + "T00:00:00Z").getUTCDay();
+  const firstDay = (daily: number[], was: string) => { // of the days kept
+    const i = daily.findIndex(Boolean);
+    return i < 0 ? was : new Date(Date.parse(first + "T00:00:00Z") + i * 864e5).toISOString().slice(0, 10);
+  };
   return rows.map((r) => {
-    if (!r.dh?.length) return r;  // a snapshot from before hours were kept
+    if (!r.dh?.length) { // a snapshot from before hours were kept: days only, the hours in the same share
+      if (!from) return r;
+      const left = r.daily.map((v, i) => (i < from ? 0 : v)), n = left.reduce((a, v) => a + v, 0), f = r.queries ? n / r.queries : 0;
+      const cut = (xs: number[]) => xs.map((v) => Math.round(v * f));
+      return { ...r, daily: left, first_day: firstDay(left, r.first_day), queries: n, days: left.filter(Boolean).length, hours: cut(r.hours), weekend: Math.round(r.weekend * f), weekend_hours: cut(r.weekend_hours) };
+    }
     const daily = Array(days).fill(0) as number[], hours = Array(24).fill(0) as number[], wh = Array(24).fill(0) as number[];
     for (const [i, h, n] of r.dh) {
       const t = i * 24 + h + tz, di = Math.floor(t / 24), lh = ((t % 24) + 24) % 24;
-      if (di < 0 || di >= days) continue;
+      if (di < from || di >= days) continue;
       daily[di] += n;
       ([0, 6].includes((wd0 + di) % 7) ? wh : hours)[lh] += n;
     }
     const weekend = wh.reduce((a, v) => a + v, 0);
-    return { ...r, daily, hours, weekend, weekend_hours: wh, queries: daily.reduce((a, v) => a + v, 0), days: daily.filter(Boolean).length };
+    return { ...r, daily, first_day: firstDay(daily, r.first_day), hours, weekend, weekend_hours: wh, queries: daily.reduce((a, v) => a + v, 0), days: daily.filter(Boolean).length };
   }).filter((r) => r.queries > 0);
 }
 /** "UTC+2", "UTC−5", "UTC+0". */
@@ -122,13 +131,19 @@ function TileList({ items, onItem, more }: { items: { key: string; n: number }[]
 function Activity({ d: raw }: { d: ActivityPage }) {
   const c = useApp();
   const [work, setWork] = useState<Work>({ ...(raw.work ?? { start: 7, end: 19 }), tz: 0 });
-  // everything below sees the rows in business time: days, hours, weekends and off-hours follow the slider
+  const [period, setPeriod] = useState("30"); // days back; the whole window is the last choice
+  const [more, setMore] = useState(false);
+  const all = raw.days ?? 60, from = Math.max(0, all - Number(period));
+  // everything below sees the rows of the period in business time: days, hours, weekends and off-hours follow the slider
   const d = useMemo(() => {
-    if (!raw.rows || !work.tz || Number.isNaN(Date.parse(raw.first ?? ""))) return raw;
-    const rows = localize(raw.rows, work.tz, raw.first!, raw.days ?? 60);
-    return { ...raw, rows, daily: rows.reduce((t, r) => t.map((v, i) => v + r.daily[i]), Array(raw.days ?? 60).fill(0) as number[]),
-      ddl: localize(raw.ddl ?? [], work.tz, raw.first!, raw.days ?? 60) };  // the server's list has every change, not only the rows sent
-  }, [raw, work.tz]);
+    if (!raw.rows || (!work.tz && !from) || Number.isNaN(Date.parse(raw.first ?? ""))) return raw;
+    const rows = localize(raw.rows, work.tz, raw.first!, all, from).sort((x, y) => y.queries - x.queries);
+    const zero = Array(all).fill(0) as number[];
+    const by = { ...raw.by! };
+    if (from) for (const k of Object.keys(by) as ActivityKey[]) by[k] = combine(rows, [k]);
+    return { ...raw, rows, by, daily: rows.reduce((t, r) => t.map((v, i) => v + r.daily[i]), zero),
+      ddl: localize(raw.ddl ?? [], work.tz, raw.first!, all, from) };  // the server's list has every change, not only the rows sent
+  }, [raw, work.tz, from]);
   // each section's SQL with the slider's business time filled in
   const secSql = useMemo(() => Object.fromEntries(Object.entries(raw.section_sql ?? {}).map(([k, v]) => [k, v.replace("SET TZ_HOURS = 0;", `SET TZ_HOURS = ${work.tz};`)])), [raw.section_sql, work.tz]);
   if (d.what === "warehouse") return <Warehouse d={d} />;
@@ -136,7 +151,7 @@ function Activity({ d: raw }: { d: ActivityPage }) {
   const rows = d.rows!;
   const open: Open = (k, v) => k === "object" ? c.nav("object", { name: v, show: "activity" })
     : k === "user" ? c.nav("access", { user: v, show: "activity" }) : k === "role" && v !== "–" ? c.nav("access", { role: v, show: "activity" }) : undefined;
-  if (!rows.length) return (
+  if (!raw.rows!.length) return (
     <div className="ae-log">
       {d.what === "app" && d.app && <AppViewers d={d} />}
       <Card><EmptyState title={d.note ? "Activity partly read" : "No table use"} art={d.note ? "wait" : "clear"}>{d.note && <>{d.note}. </>}
@@ -149,31 +164,41 @@ function Activity({ d: raw }: { d: ActivityPage }) {
   );
   const objs = d.by!.object.length, total = d.daily!.reduce((a, v) => a + v, 0);
   const one = d.what === "object" || d.what === "app";
+  const days = Number(period);
+  const periods = <FilterChips label="Period" value={period} onPick={setPeriod}
+    items={[["7", "Last 7 days"], ["30", "Last month"], [String(all), `Last ${all} days`]].map(([key, label]) => ({ key, label }))} />;
   return (
     <SectionSql.Provider value={secSql}>
     <div className="ae-log">
+      {periods}
       {d.note && <Banner title="Activity partly read" lines={[d.note]} />}
       {rows.length < (d.total ?? 0) && <Banner tone="warn" title={`Detail uses the ${fmt(rows.length)} busiest of ${fmt(d.total!)} rows`}
         lines={["Off-hours, who touched what, hours, the matrix, clients and the object detail count only these rows, so quiet use (often the odd-hours rows) may be missing. Moving the business time recounts the days from them too. The DDL list has every change."]} />}
+      {!rows.length ? <p className="ae-log-lead">No use in the last {days} days. Pick a longer period above.</p> : <>
+      <p className="ae-log-lead">{lead(d, objs, total, days)}</p>
+      {d.what === "app" ? <AppViewers d={d} /> : <Brief d={d} work={work} days={days} />}
+      <WithWhat d={d} work={work} open={open} />
+      <WhoUsed d={d} work={work} open={open} />
+      {d.findings!.length > 0 && <Checks d={d} />}
+      <details className="ae-log-more" open={more} onToggle={(e) => setMore((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary>More detail <span className="ae-muted">when: per day and hour · off-hours · each object · sensitive data seen · grant paths · every query</span></summary>
+      {more && <div className="ae-log">
       <div className="ae-log-bar-top">
-        {d.what !== "user" && d.what !== "role" && <Pick label="Change object" value={d.name} width={320} what="objects" onPick={(v) => c.nav("object", { name: v, show: "activity" })} />}
         <label className="ae-log-slide ae-log-biz"><span className="ae-log-tl">Business time</span><b>{tzl(work)}</b>
           <input type="range" min={-12} max={14} value={work.tz} aria-label="Business time, hours from UTC" onChange={(e) => setWork({ ...work, tz: +e.target.value })} />
           <span className="ae-muted">{hh(work.start)}–{hh(work.end)} local, Monday to Friday · moves every day, hour, weekend and off-hours count on this tab (stored in UTC)</span></label>
       </div>
-      <p className="ae-log-lead">{lead(d, objs, total)}</p>
       <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} · days and hours in business time {tzl(work)} · reads, writes and DDL · no query text
         {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}
         {!!d.likely && ` · ${fmt(d.likely)} likely: they name no app, but ran as its owner role, which the user does not hold (another app or owner's-rights code of that role looks the same)`}</p>
-      {d.what === "app" ? <AppViewers d={d} /> : <Tiles d={d} work={work} open={open} />}
+      {d.what !== "app" && <Tiles d={d} work={work} open={open} />}
       {one && d.rows?.some((r) => offOf(r, work) > 0) && <OffHours d={d} work={work} open={open} />}  {/* the tile's details */}
       {!one && <>  {/* one table, view or app: the PDF's one-object layout, without the overview sections */}
         <OffHours d={d} work={work} open={open} />
         <Touched d={d} work={work} open={open} />
         <Hours d={d} work={work} />
       </>}
-      <Detail d={d} work={work} open={open} />
-      <WhoUsed d={d} work={work} open={open} />
+      <Detail key={period} d={d} work={work} open={open} />
       <Sensitive d={d} />
       {(d.what === "object" || d.what === "user" || d.what === "role") && <Paths d={d} />}
       {d.ddl!.length > 0 && (
@@ -181,21 +206,68 @@ function Activity({ d: raw }: { d: ActivityPage }) {
           <Plain d={d} rows={d.ddl!} open={open} />
         </Sec>
       )}
-      <div className="ae-log-two">
-        <QuerySql d={d} />
-        <Checks d={d} />
-      </div>
+      <QuerySql d={d} />
+      {d.findings!.length === 0 && <Checks d={d} />}
+      </div>}
+      </details>
+      </>}
     </div>
     </SectionSql.Provider>
   );
 }
 
-function lead(d: ActivityPage, objs: number, total: number): ReactNode {
+/** Queries, the main client and off-hours use of the period. */
+function Brief({ d, work, days }: { d: ActivityPage; work: Work; days: number }) {
+  const rows = d.rows!, n = (a: string) => rows.filter((r) => r.action === a).reduce((s, r) => s + r.queries, 0);
+  const total = rows.reduce((s, r) => s + r.queries, 0), off = rows.reduce((s, r) => s + offOf(r, work), 0);
+  const cl = d.by!.client;
+  const pc = (v: number) => `${total ? Math.round((100 * v) / total) : 0}%`;
+  return (
+    <div className="ae-log-tiles ae-log-three">
+      <Tile label="Queries" value={fmt(total)} cap={`${fmt(n("READ"))} reads · ${fmt(n("WRITE"))} writes · ${fmt(n("DDL"))} definition changes · ${days} days`} />
+      <Tile label="Main client" value={cl[0]?.key ?? "–"} cap={cl[0] ? `${pc(sum(cl[0]))} of the queries${cl[1] ? `, then ${cl.slice(1, 4).map((x) => x.key).join(", ")}` : ", the only one"}` : ""} />
+      <Tile label="Outside business hours" value={fmt(off)} cap={`${pc(off)} · weekends or outside ${biz(work)}`} tone={off ? "warn" : null} />
+    </div>
+  );
+}
+
+const PAIRS: Record<string, [ActivityKey, ActivityKey][]> = {
+  user: [["role", "client"], ["object", "client"], ["object", "role"], ["type", "client"]],
+  role: [["user", "client"], ["object", "client"], ["user", "object"], ["type", "client"]],
+  object: [["user", "client"], ["user", "role"], ["role", "client"], ["type", "client"]],
+  app: [["user", "client"], ["user", "object"], ["user", "role"]],
+  scope: [["user", "client"], ["user", "role"], ["object", "user"], ["role", "client"]],
+};
+
+/** Which client, with which role: one dimension down, another across; red = of these, outside business hours. */
+function WithWhat({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) {
+  const pairs = PAIRS[d.what] ?? PAIRS.object;
+  const [at, setAt] = useState("0");
+  const [r, c] = pairs[Number(at)] ?? pairs[0];
+  const n = new Map<string, number>(), o = new Map<string, number>(), rt = new Map<string, number>(), ct = new Map<string, number>();
+  d.rows!.forEach((x) => {
+    const k = `${x[r]}\u0001${x[c]}`;
+    n.set(k, (n.get(k) ?? 0) + x.queries); o.set(k, (o.get(k) ?? 0) + offOf(x, work));
+    rt.set(x[r], (rt.get(x[r]) ?? 0) + x.queries); ct.set(x[c], (ct.get(x[c]) ?? 0) + x.queries);
+  });
+  const names = (m: Map<string, number>) => [...m].sort((p, q) => q[1] - p[1]).map(([k]) => k);
+  const link = (k: ActivityKey, v: string) => k === "client" || k === "type" ? v
+    : <button type="button" className="ae-link ae-mono" title={v} onClick={() => open(k, v)}>{k === "object" ? v.split(".").slice(-2).join(".") : v}</button>;
+  return (
+    <Sec title="Which client, with which role" sql="matrix" sub="Red: of these, outside business hours."
+      right={<Seg label="Show" value={at} onPick={setAt} items={pairs.map(([p, q], i) => [String(i), `${LABEL[p]} × ${LABEL[q].toLowerCase()}`])} />}>
+      <Heat corner={LABEL[r]} colName={LABEL[c]} rows={names(rt)} cols={names(ct)} color="var(--ae-accent)"
+        value={(p, q) => n.get(`${p}\u0001${q}`) ?? 0} off={(p, q) => o.get(`${p}\u0001${q}`) ?? 0} rowHead={(p) => link(r, p)} colHead={(q) => link(c, q)} />
+    </Sec>
+  );
+}
+
+function lead(d: ActivityPage, objs: number, total: number, days: number): ReactNode {
   const n = <span className="ae-mono">{d.name}</span>;
-  if (d.what === "object") return <>{n} was read{d.by!.object[0]?.write ? " and changed" : ""} {fmt(total)} times in {d.days} days{d.ddl!.length ? ", and its definition changed" : ""}. See who touched it, with which role and client, and when.</>;
-  if (d.what === "app") return <>The app {n} ran {fmt(total)} queries on {plural(objs, "object")} for {plural(d.by!.user.length, "user")} in {d.days} days, with its owner's rights. See who opened it, who could, and what they saw.</>;
-  if (d.what === "scope") return <>{plural(objs, "object")} in {d.kind?.toLowerCase()} {n} {objs === 1 ? "was" : "were"} read or changed {fmt(total)} times in {d.days} days. See who touched them, with which role and client, and when.</>;
-  return <>{n} read or changed {plural(objs, "object")} {fmt(total)} times in {d.days} days{d.what === "role" ? " (queries run with this role)" : ""}. See which, with which role and client, and when.</>;
+  if (d.what === "object") return <>{n} was read{d.by!.object[0]?.write ? " and changed" : ""} {fmt(total)} times in {days} days{d.ddl!.length ? ", and its definition changed" : ""}.</>;
+  if (d.what === "app") return <>The app {n} ran {fmt(total)} queries on {plural(objs, "object")} for {plural(d.by!.user.length, "user")} in {days} days, with its owner's rights.</>;
+  if (d.what === "scope") return <>{plural(objs, "object")} in {d.kind?.toLowerCase()} {n} {objs === 1 ? "was" : "were"} read or changed {fmt(total)} times in {days} days.</>;
+  return <>{n} read or changed {plural(objs, "object")} {fmt(total)} times in {days} days{d.what === "role" ? " (queries run with this role)" : ""}.</>;
 }
 
 function Tiles({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) {
@@ -355,8 +427,8 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
  * named, or days (narrow cells, a date every 5 days, weekends marked). */
 const MAX_ROWS = 12, MAX_COLS = 8;
 
-function Heat({ corner, colName, rows: allRows, cols: allCols, value: cell, color, rowHead, colHead, days }: {
-  corner: string; colName?: string; rows: string[]; cols: string[]; value: (r: string, c: string) => number; color: string;
+export function Heat({ corner, colName, rows: allRows, cols: allCols, value: cell, off: offCell, color, rowHead, colHead, days }: {
+  corner: string; colName?: string; rows: string[]; cols: string[]; value: (r: string, c: string) => number; off?: (r: string, c: string) => number; color: string;
   rowHead?: (r: string) => ReactNode; colHead?: (c: string) => ReactNode; days?: boolean;
 }) {
   const [all, setAll] = useState(false);
@@ -366,8 +438,9 @@ function Heat({ corner, colName, rows: allRows, cols: allCols, value: cell, colo
   const [rs, rx] = fold(allRows, MAX_ROWS), [cs, cx] = days ? [allCols, []] : fold(allCols, MAX_COLS);
   const ro = `Other (${rx.length})`, co = `Other (${cx.length})`;
   const rows = rx.length ? [...rs, ro] : rs, cols = cx.length ? [...cs, co] : cs;
-  const value = (r: string, c: string): number => r === ro ? rx.reduce((n, x) => n + value(x, c), 0)
-    : c === co ? cx.reduce((n, x) => n + value(r, x), 0) : cell(r, c);
+  const fill = (f: (r: string, c: string) => number) => { const at = (r: string, c: string): number => r === ro ? rx.reduce((n, x) => n + at(x, c), 0)
+    : c === co ? cx.reduce((n, x) => n + at(r, x), 0) : f(r, c); return at; };
+  const value = fill(cell), off = offCell && fill(offCell);
   const top = Math.max(1, ...rows.flatMap((r) => cols.map((c) => value(r, c))));
   const rt = (r: string) => cols.reduce((n, c) => n + value(r, c), 0), ct = (c: string) => rows.reduce((n, r) => n + value(r, c), 0);
   const total = rows.reduce((n, r) => n + rt(r), 0);
@@ -383,7 +456,7 @@ function Heat({ corner, colName, rows: allRows, cols: allCols, value: cell, colo
         {line.length > 1 && <div className="ae-hbars">{line.map((x) => (
           <div key={x} className="ae-hbar"><span className="ae-area-name ae-mono" title={x}>{x}</span>
             <span className="ae-area-track" style={{ width: `${(100 * Math.sqrt(n(x))) / max}%`, background: color }} />
-            <b className="ae-area-n">{fmt(n(x))}</b></div>))}</div>}
+            <b className="ae-area-n">{fmt(n(x))}{offCell && (one ? offCell(allRows[0], x) : offCell(x, allCols[0])) > 0 && <span className="ae-bad" title="outside business hours"> {fmt(one ? offCell(allRows[0], x) : offCell(x, allCols[0]))}</span>}</b></div>))}</div>}
       </div>
     );
   }
@@ -398,7 +471,7 @@ function Heat({ corner, colName, rows: allRows, cols: allCols, value: cell, colo
             {cols.map((c) => { const v = value(r, c);
               return <td key={c} title={`${r} · ${days ? c : c}: ${fmt(v)}`} className={weekend(c) ? "wk" : ""}
                 style={{ background: v ? `color-mix(in srgb, ${color} ${12 + (78 * v) / top}%, var(--ae-panel))` : undefined, color: v / top > 0.55 ? "#fff" : undefined }}>
-                {days ? "" : v ? fmt(v) : "·"}</td>; })}
+                {days ? "" : v ? fmt(v) : "·"}{off && off(r, c) > 0 && <em className="ae-log-offn2" title="outside business hours">{fmt(off(r, c))}</em>}</td>; })}
             <td className="tot"><b>{fmt(rt(r))}</b> <span className="ae-muted">{total ? Math.round((100 * rt(r)) / total) : 0}%</span></td></tr>)}
           <tr className="sum"><th>Total</th>{cols.map((c) => <td key={c}>{days ? "" : <b>{fmt(ct(c))}</b>}</td>)}<td className="tot"><b>{fmt(total)}</b></td></tr>
         </tbody>
@@ -773,30 +846,31 @@ function WhoUsed({ d, work, open }: { d: ActivityPage; work: Work; open: Open })
   const [sort, setSort] = useState<"volume" | "days" | "last">("volume");
   const [who, setWho] = useState<"all" | "people">("all");
   const [more, setMore] = useState(false);
-  const rows = d.rows!;
+  const rows = d.rows!, perObj = d.what !== "object"; // a table's own tab needs no object column
   const list = useMemo(() => {
-    const m = new Map<string, { user: string; role: string; client: string; kind: string; types: Map<string, string>; n: Record<"WRITE" | "READ" | "DDL", number>; off: number; days: Set<number>; first: string; last: string }>();
-    rows.forEach((r) => { const k = `${r.user}|${r.role}|${r.client}`;
-      const x = m.get(k) ?? { user: r.user, role: r.role, client: r.client, kind: r.kind, types: new Map(), n: { WRITE: 0, READ: 0, DDL: 0 }, off: 0, days: new Set<number>(), first: r.first_day, last: "" };
+    const m = new Map<string, { user: string; role: string; client: string; object: string; kind: string; types: Map<string, string>; n: Record<"WRITE" | "READ" | "DDL", number>; off: number; days: Set<number>; first: string; last: string }>();
+    rows.forEach((r) => { const k = `${r.user}|${r.role}|${r.client}|${perObj ? r.object : ""}`;
+      const x = m.get(k) ?? { user: r.user, role: r.role, client: r.client, object: perObj ? r.object : "", kind: r.kind, types: new Map(), n: { WRITE: 0, READ: 0, DDL: 0 }, off: 0, days: new Set<number>(), first: r.first_day, last: "" };
       x.types.set(r.type, r.action); x.n[r.action] += r.queries; x.off += offOf(r, work);
       r.daily.forEach((v, i) => { if (v) x.days.add(i); }); x.first = r.first_day < x.first ? r.first_day : x.first; x.last = r.last > x.last ? r.last : x.last; m.set(k, x); });
     return [...m.values()];
-  }, [rows, work]);
+  }, [rows, work, perObj]);
   const tot = (x: (typeof list)[number]) => x.n.WRITE + x.n.READ + x.n.DDL;
   const shown = list.filter((x) => who === "all" || x.kind === "person")
     .sort((a, b) => sort === "volume" ? tot(b) - tot(a) : sort === "days" ? b.days.size - a.days.size : b.last.localeCompare(a.last));
   const top = Math.max(1, ...list.map(tot)), days = d.days ?? 60;
   return (
-    <Sec title={d.what === "app" ? "Who opened it" : "Who used it"} sql="who" sub={`One row per user · role · client · ${list.length} rows${rows.length < (d.total ?? 0) ? ` (from the ${rows.length} busiest of ${d.total})` : ""}`}
+    <Sec title={d.what === "app" ? "Who opened it" : "Who did what, with what, and when last"} sql="who" sub={`One row per user · role · client${perObj ? " · object" : ""} · ${list.length} rows${rows.length < (d.total ?? 0) ? ` (from the ${rows.length} busiest of ${d.total})` : ""}`}
       right={<div className="ae-row"><span className="ae-muted">Sort</span><Seg label="Sort" value={sort} items={[["volume", "Volume"], ["days", "Active days"], ["last", "Last seen"]]} onPick={setSort} />
         <Seg label="Who" value={who} items={[["all", "Everyone"], ["people", "People only"]]} onPick={setWho} /></div>}>
       <table className="ae-log-table ae-log-who">
-        <thead><tr><th>User</th><th>Role · client</th><th>Statements</th><th>Queries</th><th className="num">Off-hrs</th><th>Activity · {short(d.first!)} – {short(d.last!)}</th></tr></thead>
+        <thead><tr><th>User</th>{perObj && <th>Object</th>}<th>Role · client</th><th>Statements</th><th>Queries</th><th className="num">Off-hrs</th><th>Activity · {short(d.first!)} – {short(d.last!)}</th></tr></thead>
         <tbody>{(more ? shown : shown.slice(0, 15)).map((x) => {
           const a = [...x.days].sort((p, q) => p - q);
           return (
-            <tr key={`${x.user}|${x.role}|${x.client}`} className={x.kind === "person" && (x.n.WRITE || x.n.DDL) ? "warn" : ""}>
+            <tr key={`${x.user}|${x.role}|${x.client}|${x.object}`} className={x.kind === "person" && (x.n.WRITE || x.n.DDL) ? "warn" : ""}>
               <td><button type="button" className="ae-link ae-mono" onClick={() => open("user", x.user)}>{x.user}</button><div><span className={`ae-otag ae-log-k-${x.kind}`}>{x.kind[0].toUpperCase() + x.kind.slice(1)}</span></div></td>
+              {perObj && <td><button type="button" className="ae-link ae-mono" title={x.object} onClick={() => open("object", x.object)}>{x.object.split(".").slice(-2).join(".")}</button>{d.objects?.[x.object]?.sensitive && <div><span className="ae-otag ae-sens-tag">sensitive</span></div>}</td>}
               <td><span className="ae-mono">{x.role}</span><div className="ae-muted">{x.client}</div></td>
               <td>{[...x.types].map(([t, act]) => <span key={t} className="ae-log-chip" style={{ borderColor: ACT[act as keyof typeof ACT], color: ACT[act as keyof typeof ACT] }}>{t}</span>)}</td>
               <td className="ae-log-qcell"><Act n={x.n} w={(100 * Math.sqrt(tot(x))) / Math.sqrt(top)} /><b>{fmt(tot(x))}</b> <span className="ae-muted">{x.n.WRITE} DML · {x.n.READ} reads{x.n.DDL ? ` · ${x.n.DDL} DDL` : ""}</span></td>

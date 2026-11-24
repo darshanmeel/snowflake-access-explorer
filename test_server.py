@@ -1265,6 +1265,20 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
     assert not js("/api/activity?name=SALES.CORE.TBL_CUSTOMER&as=HR_01")["rows"]  # granted or not: no use
     assert not js("/api/activity?name=SALES.CORE&as=HR_01")["rows"]  # a schema: only that person's use too
     assert {r["area"] for r in js("/api/meta")["rules"] if 24 <= int(r["num"]) <= 28} == {"Activity"}
+    al = js("/api/activity?days=60", ["total", "dims", "n", "cross", "who", "who_total"])  # the whole account
+    acts = a.source["data"]["ACTIVITY"]
+    assert al["total"] == sum(x["QUERIES"] for x in acts) == al["reads"] + al["writes"] + al["ddl"]
+    assert al["n"]["user"] == len({x["USER_NAME"] for x in acts}) and sum(x["n"] for x in al["dims"]["client"]) == al["total"]
+    for r_, c_ in (("user", "client"), ("role", "object"), ("client", "user")):
+        x = js(f"/api/activity?days=60&r={r_}&c={c_}")["cross"]
+        assert sum(map(sum, x["cells"])) == al["total"] and sum(map(sum, x["off"])) == al["off"], (r_, c_)
+        assert len(x["rows"]) <= 12 and len(x["cols"]) <= 8
+    month = js("/api/activity")
+    assert month["days"] == 30 and month["total"] < al["total"] and js("/api/activity?days=7")["total"] < month["total"]
+    assert {(w["user"], w["client"]) for w in al["who"]} >= {("ANALYST_01", "JDBC")} and al["who"][0]["queries"] >= al["who"][-1]["queries"]
+    get("/api/activity?days=5", 400)
+    get("/api/activity?r=user&c=user", 400)
+    assert server.activity_page({}, "mine")["available"] is False
 
 
 def test_objuse():  # Object activity: counts per type and age, the tabs, server paging, filters, CSV, Home's card

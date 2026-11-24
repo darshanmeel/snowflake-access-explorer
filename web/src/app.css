@@ -921,3 +921,11 @@ div.ae-tile { cursor: default; }
 @media (max-width: 520px) { .ae-act-row { grid-template-columns: minmax(0, 1fr) auto; } .ae-act-main { grid-column: 1 / -1; grid-row: 2; } .ae-hero { padding: 16px; } }
 .ae-unblock { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
 .ae-unblock li { display: flex; gap: 10px; align-items: baseline; overflow-wrap: anywhere; } .ae-unblock .ae-tag { flex: none; min-width: 76px; text-align: center; }
+
+.ae-log-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ae-log-offn2 { font-style: normal; font-size: 11px; color: var(--ae-bad_ink); margin-left: 6px; background: var(--ae-panel); border-radius: 4px; padding: 0 3px; }
+.ae-log-more > summary { cursor: pointer; font-weight: 600; padding: 10px 14px; border: 1px solid var(--ae-line); border-radius: 12px; background: var(--ae-panel); }
+.ae-log-more > summary .ae-muted { font-weight: 400; margin-left: 8px; }
+.ae-log-more[open] > summary { margin-bottom: 14px; }
+@media (max-width: 1000px) { .ae-log-three { grid-template-columns: 1fr; } }
+.ae-log > .ae-seg2 { align-self: flex-start; }

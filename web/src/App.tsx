@@ -7,6 +7,7 @@ import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
 import { Banner, Card, Combo, CsvOn, LoadLog, Root, SEVERITIES, SqlCtx, Waiting, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
+import { AllActivityPageView } from "./pages/AllActivity";
 import { ChangesPageView } from "./pages/Changes";
 import { CheckPageView } from "./pages/Check";
 import { ComparePageView } from "./pages/Compare";
@@ -28,15 +29,15 @@ import { WhatIfPageView } from "./pages/Whatif";
 import { UserPage } from "./pages/User";
 
 // server.SHARED_ONLY: pages about everyone, not in My access (home is in both)
-const SHARED_ONLY: Page[] = ["review", "flow", "changes", "objuse"];
+const SHARED_ONLY: Page[] = ["review", "flow", "changes", "objuse", "activity"];
 /** The page to show after switching to the shared view or My access. */
 export const viewPage = (page: Page, mine: boolean): Page => (mine && SHARED_ONLY.includes(page) ? "access" : page);
-const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif", "usage", "objuse", "changes"];
+const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif", "usage", "objuse", "activity", "changes"];
 const LABEL: Record<Page, string> = {
   home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "An object", check: "Can they?", graph: "Access graph",
   see: "What they see", compare: "Compare", request: "Request access",
   sensitive: "Sensitive data", flow: "How it flows", rules: "Risks", review: "Review & sign-off", whatif: "Change plan",
-  usage: "Grants to trim", objuse: "Objects", changes: "What changed",
+  usage: "Grants to trim", objuse: "Objects", activity: "Activity", changes: "What changed",
 };
 
 /** Old links to the new screens (docs/redesign-notes.md). No page: Home; an unknown page: Home. */
@@ -193,7 +194,7 @@ export const short = (n: number) => n < 1000 ? String(n) : n < 1e6 ? `${+(n / 1e
 const MENU: [string, { label: string; pages: Page[] }[]][] = [
   ["", [{ label: "Home", pages: ["home"] }]],
   ["Ask", [{ label: "Can they?", pages: ["check"] }, { label: "A person or role", pages: ["access", "see", "user", "role"] },
-    { label: "An object", pages: ["object"] }, { label: "Access graph", pages: ["graph"] }, { label: "Compare & request", pages: ["compare", "request"] }]],
+    { label: "An object", pages: ["object"] }, { label: "Access graph", pages: ["graph"] }, { label: "Activity", pages: ["activity"] }, { label: "Compare & request", pages: ["compare", "request"] }]],
   ["Act", [{ label: "Risks", pages: ["rules"] }, { label: "Sensitive data", pages: ["sensitive", "flow"] },
     { label: "Used or not", pages: ["objuse", "usage"] }, { label: "Change plan", pages: ["whatif"] }]],
   ["Govern", [{ label: "Review & sign-off", pages: ["review"] }, { label: "What changed", pages: ["changes"] }]],
@@ -312,7 +313,7 @@ const VIEWS: Record<Page, () => JSX.Element> = {
   home: HomePageView, access: AccessPageView, user: UserPage, role: RolePageView, object: ObjectPageView, check: CheckPageView,
   graph: GraphPageView, see: SeePageView, compare: ComparePageView, request: RequestPageView,
   sensitive: SensitivePageView, flow: FlowPageView, rules: RulesPageView, review: ReviewPageView, whatif: WhatIfPageView,
-  usage: UsagePageView, objuse: ObjectUsePageView, changes: ChangesPageView,
+  usage: UsagePageView, objuse: ObjectUsePageView, activity: AllActivityPageView, changes: ChangesPageView,
 };
 
 /** onUrl: the Streamlit wrapper mirrors the page's URL params into the browser address bar. */
