@@ -1151,3 +1151,4 @@ div.ae-tile { cursor: default; }
 .ae-graph .react-flow__controls { transform: scale(.78); transform-origin: bottom right; opacity: .75; margin: 1px 4px; }
 .ae-graph .react-flow__controls:hover { opacity: 1; }
 .ae-req-role, .ae-cmp-side { background: none; }
+.ae-steps { grid-template-columns: minmax(0, 1fr); } .ae-steps li, .ae-steps li > div { min-width: 0; overflow-wrap: anywhere; } .ae-steps li .ae-link { white-space: normal; overflow-wrap: anywhere; text-align: left; }
