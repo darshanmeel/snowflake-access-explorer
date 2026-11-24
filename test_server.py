@@ -335,6 +335,13 @@ def test_check():
         assert us["answer"]["yes"] == all(x["held"] for x in us["usage"]) and len(us["usage"]) == 2 and not us["held"], us["answer"]  # its two chips are usage
         assert not us["answer"]["yes"] or us["paths"] or us["owner"] or us["admin_paths"]  # a Yes shows its way
         assert all(q["path"][-1] in ("HR", "HR.PEOPLE") for q in us["paths"])
+    for obj, kind in (("HR.PEOPLE", "SCHEMA"), ("HR.PEOPLE.TBL_EMPLOYEE", "TABLE")):  # every privilege can be asked; one the type lacks says so
+        pv = "SELECT" if kind == "SCHEMA" else "CREATE TABLE"
+        na = js(f"/api/check?name=ANALYST_01&obj={obj}&priv={pv.replace(' ', '%20')}")
+        assert na["verdict"] == "na" and na["priv"] == pv and na["object"] == obj and not na["paths"] and na["used_anyway"] is None
+        assert f"not applicable to this {kind.lower()}" in na["answer"]["text"] and ("Inside" in na["answer"]["text"]) == (kind == "SCHEMA")
+        assert pv in na["not_applicable"] and not set(na["not_applicable"]) & set(na["privileges"])
+        assert set(a.priv_types()) <= set(na["not_applicable"]) | set(na["privileges"]) | {"USAGE"}
     assert no["answer"]["how"] in ("none", "paths", "owner", "admin")
     for u in a.users:
         js(f"/api/check?name={u}", ["verdict", "held", "lanes", "cut", "cuts", "nearest", "layers", "roles_count"])

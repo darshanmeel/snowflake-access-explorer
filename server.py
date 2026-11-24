@@ -2626,6 +2626,9 @@ MAX_WH = 10  # Can they?: warehouses named in the note under the answer
 def check_page(p, view):
     """Can they? priv=USAGE on an object without USAGE of its own: USAGE on its database and schema (container_usage)."""
     r = check_object(p if p.get("priv") != "USAGE" else {**p, "priv": ""}, view)
+    r["not_applicable"] = sorted(set(a.priv_types()) - set(r["privileges"]) - ({"USAGE"} if r["usage"] else set()))
+    if p.get("priv") in r["not_applicable"]:
+        return r | not_applicable(r, p["priv"])
     if r["usage"] and "USAGE" not in r["privileges"]:
         r["privileges"].append("USAGE")
         if p.get("priv") == "USAGE":
@@ -2636,6 +2639,18 @@ def check_page(p, view):
         r["used_anyway"] = dict(days=a.ACTIVITY_DAYS, total=len(x), queries=sum(g["queries"] for g in x),
                                 last=max((g["last"] for g in x), default=""), rows=x[:MAX_WH])
     return r
+
+
+def not_applicable(r, pv):
+    """The answer for a privilege the object's type does not have: neither Yes nor No."""
+    kind, ts = r["type"].lower(), sorted(t.lower() for t in a.priv_types()[pv])
+    more = f" and {len(ts) - 6} more" if len(ts) > 6 else ""
+    inside = " The Inside tab answers for the tables and views in it." if r["inside"] and pv in a.READ_PRIVS | a.WRITE_PRIVS else ""
+    ans = dict(yes=False, how="none", tone=None, title=f"{pv} is not applicable to this object", stats=[],
+               text=f"{pv} is not applicable to this {kind}: it is a privilege on {', '.join(ts[:6])}{more}.{inside}")
+    return dict(priv=pv, answer=ans, verdict="na", paths=[], paths_total=0, owner=[], admin_paths=[], lanes=[], lanes_total=0,
+                cut=[], cuts=[], options=[], choke=[], layers=None, read=None, nearest=[], nearest_own=None, narrow=None,
+                blocked=[], unblock=None, graph=None, used_anyway=None)
 
 
 def container_usage(r, focus):

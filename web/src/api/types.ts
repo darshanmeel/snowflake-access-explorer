@@ -692,7 +692,7 @@ export interface CheckPage {
   used_anyway: { days: number; total: number; queries: number; last: string; rows: UsedRow[] } | null; // No or Blocked only; null: activity not read
   builtin: BuiltinOn | null; // null: none left out (always with builtin=1)
   risks: RiskItem[]; // the subject's and the object's, each line prefixed with its name; [] = no strip
-  verdict: "yes" | "partly" | "no" | "blocked"; // blocked: the privilege is held, USAGE on its database or schema is not
+  verdict: "yes" | "partly" | "no" | "blocked" | "na"; // na: the type does not have the privilege; blocked: the privilege is held, USAGE on its database or schema is not
   subject: Subject;
   layers: { step: string; ok: boolean; result: string; reason: string }[] | null;
   roles_count: number;
@@ -714,6 +714,7 @@ export interface CheckPage {
   type: string;
   priv: string; // "*" = all privileges the user holds on the object
   privileges: string[];
+  not_applicable: string[]; // every other Snowflake privilege: the object's type does not have it
   answer: {
     yes: boolean;
     how: "paths" | "owner" | "admin" | "none" | "blocked";

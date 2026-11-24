@@ -4298,6 +4298,21 @@ def ask_privs(kind):
     return v + sorted(SNOWFLAKE_PRIVS.get(kind, set()) - set(v))
 
 
+def priv_types():
+    """{privilege: the object types it exists on}: documented, standard or in the data (OWNERSHIP, on every type, left out)."""
+    def make():
+        out = {}
+        for by in (SNOWFLAKE_PRIVS, STANDARD):
+            for k, pvs in by.items():
+                for pv in pvs:
+                    out.setdefault(pv, set()).add(k)
+        for _, pv, k, _ in privs:
+            if pv and pv != "OWNERSHIP":
+                out.setdefault(pv, set()).add(k.removeprefix("FUTURE "))
+        return out
+    return cached("priv_types", make)
+
+
 def valid_privs(kind):
     """Privileges that exist on objects of this type (in the data, plus the standard ones of the type, so My access
     can ask about one it lacks), common ones first; OWNERSHIP always."""

@@ -43,6 +43,7 @@ export function sideEffects(people: number, lost: number): { text: string; tone:
 /** The line under Yes / Partly / No. */
 export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "roles_count" | "lanes_total" | "cut" | "layers" | "nearest" | "answer">
   & { subject?: Pick<Subject, "user"> }): string {
+  if (d.verdict === "na") return d.answer.text;
   if (d.verdict === "blocked") return d.answer.title;
   if (d.verdict === "no") {
     const n = d.nearest?.[0];

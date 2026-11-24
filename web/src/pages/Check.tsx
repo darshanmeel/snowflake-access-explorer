@@ -25,8 +25,9 @@ export function CheckPageView() {
         {mine ? <span className="ae-mono ae-ask-w">{s.data?.user ?? "you"}</span>
           : <Pick label="Person or role" value={name} user={!asked.role} what="users,roles" onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v]), obj: c.params.obj ?? s.data?.object ?? null })} />}
         {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v, do: null })}
-          options={s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p])} />}
-        <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, priv: null })} />
+          options={[...s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p]),
+            ...s.data.not_applicable.map((p): [string, string] => [p, `${p} · not for this ${s.data!.type.toLowerCase()}`])]} />}
+        <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v })} />
         <span className="ae-ask-w">?</span>
       </div>
       {name ? <Load s={s}>{(d) => <Body key={`${d.subject.kind}:${d.user}:${d.object}:${d.priv}`} d={d} />}</Load> : <PickFirst />}
@@ -34,8 +35,8 @@ export function CheckPageView() {
   );
 }
 
-const MARK = { yes: "✓", partly: "½", no: "✕", blocked: "⊘" } as const;
-const WORD = { yes: "Yes", partly: "Partly", no: "No", blocked: "Blocked" } as const;
+const MARK = { yes: "✓", partly: "½", no: "✕", blocked: "⊘", na: "–" } as const;
+const WORD = { yes: "Yes", partly: "Partly", no: "No", blocked: "Blocked", na: "Not applicable" } as const;
 
 function Body({ d }: { d: CheckPage }) {
   const c = useApp();
@@ -61,7 +62,7 @@ function Body({ d }: { d: CheckPage }) {
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
             <div className="ae-verdict-line">{answerLine(d)}</div>
             <UsedLine d={d} />
-            <WarehouseLine d={d} />
+            {d.verdict !== "na" && <WarehouseLine d={d} />}
           </div>
         </div>
         <ul className="ae-privrow" aria-label={`Privileges on ${d.object}`}>
@@ -404,6 +405,7 @@ export function Blocked({ d, fix }: { d: CheckPage; fix: { iac: string; sql: str
 function Answer({ d }: { d: CheckPage }) {
   const c = useApp();
   const a = d.answer;
+  if (d.verdict === "na") return null;
   return (
     <>
       {d.verdict === "no" && d.view !== "mine" && <NearestWays d={d} first />}
