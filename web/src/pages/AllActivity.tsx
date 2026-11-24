@@ -23,7 +23,9 @@ export function AllActivityPageView() {
   const s = useApi<AllActivityPage>("activity", { view: c.view, days, r, c: across });
   const open = (k: ActDim, v: string) => k === "object" ? c.nav("object", { name: v, show: "activity" })
     : k === "user" ? c.nav("access", { user: v, show: "activity" }) : k === "role" && v !== "–" ? c.nav("access", { role: v, show: "activity" }) : undefined;
+  const gone = new Set(s.data?.gone ?? []);
   const link = (k: ActDim, v: string) => k === "client" || /^Other \(\d+\)$/.test(v) ? v
+    : gone.has(v) ? <span className="ae-mono" title={`${v}: not in this snapshot`}>{k === "object" ? tail(v) : v}</span>
     : <button type="button" className="ae-link ae-mono" title={v} onClick={() => open(k, v)}>{k === "object" ? tail(v) : v}</button>;
   return (
     <>

@@ -1276,7 +1276,9 @@ def test_activity():  # the Activity tab of an object, a person and a role; why 
     month = js("/api/activity")
     assert month["days"] == 30 and month["total"] < al["total"] and js("/api/activity?days=7")["total"] < month["total"]
     assert {(w["user"], w["client"]) for w in al["who"]} >= {("ANALYST_01", "JDBC")} and al["who"][0]["queries"] >= al["who"][-1]["queries"]
+    assert al["gone"] == []  # every name used is in the fake snapshot
     get("/api/activity?days=5", 400)
+    assert get("/?page=home").headers["cache-control"] == "no-cache"  # never an old page after an update
     get("/api/activity?r=user&c=user", 400)
     assert server.activity_page({}, "mine")["available"] is False
 

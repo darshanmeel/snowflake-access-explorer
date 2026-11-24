@@ -3054,7 +3054,13 @@ def activity_page(p, view):
         out = dict(view=view, what="all", name="", available=ok, reason=why, days=int(days), periods=list(a.ACT_PERIODS),
                    work=dict(start=a.WORK_HOURS[0], end=a.WORK_HOURS[1]), note=(a.run.get("NOTES") or {}).get("activity"),
                    last=a.day(a.ref_time()).isoformat())
-        return out | a.activity_all(int(days), r, c) if ok else out
+        if not ok:
+            return out
+        x = a.activity_all(int(days), r, c)
+        known = dict(user=set(a.users), role=set(a.roles), object=set(a.kinds))
+        seen = {(k, v) for k in known for v in [w[k] for w in x["who"]] + [d["key"] for d in x["dims"][k]]}
+        seen |= {(k, v) for k, vs in ((r, x["cross"]["rows"]), (c, x["cross"]["cols"])) if k in known for v in vs}
+        return out | x | dict(gone=sorted({v for k, v in seen if v not in known[k]}))  # used, not in the snapshot: no page
     what = "object" if p.get("name") else "user" if p.get("user") else "role"
     name = p.get("name") or p.get("user") or p.get("role") or ""
     kind = a.kinds.get(name) if what == "object" else None
@@ -4427,6 +4433,9 @@ def allowed_hosts():
     return out
 
 
+FRESH = {"Cache-Control": "no-cache"}  # the page names the bundle of its build: an old copy would show the old app
+
+
 def make_app():
     from fastapi import FastAPI, Request
     from fastapi.responses import FileResponse, JSONResponse, Response
@@ -4555,9 +4564,9 @@ def make_app():
             return JSONResponse(dict(detail="not_found", message="No such endpoint."), status_code=404)
         f = (DIST / path).resolve()
         if path and f.is_file() and DIST.resolve() in f.parents:
-            return FileResponse(f)
+            return FileResponse(f, headers=FRESH if f.suffix == ".html" else None)
         if (DIST / "index.html").is_file():
-            return FileResponse(DIST / "index.html")
+            return FileResponse(DIST / "index.html", headers=FRESH)
         return JSONResponse(dict(detail="not_built", message="The web app is not built: run npm run build in web/."),
                             status_code=404)
 

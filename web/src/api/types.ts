@@ -1544,6 +1544,7 @@ export interface AllActivityPage {
   cross?: { r: ActDim; c: ActDim; rows: string[]; cols: string[]; cells: number[][]; off: number[][] }; // the quiet rest: one "Other (n)"
   who?: { user: string; role: string; client: string; object: string; queries: number; read: number; write: number; ddl: number; off: number; last: string; kind: string; sensitive: boolean }[];
   who_total?: number;
+  gone?: string[]; // names used but not in this snapshot (dropped since, or not granted): no page to open
 }
 export interface ActivityPage {
   view: View;
