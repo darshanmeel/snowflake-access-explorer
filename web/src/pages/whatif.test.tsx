@@ -7,7 +7,7 @@ import { Root } from "../components";
 import { WhatIfPageView } from "./Whatif";
 
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as never;
-const ctx = { page: "whatif", params: {}, view: "shared", meta: { pages: [] }, theme: "light", nav: () => {}, set: () => {} } as unknown as Ctx;
+const ctx = { page: "whatif", params: { show: "changes" }, view: "shared", meta: { pages: [] }, theme: "light", nav: () => {}, set: () => {} } as unknown as Ctx;
 const item = (id: string, type: string | null = null) => ({ id, name: id, kind: null, type, status: null });
 const held: Record<string, string[]> = { F_A: ["ANN", "BOB"], F_B: ["BOB"], F_C: ["ANN"] };
 afterEach(() => { cleanup(); clearCache(); });

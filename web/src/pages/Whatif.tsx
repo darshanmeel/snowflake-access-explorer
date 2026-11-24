@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, WhatIfPage, WhatIfUser, WhatIfUserRows } from "../api/types";
-import { Card, DataTable, EmptyState, KpiRow, Tabs, useCsv } from "../components";
+import { Card, CodeOutput, DataTable, EmptyState, Fold, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
-import { col, Controls, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
-import { LoseKeep, LossGroups, PlanTab, Wider } from "./Plan";
-import { addTo, changeText, plan } from "./changeplan";
+import { col, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
+import { LoseKeep, Outcome, PlanTab } from "./Plan";
+import { addTo, changeText, plan, planTexts, useSaved } from "./changeplan";
 
 const OPS: [WhatIfOp, string][] = [
   ["revoke_role_from_user", "Revoke a role from a user"],
@@ -69,16 +69,17 @@ function Builder({ onAdd }: { onAdd: (ch: WhatIfChange) => void }) {
     op === "revoke_role_from_role" ? { op, role, grantee: other } :
     { op, role, privilege: priv, object: other };
   return (
-    <Controls>
+    <div className="ae-ask" role="form" aria-label="Add a change">
       <Sel label="Change" value={op} onPick={(v) => { setOp(v as WhatIfOp); setOther(""); }} options={OPS} />
       {op !== "empty_public" && <Pick label={op === "revoke_role_from_role" ? "Role taken away" : "Role"} value={role} what="roles" onPick={setRole} />}
+      {(op === "revoke_role_from_user" || op === "revoke_role_from_role") && <span className="ae-ask-w">from</span>}
       {op === "revoke_role_from_user" && <Pick label={`From user (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
       {op === "revoke_role_from_role" && <Pick label={`From role (${holderHint})`} value={other} options={ids(holders)} onPick={setOther} />}
       {op === "revoke_priv" && <Sel label="Privilege" value={priv} onPick={setPriv} options={PRIVS.map((p): [string, string] => [p, p])} />}
       {op === "revoke_priv" && <Pick label="On object" value={other} width={340} what="objects" onPick={setOther} />}
       <button className="ae-btn" disabled={!ch} onClick={() => ch && onAdd(ch)}>Add</button>
       {missing && <span className="ae-muted" role="status">{other} does not hold {role}: pick someone who does, or another role.</span>}
-    </Controls>
+    </div>
   );
 }
 
@@ -120,10 +121,10 @@ function UserRow({ u, refs, changes }: { u: WhatIfUser; refs: WhatIfPage["refs"]
   );
 }
 
-function Result({ d }: { d: WhatIfPage }) {
+function Result({ d, list }: { d: WhatIfPage; list: WhatIfChange[] }) {
   const c = useApp();
   const o = useOpen(d.refs);
-  const tab = c.params.part ?? "users";
+  const tab = ["roles", "findings", "users"].includes(c.params.part ?? "") ? c.params.part! : "objects";
   const k = d.counts;
   const fcols = [
     col("s", "Status", (r: WhatIfFinding) => (r.changed ? "changed" : r.status), { wrap: "nowrap",
@@ -136,32 +137,19 @@ function Result({ d }: { d: WhatIfPage }) {
   ];
   return (
     <>
-      <p className="ae-answer">{k.users ? `${k.users.toLocaleString("en-US")} ${k.users === 1 ? "person loses" : "people lose"} access to ${k.objects.toLocaleString("en-US")} ${k.objects === 1 ? "object" : "objects"}` : "Nobody loses access"}</p>
-      <Wider d={d} />
-      <KpiRow items={[
-        { label: "Users lose access", value: k.users, caption: `${k.kept} keep some of it another way` },
-        { label: "Objects nobody reaches", value: k.unreached, tone: k.unreached ? "bad" : null, caption: `${k.objects} objects lost · ${k.orphans} roles orphaned` },
-        { label: "New findings", value: k.new, tone: k.new ? "bad" : null, caption: `${k.fixed} fixed` },
-      ]} />
-      <Tabs nav={2} active={tab} onChange={(t) => c.set({ part: t === "users" ? null : t })} tabs={[
-        { key: "users", label: "Who loses", count: d.users_total },
+      <Outcome d={d} changes={list} />
+      <Fold label="Objects, roles and findings touched, every person" on={!!c.params.part}>
+      <Tabs nav={2} active={tab} onChange={(t) => c.set({ part: t === "objects" ? null : t })} tabs={[
         { key: "objects", label: "Objects", count: d.objects_total, tone: k.unreached ? "bad" : null },
         { key: "roles", label: "Roles", count: d.roles_total, tone: k.orphans ? "warn" : null },
         { key: "findings", label: "Findings", count: d.findings_total },
-        { key: "fix", label: "Text to apply" },
+        { key: "users", label: "Every person", count: d.users_total },
       ]} />
       {tab === "users" && (
-        <Card title="Who loses what" sub={`Same loss, one row. Crossed out: the removed link.${
-          d.rows_capped ? ` A person lists at most ${c.meta.limits.max_paths} objects: the CSV has all.` : ""}`}>
-          <LossGroups gs={d.groups} total={d.groups_total} changes={d.changes.map((x) => x.change)} refs={d.refs} />
+        <Card title="One row per person, with every path" sub={d.rows_capped ? `A person lists at most ${c.meta.limits.max_paths} objects: the CSV has all.` : undefined}>
           <LoseKeep d={d} />
-          {d.users.length > 0 && (
-            <details className="ae-mt">
-              <summary>One row per person, with every path</summary>
-              {d.users.map((u) => <UserRow key={u.user} u={u} refs={d.refs} changes={c.params.changes ?? ""} />)}
-              {d.users_total > d.users.length && <p className="ae-muted">First {d.users.length} of {d.users_total} people, most lost first: the CSV has all.</p>}
-            </details>
-          )}
+          {d.users.map((u) => <UserRow key={u.user} u={u} refs={d.refs} changes={JSON.stringify(list)} />)}
+          {d.users_total > d.users.length && <p className="ae-muted">First {d.users.length} of {d.users_total} people, most lost first: the CSV has all.</p>}
         </Card>
       )}
       {tab === "objects" && (
@@ -193,12 +181,7 @@ function Result({ d }: { d: WhatIfPage }) {
           {d.findings_total > d.findings.length && <p className="ae-muted">First {d.findings.length} of {d.findings_total} findings: the CSV has all.</p>}
         </Card>
       )}
-      {tab === "fix" && (
-        <Card title="Text for your infrastructure as code" sub="This app never runs it. Apply the change in your RBAC code; manual grants are removed by reconciliation.">
-          <pre className="ae-code">{d.iac}</pre>
-          {d.sql && <><p className="ae-muted">The same as SQL:</p><pre className="ae-code">{d.sql}</pre></>}
-        </Card>
-      )}
+      </Fold>
     </>
   );
 }
@@ -207,7 +190,11 @@ export function WhatIfPageView() {
   const c = useApp();
   const list = changesOf(c);
   const put = (l: WhatIfChange[]) => c.set({ changes: l.length ? JSON.stringify(l) : null });
-  const show = c.params.show === "plan" ? "plan" : "changes"; // the old page first
+  const saved = useSaved(plan);
+  // the plan first; a link with changes opens Add a change
+  const show = c.params.show === "plan" || c.params.show === "text" || c.params.show === "changes" ? c.params.show : list.length ? "changes" : "plan";
+  const every = addTo(saved, list);
+  const tx = useApi<WhatIfPage>(show === "text" && every.length ? "whatif" : null, { view: c.view, changes: JSON.stringify(every) });
   const s = useApi<WhatIfPage>(list.length && show === "changes" ? "whatif" : null, apiParams(c));
   const csvOn = useCsv();
   return (
@@ -216,21 +203,26 @@ export function WhatIfPageView() {
         right={<>
           {csvOn && list.length > 0 && <button className="ae-btn" onClick={() => download("whatif.csv", apiParams(c), "what_if.csv")}>Download CSV</button>}
           <button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks</button></>} />
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "changes" ? null : k, by: null, part: null })} tabs={[
-        { key: "changes", label: "Try a change", count: list.length || null },
-        { key: "plan", label: "My plan" },
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k, by: null, part: null })} tabs={[
+        { key: "plan", label: "What happens", count: saved.length || null },
+        { key: "changes", label: "Add a change", count: list.length || null },
+        { key: "text", label: "Text to apply" },
       ]} />
-      {show === "plan" && <PlanTab fromUrl={list} />}
+      {show === "plan" && <PlanTab fromUrl={list} result={(d, l) => <Result d={d} list={l} />} />}
+      {show === "text" && (every.length ? <Load s={tx}>{(d) => <><p className="ae-answer">{every.length} {every.length === 1 ? "change" : "changes"} for your RBAC code</p>
+        <Card title="Text to apply"><CodeOutput changes={[]} name="what_if" texts={planTexts(every, d.sql)} /></Card></>}</Load>
+        : <EmptyState title="No change yet" art="plan">Add one on Add a change.</EmptyState>)}
       {show === "changes" && <>
-      <Card title="Add a change" right={list.length > 0 && <button className="ae-btn" onClick={() => { plan.set(addTo(plan.get(), list)); c.set({ show: "plan" }); }}>Add to the change plan</button>}>
+      {!list.length && <p className="ae-answer">Add a change, see who it hits before it is written down</p>}
+      <Card title="Pick" right={list.length > 0 && <button className="ae-btn" onClick={() => { plan.set(addTo(plan.get(), list)); c.set({ show: "plan" }); }}>Add to the change plan</button>}>
         <Builder onAdd={(ch) => put([...list.filter((x) => text(x) !== text(ch)), ch])} />
         {list.length > 0
           ? <div className="ae-chips">{list.map((x) => (
               <button key={text(x)} className="ae-chip ae-chip-plain" onClick={() => put(list.filter((y) => y !== x))} title="Remove">{text(x)} ×</button>
             ))}</div>
-          : <EmptyState title="No change yet" art="plan">Add one or more changes above. You can also start from a role page, a path or a finding ("What if revoked?").</EmptyState>}
+          : <EmptyState title="No change yet" art="plan">Or start from a role, a path or a finding ("What if revoked?").</EmptyState>}
       </Card>
-      {list.length > 0 && <Load s={s}>{(d) => <Result d={d} />}</Load>}
+      {list.length > 0 && <Load s={s}>{(d) => <Result d={d} list={list} />}</Load>}
       </>}
     </>
   );

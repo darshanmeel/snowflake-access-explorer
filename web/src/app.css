@@ -1195,3 +1195,6 @@ div.ae-tile { cursor: default; }
 .ae-cmp-cell { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 .ae-gdiff { display: grid; gap: 4px; margin: 0 0 14px; font-size: 13.5px; } .ae-gdiff > div { display: grid; grid-template-columns: 84px minmax(160px, 300px) minmax(0, 1fr); gap: 12px; padding: 5px 10px; border-left: 3px solid transparent; } .ae-gdiff > div.on { border-left-color: var(--ae-accent); background: var(--ae-panel); } .ae-gdiff > p { margin: 2px 0 0 13px; }
 .ae-who2-how { min-width: 0; } .ae-who2-how .ae-route { flex-wrap: wrap; row-gap: 8px; overflow: visible; } .ae-who2-how .ae-route-node { max-width: 210px; } .ae-who2-how .ae-route-node .ae-mono, .ae-who2-how .ae-route-node .ae-muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+
+.ae-plan-care { margin: 0 0 18px; padding-left: 20px; display: grid; gap: 4px; }
+.ae-losstab td { vertical-align: top; } .ae-losstab ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; } .ae-losstab td:first-child { width: 22%; } .ae-losstab td:nth-child(2) { width: 42%; }

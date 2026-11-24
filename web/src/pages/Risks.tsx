@@ -8,7 +8,7 @@ import { CodeOutput, copyText, EmptyState, FilterChips, MiniBar, Pager, PathText
 import { useApp, useOpen } from "../ctx";
 import { Load } from "./common";
 import { changeText, findingKey, inPlan, muted, plan, planTexts, rulesOff, toggleFix, useSaved, visible } from "./changeplan";
-import { LoseKeep, LossGroups, Wider } from "./Plan";
+import { Care, LossTable } from "./Plan";
 import { startOf } from "./screens";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -309,10 +309,8 @@ export function PlanPanel() {
               </div>
               {d.users.length > 0 && (
                 <div>
-                  <h4>Who loses what</h4>
-                  <Wider d={d} />
-                  <LoseKeep d={d} />
-                  <LossGroups gs={d.groups} total={d.groups_total} changes={list} refs={d.refs} max={4} />
+                  <Care d={d} />
+                  <LossTable d={d} />
                 </div>
               )}
               <CodeOutput changes={[]} name="change_plan" texts={planTexts(list, d.sql)} />
