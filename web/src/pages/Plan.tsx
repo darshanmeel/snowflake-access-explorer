@@ -29,7 +29,7 @@ function AddForm() {
   return (
     <div className="ae-ask" role="form" aria-label="Add a change">
       <Sel label="Change" value={k} options={KINDS} onPick={(v) => { setK(v as Kind); setOther(""); }} />
-      {k !== "public" && <Pick label="Role" value={role} what="roles" onPick={(v) => { setRole(v); setOther(""); }} width={220} />}
+      {k !== "public" && <Pick label="Role" value={role} what="roles" onPick={(v) => { setRole(v); if (k === "revoke") setOther(""); }} width={220} />}
       {k === "revoke" && <><span className="ae-ask-w">from</span><Pick label={role ? `User or role (${ids(us).length + ids(rs).length} hold it)` : "User or role"} value={other} options={[...ids(us), ...ids(rs)]} onPick={setOther} width={220} /></>}
       {k === "priv" && <><Sel label="Privilege" value={priv} onPick={setPriv} options={PRIVS.map((p): [string, string] => [p, p])} /><span className="ae-ask-w">on</span>
         <Pick label="Object" value={other} what="objects" onPick={setOther} width={300} /></>}

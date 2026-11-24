@@ -1,6 +1,7 @@
 // Search box with a suggestion list: the top bar Find and every picker. The list closes on blur (a click elsewhere,
 // Tab) and on Escape; ArrowUp / ArrowDown move through the hits, Enter picks the active one (or the first), but only
-// from hits for the text now in the box (not those of older text while the new search waits).
+// from hits for the text now in the box (not those of older text while the new search waits). A full name typed and left
+// (a click elsewhere, Tab) counts as picked.
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 export interface ComboProps<T> {
@@ -26,6 +27,10 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
   const got = useRef(""); // the text the items answer
   const [active, setActive] = useState(-1);
   const typed = useRef(false); // the box holds what the user typed, not the committed value
+  const latest = useRef(onPick); // a search answering after the box was left picks on the page as it is then
+  latest.current = onPick;
+  const gone = useRef(false);
+  useEffect(() => { gone.current = false; return () => { gone.current = true; }; }, []);
   useEffect(() => { if (!typed.current) setQ(clear ? "" : value); }, [value, clear]);
   useEffect(() => {
     if (!open) return;
@@ -37,7 +42,20 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, open, min]);
   const close = (keep = clear ? q : value) => { setOpen(false); setActive(-1); typed.current = false; setQ(keep); };
-  const pick = (x: T) => { typed.current = false; setOpen(false); setActive(-1); setItems([]); setQ(clear ? "" : keyOf(x)); onPick(x); };
+  const pick = (x: T) => { typed.current = false; setOpen(false); setActive(-1); setItems([]); setQ(clear ? "" : keyOf(x)); latest.current(x); };
+  const leave = () => {
+    const text = typed.current ? q.trim() : "";
+    const take = (xs: T[]) => {
+      const same = xs.filter((x) => keyOf(x).toLowerCase() === text.toLowerCase());
+      const x = same.length === 1 ? same[0] : same.filter((y) => keyOf(y) === text).length === 1 ? same.find((y) => keyOf(y) === text) : undefined;
+      if (x) pick(x);
+    };
+    const known = got.current === text ? items : null;
+    close();
+    if (clear || !text || text === value) return;
+    if (known) take(known);
+    else search(text).then((xs) => { if (!gone.current && !typed.current) take(xs); }, () => undefined);
+  };
   const now = typed.current ? q.trim() : "";
   const shown = open && got.current === now ? items : []; // only the answer for the text in the box: never a list left from an earlier key
   const none = open && typed.current && now.length >= Math.max(min, 1) && got.current === now && !items.length;
@@ -49,7 +67,7 @@ export function Combo<T>({ value, search, onPick, keyOf, render, label, placehol
         autoComplete="off" placeholder={placeholder} value={q} style={width ? { width } : undefined}
         onChange={(e) => { typed.current = true; setQ(e.target.value); setOpen(true); }}
         onFocus={(e) => { e.target.select(); setOpen(true); }}
-        onBlur={() => close()}
+        onBlur={leave}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();

@@ -14,6 +14,7 @@ import { ErrorBox, SqlPanel } from "./pages/common";
 import { FlowPageView } from "./pages/Flow";
 import { GraphPageView } from "./pages/Map";
 import { GROUPS, HomePageView, openFound } from "./pages/Home";
+import { askedOf, startWith, type Asked } from "./pages/screens";
 import { ObjectPageView } from "./pages/Object";
 import { RequestPageView } from "./pages/Request";
 import { ReviewPageView } from "./pages/Review";
@@ -404,12 +405,17 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const meta = m.data;
   const poll = useCallback(() => peek<Progress>("progress"), []);
 
+  const at = useRef(loc);
+  at.current = loc;
   const nav = useCallback((page: Page, params: Params = {}) => go({ page, params, mine: loc.mine }), [go, loc.mine]);
   const set = useCallback((patch: Record<string, string | null | undefined>, o: { push?: boolean; stay?: boolean } = {}) => {
-    const params = { ...loc.params };
+    const params = { ...at.current.params }; // the newest URL: two picks before a redraw must not undo each other
     for (const [k, v] of Object.entries(patch)) { if (v) params[k] = v; else delete params[k]; }
-    go({ ...loc, params }, !o.push, o.stay);
-  }, [go, loc]);
+    at.current = { ...at.current, params };
+    go(at.current, !o.push, o.stay);
+  }, [go]);
+  const asked = useRef<Asked>({}); // kept across pages opened from the side menu
+  useEffect(() => { if (!loc.mine) asked.current = askedOf(loc.page, loc.params, asked.current); }, [loc]);
   const setView = (mine: boolean) => go({ page: viewPage(loc.page, mine), params: {}, mine });
 
   // one at a time: a second click while Snowflake is being read does nothing (the buttons are disabled too)
@@ -532,7 +538,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
         <div className="top-lock" {...lock}>
         {!meta ? <aside className="side" /> : shut
           ? <aside className="side side-rail"><button type="button" className="side-open" onClick={() => setShut(false)} title="Show the menu" aria-label="Show the menu">»</button></aside>
-          : <Side meta={meta} page={loc.page} params={loc.params} tabs={navTabs} nav={(p, params) => nav(p, params ?? {})} onShut={() => setShut(true)} />}
+          : <Side meta={meta} page={loc.page} params={loc.params} tabs={navTabs} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} />}
         </div>
         <main className="main">
           {meta && <PrintHead meta={meta} page={loc.page} params={loc.params} />}

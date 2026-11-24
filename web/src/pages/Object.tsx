@@ -40,7 +40,7 @@ export function ObjectPageView() {
             <Sel label="Type" value={c.params.type ?? ""} onPick={(v) => c.set({ type: v || null })}
               options={[["", "Any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id])]} />
             <Pick label="Object" value={id} width={360} what="objects" params={{ type }}
-              onPick={(v) => c.nav("object", { name: v, ...(type && { type }), ...(c.params.builtin && { builtin: c.params.builtin }) })} /></>}
+              onPick={(v) => c.nav("object", { name: v, ...(type && { type }), ...(c.params.builtin && { builtin: c.params.builtin }), ...(c.params.as && { as: c.params.as }), ...(c.params.show && { show: c.params.show }) })} /></>}
         </div>
       </div>
       <Load s={s}>{(d) => <Who d={d} />}</Load>

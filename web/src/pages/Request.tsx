@@ -30,7 +30,7 @@ export function RequestPageView() {
       </div>
       <div className="ae-forstrip">
         {!mine && <Pick label="For (person or role)" value={name} user={!subjectIn(p, "request").role} what="users,roles"
-          onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v], "request"), role: null, to: null })} />}
+          onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v], "request"), obj: p.obj ?? s.data?.object ?? null, role: null, to: null })} />}
         <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, role: null, to: null })} />
       </div>
       {none ? <PickFirst /> : <Load s={s}>{(d) => d.object ? <Body key={`${d.user}:${d.object}:${d.need}:${d.asked?.role ?? ""}`} d={{ ...d, object: d.object }} />

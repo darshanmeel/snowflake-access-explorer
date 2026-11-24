@@ -18,6 +18,32 @@ export function startOf(kind: NodeKind | string, id: string): Record<string, str
   return { ...none, role: id };
 }
 
+export interface Asked { user?: string; role?: string; object?: string }
+
+/** The person or role and the object a page's URL names, over the ones before: kept until another one is picked. */
+export function askedOf(page: string, p: Record<string, string>, before: Asked): Asked {
+  const from = (user?: string, role?: string): Asked =>
+    role ? { role, object: before.object } : user ? { user, object: before.object } : { ...before };
+  if (page === "access" || page === "see" || page === "usage" || page === "graph") return from(p.user, p.role);
+  if (page === "user") return from(p.name);
+  if (page === "role") return from(undefined, p.name);
+  if (page === "check" || page === "request") {
+    const a = from(p.name ?? p.user, page === "check" ? p.role : p.for_role);
+    return p.obj ? { ...a, object: p.obj } : a;
+  }
+  return page === "object" && p.name ? { ...before, object: p.name } : { ...before };
+}
+
+/** URL params a page opened from the side menu starts with: the person or role and the object asked about. */
+export function startWith(page: string, a: Asked): Record<string, string> {
+  const who: Record<string, string> = a.role ? { role: a.role } : a.user ? { user: a.user } : {};
+  const obj: Record<string, string> = a.object ? { obj: a.object } : {};
+  if (page === "access" || page === "see" || page === "usage" || page === "graph") return who;
+  if (page === "check" || page === "request")
+    return { ...(a.role ? { [page === "check" ? "role" : "for_role"]: a.role } : a.user ? { name: a.user } : {}), ...obj };
+  return page === "object" && a.object ? { name: a.object } : {};
+}
+
 /** Node and edge ids drawn red when "Highlight risky paths" is on. */
 export function riskIds(edges: Record<string, string>, nodes: Record<string, string>): Set<string> {
   return new Set([...Object.keys(edges), ...Object.keys(nodes)]);
