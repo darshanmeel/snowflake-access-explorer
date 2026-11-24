@@ -121,6 +121,7 @@ function Answer({ d }: { d: WhoPage }) {
   const n = d.counts, lv = (k: (typeof ORDER)[number]) => n.levels[k] ?? 0;
   if (!n.people) return null;
   const idle = n.disabled + n.dormant;
+  const names = (ls: string[]) => { const xs = d.people.filter((x) => ls.includes(x.level)); return xs.slice(0, 2).map((x) => `${x.name} ${x.level === "own" ? "owns" : "changes"}`).join(", ") + (xs.length > 2 ? ` and ${xs.length - 2} more` : ""); };
   return (
     <>
     <p className="ae-answer">
@@ -128,8 +129,8 @@ function Answer({ d }: { d: WhoPage }) {
     </p>
     <Figs items={[
       { key: "all", n: n.people.toLocaleString("en-US"), text: n.people === 1 ? "user can reach it" : "users can reach it", note: lv("admin") ? `${lv("admin").toLocaleString("en-US")} through an admin role` : undefined },
-      { key: "change", n: (lv("own") + lv("change") + lv("admin")).toLocaleString("en-US"), text: "can do more than read", note: [lv("admin") && `${lv("admin")} admin`, lv("own") && `${lv("own")} own`, lv("change") && `${lv("change")} change`].filter(Boolean).join(", ") || "read only" },
-      { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: idle ? "dormant or disabled" : undefined },
+      { key: "change", n: (lv("own") + lv("change")).toLocaleString("en-US"), text: "can change or own it", note: names(["own", "change"]) || (lv("admin") ? "only admins" : "nobody") },
+      { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: d.people.filter(off).slice(0, 3).map((x) => x.name).join(", ") || undefined },
     ]} />
     </>
   );
@@ -217,76 +218,64 @@ function List({ d }: { d: WhoPage }) {
   const rows: WhoEntry[] = roles ? d.roles : d.people;
   const sel = rows.find((x) => x.name === c.params.sel) ?? rows[0];
   const pick = (name: string) => c.set({ sel: name });
-  const lv = ORDER.filter((l) => n.levels[l]);
+  const people = rows as WhoPerson[];
+  const cols = d.columns.length > 0;
+  const groupOf = (x: WhoEntry) => (same && !roles ? d.groups.find((g) => g.names.includes(x.name) && g.names.length > 1) : undefined);
+  const list = rows.filter((x) => hit(x.name)).filter((x) => { const g = groupOf(x); return !g || g.names[0] === x.name; });
+  const label = (x: WhoEntry) => { const g = groupOf(x); return g ? sameLabel(g.names, g.route) : x.name; };
+  const clear = (x: WhoPerson) => x.columns.filter((k) => k.state !== "masked").map((k) => k.column);
   return (
-    <div className="ae-whogrid">
-      <Card title="Who has access" sub={`${n.people} people · ${n.roles} roles`}
-        right={<FilterChips label="Show" value={roles ? "roles" : "people"} onPick={(k) => c.set({ by: k === "roles" ? k : null, sel: null })}
-          items={[{ key: "people", label: "People", count: n.people }, { key: "roles", label: "Roles", count: n.roles }]} />}>
-        {n.people > 0 && <>
-          <div className="ae-bar" role="img" aria-label={lv.map((l) => `${n.levels[l]} ${TITLE[l]}`).join(", ")}>
-            {lv.map((l) => <span key={l} className={`ae-bar-lvl-${l}`} style={{ width: `${(100 * n.levels[l]) / n.people}%` }} />)}
-            {n.blocked > 0 && <span className="ae-bar-blocked" style={{ width: `${(100 * n.blocked) / n.people}%` }} />}
-          </div>
-          <div className="ae-bar-legend">
-            {lv.map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{TITLE[l]} {n.levels[l]}</span>)}
-            {n.blocked > 0 && <span className="ae-blocked" title="The privilege is there, but not USAGE on the database or schema: Snowflake refuses it">Blocked {n.blocked}: no USAGE on the database or schema</span>}
-          </div>
-        </>}
-        {!roles && n.people > 0 && <FilterChips label="People" value={d.st} onPick={(k) => c.set({ st: k || null, sel: null })}
-          items={[{ key: "", label: "Everyone", count: n.people }, ...STATES.filter(([k]) => n.states[k]).map(([key, label]) => ({ key, label, count: n.states[key] ?? 0 }))]} />}
-        <ListToolbar search={q} onSearch={setQ}>
-          {!roles && <Toggle label="Group people with the same path" on={same} onPick={(v) => c.set({ same: v ? "1" : "0" })} />}
-        </ListToolbar>
-        {!rows.length ? <EmptyState title="Nobody">No user or role reaches this object (admin roles aside).</EmptyState>
-          : !roles && same ? (
-            <div className="ae-wholist">
-              {d.groups.filter((g) => g.names.some(hit)).map((g) => {
-                const x = d.people.find((p) => p.name === g.names[0]);
-                if (!x) return null;
-                return (
-                  <button type="button" key={g.names.join()} className={`ae-whorow${sel && g.names.includes(sel.name) ? " on" : ""}`} onClick={() => pick(g.names[0])}>
-                    <span className="ae-avatar ae-avatar-s" aria-hidden>{g.names.length > 1 ? g.names.length : ini(g.names[0])}</span>
-                    <span className="ae-whoname"><span className="ae-mono">{sameLabel(g.names, g.route)}</span>
-                      {g.names.length > 1 ? <span className="ae-muted"><NameList items={g.names} max={3} plain /></span> : <span className="ae-muted">{`${STATUS[x.status]} · last login ${ago(x)}`}</span>}</span>
-                    <span className={`ae-lvl ae-lvl-${g.level}`}>{TITLE[g.level]}</span>
-                    <span className="ae-privs">{g.blocked && <span className="ae-blocked">blocked: {g.blocked} · </span>}{g.privileges.join(" · ") || "All privileges"}</span>
-                    <span />
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="ae-wholist">
-              {byLevel(rows.filter((x) => hit(x.name))).map((g) => (
-                <Fragment key={g.level}>
-                  <div className="ae-whogroup"><span className={`ae-lvl ae-lvl-${g.level}`}>{TITLE[g.level]}</span><span className="ae-muted">{NOTE[g.level]}</span></div>
-                  {g.rows.map((x) => {
-                    const p = x as WhoPerson, r = x as WhoRole, dim = !roles && off(p);
-                    return (
-                      <button type="button" key={x.name} className={`ae-whorow${sel?.name === x.name ? " on" : ""}${dim ? " ae-whorow-off" : ""}`} onClick={() => pick(x.name)}>
-                        <span className={`ae-avatar ae-avatar-s${dim ? " ae-avatar-off" : ""}`} aria-hidden>{ini(x.name)}</span>
-                        <span className="ae-whoname"><span className="ae-mono">{x.name}</span>
-                          <span className="ae-muted">{roles ? `${r.kind.replace("_", " ")} · ${plural(r.users, "user")}` : `${STATUS[p.status]}${p.service ? " · service" : ""} · last login ${ago(p)}`}</span></span>
-                        <PathChips first={x.first} holder={x.holder} ways={1} kinds={d.refs.kinds} />
-                        <span className="ae-privs">{x.blocked && <span className="ae-blocked">blocked: {x.blocked} · </span>}{x.privileges.join(" · ") || "All privileges"}</span>
-                        <span className="ae-muted ae-whoways">{plural(x.ways, "path")}</span>
-                      </button>
-                    );
-                  })}
-                </Fragment>
-              ))}
-            </div>
-          )}
-        {(d.shown.people > d.people.length || d.shown.roles > d.roles.length || d.shown.groups > d.groups.length) &&
-          <p className="ae-muted">First {roles ? d.roles.length : same ? d.groups.length : d.people.length} of {roles ? d.shown.roles : same ? d.shown.groups : d.shown.people}, the most access first: search to find the rest.</p>}
+    <>
+      <Card title={roles ? "Pick a role to see how it gets in" : "Pick a person to see how they get in"}>
+        <div className="ae-who2">
+          <ul className="ae-who2-list" aria-label={roles ? "Roles" : "People"}>
+            {list.slice(0, 40).map((x) => (
+              <li key={x.name}><button type="button" aria-pressed={sel?.name === x.name} className={sel?.name === x.name ? "on" : ""} onClick={() => pick(x.name)}>
+                <span className="ae-mono">{label(x)}</span><span className={`ae-lvl ae-lvl-${x.level}`}>{TITLE[x.level]}</span></button></li>
+            ))}
+            {list.length > 40 && <li className="ae-muted">+{(list.length - 40).toLocaleString("en-US")} more in the table below</li>}
+          </ul>
+          {sel ? <How e={sel} d={d} role={roles} onOpen={o.open} /> : <p className="ae-muted">Nobody reaches it.</p>}
+        </div>
       </Card>
-      <aside className="ae-whoside">
-        {sel && <How e={sel} d={d} role={roles} onOpen={o.open} />}
-      </aside>
-    </div>
+      <Card title={roles ? `All ${n.roles.toLocaleString("en-US")} roles, side by side` : `All ${n.people.toLocaleString("en-US")}, side by side`}>
+        <Fold label="People or roles, status, search" on={roles || !!d.st || !!q || !!c.params.same}>
+          <div className="ae-row">
+            <FilterChips label="Show" value={roles ? "roles" : "people"} onPick={(k) => c.set({ by: k === "roles" ? k : null, sel: null })}
+              items={[{ key: "people", label: "People", count: n.people }, { key: "roles", label: "Roles", count: n.roles }]} />
+            {!roles && n.people > 0 && <FilterChips label="People" value={d.st} onPick={(k) => c.set({ st: k || null, sel: null })}
+              items={[{ key: "", label: "Everyone", count: n.people }, ...STATES.filter(([k]) => n.states[k]).map(([key, l]) => ({ key, label: l, count: n.states[key] ?? 0 }))]} />}
+          </div>
+          <ListToolbar search={q} onSearch={setQ}>
+            {!roles && <Toggle label="Group people with the same path" on={same} onPick={(v) => c.set({ same: v ? "1" : "0" })} />}
+          </ListToolbar>
+        </Fold>
+        {n.blocked > 0 && <p className="ae-blocked" title="The privilege is there, but not USAGE on the database or schema: Snowflake refuses it">Blocked {n.blocked}: no USAGE on the database or schema</p>}
+        {!rows.length ? <EmptyState title="Nobody">No user or role reaches this object (admin roles aside).</EmptyState> : roles ? (
+          <DataTable rows={list as WhoRole[]} filter={false} columns={[
+            col("r", "Role", (x: WhoRole) => x.name, { render: (x: WhoRole) => <button type="button" className="ae-link ae-mono" onClick={() => pick(x.name)}>{x.name}</button> }),
+            col("c", "Can", (x: WhoRole) => TITLE[x.level], { render: (x: WhoRole) => <span className={`ae-lvl ae-lvl-${x.level}`} title={x.privileges.join(", ")}>{TITLE[x.level]}</span> }),
+            col("k", "Kind", (x: WhoRole) => x.kind.replace("_", " ")), col("u", "Users", (x: WhoRole) => x.users, { num: true }),
+            col("t", "Through", (x: WhoRole) => through(x), { wrap: "wrap" })]} />
+        ) : (
+          <DataTable rows={list as WhoPerson[]} filter={false} columns={[
+            col("p", "Person", (x: WhoPerson) => label(x), { wrap: "wrap", render: (x: WhoPerson) => <><button type="button" className="ae-link ae-mono" title={groupOf(x)?.names.join(", ")} onClick={() => pick(x.name)}>{label(x)}</button>{x.service && <span className="ae-muted"> service</span>}</> }),
+            col("c", "Can", (x: WhoPerson) => TITLE[x.level], { render: (x: WhoPerson) => <><span className={`ae-lvl ae-lvl-${x.level}`} title={x.privileges.join(", ")}>{TITLE[x.level]}</span>{x.blocked && <span className="ae-blocked"> blocked</span>}</> }),
+            col("l", "Login", (x: WhoPerson) => `${STATUS[x.status]}, ${ago(x)}`, { wrap: "wrap", render: (x: WhoPerson) => <span className={off(x) ? "ae-bad" : undefined}>{STATUS[x.status].toLowerCase()}{x.status === "never" ? "" : `, ${ago(x)}`}</span> }),
+            col("t", "Through", (x: WhoPerson) => through(x), { wrap: "wrap", render: (x: WhoPerson) => <span className="ae-mono">{through(x)}</span> }),
+            ...(cols ? [col("s", "In clear", (x: WhoPerson) => clear(x).join(", ") || "none", { wrap: "wrap" as const, render: (x: WhoPerson) => (clear(x).length ? <span className="ae-bad">{clear(x).join(", ")}</span> : <span className="ae-muted">none</span>) })] : []),
+            col("q", `Used, ${c.meta.limits ? "60" : ""} days`, (x: WhoPerson) => x.queries ?? -1, { num: true, render: (x: WhoPerson) => (x.queries == null ? <span className="ae-muted">not read</span> : x.queries ? x.queries.toLocaleString("en-US") : <span className="ae-muted">not recorded</span>) }),
+          ]} />
+        )}
+        {(d.shown.people > people.length || d.shown.roles > d.roles.length) &&
+          <p className="ae-muted">First {rows.length} of {roles ? d.shown.roles : d.shown.people}, the most access first: search to find the rest.</p>}
+      </Card>
+    </>
   );
 }
+
+/** The roles on the shortest way in, the person left out. */
+const through = (x: WhoEntry) => x.path.slice(1, -1).join(" → ") || (x.level === "admin" ? "admin role" : "directly");
 
 /** Each sensitive column: how many readers see it in the clear, and its masking policies. */
 function ColumnsCard({ d }: { d: WhoPage }) {
@@ -318,22 +307,24 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
     : e.blocked ? `Blocked: ${e.blocked}, so Snowflake refuses the ${e.privileges.join(", ")}`
     : e.level === "admin" && !e.privileges.length ? "Through the roles granted to an admin role" : `${TITLE[e.level]}, ${plural(steps.length - 1, "step")} away`;
   return (
-    <Card title={`How ${e.name} gets in`} sub={sum}>
-      <ol className="ae-steps">
+    <div className="ae-who2-how">
+      <p><b className="ae-mono">{e.name}</b> <span className={`ae-lvl ae-lvl-${e.level}`}>{TITLE[e.level]}</span> <span className="ae-muted">{sum}</span></p>
+      <div className="ae-route">
         {steps.map((s, i) => (
-          <li key={i}>
-            <span className={`ae-stepdot${i === 0 ? " first" : i === steps.length - 1 ? " last" : ""}`} aria-hidden />
-            <div><button type="button" className="ae-link ae-mono" onClick={() => onOpen(e.path[i])}>{s.name}</button><div className="ae-muted">{s.kind}</div></div>
-          </li>
+          <span key={i} className="ae-route-step">
+            {i > 0 && <span className="ae-route-link" />}
+            <button type="button" className={`ae-route-node ae-route-${i === 0 ? (role ? d.refs.kinds[e.path[0]] ?? "group" : "user") : i === steps.length - 1 ? "object" : d.refs.kinds[e.path[i]] ?? "group"}`} onClick={() => onOpen(e.path[i])} title={e.path[i]}>
+              <span className="ae-mono">{s.name}</span><span className="ae-muted">{s.kind}</span></button>
+          </span>
         ))}
-      </ol>
+      </div>
       {e.ways > 1 && <p className="ae-muted">{plural(e.ways, "way")} lead here, so removing one role may not remove the access.</p>}
       <div className="ae-how-links">
         {d.object.id && <button type="button" className="ae-btn ae-btn-s" onClick={() => c.nav("check", { [role ? "role" : "name"]: e.name, obj: d.object.id!, ...doOf(e.level) })}>Open in Can they?</button>}
         {role && <button type="button" className="ae-link" onClick={() => c.nav("access", { role: e.name })}>Open the role</button>}
         {ch && <WhatIfButton ch={[ch]} />}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -440,12 +431,12 @@ export function ObjectDetail({ part }: { part: string }) {
                   <p key={p.name}><strong>Row policy {p.name}</strong> on {p.args}: <code>{p.text}</code>{!p.from_text && <span className="ae-muted"> (condition unknown)</span>}</p>
                 ))}
                 {d.sensitivity.columns.length > 0 && (
-                  <DataTable csv={`${o.name}_columns.csv`} rows={d.sensitivity.columns} maxHeight={320}
+                  <DataTable csv={`${o.name}_columns.csv`} rows={[...d.sensitivity.columns].sort((x: any, y: any) => x.masking.length - y.masking.length)} maxHeight={320} filter={false}
                     columns={[col("c", "Column", (r: any) => r.column),
                       col("t", "Tags", (r: any) => r.tags.map((t: any) => t.label).join(", "), { wrap: "wrap" }),
                       col("m", "Masking", (r: any) => (r.masking.length ? r.masking.join(", ") : "Not protected: no masking policy"), { wrap: "wrap",
                         render: (r: any) => (r.masking.length ? r.masking.join(", ") : <span className="ae-bad">Not protected: no masking policy</span>) }),
-                      col("e", "Clear for", (r: any) => (r.unmasked_everyone ? "everyone" : r.clear_known ? r.clear_for.map((x: any) => x.role).join(", ") : "unknown"), { wrap: "wrap" })]} />
+                      col("e", "Who sees it in clear", (r: any) => (r.unmasked_everyone ? `all ${d.sensitivity!.readers.people + d.sensitivity!.readers.admin + d.sensitivity!.readers.service}` : r.clear_known ? r.clear_for.map((x: any) => x.role).join(", ") : "unknown"), { wrap: "wrap" })]} />
                 )}
                 {Object.entries(d.sensitivity.policy_text).map(([n, t]) => <details key={n}><summary>{n}</summary><pre className="ae-code">{t}</pre></details>)}
               </Card>

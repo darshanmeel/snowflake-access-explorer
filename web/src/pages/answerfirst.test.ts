@@ -18,10 +18,10 @@ describe("answer first", () => {
     expect(answerLine(check({ verdict: "no", lanes_total: 0 }))).toMatch(/^By the grants in this data, none of ANN's 2 roles leads to DB.S.T\./);
   });
   it("Compare says what B lacks of A first", () => {
-    expect(compareLine({ only_a: 0, only_b: 3, different: 0, same: 2 }, "A1", "B1")).toBe("B1 reaches everything A1 reaches; B1 also reaches 3 objects that A1 does not.");
+    expect(compareLine({ only_a: 0, only_b: 3, different: 0, same: 2 }, "A1", "B1")).toBe("B1 reaches all that A1 does, and 3 objects more");
     expect(compareLine({ only_a: 1, only_b: 0, different: 2, same: 0 }, "A1", "B1"))
-      .toBe("B1 is missing 1 object that A1 reaches; B1 reaches nothing extra; 2 objects reached by both with different access.");
-    expect(compareLine({ only_a: 0, only_b: 0, different: 0, same: 5 }, "A1", "B1")).toBe("A1 and B1 reach the same 5 objects with the same access.");
+      .toBe("A1 reaches all that B1 does, and 1 object more, with different access on 2 objects");
+    expect(compareLine({ only_a: 0, only_b: 0, different: 0, same: 5 }, "A1", "B1")).toBe("A1 and B1 reach the same 5 objects with the same access");
   });
   it("cuts a long role name in the middle", () => {
     expect(mid("T_SALES")).toBe("T_SALES");

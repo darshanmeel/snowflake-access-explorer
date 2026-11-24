@@ -37,11 +37,12 @@ export function ComparePageView() {
 
 /** The answer first: what B lacks of A, and the reverse. */
 export function compareLine(n: ComparePage["counts"], a: string, b: string): string {
-  if (!n.only_a && !n.only_b && !n.different) return `${a} and ${b} reach the same ${n.same.toLocaleString("en-US")} object${n.same === 1 ? "" : "s"} with the same access.`;
+  if (!n.only_a && !n.only_b && !n.different) return `${a} and ${b} reach the same ${n.same.toLocaleString("en-US")} object${n.same === 1 ? "" : "s"} with the same access`;
   const objs = (x: number) => `${x.toLocaleString("en-US")} object${x === 1 ? "" : "s"}`;
-  return [n.only_a ? `${b} is missing ${objs(n.only_a)} that ${a} reaches` : `${b} reaches everything ${a} reaches`,
-    n.only_b ? `${b} also reaches ${objs(n.only_b)} that ${a} does not` : `${b} reaches nothing extra`,
-    ...(n.different ? [`${objs(n.different)} reached by both with different access`] : [])].join("; ") + ".";
+  const diff = n.different ? `, with different access on ${objs(n.different)}` : "";
+  if (!n.only_a) return `${b} reaches all that ${a} does${n.only_b ? `, and ${objs(n.only_b)} more` : ""}${diff}`;
+  if (!n.only_b) return `${a} reaches all that ${b} does, and ${objs(n.only_a)} more${diff}`;
+  return `${a} alone reaches ${objs(n.only_a)}, ${b} alone ${n.only_b.toLocaleString("en-US")}${diff}`;
 }
 
 function Body({ d }: { d: ComparePage }) {
@@ -57,11 +58,18 @@ function Body({ d }: { d: ComparePage }) {
       <Tabs nav active={tab} onChange={(k) => c.set(k === "plan" ? { tab: "plan" } : { tab: null, plan: null })} tabs={[
         { key: "diff", label: "Differences", count: n.only_a + n.only_b + n.different },
         ...(any ? [{ key: "plan", label: "Plan" }] : [])]} />
-      {tab === "plan" ? <><Plans d={d} /><PlanText d={d} /></> : <><Diffs d={d} />
+      {tab === "plan" ? <><Plans d={d} /><PlanText d={d} /></> : <>
         <div className="ae-cmp-sum">
           <Overlap a={d.a.name} b={d.b.name} onlyA={n.only_a} onlyB={n.only_b} different={n.different} same={n.same} />
-          {plans > 0 && <button type="button" className="ae-btn" onClick={() => c.set({ tab: "plan", plan: "equal" })}>Make B equal to A →</button>}
-        </div></>}
+          <ul className="ae-cmp-read">
+            <li><b>{n.only_a.toLocaleString("en-US")}</b> only <span className="ae-cmp-a ae-mono">{d.a.name}</span> reaches</li>
+            <li><b>{n.only_b.toLocaleString("en-US")}</b> only <span className="ae-cmp-b ae-mono">{d.b.name}</span> reaches</li>
+            <li><b>{n.different.toLocaleString("en-US")}</b> both reach, with different access</li>
+            <li><b>{n.same.toLocaleString("en-US")}</b> the same</li>
+            {plans > 0 && <li><button type="button" className="ae-btn" onClick={() => c.set({ tab: "plan", plan: "equal" })}>Make B equal to A →</button></li>}
+          </ul>
+        </div>
+        <Diffs d={d} /></>}
     </>
   );
 }
@@ -103,8 +111,8 @@ function PlanText({ d }: { d: ComparePage }) {
 function SideCell({ x, who }: { x: CompareSide | null; who: "a" | "b" }) {
   if (!x) return <span className="ae-cmp-cell ae-muted">No access</span>;
   return (
-    <span className={`ae-cmp-cell ae-cmp-cell-${who}`}>
-      <AccessPill level={x.level} privileges={x.privileges} />
+    <span className={`ae-cmp-cell ae-cmp-cell-${who}`} title={x.privileges.join(", ")}>
+      <AccessPill level={x.level} />
       {x.sees && <span className="ae-cmp-sees">{x.sees}</span>}
     </span>
   );
@@ -120,8 +128,7 @@ function Diffs({ d }: { d: ComparePage }) {
   const size = 50; // the server's PAGE
   return (
     <>
-      <Card title={<>Differences · <span className="ae-cmp-a ae-mono">A {d.a.name}</span> and <span className="ae-cmp-b ae-mono">B {d.b.name}</span></>}
-        sub="Differences first; the same ones are folded.">
+      <Card title={`${(n.only_a + n.only_b + n.different).toLocaleString("en-US")} differ, ${n.same.toLocaleString("en-US")} ${n.same === 1 ? "is" : "are"} the same`}>
         <FilterChips label="Show" value={f} onPick={(k) => c.set({ f: k || null, c_offset: null })} items={[
           { key: "", label: "All differences", count: n.only_a + n.only_b + n.different },
           { key: "only_a", label: "Only A", count: n.only_a }, { key: "only_b", label: "Only B", count: n.only_b },

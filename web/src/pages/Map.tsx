@@ -62,12 +62,30 @@ export function GraphPageView() {
         { key: "diagram", label: "Hierarchy" },
         { key: "trace", label: "Trace" },
       ]} />
+      {!none && <Difference tab={tab} mode={mode} />}
       {mode !== "object" && !none && <Fold label="Filter" on={!!(c.params.schema || c.params.otype || c.params.access)}><div className="ae-controls"><Filters trace={tab === "trace"} /></div></Fold>}
       {none ? <PickFirst what={mode === "user" ? "a person" : mode === "role" ? "a role" : "a table"} /> : <>
         {tab === "diagram" && <OldDiagram mode={mode} name={shown} />}
         {tab === "trace" && <Load s={s}>{(d) => <Trace d={d} />}</Load>}
       </>}
     </>
+  );
+}
+
+/** What the two tabs answer, the open one marked, and who shows the difference best. */
+function Difference({ tab, mode }: { tab: string; mode: string }) {
+  const c = useApp();
+  const row = (k: string, name: string, q: string, how: string) => (
+    <div className={tab === k ? "on" : ""}><b>{name}</b><span>{q}</span><span className="ae-muted">{how}</span></div>);
+  const go = (p: Record<string, string>) => c.set({ user: null, role: null, table: null, focus: null, sel: null, ...p });
+  return (
+    <div className="ae-gdiff" aria-label="Hierarchy or Trace">
+      {row("diagram", "Hierarchy", "How deep is it?", "Roles in lanes by depth, one line per grant. Numbers on a box: rules broken.")}
+      {row("trace", "Trace", "Who passes through a box, and what does it lead to?", `${mode === "user" ? "The same paths" : "People on the left too"}, lines coloured by read, write or own and thicker with more people; admin bypass and risky paths drawn. Click a box for its people and objects.`)}
+      <p className="ae-muted">They differ most for a role many people hold, or a person with an admin role{c.meta.mode === "fake" && <>: try{" "}
+        <button type="button" className="ae-link ae-mono" onClick={() => go({ role: "GRP_EMEA_ALL" })}>GRP_EMEA_ALL</button> (14 people) or{" "}
+        <button type="button" className="ae-link ae-mono" onClick={() => go({ user: "OPS_01" })}>OPS_01</button> (admin), then switch the tab</>}.</p>
+    </div>
   );
 }
 

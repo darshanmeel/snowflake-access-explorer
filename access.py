@@ -6968,9 +6968,9 @@ def granted_used(name, user=True, days=90):
             kind, text = "keep", "Keep"
         seen = acted.get(x["object"])  # the activity says otherwise: two sources disagree, so nothing is suggested
         if seen and cut and (used is None or (seen[1] and any(p in WRITE_PRIVS for p in cut))):
-            n = seen[0] + seen[1] if used is None else seen[1]
+            q = seen[0] + seen[1] if used is None else seen[1]
             kind, unused, cut = "check", [], []
-            text = f"Do not remove yet: Activity shows {n:,} {'query' if n == 1 else 'queries'}, the last on {seen[2][:10]}"
+            text = f"Do not remove yet: Activity shows {q:,} {'query' if q == 1 else 'queries'}, the last on {seen[2][:10]}"
         out.append(dict(object=x["object"], type=x["type"], database=x["database"], schema=x["schema"],
                         sensitive=x["object"] in sens, level=x["level"], used=used, privileges=x["privileges"],
                         unused=unused, weeks=u["weeks"] if u else [0] * n, reads=u["read"] if u else 0,

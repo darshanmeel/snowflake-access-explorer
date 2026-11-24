@@ -2540,6 +2540,13 @@ def who_data(o, view):
         x["id"] = a.uid(x["name"], True)
         x["login"], x["mark"] = login(x["name"])
         x["columns"] = seen.get(x["name"], [])
+    did = {}
+    if o and a.act_state()[0]:
+        for r in a.acts:
+            if r["OBJECT_NAME"] == o:
+                did[r["USER_NAME"]] = did.get(r["USER_NAME"], 0) + int(r["QUERIES"] or 0)
+    for x in w["people"]:
+        x["queries"] = did.get(x["name"], 0) if o and a.act_state()[0] else None  # None: the activity is not read
     for x in w["people"] + w["roles"]:
         x.setdefault("blocked", None)
     for x in w["roles"]:

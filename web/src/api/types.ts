@@ -1181,6 +1181,7 @@ export interface WhoPerson extends WhoEntry {
   admin: string[];
   status: UserStatus;
   service: boolean;
+  queries: number | null; // their queries on it in the activity window; null: not read
   state: WhoState; // the People filter (st=): service before active / dormant (never logged in too)
   days: number | null;
   login: string;
