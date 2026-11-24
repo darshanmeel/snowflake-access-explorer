@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { SensitivePage } from "../api/types";
-import { Banner, Card, EmptyState, ListToolbar, MaskDots, MiniBar, Tabs, Waiting, type BarPart } from "../components";
+import { Fold, Figs, Banner, Card, EmptyState, ListToolbar, MaskDots, MiniBar, Tabs, Waiting, type BarPart } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { Catalog } from "./Catalog";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog, unread } from "./common";
@@ -40,7 +40,7 @@ export function SensitivePageView() {
   const pol = unread(c.meta, "policies", true), polOff = c.meta.sources.policies === "UNAVAILABLE"; // off: masked is unknown
   return (
     <>
-      <Head title="Sensitive data" sub="Objects carrying a sensitive tag, and who can read them." />
+      <Head title="Sensitive data" quiet sub="Objects carrying a sensitive tag, and who can read them." />
       <Load s={s}>{(d) => {
         if (d.state !== "ok") return <><Banner tone="info" title="Nothing to show" lines={[WHY[d.state] ?? d.state]} />{d.row_total > 0 && <RowTables d={d} />}</>;
         const k = d.kpis;
@@ -48,13 +48,13 @@ export function SensitivePageView() {
         const first = { o_offset: null, r_offset: null }; // a new filter starts on page 1
         return (
           <>
-            <SensAnswer d={d} polOff={polOff} />
-            <Controls>
-              <Sel label="Tag" value={d.filters.tag} onPick={(v) => c.set({ tag: v, ...first })} options={[["", "All tags"], ...d.filters.tags.map((t): [string, string] => [t, t])]} />
-              <Sel label="Database" value={d.filters.db} onPick={(v) => c.set({ db: v, ...first })} options={[["", "All databases"], ...d.filters.dbs.map((t): [string, string] => [t, t])]} />
-              <Tog label="People only" on={d.filters.people} onPick={(v) => c.set({ people: v ? "1" : null, ...first })} />
-            </Controls>
-            <p className="ae-muted">{`${k.columns} columns, ${k.whole} whole-object · readers: ${k.people} people, ${k.disabled} disabled, ${k.service} service${k.admin ? `, ${k.admin} only through an admin role` : ""}`}</p>
+            {part === "rows" ? <p className="ae-answer">{d.row_total.toLocaleString("en-US")} {d.row_total === 1 ? "table shows" : "tables show"} some roles fewer rows</p>
+              : <><SensAnswer d={d} polOff={polOff} />
+            <Figs items={[
+              { key: "r", n: k.readers.toLocaleString("en-US"), text: "can read at least one", note: [`${k.people.toLocaleString("en-US")} people`, k.disabled && `${k.disabled.toLocaleString("en-US")} disabled`, k.service && `${k.service.toLocaleString("en-US")} service`, k.admin && `${k.admin.toLocaleString("en-US")} only through an admin role`].filter(Boolean).join(", ") },
+              { key: "u", n: polOff ? "not read" : k.unmasked.toLocaleString("en-US"), text: "sensitive columns not masked", bad: !polOff && k.unmasked > 0 },
+              { key: "o", n: k.objects.toLocaleString("en-US"), text: k.objects === 1 ? "sensitive object" : "sensitive objects", note: `${k.columns.toLocaleString("en-US")} columns tagged, ${k.whole.toLocaleString("en-US")} whole objects` },
+            ]} /></>}
             {d.filters.people && <p className="ae-muted">Counts are every reader; People only filters the tables.</p>}
             <PolicyNote />
             <Tabs nav active={part} onChange={(k) => { setPart(k); c.set({ show: LINKED.includes(k) ? k : null }); }} tabs={[
@@ -70,16 +70,16 @@ export function SensitivePageView() {
                 csv="sensitive_objects.csv" rows={d.objects}
                 columns={[
                   col("o", "Object", (r: O) => r.object, { render: (r: O) => <span className="ae-objcell"><NameLink id={r.object} refs={d.refs} /><span className="ae-muted ae-osub">{r.type.toLowerCase()}</span></span>, wrap: "wrap" }),
-                  col("g", "Tags", (r: O) => r.tags.map((t) => t.label).join(", "), { render: (r: O) => <span className="ae-objtags0">{r.tags.map(tagChip)}</span>, wrap: "wrap" }),
                   col("c", "Columns masked", (r: O) => (r.cols.length ? `${r.masked[0]} of ${r.masked[1]}: ${r.cols.join(", ")}` : "whole object"), { help: "One dot per sensitive column: filled = masked, open red ring = read in the clear", wrap: "wrap",
                     render: (r: O) => polOff && r.cols.length ? <span className="ae-muted">unknown: policies not read</span> : r.cols.length ? (
                       <span className="ae-maskcell"><MaskDots columns={r.columns.length ? r.columns : r.cols.map((x, i) => ({ column: x, masked: i < r.masked[0] }))} />
                         <span className={r.masked[0] < r.masked[1] ? "ae-bad" : "ae-muted"}>{r.masked[0]} of {r.masked[1]}</span>
                         <span className="ae-muted ae-maskcols">{r.cols.join(", ")}</span></span>) : <span className="ae-muted">whole object</span> }),
-                  col("rp", "Row policy", (r: O) => r.row_policies.join(", "), { wrap: "wrap" }),
                   col("p", "Who can read", readersOf, { num: true, help: "People who can read it: active, dormant or disabled, service users, through an admin role",
                     render: (r: O) => <MiniBar of={most} parts={readerParts(r.readers)} /> }),
                   col("cl", "Sees clear", (r: O) => r.clear ?? "unknown", { num: true, help: "Readers who see a sensitive value unmasked: all of them when a column has no masking, else those a masking policy shows it to" }),
+                  col("g", "Tags", (r: O) => r.tags.map((t) => t.label).join(", "), { render: (r: O) => <span className="ae-objtags0">{r.tags.map(tagChip)}</span>, wrap: "wrap" }),
+                  col("rp", "Row policy", (r: O) => r.row_policies.join(", "), { wrap: "wrap" }),
                   col("ro", "Roles", (r: O) => r.roles.join(", ") + (r.roles_total > r.roles.length ? ` +${r.roles_total - r.roles.length} more` : ""), { wrap: "truncate" }),
                 ]} />
               <div className="ae-bar-legend ae-mt">{readerParts({ active: 0, dormant: 0, service: 0, admin: 0 }).map((p) => <span key={p.key}><span className={`ae-dot2 ae-bar-${p.cls}`} />{p.label}</span>)}
@@ -96,6 +96,13 @@ export function SensitivePageView() {
                   pathCol<R>(d.refs),
                 ]} />
             </Card>}
+            {part !== "rows" && <Fold label="Filter" on={!!d.filters.tag || !!d.filters.db || d.filters.people}>
+            <Controls>
+              <Sel label="Tag" value={d.filters.tag} onPick={(v) => c.set({ tag: v, ...first })} options={[["", "All tags"], ...d.filters.tags.map((t): [string, string] => [t, t])]} />
+              <Sel label="Database" value={d.filters.db} onPick={(v) => c.set({ db: v, ...first })} options={[["", "All databases"], ...d.filters.dbs.map((t): [string, string] => [t, t])]} />
+              <Tog label="People only" on={d.filters.people} onPick={(v) => c.set({ people: v ? "1" : null, ...first })} />
+            </Controls>
+            </Fold>}
           </>
         );
       }}</Load>
@@ -119,10 +126,8 @@ function SensAnswer({ d, polOff }: { d: SensitivePage; polOff: boolean }) {
   const n = (x: number, w: string, ws = `${w}s`) => `${x.toLocaleString("en-US")} ${x === 1 ? w : ws}`;
   return (
     <p className="ae-answer">
-      <b>{n(k.objects, "sensitive object")}</b>{polOff ? "" : <>, <b className={k.unmasked ? "ae-bad" : ""}>{n(k.unmasked, "column")} not masked</b></>}.{" "}
-      {n(k.readers, "user")} can read them{k.admin > 0 && <>, <button type="button" className="ae-link ae-bad" onClick={() => c.nav("rules", { part: "admins" })}>{k.admin.toLocaleString("en-US")} only through an admin role</button></>}
-      {k.stale_total > 0 && <>; <button type="button" className="ae-link ae-warn-word" onClick={() => c.nav("rules", { part: "stale" })}>
-        {n(k.stale_total, "dormant or disabled person", "dormant or disabled people")} still {k.stale_total === 1 ? "holds" : "hold"} that access</button></>}.
+      {n(k.objects, "sensitive object")}{polOff ? "" : <>, {n(k.unmasked, "column")} nobody masks</>}
+      {k.stale_total > 0 && <>; <button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "stale" })}>{n(k.stale_total, "inactive person", "inactive people")} can still read them</button></>}
     </p>
   );
 }
@@ -136,7 +141,6 @@ function RowTables({ d }: { d: SensitivePage }) {
     const t = setTimeout(() => { if (q !== (c.params.t_q ?? "")) c.set({ t_q: q || null, t_offset: null }); }, 300);
     return () => clearTimeout(t);
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
-  const most = Math.max(1, ...d.row_list.map((r) => r.readers));
   const roles = (xs: string[]) => (xs.length > 3 ? `${xs.slice(0, 3).join(", ")} +${xs.length - 3} more` : xs.join(", "));
   return (
     <Card title="Tables with row policies" sub="Which roles see every row, which see some; any other reader sees no rows. Open a table for the policy text." scroll>
@@ -150,7 +154,7 @@ function RowTables({ d }: { d: SensitivePage }) {
             render: (r: T) => (r.known ? roles(r.all_rows) || <span className="ae-muted">no role</span> : <span className="ae-muted" title="The policy uses a mapping table, a function or other logic">unknown: open the table</span>) }),
           col("f", "Some rows", (r: T) => (r.known ? roles(r.some_rows) : "unknown"), { wrap: "wrap", help: "Roles the policy text lets see rows matching a condition; other readers see none",
             render: (r: T) => (r.known ? roles(r.some_rows) || <span className="ae-muted">none</span> : <span className="ae-muted">unknown</span>) }),
-          col("r", "Users who read it", (r: T) => r.readers, { num: true, render: (r: T) => <MiniBar of={most} parts={[{ key: "r", label: "Users", value: r.readers, cls: "lvl-read" }]} /> })]} />
+          col("r", "Read by", (r: T) => r.readers, { num: true })]} />
       {!d.row_list.length && q && <p className="ae-muted">No table or policy matches “{q}”.</p>}
     </Card>
   );

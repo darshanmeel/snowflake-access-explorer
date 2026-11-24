@@ -6233,23 +6233,30 @@ ACT_PERIODS = (7, 30, ACTIVITY_DAYS)  # Activity page: days to look back
 
 def activity_cube(days):
     """The whole account's table use in the last days (Activity page): {(user, role, client, object): [queries, reads,
-    writes, ddl, off-hours queries (weekends or outside WORK_HOURS, UTC), last]}, one pass, kept per loaded data."""
-    def make():
-        end, cube = day(ref_time()), {}
+    writes, ddl, off-hours queries (weekends or outside WORK_HOURS, UTC), last]}, one pass for every period, kept per
+    loaded data. A query that reads one object and changes it counts in both, as on the Activity tabs."""
+    def make():  # one pass fills every period
+        end, cubes, seen = day(ref_time()), {n: {} for n in ACT_PERIODS}, {}
         for x in acts:
-            d = day(x["DAY"])
-            if not 0 <= (end - d).days < days:
+            dd = x["DAY"]
+            if dd not in seen:
+                d = day(dd)
+                seen[dd] = (end - d).days, d.weekday() >= 5
+            age, weekend = seen[dd]
+            if not 0 <= age < ACT_PERIODS[-1]:
                 continue
             k = (x["USER_NAME"], x["ROLE_NAME"] or "–", client_label(x["CLIENT"]), x["OBJECT_NAME"])
-            v = cube.setdefault(k, [0, 0, 0, 0, 0, ""])
-            q = int(x["QUERIES"] or 0)
-            v[0] += q
-            v[{"READ": 1, "WRITE": 2, "DDL": 3}[x["ACTION"]]] += q
-            h = x.get("HOURS") or {}
-            v[4] += q if d.weekday() >= 5 else sum(int(n) for k2, n in h.items() if not WORK_HOURS[0] <= int(k2) < WORK_HOURS[1])
-            v[5] = max(v[5], str(x["LAST_USED"] or "")[:16])
-        return cube
-    return cached(("activity_cube", days), make)
+            q, act, last = int(x["QUERIES"] or 0), {"READ": 1, "WRITE": 2, "DDL": 3}[x["ACTION"]], str(x["LAST_USED"] or "")[:16]
+            off = q if weekend else sum(int(n) for h, n in (x.get("HOURS") or {}).items() if not WORK_HOURS[0] <= int(h) < WORK_HOURS[1])
+            for n, cube in cubes.items():
+                if age < n:
+                    v = cube.setdefault(k, [0, 0, 0, 0, 0, ""])
+                    v[0] += q
+                    v[act] += q
+                    v[4] += off
+                    v[5] = max(v[5], last)
+        return cubes
+    return cached("activity_cubes", make)[days]
 
 
 def activity_all(days, r, c, rows=11, cols=7, who=50):
@@ -6279,8 +6286,8 @@ def activity_all(days, r, c, rows=11, cols=7, who=50):
         i, j = ri[k[ra]], ci[k[ca]]
         cells[i][j] += v[0]
         off[i][j] += v[4]
-    best = sorted(cube.items(), key=lambda kv: (-kv[1][0], kv[0]))[:who]
-    return dict(total=tot[0], reads=tot[1], writes=tot[2], ddl=tot[3], off=tot[4],
+    best = heapq.nsmallest(who, cube.items(), key=lambda kv: (-kv[1][0], kv[0]))
+    return dict(total=tot[0], reads=tot[1], writes=tot[2], ddl=tot[3], off=tot[4], hours=any(x.get("HOURS") for x in acts),
                 dims={d: [dict(key=k, n=n) for k, n in xs[:12]] for d, xs in top.items()}, n={d: len(xs) for d, xs in top.items()},
                 cross=dict(r=r, c=c, rows=rn, cols=cn, cells=cells, off=off), who_total=len(cube),
                 who=[dict(zip(names, k), queries=v[0], read=v[1], write=v[2], ddl=v[3], off=v[4], last=v[5],
@@ -6472,7 +6479,7 @@ def page_sql(page, p, first=None, last=None):
     if page == "activity":
         return [plain("Who used what, with which role and client", [
             "Queries per user, role, client and object over the last DAYS days (ACCESS_HISTORY with QUERY_HISTORY and SESSIONS),",
-            "a query that reads and changes an object counted once here. No query text."], {"DAYS": 30}, """
+            "a query that reads and changes an object counted once (the page counts it as a read and a write). No query text."], {"DAYS": 30}, """
 SELECT A.USER_NAME, Q.ROLE_NAME, S.CLIENT_APPLICATION_ID, O.VALUE:"objectName"::STRING AS OBJECT_NAME,
        COUNT(DISTINCT A.QUERY_ID) AS QUERIES, MAX(A.QUERY_START_TIME) AS LAST_USED
 FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY A

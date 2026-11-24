@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { download, qs, useApi } from "../api/client";
 import type { AdminPerson, FindingRow, Refs, FindingGroup, RulesPage, StalePerson } from "../api/types";
-import { Banner, Card, DataTable, NameList, PathText, SEVERITIES, StackBar, Tabs, useCsv } from "../components";
+import { Fold, Banner, Card, DataTable, NameList, PathText, SEVERITIES, StackBar, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { rulesOff, rulesQuery, useSaved } from "./changeplan";
 import { col, Head, Load, NameLink } from "./common";
 import { PagedTable } from "./paged";
+import { severityTakeaway } from "./homedata";
+import { sevParts } from "./Home";
 import { FindingFix, firstOf, GROUP_PAGE, GroupItems, RisksTab, RuleList, skipNote } from "./Risks";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -29,7 +31,7 @@ export function RulesPageView() {
     : k === "checks" ? { show: null, part: null, sev: null, rule: null } : { show: k, part: null });
   return (
     <>
-      <Head title="Risks" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
+      <Head title="Risks" quiet={c.view !== "mine"} sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
         right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString("en-US")} rows${s.data.filters.sev ? `, ${s.data.filters.sev.toLowerCase()} only` : ""})` : ""}</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
@@ -46,15 +48,18 @@ export function RulesPageView() {
             {unknown.length > 0 && <Banner tone="warn" title="Row policies could not be read: rows are unknown for">
               <NameList items={unknown} onOpen={(o) => c.nav("object", { name: o })} /></Banner>}
             <Tabs nav active={tab} onChange={pick} tabs={[
-              { key: "checks", label: "Findings", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
+              { key: "checks", label: "To fix", count: Object.values(d.per_rule).reduce((n, x) => n + x, 0) },
               { key: "fixes", label: "Plan fixes" },
-              { key: "admins", label: "Admin holders", count: d.admins_total, tone: d.admins_total ? "bad" : null },
-              { key: "stale", label: "Dormant & disabled", count: d.stale_total, tone: d.stale_total ? "warn" : null },
+              { key: "admins", label: "Admins", count: d.admins_total, tone: d.admins_total ? "bad" : null },
+              { key: "stale", label: "Inactive", count: d.stale_total, tone: d.stale_total ? "warn" : null },
               { key: "list", label: "Rules", count: c.meta.rules.length },
             ]} />
             {(tab === "fixes" || tab === "list") && chips}
             {tab === "fixes" && <RisksTab key={scope.join()} d={d} q={q} all={all} setAll={setAll} />}
             {tab === "list" && <RuleList d={d} />}
+            {tab === "checks" && !d.filters.rule && !scope.length && <Lead d={d} />}
+            {tab === "admins" && <p className="ae-answer">{d.admins_total.toLocaleString("en-US")} {d.admins_total === 1 ? "person holds" : "people hold"} an admin role or power over the account</p>}
+            {tab === "stale" && <p className="ae-answer">{d.stale_total.toLocaleString("en-US")} inactive {d.stale_total === 1 ? "person still holds" : "people still hold"} roles</p>}
             {tab === "checks" && (
               <Card>
                 {d.filters.rule ? <RuleHead d={d} /> : chips}
@@ -81,6 +86,23 @@ export function RulesPageView() {
   );
 }
 
+/** The headline of the account: critical and high, and the findings per severity as one bar that picks. */
+function Lead({ d }: { d: RulesPage }) {
+  const c = useApp();
+  const n = (s: "Critical" | "High") => Object.values(c.meta.rule_sev?.[s] ?? {}).reduce((t, v) => t + v, 0);
+  const rules = new Set([...Object.keys(c.meta.rule_sev?.Critical ?? {}), ...Object.keys(c.meta.rule_sev?.High ?? {})]).size;
+  const all = Object.fromEntries(SEVERITIES.map((s) => [s, Object.values(c.meta.rule_sev?.[s] ?? {}).reduce((t, v) => t + v, 0)]));
+  if (!c.meta.rule_sev) return null;
+  return (
+    <>
+      <p className="ae-answer">{n("Critical").toLocaleString("en-US")} critical and {n("High").toLocaleString("en-US")} high findings, in {plural(rules, "rule")}</p>
+      <Card title={severityTakeaway(all)}>
+        <StackBar parts={sevParts(all)} on={d.filters.sev || null} onPick={(s) => c.set({ sev: s })} />
+      </Card>
+    </>
+  );
+}
+
 /** Findings: severity tabs and filters answered by the server, one group per rule (most people
  * affected first); an opened group loads its findings a page at a time, an opened finding its fix. */
 function FindingGroups({ d, q, f, setF }: {
@@ -93,11 +115,10 @@ function FindingGroups({ d, q, f, setF }: {
   if (!all && !why) return null;
   return (
     <div className="ae-findings">
-      <div>
+      <Fold label="Severity, area, search" on={!!why || sev !== "Critical"}>
         <Tabs active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
           tabs={[...SEVERITIES.filter((s) => d.sev_counts[s]).map((s) => ({ key: s, label: s, count: d.sev_counts[s], tone: s === "Medium" ? "warn" as const : s === "Low" ? null : "bad" as const })),
             { key: "All", label: "All", count: all }]} />
-      </div>
       <div className="ae-controls ae-fd-filter">
         {d.areas.length > 1 && (
           <select className="ae-input" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} aria-label="Area">
@@ -107,6 +128,7 @@ function FindingGroups({ d, q, f, setF }: {
         <input className="ae-input" placeholder="Search findings" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} aria-label="Search findings" />
         <label className="ae-check"><input type="checkbox" checked={f.people} onChange={(e) => setF({ ...f, people: e.target.checked })} /> People affected only</label>
       </div>
+      </Fold>
       {why && <p className="ae-muted ae-fd-hidden">{plural(d.total, "finding")} match {why}.</p>}
       {d.groups.map((g, i) => <Group key={`${sev}:${g.key}`} g={g} q={q} open={d.groups.length === 1 || (i === 0 && g.findings <= 5)} />)}
       {firstOf(d, d.filters.rule ? "roles and users" : "rules")}

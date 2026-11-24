@@ -15,7 +15,7 @@ export function ReviewPageView() {
   if (c.view === "mine") return <><Head title="Review & sign-off" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
   return (
     <>
-      <Head title="Review & sign-off" sub="Who can reach what, ready for sign-off." />
+      <Head title="Review & sign-off" quiet sub="Who can reach what, ready for sign-off." />
       <Tabs nav active={show} onChange={(k) => c.set(k === "grid" ? { show: null, part: null } : { show: "rows", columns: null, object: null, scope: null })} tabs={[
         { key: "grid", label: "Review grid & sign-off" },
         { key: "old", label: "Rows / CSV" },

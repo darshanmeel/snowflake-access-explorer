@@ -230,7 +230,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
             onEdgeMouseMove={(ev, edge) => place(ev, edgeTip((edge.data as EData).e, byId, shown.groups))}
             onEdgeMouseLeave={() => { setHover(null); setTip(null); }}
           >
-            <Controls showInteractive={false} position="bottom-right" />
+            <Controls showInteractive={false} position="bottom-right" orientation="horizontal" />
           </ReactFlow>
         )}
         {pans && <div className="ae-graph-hint" style={{ color: t.muted }}>Drag to see the rest</div>}

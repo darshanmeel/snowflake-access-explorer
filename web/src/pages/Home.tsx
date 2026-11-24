@@ -78,7 +78,7 @@ export function HomePageView() {
   const items = hits.items;
   const box = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const f = (e: KeyboardEvent) => { if (e.key === "/" && document.activeElement?.tagName !== "INPUT") { e.preventDefault(); box.current?.focus(); } };
+    const f = (e: KeyboardEvent) => { const at = box.current ?? document.querySelector<HTMLInputElement>(".find input"); if (e.key === "/" && at && document.activeElement?.tagName !== "INPUT") { e.preventDefault(); at.focus(); } };
     addEventListener("keydown", f);
     return () => removeEventListener("keydown", f);
   }, []);
@@ -289,7 +289,7 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
       <p className="ae-home-also">
         <span className="ae-muted">More</span>
         <button type="button" className="ae-link" onClick={() => c.nav("rules", {})}>{grantsOff ? "All findings" : `All ${total.toLocaleString("en-US")} findings`}</button>
-        <button type="button" className="ae-link" onClick={() => c.set({ show: "glance" })}>At a glance</button>
+        <button type="button" className="ae-link" onClick={() => c.set({ show: "glance" })}>At a glance, ask a question</button>
         <button type="button" className="ae-link" onClick={() => c.set({ show: "changes" })}>Changes</button>
       </p>
       </>}

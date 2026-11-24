@@ -11,7 +11,7 @@ import { PagedTable } from "./paged";
 import { PolicyNote } from "./Sensitive";
 import { linkKey } from "./signoff";
 
-const W = 200, COLX = [0, 380, 760], TOP = 28, GAP = 12, MIN = 44, NAMES = 5; // NAMES: a sample under the graph, the CSV has everyone
+const W = 190, COLX = [0, 330, 660], TOP = 28, GAP = 12, MIN = 44, NAMES = 5; // NAMES: a sample under the graph, the CSV has everyone
 const TONE: Record<string, string> = { active: "var(--ae-accent)", risky: "var(--ae-warn_ink)", admin: "var(--ae-lvl_admin_bg)", service: "var(--ae-line_strong)" };
 const plural = (n: number, w: string, m = `${w}s`) => `${n} ${n === 1 ? w : m}`;
 
@@ -20,7 +20,7 @@ export function FlowPageView() {
   const s = useApi<FlowPage>("flow", apiParams(c));
   return (
     <>
-      <Head title="Where sensitive data flows" sub="People → granted role → sensitive object." />
+      <Head title="Where sensitive data flows" quiet sub="People → granted role → sensitive object." />
       <Load s={s}>{(d) => d.state !== "ok"
         ? <Banner tone="info" title="Nothing to show" lines={[d.state === "mine" ? "The flow needs the shared snapshot: it is about everyone." : "No object carries a sensitive tag."]} />
         : <Flow d={d} />}</Load>
@@ -40,12 +40,12 @@ function sub(n: FlowNode, col: number, off: boolean): string {
 /** Tables first: on a big account the drawing has thousands of boxes and lines, so it opens only on a click. */
 function Flow({ d }: { d: FlowPage }) {
   const c = useApp();
-  const show = c.params.show === "graph" || c.params.show === "roles" ? c.params.show : "objects"; // show=table: the old Tables tab
+  const show = c.params.show === "graph" || c.params.show === "objects" ? c.params.show : "roles";
   return (
     <>
       <PolicyNote />
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "objects" ? null : k })} tabs={[
-        { key: "objects", label: "Objects" }, { key: "roles", label: "Roles", count: d.roles_total }, { key: "graph", label: "Graph" }]} />
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "roles" ? null : k })} tabs={[
+        { key: "roles", label: "Roles" }, { key: "objects", label: "Objects" }, { key: "graph", label: "Graph" }]} />
       {show === "objects" ? <Objects d={d} /> : show === "roles" ? <Roles d={d} /> : d.follow ? <Body d={d} /> : <Waiting />}
     </>
   );
@@ -77,13 +77,26 @@ function Objects({ d }: { d: FlowPage }) {
 
 function Roles({ d }: { d: FlowPage }) {
   const c = useApp();
+  const all = d.groups.reduce((n, g) => n + g.count, 0), idle = d.groups.find((g) => g.id === "risky")?.count ?? 0;
+  const first = d.roles_offset ? [] : d.roles_all.slice(0, 10), top = first.find((r) => r.kind !== "admin") ?? first[0];
+  const most = Math.max(1, ...first.map((r) => r.count));
   return (
+    <>
+    {top && <p className="ae-answer"><span className="ae-mono">{top.id}</span> brings in {top.count.toLocaleString("en-US")} of the {all.toLocaleString("en-US")} readers</p>}
+    {first.length > 0 && <Card title={`${idle.toLocaleString("en-US")} of the ${all.toLocaleString("en-US")} are inactive`}>
+      <div className="ae-hbars">{first.map((r) => (
+        <div key={r.id} className="ae-hbar ae-flowbar"><button type="button" className="ae-link ae-area-name ae-mono" title={r.id} disabled={r.kind === "admin"} onClick={() => c.nav("access", { role: r.id })}>{r.id}</button>
+          <span className="ae-area-track" style={{ width: `${(100 * r.count) / most}%` }}><span style={{ flex: 1, background: r.kind === "admin" ? "var(--ae-lvl_admin_bg)" : "var(--ae-accent)" }} /></span>
+          <span className="ae-flowbar-n">{plural(r.count, "person", "people")} · {plural(r.objects, "object")}</span></div>))}</div>
+      {d.roles_total > first.length && <p className="ae-muted">The {first.length} with the most people of {d.roles_total.toLocaleString("en-US")}; a person can come in through several.</p>}
+    </Card>}
     <Card title={`Roles that lead there · ${d.roles_total}`} sub="Every role people were granted that reaches sensitive data, the people holding it and the sensitive objects it reaches; most people first">
       <PagedTable path="flow" at="e_offset" total={d.roles_total} offset={d.roles_offset} pick={(x: FlowPage) => x.roles_all} csv="sensitive_roles.csv"
         rows={d.roles_all} onRowClick={(r: Role) => r.kind !== "admin" && c.nav("access", { role: r.id })}
         columns={[col("r", "Role", (r: Role) => r.id, { wrap: "wrap" }), col("k", "Kind", (r: Role) => r.kind),
           col("p", "People", (r: Role) => r.count, { num: true }), col("o", "Sensitive objects", (r: Role) => r.objects, { num: true })]} />
     </Card>
+    </>
   );
 }
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { download, useApi } from "../api/client";
 import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, WhatIfPage, WhatIfUser, WhatIfUserRows } from "../api/types";
-import { Banner, Card, DataTable, EmptyState, KpiRow, Tabs, useCsv } from "../components";
+import { Card, DataTable, EmptyState, KpiRow, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
 import { col, Controls, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
 import { LoseKeep, LossGroups, PlanTab, Wider } from "./Plan";
@@ -136,7 +136,7 @@ function Result({ d }: { d: WhatIfPage }) {
   ];
   return (
     <>
-      <Banner tone={k.unreached || k.orphans ? "warn" : "info"} title="If these changes were made" lines={[d.summary]} />
+      <p className="ae-answer">{k.users ? `${k.users.toLocaleString("en-US")} ${k.users === 1 ? "person loses" : "people lose"} access to ${k.objects.toLocaleString("en-US")} ${k.objects === 1 ? "object" : "objects"}` : "Nobody loses access"}</p>
       <Wider d={d} />
       <KpiRow items={[
         { label: "Users lose access", value: k.users, caption: `${k.kept} keep some of it another way` },
@@ -212,7 +212,7 @@ export function WhatIfPageView() {
   const csvOn = useCsv();
   return (
     <>
-      <Head title="Change plan" sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake."
+      <Head title="Change plan" quiet sub="Take grants away in a simulation and see who loses what. Nothing changes in Snowflake."
         right={<>
           {csvOn && list.length > 0 && <button className="ae-btn" onClick={() => download("whatif.csv", apiParams(c), "what_if.csv")}>Download CSV</button>}
           <button className="ae-btn" onClick={() => c.nav("rules", { show: "fixes" })}>← Risks</button></>} />
@@ -222,7 +222,7 @@ export function WhatIfPageView() {
       ]} />
       {show === "plan" && <PlanTab fromUrl={list} />}
       {show === "changes" && <>
-      <Card title="Changes" right={list.length > 0 && <button className="ae-btn" onClick={() => { plan.set(addTo(plan.get(), list)); c.set({ show: "plan" }); }}>Add to the change plan</button>}>
+      <Card title="Add a change" right={list.length > 0 && <button className="ae-btn" onClick={() => { plan.set(addTo(plan.get(), list)); c.set({ show: "plan" }); }}>Add to the change plan</button>}>
         <Builder onAdd={(ch) => put([...list.filter((x) => text(x) !== text(ch)), ch])} />
         {list.length > 0
           ? <div className="ae-chips">{list.map((x) => (

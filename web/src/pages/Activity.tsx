@@ -7,7 +7,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApi } from "../api/client";
 import type { ActivityBy, ActivityKey, ActivityPage, ActivityRow, ActivitySensitive } from "../api/types";
-import { Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips, NameList, Pager } from "../components";
+import { Fold, Banner, Card, CodeOutput, copyText, DataTable, DayStack, EmptyState, FilterChips, NameList, Pager } from "../components";
 import { useApp } from "../ctx";
 import { col, GraphCard, Load } from "./common";
 
@@ -131,7 +131,7 @@ function TileList({ items, onItem, more }: { items: { key: string; n: number }[]
 function Activity({ d: raw }: { d: ActivityPage }) {
   const c = useApp();
   const [work, setWork] = useState<Work>({ ...(raw.work ?? { start: 7, end: 19 }), tz: 0 });
-  const [period, setPeriod] = useState("30"); // days back; the whole window is the last choice
+  const [period, setPeriod] = useState((raw.days ?? 60) > 30 ? "30" : String(raw.days ?? 60)); // days back; the whole window is the last choice
   const [more, setMore] = useState(false);
   const all = raw.days ?? 60, from = Math.max(0, all - Number(period));
   // everything below sees the rows of the period in business time: days, hours, weekends and off-hours follow the slider
@@ -164,9 +164,9 @@ function Activity({ d: raw }: { d: ActivityPage }) {
   );
   const objs = d.by!.object.length, total = d.daily!.reduce((a, v) => a + v, 0);
   const one = d.what === "object" || d.what === "app";
-  const days = Number(period);
+  const days = Math.min(Number(period), all);
   const periods = <FilterChips label="Period" value={period} onPick={setPeriod}
-    items={[["7", "Last 7 days"], ["30", "Last month"], [String(all), `Last ${all} days`]].map(([key, label]) => ({ key, label }))} />;
+    items={([["7", "Last 7 days"], ["30", "Last month"], [String(all), `Last ${all} days`]] as const).filter(([k], i) => i === 2 || Number(k) < all).map(([key, label]) => ({ key, label }))} />;
   return (
     <SectionSql.Provider value={secSql}>
     <div className="ae-log">
@@ -177,17 +177,19 @@ function Activity({ d: raw }: { d: ActivityPage }) {
       {!rows.length ? <p className="ae-log-lead">No use in the last {days} days. Pick a longer period above.</p> : <>
       <p className="ae-log-lead">{lead(d, objs, total, days)}</p>
       {d.what === "app" ? <AppViewers d={d} /> : <Brief d={d} work={work} days={days} />}
+      <Fold label={`Business time ${tzl(work)}`} on={work.tz !== 0}>
+      <div className="ae-log-bar-top">
+        <label className="ae-log-slide ae-log-biz"><span className="ae-log-tl">Business time</span><b>{tzl(work)}</b>
+          <input type="range" min={-12} max={14} value={work.tz} aria-label="Business time, hours from UTC" onChange={(e) => setWork({ ...work, tz: +e.target.value })} />
+          <span className="ae-muted">{hh(work.start)}–{hh(work.end)} local, Monday to Friday · moves every day, hour, weekend and off-hours count on this tab (stored in UTC)</span></label>
+      </div>
+      </Fold>
       <WithWhat d={d} work={work} open={open} />
       <WhoUsed d={d} work={work} open={open} />
       {d.findings!.length > 0 && <Checks d={d} />}
       <details className="ae-log-more" open={more} onToggle={(e) => setMore((e.currentTarget as HTMLDetailsElement).open)}>
         <summary>More detail <span className="ae-muted">when: per day and hour · off-hours · each object · sensitive data seen · grant paths · every query</span></summary>
       {more && <div className="ae-log">
-      <div className="ae-log-bar-top">
-        <label className="ae-log-slide ae-log-biz"><span className="ae-log-tl">Business time</span><b>{tzl(work)}</b>
-          <input type="range" min={-12} max={14} value={work.tz} aria-label="Business time, hours from UTC" onChange={(e) => setWork({ ...work, tz: +e.target.value })} />
-          <span className="ae-muted">{hh(work.start)}–{hh(work.end)} local, Monday to Friday · moves every day, hour, weekend and off-hours count on this tab (stored in UTC)</span></label>
-      </div>
       <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} · days and hours in business time {tzl(work)} · reads, writes and DDL · no query text
         {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}
         {!!d.likely && ` · ${fmt(d.likely)} likely: they name no app, but ran as its owner role, which the user does not hold (another app or owner's-rights code of that role looks the same)`}</p>
@@ -264,10 +266,13 @@ function WithWhat({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
 
 function lead(d: ActivityPage, objs: number, total: number, days: number): ReactNode {
   const n = <span className="ae-mono">{d.name}</span>;
-  if (d.what === "object") return <>{n} was read{d.by!.object[0]?.write ? " and changed" : ""} {fmt(total)} times in {days} days{d.ddl!.length ? ", and its definition changed" : ""}.</>;
+  const top = (k: ActivityKey) => { const b = d.by![k][0]; return b && total ? { key: b.key, pc: Math.round((100 * sum(b)) / total) } : null; };
+  const u = top("user"), ob = top("object");
+  if (d.what === "object" && u) return <><span className="ae-mono">{u.key}</span> makes {u.pc}% of the queries on {d.name.split(".").pop()}</>;
   if (d.what === "app") return <>The app {n} ran {fmt(total)} queries on {plural(objs, "object")} for {plural(d.by!.user.length, "user")} in {days} days, with its owner's rights.</>;
   if (d.what === "scope") return <>{plural(objs, "object")} in {d.kind?.toLowerCase()} {n} {objs === 1 ? "was" : "were"} read or changed {fmt(total)} times in {days} days.</>;
-  return <>{n} read or changed {plural(objs, "object")} {fmt(total)} times in {days} days{d.what === "role" ? " (queries run with this role)" : ""}.</>;
+  if (d.what === "role") return <>{n} was used by {plural(d.by!.user.length, "user")} on {plural(objs, "object")}</>;
+  return <>{n} used {plural(objs, "object")}{ob && <>, mostly {ob.key.split(".").pop()} ({ob.pc}%)</>}</>;
 }
 
 function Tiles({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) {
@@ -445,7 +450,7 @@ export function Heat({ corner, colName, rows: allRows, cols: allCols, value: cel
   const rt = (r: string) => cols.reduce((n, c) => n + value(r, c), 0), ct = (c: string) => rows.reduce((n, r) => n + value(r, c), 0);
   const total = rows.reduce((n, r) => n + rt(r), 0);
   const weekend = (c: string) => days && [0, 6].includes(new Date(c + "T00:00:00Z").getUTCDay());
-  if (!days && (allRows.length === 1 || allCols.length === 1)) { // one row or one column: a grid says nothing a sentence or bars cannot
+  if (!days && !offCell && (allRows.length === 1 || allCols.length === 1)) { // one row or one column: bars say it better
     const one = allRows.length === 1, line = one ? allCols : allRows;
     const n = (x: string) => (one ? cell(allRows[0], x) : cell(x, allCols[0]));
     const max = Math.sqrt(Math.max(1, ...line.map(n)));
@@ -456,7 +461,7 @@ export function Heat({ corner, colName, rows: allRows, cols: allCols, value: cel
         {line.length > 1 && <div className="ae-hbars">{line.map((x) => (
           <div key={x} className="ae-hbar"><span className="ae-area-name ae-mono" title={x}>{x}</span>
             <span className="ae-area-track" style={{ width: `${(100 * Math.sqrt(n(x))) / max}%`, background: color }} />
-            <b className="ae-area-n">{fmt(n(x))}{offCell && (one ? offCell(allRows[0], x) : offCell(x, allCols[0])) > 0 && <span className="ae-bad" title="outside business hours"> {fmt(one ? offCell(allRows[0], x) : offCell(x, allCols[0]))}</span>}</b></div>))}</div>}
+            <b className="ae-area-n">{fmt(n(x))}</b></div>))}</div>}
       </div>
     );
   }
@@ -470,7 +475,7 @@ export function Heat({ corner, colName, rows: allRows, cols: allCols, value: cel
           {rows.map((r) => <tr key={r} className={r === ro ? "other" : undefined}><th className="ae-mono">{rowHead && r !== ro ? rowHead(r) : r}</th>
             {cols.map((c) => { const v = value(r, c);
               return <td key={c} title={`${r} · ${days ? c : c}: ${fmt(v)}`} className={weekend(c) ? "wk" : ""}
-                style={{ background: v ? `color-mix(in srgb, ${color} ${12 + (78 * v) / top}%, var(--ae-panel))` : undefined, color: v / top > 0.55 ? "#fff" : undefined }}>
+                style={{ background: v ? `color-mix(in srgb, ${color} ${off ? 8 + (34 * v) / top : 12 + (78 * v) / top}%, var(--ae-panel))` : undefined, color: !off && v / top > 0.55 ? "#fff" : undefined }}>
                 {days ? "" : v ? fmt(v) : "·"}{off && off(r, c) > 0 && <em className="ae-log-offn2" title="outside business hours">{fmt(off(r, c))}</em>}</td>; })}
             <td className="tot"><b>{fmt(rt(r))}</b> <span className="ae-muted">{total ? Math.round((100 * rt(r)) / total) : 0}%</span></td></tr>)}
           <tr className="sum"><th>Total</th>{cols.map((c) => <td key={c}>{days ? "" : <b>{fmt(ct(c))}</b>}</td>)}<td className="tot"><b>{fmt(total)}</b></td></tr>

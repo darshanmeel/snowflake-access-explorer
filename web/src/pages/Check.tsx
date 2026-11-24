@@ -5,10 +5,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { CheckPage, Inside, ListItem, Path, Refs } from "../api/types";
-import { Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, NameList, Pager, Tabs } from "../components";
+import { Fold, Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, NameList, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { accessLines, cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, usedAnyway, verdictLine, warehouseNote } from "./verdict";
 import { BuiltinNote, col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Risks, Sel, StateTag } from "./common";
+import { UseLine } from "./Activity";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
 export function CheckPageView() {
@@ -19,7 +20,7 @@ export function CheckPageView() {
   const s = useApi<CheckPage>(name ? "check" : null, { ...apiParams(c), ...(asked.role ? { role: name } : { name }) });
   return (
     <>
-      <h2 className="ae-h1">Can they?</h2>
+      <h2 className="ae-sr">Can they?</h2>
       <div className="ae-ask" role="group" aria-label="Question">
         <span className="ae-ask-w">Can</span>
         {mine ? <span className="ae-mono ae-ask-w">{s.data?.user ?? "you"}</span>
@@ -46,6 +47,7 @@ function Body({ d }: { d: CheckPage }) {
   const tabs = [
     ...(d.inside ? [{ key: "inside", label: "Inside", count: d.inside.total }] : []),
     { key: "answer", label: "Answer" },
+    ...(d.lanes_total && d.view !== "mine" ? [{ key: "cut", label: "Take it away" }] : []),
     ...(d.lanes_total ? [{ key: "routes", label: "Routes", count: d.lanes_total }] : []),
     ...(d.verdict === "no" ? [{ key: "nearest", label: "Ways in", count: d.nearest?.length ?? null }] : []),
     ...(d.layers || d.read ? [{ key: "layers", label: "Rows & columns", tone: d.verdict === "partly" ? ("warn" as const) : null }] : []),
@@ -58,15 +60,18 @@ function Body({ d }: { d: CheckPage }) {
       <section className={`ae-verdict ae-verdict-${d.verdict}`} aria-label="Answer">
         <div className="ae-verdict-head">
           <span className="ae-verdict-mark" aria-hidden>{MARK[d.verdict]}</span>
+          <div className="ae-verdict-word">{WORD[d.verdict]}</div>
           <div>
-            <div className="ae-verdict-word">{WORD[d.verdict]}{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}{d.dormant_days ? ` · no login for ${d.dormant_days} days` : ""}</span>}
+            {accessLines(d).slice(0, 1).map((t) => <b key={t} className="ae-verdict-kind">{t.replace(/\.$/, "")}</b>)}
+            <div>{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}{d.dormant_days ? ` · no login for ${d.dormant_days} days` : ""}</span>}
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
             <div className="ae-verdict-line">{answerLine(d)}</div>
-            {accessLines(d).map((t, i) => <div key={t} className={i ? "ae-muted" : undefined}>{i || !d.access?.words ? t : <b>{t}</b>}</div>)}
+            {accessLines(d).slice(1).map((t) => <div key={t} className="ae-muted">{t}</div>)}
             <UsedLine d={d} />
-            {d.verdict !== "na" && <WarehouseLine d={d} />}
           </div>
         </div>
+        <Fold label="Privileges held, warehouses">
+        {d.verdict !== "na" && <WarehouseLine d={d} />}
         <ul className="ae-privrow" aria-label={`Privileges on ${d.object}`}>
           {(all ? d.held : d.held.filter((p) => p.held || p.privilege === d.priv)).map((p) => (
             <li key={p.privilege} className={p.held ? "on" : ""}>
@@ -80,14 +85,16 @@ function Body({ d }: { d: CheckPage }) {
           ))}
           {lacks > 0 && <li className="more"><button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `${lacks} not held`}</button></li>}
         </ul>
+        </Fold>
       </section>
       <Tabs nav active={at} onChange={(k) => c.set({ show: k === first ? null : k, part: null })} tabs={tabs} />
       {at === "inside" && d.inside && <InsideCard d={d} x={d.inside} />}
       {at === "answer" && <Answer d={d} />}
       {at === "routes" && <Routes d={d} />}
+      {at === "cut" && <Routes d={d} only="cut" />}
       {at === "nearest" && <NearestWays d={d} />}
       {at === "layers" && <Layers d={d} />}
-      <Risks list={d.risks} quiet />
+      {d.verdict !== "no" && <Risks list={d.risks} quiet />}
     </>
   );
 }
@@ -188,16 +195,16 @@ function Lane({ path, grant, refs, cut = [], missing, user = true }: { path: Pat
   );
 }
 
-function Routes({ d }: { d: CheckPage }) {
+function Routes({ d, only }: { d: CheckPage; only?: string }) {
   const c = useApp();
   const [sel, setSel] = useState(0);
   const cut = d.cuts[sel];
   const tabs = [{ key: "routes", label: "Routes", count: d.lanes_total }, { key: "cut", label: "Where to cut", count: d.cuts.length },
     { key: "table", label: "Table", count: d.paths_total ?? d.paths.length }];
-  const part = tabs.some((t) => t.key === c.params.part) ? c.params.part : "routes";
+  const part = only ?? (tabs.some((t) => t.key === c.params.part) ? c.params.part : "routes");
   return (
     <>
-      <Tabs nav={2} active={part} onChange={(k) => c.set({ part: k === "routes" ? null : k })} tabs={tabs} />
+      {!only && <Tabs nav={2} active={part} onChange={(k) => c.set({ part: k === "routes" ? null : k })} tabs={tabs} />}
       {part === "routes" && <Card title="How the access gets there" sub={`One lane per route, read left to right${d.lanes_total > d.lanes.length ? ` · first ${d.lanes.length} of ${d.lanes_total}` : ""}`}>
         <div className="ae-routes">
           {d.lanes.map((l, i) => <Lane key={i} path={l.path} grant={l.privileges.join(", ")} refs={d.refs} cut={d.cut} user={d.subject.user} />)}
@@ -208,7 +215,7 @@ function Routes({ d }: { d: CheckPage }) {
         </div>
       </Card>}
       {part === "cut" && (
-        <Card title="Where to cut" sub={d.cuts.length ? "Removing one of these links removes this access. The side effects differ."
+        <Card title={d.cuts.length ? `${d.cuts.length} ${d.cuts.length === 1 ? "place" : "places"} to take it away` : "Take it away"} sub={d.cuts.length ? "Removing one of these links removes this access. The side effects differ."
           : d.view === "mine" ? "Not worked out in My access: it needs everyone's grants." : "No single link is on every route: each route needs its own cut, below."}>
           <ul className="ae-cuts">
             {d.cuts.map((x, i) => (
@@ -406,8 +413,10 @@ export function Blocked({ d, fix }: { d: CheckPage; fix: { iac: string; sql: str
 
 /** The answer tab: the nearest way in (No), why it is blocked, the graph of how the access gets there. Without
  * routes (no Routes tab) the table of routes and the ways to remove it stay here. */
+/** "2 of 3 columns in clear" */
+const columnsTitle = (cs: { state: string }[]) => `${cs.filter((x) => x.state === "clear").length} of ${cs.length} ${cs.length === 1 ? "column" : "columns"} in clear`;
+
 function Answer({ d }: { d: CheckPage }) {
-  const c = useApp();
   const a = d.answer;
   if (d.verdict === "na") return null;
   return (
@@ -419,13 +428,16 @@ function Answer({ d }: { d: CheckPage }) {
         </Card>
       )}
       <CutBanner capped={d.capped} no={d.verdict === "no"} />
-      <GraphCard g={d.graph} refs={d.refs} />
+      <GraphCard g={d.graph} refs={d.refs} title={d.lanes_total === 1 && d.lanes[0] ? `They get in through ${d.lanes[0].path.length - 2} ${d.lanes[0].path.length === 3 ? "role" : "roles"}` : d.lanes_total ? `They get in ${d.lanes_total} ways` : undefined} />
       {!d.lanes_total && <RouteTable d={d} />}
-      {(a.yes || d.verdict === "blocked") && d.lanes_total > 0 && d.view !== "mine" && (
-        <p className="ae-cutlink">
-          To take this access away, see <button type="button" className="ae-link" onClick={() => c.set({ show: "routes", part: "cut" })}>Routes › Where to cut</button>:{" "}
-          {d.cuts.length ? `${d.cuts.length} place${d.cuts.length === 1 ? "" : "s"} to cut, each with its side effects and the text to apply.` : "each route needs its own cut."}
-        </p>
+      {a.yes && d.view !== "mine" && (
+        <div className="ae-two">
+          {d.read && d.read.columns.length > 0 && <Card title={columnsTitle(d.read.columns)}>
+            <DataTable rows={d.read.columns} filter={false}
+              columns={[col("c", "Column", (r: any) => r.column), col("s", "They see", (r: any) => r.state, { render: (r: any) => StateTag(r) }), col("r", "Why", (r: any) => r.reason, { wrap: "wrap" })]} />
+          </Card>}
+          {d.subject.user && <Card title="Used by them"><UseLine name={d.object} user={d.user} /></Card>}
+        </div>
       )}
       {d.options.length > 0 && !d.lanes_total && <Card title="Ways to remove this access" sub="Text to copy into your infrastructure as code. This app never runs it."><RemoveOptions d={d} /></Card>}
     </>

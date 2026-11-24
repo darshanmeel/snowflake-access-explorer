@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole, WhoState } from "../api/types";
-import { Banner, Card, Chips, DataTable, EmptyState, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
+import { Fold, Banner, Card, Chips, DataTable, EmptyState, Figs, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { BuiltinNote, col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Risks, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
@@ -37,10 +37,10 @@ export function ObjectPageView() {
       <div className="ae-headrow">
         <div className="ae-h1 ae-h1-pick">
           {admin ? "Who holds an admin role" : <>Who has access to
-            <Sel label="Type" value={c.params.type ?? ""} onPick={(v) => c.set({ type: v || null })}
-              options={[["", "Any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id])]} />
             <Pick label="Object" value={id} width={360} what="objects" params={{ type }}
-              onPick={(v) => c.nav("object", { name: v, ...(type && { type }), ...(c.params.builtin && { builtin: c.params.builtin }), ...(c.params.as && { as: c.params.as }), ...(c.params.show && { show: c.params.show }) })} /></>}
+              onPick={(v) => c.nav("object", { name: v, ...(type && { type }), ...(c.params.builtin && { builtin: c.params.builtin }), ...(c.params.as && { as: c.params.as }), ...(c.params.show && { show: c.params.show }) })} />
+            <Sel label="Type" value={c.params.type ?? ""} onPick={(v) => c.set({ type: v || null })}
+              options={[["", "any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id.toLowerCase()])]} /></>}
         </div>
       </div>
       <Load s={s}>{(d) => <Who d={d} />}</Load>
@@ -72,10 +72,35 @@ function Who({ d }: { d: WhoPage }) {
     o.masking.length > 0 && <span key="mask" className="ae-otag" title={o.masking.join(", ")}>{o.masking.length} masking polic{o.masking.length === 1 ? "y" : "ies"}</span>,
     ...o.row_policies.map((p) => <span key={`r${p}`} className="ae-otag">Row policy {p.split(".").pop()}</span>),
   ].filter(Boolean);
+  const bare = d.columns.filter((x) => !x.policies.length).length;
   const lvl2 = (tabs: { key: string; label: string; count?: number }[], first: string) => // counts only the who page knows: none that come later
     <Tabs nav={2} active={part} onChange={(k) => c.set({ show, part: k === first ? null : k })} tabs={tabs} />;
   return (
     <>
+      <BuiltinNote b={d.builtin} />
+      {d.app && <AppNote app={d.app} />}
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === (admin ? "detail" : "people") ? null : k, part: null })} tabs={[
+        ...(admin ? [{ key: "detail", label: "Admin holders table" }] : []),
+        { key: "people", label: "Who", count: d.counts.people },
+        ...(cols ? [{ key: "columns", label: "Columns" }] : []),
+        ...(admin ? [] : [{ key: "detail", label: "Graph & trace" }]),
+        ...(admin ? [] : [{ key: "activity", label: "Activity" }, { key: "history", label: "History" }]),
+      ]} />
+      {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} part="summary" />)}
+      {show === "people" && <>
+        {!admin && <Answer d={d} />}
+        {part === "level" ? <><List d={d} /><For d={d} /><UsedNoGrant d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
+        {!admin && lvl2([{ key: "level", label: "Who and how" }, { key: "who", label: "By path" }, { key: "users", label: "Users × privileges" }], "level")}
+      </>}
+      {show === "columns" && <>
+        {d.columns.length > 0 && <p className="ae-answer">{bare} of {plural(d.columns.length, "sensitive column")} {bare === 1 ? "has" : "have"} no mask</p>}
+        <Detail id={o.id ?? ""} part={part} />
+        {part === "sens" && d.columns.length > 0 && <Fold label="How many see each column"><ColumnsCard d={d} /></Fold>}
+        {d.by_role && lvl2([{ key: "sens", label: "Per column" }, { key: "sees", label: "By role" }], "sens")}
+      </>}
+      {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} user={c.params.as} />}
+      {show === "history" && <ChangeFeed subject={o.id ?? ""} />}
+      {(show === "people" || show === "detail") && <Risks list={d.risks} />}
       <div className="ae-objhead">
         <div>
           {o.database && <div className="ae-muted ae-crumb">{[o.database, o.schema].filter(Boolean).join(" › ")} ›</div>}
@@ -86,29 +111,6 @@ function Who({ d }: { d: WhoPage }) {
         </div>
         {csvOn && <button type="button" className="ae-btn" onClick={save}>Export CSV</button>}
       </div>
-      <BuiltinNote b={d.builtin} />
-      {d.app && <AppNote app={d.app} />}
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === (admin ? "detail" : "people") ? null : k, part: null })} tabs={[
-        ...(admin ? [{ key: "detail", label: "Admin holders table" }] : []),
-        { key: "people", label: "Who", count: d.counts.people },
-        ...(cols ? [{ key: "columns", label: "Columns" }] : []),
-        ...(admin ? [] : [{ key: "detail", label: "Graph" }]),
-        ...(admin ? [] : [{ key: "activity", label: "Activity" }, { key: "history", label: "History" }]),
-      ]} />
-      {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} part="summary" />)}
-      {show === "people" && <>
-        {!admin && <Answer d={d} />}
-        {!admin && lvl2([{ key: "level", label: "By level", count: d.counts.people }, { key: "who", label: "By path" }, { key: "users", label: "Users × privileges" }], "level")}
-        {part === "level" ? <><For d={d} /><List d={d} /><UsedNoGrant d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
-      </>}
-      {show === "columns" && <>
-        {lvl2([{ key: "sens", label: "Sensitivity" }, ...(d.by_role ? [{ key: "sees", label: "By role" }] : [])], "sens")}
-        {part === "sens" && d.columns.length > 0 && <ColumnsCard d={d} />}
-        <Detail id={o.id ?? ""} part={part} />
-      </>}
-      {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} user={c.params.as} />}
-      {show === "history" && <ChangeFeed subject={o.id ?? ""} />}
-      {(show === "people" || show === "detail") && <Risks list={d.risks} />}
     </>
   );
 }
@@ -119,12 +121,16 @@ function Answer({ d }: { d: WhoPage }) {
   if (!n.people) return null;
   const idle = n.disabled + n.dormant;
   return (
+    <>
     <p className="ae-answer">
-      <b>{plural(n.people, "user")}</b> {n.people === 1 ? "has" : "have"} access to <span className="ae-mono">{d.object.name}</span>
-      {lv("admin") > 0 && <>, <b>{lv("admin")} of them through an admin role</b></>}
-      {lv("own") + lv("change") > 0 && <>. {lv("own") > 0 && <><b>{lv("own")}</b> {lv("own") === 1 ? "owns" : "own"} it</>}{lv("own") > 0 && lv("change") > 0 && ", "}{lv("change") > 0 && <><b>{lv("change")}</b> can change it</>}</>}
-      {idle > 0 && <>. <b className="ae-bad">{idle} {idle === 1 ? "is" : "are"} dormant or disabled</b></>}.
+      {plural(n.people, "user")} can reach <span className="ae-mono">{d.object.name}</span>{lv("admin") > 0 && <>, {lv("admin")} of them only as {lv("admin") === 1 ? "admin" : "admins"}</>}
     </p>
+    <Figs items={[
+      { key: "all", n: n.people.toLocaleString("en-US"), text: n.people === 1 ? "user can reach it" : "users can reach it", note: lv("admin") ? `${lv("admin").toLocaleString("en-US")} through an admin role` : undefined },
+      { key: "change", n: (lv("own") + lv("change") + lv("admin")).toLocaleString("en-US"), text: "can do more than read", note: [lv("admin") && `${lv("admin")} admin`, lv("own") && `${lv("own")} own`, lv("change") && `${lv("change")} change`].filter(Boolean).join(", ") || "read only" },
+      { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: idle ? "dormant or disabled" : undefined },
+    ]} />
+    </>
   );
 }
 
@@ -390,7 +396,7 @@ export function ObjectDetail({ part }: { part: string }) {
   return (
     <>
       <Head title="Object" sub="Who can reach a table, view or other object, and how." />
-      {(part === "summary" || part === "users") && <Controls>
+      {part === "users" && <Controls>
         <Tog label="Active users only" on={c.params.active === "1"} onPick={(v) => c.set({ active: v ? "1" : null })} />
         <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} />
         {s.data && <Sel label="Privilege" value={c.params.priv ?? ""} onPick={(v) => c.set({ priv: v })}
@@ -401,6 +407,15 @@ export function ObjectDetail({ part }: { part: string }) {
         return (
           <>
             {part === "summary" && <>  {/* the counts, owner, admin reach and paths diagram; the other parts are tables */}
+              <p className="ae-answer">{(k.people + k.disabled + k.service).toLocaleString("en-US")} people and services come in to <span className="ae-mono">{d.object.name}</span> through {k.roles.toLocaleString("en-US")} {k.roles === 1 ? "role" : "roles"}</p>
+              <CutBanner capped={d.capped} />
+              <GraphCard g={d.graph} refs={d.refs} title="Every way in" />
+              <Fold label="Owner, admin roles, filters" on={c.params.active === "1" || c.params.users === "1" || !!c.params.priv}>
+              <Controls>
+                <Tog label="Active users only" on={c.params.active === "1"} onPick={(v) => c.set({ active: v ? "1" : null })} />
+                <Tog label="Users only" on={c.params.users === "1"} onPick={(v) => c.set({ users: v ? "1" : null })} />
+                <Sel label="Privilege" value={c.params.priv ?? ""} onPick={(v) => c.set({ priv: v })} options={[["", "Any"], ...d.object.privileges.map((p): [string, string] => [p, p])]} />
+              </Controls>
               <Card>
                 <KpiRow items={[
                   { label: "Users with access", value: k.people + k.disabled + k.service + k.admin, caption: `${k.people} people · ${k.disabled} disabled · ${k.service} service · ${k.admin} only through an admin role`, tone: k.admin ? "bad" : null },
@@ -415,8 +430,7 @@ export function ObjectDetail({ part }: { part: string }) {
               {d.admin_roles.length > 0 && <Banner tone="bad" title={`Admin roles reach this object: ${d.admin_users} user(s)`} lines={d.admin_roles.slice(0, 3).map((g) => <AdminRoleLine key={g.role} g={g} refs={d.refs} />)}>
                 {d.admin_roles.length > 3 && <button type="button" className="ae-link" onClick={() => c.nav("object", { preset: "admin" })}>Every path: Who holds an admin role</button>}
               </Banner>}
-              <CutBanner capped={d.capped} />
-              <GraphCard g={d.graph} refs={d.refs} />
+              </Fold>
             </>}
             {part === "sens" && d.sensitivity && (
               <Card title="Sensitivity" sub={`${d.sensitivity.readers.people} people can read it (${d.sensitivity.readers.admin} admin, ${d.sensitivity.readers.service} service)`}>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { GridPage } from "../api/types";
-import { Card, EmptyState, LEVEL_WORD, ListToolbar, Tabs, Toggle, useCsv } from "../components";
+import { Fold, Card, EmptyState, LEVEL_WORD, ListToolbar, Tabs, Toggle, useCsv } from "../components";
 import { download } from "../components/table";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { addTo, plan, saved, useSaved } from "./changeplan";
@@ -20,8 +20,8 @@ function Dec({ who, v, pick, hint }: { who: string; v?: Decision; pick: (v: Deci
   return (
     <span className="ae-rgrid-dec">
       <span className="ae-row0" role="group" aria-label={`Decision for ${who}`}>
-        <button type="button" className={`ae-btn ae-dec${v === "keep" ? " ae-dec-keep" : ""}`} aria-pressed={v === "keep"} aria-label={`Keep ${who}`} title="Keep" onClick={() => pick("keep")}>✓</button>
-        <button type="button" className={`ae-btn ae-dec${v === "revoke" ? " ae-dec-revoke" : ""}`} aria-pressed={v === "revoke"} aria-label={`Revoke ${who}`} title="Revoke" onClick={() => pick("revoke")}>✕</button>
+        <button type="button" className={`ae-btn ae-dec${v === "keep" ? " ae-dec-keep" : ""}`} aria-pressed={v === "keep"} aria-label={`Keep ${who}`} title="Keep" onClick={() => pick("keep")}>Keep</button>
+        <button type="button" className={`ae-btn ae-dec${v === "revoke" ? " ae-dec-revoke" : ""}`} aria-pressed={v === "revoke"} aria-label={`Revoke ${who}`} title="Revoke" onClick={() => pick("revoke")}>Revoke</button>
       </span>
       {hint && <span className="ae-warn-word ae-small">{hint}</span>}
     </span>
@@ -79,10 +79,10 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
     <>
       <div className="ae-headrow">
         <p className="ae-answer">
-          <b>{d.counts.people} people</b> {isObj ? "hold" : "can reach"} {what}.{d.counts.admin > 0 && <> {d.counts.admin} {d.counts.admin === 1 ? "is an admin" : "are admins"}</>}
-          {d.counts.stale > 0 && <> and <span className="ae-warn-word">{d.counts.stale} {d.counts.stale === 1 ? "is" : "are"} dormant or disabled</span></>}. Mark each person Keep or Revoke, then sign off. <button type="button" className="ae-link" onClick={() => c.nav("flow", {})}>Data flow</button>
+          {d.counts.people.toLocaleString("en-US")} people {isObj ? "hold" : "can reach"} {what}{d.counts.stale > 0 && <>, {d.counts.stale.toLocaleString("en-US")} of them inactive</>}
         </p>
       </div>
+      <Fold label="Scope, people, filter, CSV" on={stale || !people || !hide || d.scope !== "sensitive"}>
       {!isObj && scopes.length <= 8 && <Tabs nav={2} active={d.scope === "db" ? `db:${d.db}` : d.scope} onChange={pick} tabs={scopes} />}
       <ListToolbar search={q} onSearch={setQ}
         onCsv={() => download(`access_review_${key.replace(/[^A-Za-z0-9_]+/g, "_")}.csv`, signoffCsv(d, rows, dec, reviewer.trim(), "not signed"))}>
@@ -93,6 +93,7 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
         <Toggle label="Only dormant / disabled" on={stale} onPick={(v) => c.set({ stale: v ? "1" : null })} />
         <Toggle label="Hide USAGE" on={hide} onPick={(v) => c.set({ hideusage: v ? null : "0" })} />
       </ListToolbar>
+      </Fold>
       <Card title={isObj ? `Who holds each privilege on ${d.object.split(".").pop()}` : d.scope === "sensitive" ? "Who can reach each sensitive object" : "Who can reach each object"}
         sub={d.total > d.columns.length ? `First ${d.columns.length} of ${d.total} objects` : undefined}
         right={<span className="ae-bar-legend">{(["read", "change", "own", "admin"] as const).map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{WORD[l]}</span>)}<span className="ae-muted">Hover a cell for its path</span></span>}>

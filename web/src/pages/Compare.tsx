@@ -52,18 +52,16 @@ function Body({ d }: { d: ComparePage }) {
   const tab = any && (c.params.tab === "plan" || planOf(c.params.plan)) ? "plan" : "diff"; // an old ?plan= link opens the Plan tab
   return (
     <>
-      <div className="ae-cmp-sum">
-        <Overlap a={d.a.name} b={d.b.name} onlyA={n.only_a} onlyB={n.only_b} different={n.different} same={n.same} />
-        <div className="ae-cmp-say">
-          <p className="ae-answer"><b>{compareLine(n, d.a.name, d.b.name)}</b></p>
-          {plans > 0 && <button type="button" className="ae-btn" onClick={() => c.set({ tab: "plan", plan: "equal" })}>Make B equal to A →</button>}
-        </div>
-      </div>
+      <p className="ae-answer">{compareLine(n, d.a.name, d.b.name)}</p>
       {d.scope === "sensitive" && !d.sensitive && <Banner tone="info" title="No sensitive objects known" lines={["Pick everything or one database as the scope."]} />}
       <Tabs nav active={tab} onChange={(k) => c.set(k === "plan" ? { tab: "plan" } : { tab: null, plan: null })} tabs={[
         { key: "diff", label: "Differences", count: n.only_a + n.only_b + n.different },
         ...(any ? [{ key: "plan", label: "Plan" }] : [])]} />
-      {tab === "plan" ? <><Plans d={d} /><PlanText d={d} /></> : <Diffs d={d} />}
+      {tab === "plan" ? <><Plans d={d} /><PlanText d={d} /></> : <><Diffs d={d} />
+        <div className="ae-cmp-sum">
+          <Overlap a={d.a.name} b={d.b.name} onlyA={n.only_a} onlyB={n.only_b} different={n.different} same={n.same} />
+          {plans > 0 && <button type="button" className="ae-btn" onClick={() => c.set({ tab: "plan", plan: "equal" })}>Make B equal to A →</button>}
+        </div></>}
     </>
   );
 }

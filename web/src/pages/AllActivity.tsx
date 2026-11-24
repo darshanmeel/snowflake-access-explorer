@@ -29,7 +29,7 @@ export function AllActivityPageView() {
     : <button type="button" className="ae-link ae-mono" title={v} onClick={() => open(k, v)}>{k === "object" ? tail(v) : v}</button>;
   return (
     <>
-      <Head title="Activity" />
+      <Head title="Activity" quiet />
       <Tabs nav active={r} onChange={(k) => c.set({ r: k === "user" ? null : k, c: null })} tabs={ORDER.map((k) => ({ key: k, label: TAB[k], count: s.data?.n?.[k] ?? null }))} />
       <Load s={s}>{(d) => !d.available ? <Card><EmptyState title="– No table activity" art="wait">{d.reason}</EmptyState></Card> : (
         <div className="ae-log">
@@ -41,7 +41,7 @@ export function AllActivityPageView() {
             <div className="ae-log-tiles ae-log-three">
               <Tile label="Queries" value={fmt(d.total)} cap={`${fmt(d.reads!)} reads · ${fmt(d.writes!)} writes · ${fmt(d.ddl!)} definition changes · ${d.days} days`} />
               <Tile label="Main client" value={d.dims!.client[0].key} cap={`${Math.round((100 * d.dims!.client[0].n) / d.total)}% of the queries${d.dims!.client.length > 1 ? `, then ${d.dims!.client.slice(1, 4).map((x) => x.key).join(", ")}` : ""}`} />
-              <Tile label="Outside business hours" value={fmt(d.off!)} warn={d.off! > 0} cap={`${Math.round((100 * d.off!) / d.total)}% · weekends or outside ${String(d.work.start).padStart(2, "0")}:00–${d.work.end}:00 UTC`} />
+              <Tile label="Outside business hours" value={d.hours === false ? "not recorded" : fmt(d.off!)} warn={d.hours !== false && d.off! > 0} cap={d.hours === false ? "this snapshot has no hours" : `${Math.round((100 * d.off!) / d.total)}% · weekends or outside ${String(d.work.start).padStart(2, "0")}:00–${d.work.end}:00 UTC`} />
             </div>
             <Card title={`${ONE[r]} by ${ONE[across].toLowerCase()}`} sub="Red: of these, outside business hours."
               right={<FilterChips label="Across" value={across} onPick={(v) => c.set({ c: v })} items={others.map((k) => ({ key: k, label: `× ${ONE[k].toLowerCase()}` }))} />}>

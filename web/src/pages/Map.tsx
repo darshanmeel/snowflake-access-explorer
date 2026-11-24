@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { Graph as G, GraphNode, ListItem, MapNode, MapPage } from "../api/types";
-import { Card, EmptyState, Graph, LEVEL_WORD, Tabs, Toggle } from "../components";
+import { Fold, Card, EmptyState, Graph, LEVEL_WORD, Tabs, Toggle } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { GraphCard, Load, Pick, PickFirst, ScopePick, Sel } from "./common";
 import { riskIds, startOf } from "./screens";
@@ -41,7 +41,7 @@ export function GraphPageView() {
     <>
       <div className="ae-headrow">
         <div>
-          <h2 className="ae-h1">Access graph</h2>
+          <h2 className="ae-sr">Access graph</h2>
           {tab === "trace" && s.data && <p className="ae-muted ae-graph-sub">{s.data.graph.header}</p>}
         </div>
         <div className="ae-seg2" role="group" aria-label="Start from">
@@ -52,16 +52,17 @@ export function GraphPageView() {
           ))}
         </div>
       </div>
-      <div className="ae-controls">
+      <div className="ae-h1 ae-h1-pick">What leads {mode === "object" ? "to" : "from"}
         {!(mine && mode === "user") &&
           <Pick label={MODES.find((x) => x[0] === mode)![1]} value={shown} what={what} params={mode === "object" ? { type: "TABLE" } : undefined}
             onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />}
-        {mode !== "object" && !none && <Filters trace={tab === "trace"} />}
+        ?
       </div>
       <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k, focus: null, sel: null })} tabs={[
         { key: "diagram", label: "Hierarchy" },
         { key: "trace", label: "Trace" },
       ]} />
+      {mode !== "object" && !none && <Fold label="Filter" on={!!(c.params.schema || c.params.otype || c.params.access)}><div className="ae-controls"><Filters trace={tab === "trace"} /></div></Fold>}
       {none ? <PickFirst what={mode === "user" ? "a person" : mode === "role" ? "a role" : "a table"} /> : <>
         {tab === "diagram" && <OldDiagram mode={mode} name={shown} />}
         {tab === "trace" && <Load s={s}>{(d) => <Trace d={d} />}</Load>}

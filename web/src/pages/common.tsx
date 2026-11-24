@@ -181,10 +181,11 @@ export function SqlPanel({ page, params, onClose, hint = "" }: { page: string; p
   );
 }
 
-export function Head({ title, sub, right }: { title: ReactNode; sub?: ReactNode; right?: ReactNode }) {
+/** quiet: the page's own answer is its headline; the name is for screen readers (the menu shows it). */
+export function Head({ title, sub, right, quiet = false }: { title: ReactNode; sub?: ReactNode; right?: ReactNode; quiet?: boolean }) {
   return (
-    <div className="ae-pagehead">
-      <div><h2>{title}</h2>{sub && <p className="ae-muted">{sub}</p>}</div>
+    <div className={`ae-pagehead${quiet ? " ae-pagehead-quiet" : ""}`}>
+      <div>{quiet ? <h2 className="ae-sr">{title}</h2> : <h2>{title}</h2>}{!quiet && sub && <p className="ae-muted">{sub}</p>}</div>
       {right}
     </div>
   );

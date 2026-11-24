@@ -205,7 +205,7 @@ const NAV_HIDDEN = new Set<Page>(["user", "role"]); // Access shows them; the pa
 export function family(page: Page, here: Page[]): Page[] {
   const f = MENU.flatMap(([, es]) => es).find((e) => e.pages.includes(page));
   const xs = (f?.pages ?? []).filter((p) => here.includes(p) && (!NAV_HIDDEN.has(p) || p === page));
-  return xs.length > 1 ? xs : [];
+  return xs.length > 1 && page !== "access" ? xs : []; // a person's first page links What they see itself
 }
 
 function Side({ meta, page, params, nav, onShut, foot, asked }: { meta: Meta; page: Page; params: Params; nav: (p: Page, params?: Params) => void; onShut: () => void; foot: ReactNode; asked: Asked }) {
@@ -469,7 +469,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
         </header>
         <div className="top-lock" {...lock}>
         {!meta ? <aside className="side">{controls}</aside> : shut
-          ? <aside className="side side-rail"><button type="button" className="side-open" onClick={() => setShut(false)} title="Show the menu" aria-label="Show the menu">»</button></aside>
+          ? <aside className="side side-rail"><button type="button" className="side-open" onClick={() => setShut(false)} title="Show the menu" aria-label="Show the menu">»</button>{controls}</aside>
           : <Side meta={meta} page={loc.page} params={loc.params} asked={loc.mine ? {} : asked.current} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} foot={controls} />}
         </div>
         </div>

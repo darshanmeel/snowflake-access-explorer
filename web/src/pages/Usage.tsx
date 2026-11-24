@@ -2,7 +2,7 @@
 // queries, last use and a suggestion. The unused grants go to the change plan (simulated on What if, never run).
 import { get, useApi } from "../api/client";
 import type { ListItem, UsagePage, UsageRow } from "../api/types";
-import { AccessPill, Card, CodeOutput, EmptyState, FilterChips, ListToolbar, Pager, Tabs } from "../components";
+import { Fold, AccessPill, Card, CodeOutput, EmptyState, FilterChips, ListToolbar, Pager, Tabs } from "../components";
 import { download } from "../components/table";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { addTo, changeText, inPlan, plan, planTexts, useSaved } from "./changeplan";
@@ -83,9 +83,7 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
         </p> : !n.objects ? <p className="ae-answer">
           No data grants to compare: <span className="ae-mono">{w.name}</span> reaches no tables or views (what admin roles reach is not listed).
         </p> : <p className="ae-answer">
-          In the last {d.days} days {w.kind === "user" ? "" : "people holding "}<span className="ae-mono">{w.name}</span> <b>used {n.used} of {n.objects}</b> tables and views they can reach
-          {n.write_unused > 0 && <>, and <b>never used write access</b> on {plural(n.write_unused, "object")}</>}.
-          {n.changes > 0 ? <> <span className="ae-ok-word">{plural(n.changes, "grant")} could go</span> without changing their work.</> : " Every grant is in use."}
+          {w.kind === "user" ? "" : "People holding "}<span className="ae-mono">{w.name}</span> used {n.used} of {n.objects} tables and views in {d.days} days{n.changes > 0 ? `; ${plural(n.changes, "unused grant")} found` : "; every grant is in use"}
         </p>}
         {n.objects > 0 && !d.base_read && <p className="ae-muted">Direct use only: this snapshot has no reads through views or procedures, so a table used only that way shows as not used. The next snapshot run reads them.</p>}
         {period}
@@ -95,15 +93,15 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
         { key: "trim", label: "Trim to what is used", count: n.changes },
       ]} />
       {show === "table" && (
-        <Card>
-          <Tabs nav={2} active={f} onChange={(k) => c.set({ f: k === "all" ? null : k, u_offset: null })} tabs={[
+        <Card title="What was granted and what was used">
+          <Fold label="Filter, CSV" on={f !== "all" || !!q}><Tabs nav={2} active={f} onChange={(k) => c.set({ f: k === "all" ? null : k, u_offset: null })} tabs={[
             { key: "all", label: "All", count: n.objects }, { key: "drop", label: "Not used", count: n.drop },
             { key: "trim", label: "Partly used", count: n.trim }, { key: "keep", label: "Keep", count: n.keep },
             { key: "sensitive", label: "Sensitive", count: n.sensitive }]} />
-          <ListToolbar search={q} onSearch={(v) => c.set({ q: v || null, u_offset: null })} onCsv={csv} />
+          <ListToolbar search={q} onSearch={(v) => c.set({ q: v || null, u_offset: null })} onCsv={csv} /></Fold>
           {!rows.length ? <EmptyState title="Nothing here">{n.objects ? "Change the filter or clear the search." : "No tables or views reached."}</EmptyState> : (
             <div className="ae-olist" role="table">
-              <div className="ae-urow ae-orow-h" role="row"><span>Object</span><span>Granted</span><span>Actually used</span><span>Queries per week</span><span>Last used</span><span>Suggestion</span></div>
+              <div className="ae-urow ae-orow-h" role="row"><span>Object</span><span>Granted</span><span>Used</span><span>Last used</span><span>Suggestion</span></div>
               {rows.map((r) => <Row key={r.object} r={r} weeks={d.weeks} open={o.open} />)}
             </div>
           )}
@@ -141,7 +139,7 @@ function Row({ r, weeks, open }: { r: UsageRow; weeks: string[]; open: (id: stri
       </span>
       <AccessPill level={r.level} />
       {r.used ? <AccessPill level={r.used} /> : <span className="ae-lvl ae-lvl-none">Not used</span>}
-      <span className="ae-bars" role="img" aria-label={r.used ? `Queries per week over ${weeks.length} weeks: ${r.weeks.join(", ")}` : `No queries in ${weeks.length} weeks`}>
+      <span className="ae-bars ae-sr" role="img" aria-label={r.used ? `Queries per week over ${weeks.length} weeks: ${r.weeks.join(", ")}` : `No queries in ${weeks.length} weeks`}>
         {hs.map((h, i) => <span key={weeks[i] ?? i} className={r.weeks[i] ? "on" : ""} style={{ height: h }} title={`Week of ${weeks[i]}: ${r.weeks[i]} quer${r.weeks[i] === 1 ? "y" : "ies"}`} />)}
       </span>
       <span className="ae-muted">{r.last ? r.last.slice(0, 10) : "never"}</span>

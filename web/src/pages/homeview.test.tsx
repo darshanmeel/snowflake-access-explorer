@@ -70,7 +70,7 @@ describe("Home page", () => {
     inOrder(["1 inactive person", "1 of the 7 readers of sensitive data is inactive", "What to do first"]);
     expect(screen.getByText("Take admin roles from 2 people")).toBeTruthy();
     expect(screen.queryByRole("tab")).toBeNull(); // Now is one page
-    fireEvent.click(screen.getByRole("button", { name: "At a glance" }));
+    fireEvent.click(screen.getByRole("button", { name: /At a glance/ }));
     inOrder(["Most findings are medium: 4 of 7", "Admin holders", "Dormant", "Sensitive data", "Findings by area", "People", "Role chain depth", "Activity", "Object activity"]);
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     expect(screen.getByText("No earlier snapshot yet.")).toBeTruthy();
@@ -80,7 +80,7 @@ describe("Home page", () => {
     const nav = view();
     fireEvent.click(await screen.findByRole("button", { name: /3\s*critical or high findings/ }));
     expect(nav).toHaveBeenCalledWith("rules", { sev: "Critical" });
-    fireEvent.click(screen.getByRole("button", { name: "At a glance" }));
+    fireEvent.click(screen.getByRole("button", { name: /At a glance/ }));
     expect(screen.getByRole("group", { name: "Ask a question" }).querySelectorAll("button")).toHaveLength(4);
     const objects = screen.getAllByRole("button", { name: "Objects" })[0];
     fireEvent.click(objects);

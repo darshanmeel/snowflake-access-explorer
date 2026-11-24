@@ -2,14 +2,14 @@
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
 import type { AccessObject, AccessPage, ListItem, RolePage } from "../api/types";
-import { AccessPill, Card, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Pager, StackBar, Toggle } from "../components";
+import { Card, Figs, Tabs, EmptyState, FilterChips, FindingChip, IdentityCard, ListToolbar, PathChips, SensitiveCell, Pager, Toggle } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { RolePageView, roleTabs } from "./Role";
 import { UserPage } from "./User";
 import { Load, Pick, PickFirst, Risks, Sel, unread } from "./common";
-import { ladderParts, recent, remember } from "./Home";
+import { recent, remember } from "./Home";
 import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
 
@@ -94,7 +94,8 @@ function Body({ d }: { d: AccessPage }) {
   const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
     w.last_login && w.status !== "never" ? ` · last login ${w.last_login}` : ""}` : "";
   const objects_ = (
-      <Card title="Data they can access" sub="One row per object, at the most it allows. Riskiest first.">
+      <Card title={n.sensitive > 0 && !tagsOff ? `${n.sensitive.toLocaleString("en-US")} of ${n.read.toLocaleString("en-US")} hold sensitive columns in clear` : "What they can access"} sub="One row per object, at the most it allows; riskiest first.">
+        <details className="ae-filter" open={lvl !== "all" || !!q || usage || group !== "none" || !!otype || !!cell || undefined}><summary>Filter, group, CSV</summary>
         <ListToolbar search={q} onSearch={setQ} onCsv={() => saveCsv("access.csv", { ...ask, offset: null }, `${w.name}_access.csv`)}>
           <FilterChips label="Filter by access" value={lvl} onPick={setLvl} items={[
             { key: "all", label: "All", count: list.data }, { key: "read", label: "Read only" }, { key: "change", label: "Can change" },
@@ -106,9 +107,11 @@ function Body({ d }: { d: AccessPage }) {
           <FilterChips label="Sort" value={sort} onPick={setSort} items={[{ key: "risk", label: "Riskiest first" }, { key: "name", label: "Name" }]} />
           {cell && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setCell(null)}>{cell.schema} · {cell.min} ×</button>}
         </ListToolbar>
+        </details>
+        {show === "overview" && d.heat_total > 1 && <p><button type="button" className="ae-link" onClick={() => c.set({ show: "summary" })}>Objects per schema</button></p>}
         {!shown.length ? <EmptyState title="Nothing matches">Change the filter, or clear the search.</EmptyState> : (
           <div className={`ae-olist${!first && l.loading ? " ae-fade" : ""}`} role="table">
-            <div className="ae-orow ae-orow-h" role="row"><span>Object</span><span>Access</span><span>Sensitive columns</span><span>Granted through</span><span /></div>
+            <div className="ae-orow ae-orow-h" role="row"><span>Object</span><span className="ae-marks"><i>Read</i><i>Change</i><i>Own</i></span><span>Sensitive columns</span><span>Granted through</span><span /></div>
             {groups.map((g) => (
               <Fragment key={g}>
                 {g && <div className="ae-ogroup" role="row"><span className="ae-mono">{g}</span> <span className="ae-muted">{list.groups[g] ?? 0}</span></div>}
@@ -121,12 +124,12 @@ function Body({ d }: { d: AccessPage }) {
                         <span className="ae-ocell">
                           <button type="button" className="ae-link ae-mono ae-oname" onClick={() => lo.open(x.object)}>{x.label ?? x.object.split(".").pop()}</button>
                           <span className="ae-muted ae-osub">{x.type.toLowerCase()}{x.schema ? ` · ${x.database}.${x.schema}` : ""}</span>
-                          {x.findings.length > 0 && <span className="ae-ochips">{x.findings.map((f) => <FindingChip key={f.num} {...f} onOpen={() => ruleLink(f.num)} />)}</span>}
+                          {x.findings.length > 0 && isOpen && <span className="ae-ochips">{x.findings.map((f) => <FindingChip key={f.num} {...f} onOpen={() => ruleLink(f.num)} />)}</span>}
                         </span>
-                        <AccessPill level={x.level} privileges={x.privileges} />
+                        <Marks level={x.level} privileges={x.privileges} />
                         <SensitiveCell sensitive={x.sensitive} columns={x.columns} />
                         <PathChips first={x.first} holder={x.holder} ways={x.ways} kinds={list.refs.kinds} onOpen={lo.open} />
-                        <button type="button" className="ae-btn" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : id)}>{isOpen ? "Close" : "How?"}</button>
+                        <button type="button" className="ae-link" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : id)}>{isOpen ? "Close" : x.findings.length ? `How? · ${x.findings.length} ${x.findings.length === 1 ? "risk" : "risks"}` : "How?"}</button>
                       </div>
                       {isOpen && <How x={x} who={w.name} user={user} />}
                     </Fragment>
@@ -141,29 +144,18 @@ function Body({ d }: { d: AccessPage }) {
   );
   return (
     <>
-      <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
-        line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${status} · default role ${w.default_role ?? "none"} · secondary roles ${w.secondary_all ? "ALL" : "none"} · default warehouse ${w.default_warehouse ?? "none"}`
-          : <span className={adminRole ? "ae-bad" : undefined}>{w.type}{w.owner.length ? ` · owner ${w.owner.join(", ")}` : ""} · held by {plural(w.held_by?.users ?? 0, "person")} and {plural(w.held_by?.roles ?? 0, "role")}</span>}
-        roles={user ? d.why.map((r) => ({ id: r.role, note: r.note === "everyone" ? "" : r.note, kind: r.kind })) : undefined} />
-      {show === "overview" && <div className="ae-actions">
-        <button type="button" className="ae-btn" onClick={() => c.nav("check", user ? { name: w.name } : { role: w.name })}>Can they?</button>
-        <button type="button" className="ae-btn" onClick={() => c.nav("graph", user ? { user: w.name } : { role: w.name })}>Show as graph</button>
-        <details className="ae-more"><summary className="ae-btn">More</summary>
-          <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
-          <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
-          <button type="button" className="ae-btn" title="Every grant next to the query history: up to a minute for a big person or role" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
-        </details>
-      </div>}
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "overview" ? null : k, part: null })} tabs={[
-        { key: "overview", label: "Can do" },
-        { key: "summary", label: "Objects", count: d.data },
-        user ? { key: "privs", label: "Privileges" } : rtabs[0],
-        { key: "detail", label: "Graph" },
-        ...rtabs.slice(1),
-        { key: "runs", label: "Can run", count: d.runs_total + d.powers_total, tone: d.powers_total > 0 ? "bad" as const : null },
+        { key: "overview", label: user ? "Can do" : "Opens" },
+        ...rtabs.filter((t) => t.key === "held"),
+        { key: "detail", label: "Graph & trace" },
         { key: "activity", label: "Activity" },
         { key: "history", label: "History" },
+        user ? { key: "privs", label: "Privileges" } : rtabs[0],
+        ...rtabs.slice(1).filter((t) => t.key !== "held"),
+        { key: "runs", label: "Can run", count: d.runs_total + d.powers_total, tone: d.powers_total > 0 ? "bad" as const : null },
       ]} />
+      {show === "detail" && <p className="ae-answer"><span className="ae-mono">{w.name}</span> reaches {plural(n.read, "data object")} through {plural(d.roles, "role")}</p>}
+      {show === "held" && <p className="ae-answer">{plural(w.held_by?.users ?? 0, "person")} and {plural(w.held_by?.roles ?? 0, "role")} hold <span className="ae-mono">{w.name}</span></p>}
       {show === "detail" ? <Detail name={w.name} user={user} pane="diagram" />
         : ROLE_PARTS.includes(show) ? <Detail name={w.name} user={user} pane={show} /> : null}
       {show === "activity" && <ActivityTab what={user ? "user" : "role"} name={w.name} />}
@@ -175,21 +167,14 @@ function Body({ d }: { d: AccessPage }) {
       </p> : <p className="ae-answer">
         {adm.length > 0 && <><span className="ae-mono">{w.name}</span> <b className="ae-bad">holds {adm.join(", ")}: can do everything below {adm.length > 1 ? "them" : "it"}, not counted here.</b>
           {" "}<button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button> Without {adm.length > 1 ? "them" : "it"}: </>}
-        <span className="ae-mono">{w.name}</span> can <b>read data in {plural(n.read, "object")}</b> across {plural(n.schemas, "schema")}.
-        {" "}{user ? "They" : "It"} can <b>change {n.change}</b> of them and <b>own {n.own}</b>.
-        {n.sensitive > 0 && <> <span className="ae-sens-word">{n.sensitive} hold sensitive columns</span> seen unmasked.</>}
-        {n.admin > 0 && <> <b className="ae-bad">{n.admin} through an admin role.</b></>}
-        {(n.future ?? 0) > 0 && <> Plus {plural(n.future ?? 0, "future grant")} (every new object in those schemas).</>}
+        <span className="ae-mono">{w.name}</span> {n.read ? <>can change {n.change.toLocaleString("en-US")} of the {plural(n.read, "object")} {user ? "they read" : "it reads"}{n.own > 0 && <> and owns {n.own.toLocaleString("en-US")}</>}</> : "reads no data objects"}
+        {n.admin > 0 && <>, <b className="ae-bad">{n.admin} through an admin role</b></>}
       </p>}
-      <div className="ae-ladder">
-        <div className="ae-ladder-bar">
-          <div className="ae-ladder-h"><b>{n.read}</b> objects with data <span className="ae-muted">· click a part to list them</span></div>
-          <StackBar label="Access ladder: read only, read and change, owns" parts={ladderParts(n)} on={lvl}
-            onPick={(k) => { setLvl(lvl === k ? "all" : k); c.set({ show: "summary" }); }} />
-        </div>
-        <div className="ae-tile ae-tile-sens" title={tagsOff ? `${tagsOff.title}: sensitivity unknown` : undefined}><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{tagsOff ? "not read" : n.sensitive}</span></div>
-        <button type="button" className="ae-tile" onClick={() => c.set({ show: "runs" })}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{d.runs_total + d.powers_total}</span><span className="ae-muted ae-tile-c">{d.runs_total} warehouses, apps, tasks, functions, procedures{d.powers_total > 0 ? ` · ${plural(d.powers_total, "power")} over the account` : ""}</span></button>
-      </div>
+      <Figs items={[
+        { key: "read", n: n.read.toLocaleString("en-US"), text: `${n.read === 1 ? "object" : "objects"} with data they can read`, note: `${plural(n.schemas, "schema")}${(n.future ?? 0) > 0 ? ` · plus ${plural(n.future ?? 0, "future grant")}` : ""}` },
+        { key: "sens", n: tagsOff ? "not read" : n.sensitive.toLocaleString("en-US"), text: "with sensitive columns seen in clear", bad: !tagsOff && n.sensitive > 0, note: tagsOff ? `${tagsOff.title}: sensitivity unknown` : undefined },
+        { key: "run", n: (d.runs_total + d.powers_total).toLocaleString("en-US"), text: "things they can also run", note: `${d.runs_total.toLocaleString("en-US")} warehouses, apps, tasks, functions, procedures${d.powers_total > 0 ? ` · ${plural(d.powers_total, "power")} over the account` : ""}`, bad: d.powers_total > 0, go: () => c.set({ show: "runs" }) },
+      ]} />
       {n.read > 0 && objects_}
       <div>
         <Card title="Why they have it" sub={`${plural(d.roles, "role")} · deepest ${d.deepest}`}>
@@ -208,6 +193,15 @@ function Body({ d }: { d: AccessPage }) {
         </Card>
       </div>
       <Risks list={d.risks} />
+      <div className="ae-actions">
+        <button type="button" className="ae-btn" onClick={() => c.nav("check", user ? { name: w.name } : { role: w.name })}>Can they?</button>
+        <button type="button" className="ae-btn" onClick={() => c.nav("graph", user ? { user: w.name } : { role: w.name })}>Show as graph</button>
+        <details className="ae-more"><summary className="ae-btn">More</summary>
+          <button type="button" className="ae-btn" onClick={() => c.nav("see", user ? { user: w.name } : { role: w.name })}>What they see</button>
+          <button type="button" className="ae-btn" onClick={() => c.nav("compare", { a: w.id })}>Compare with…</button>
+          <button type="button" className="ae-btn" title="Every grant next to the query history: up to a minute for a big person or role" onClick={() => c.nav("usage", user ? { user: w.name } : { role: w.name })}>Granted vs used</button>
+        </details>
+      </div>
       </>}
       {show === "runs" && <>
       <div className="ae-two" id="runs">
@@ -243,7 +237,22 @@ function Body({ d }: { d: AccessPage }) {
       </Card>
       </>}
       {show === "summary" && objects_}
+      <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
+        line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${status} · default role ${w.default_role ?? "none"} · secondary roles ${w.secondary_all ? "ALL" : "none"} · default warehouse ${w.default_warehouse ?? "none"}`
+          : <span className={adminRole ? "ae-bad" : undefined}>{w.type}{w.owner.length ? ` · owner ${w.owner.join(", ")}` : ""} · held by {plural(w.held_by?.users ?? 0, "person")} and {plural(w.held_by?.roles ?? 0, "role")}</span>}
+        roles={user ? d.why.map((r) => ({ id: r.role, note: r.note === "everyone" ? "" : r.note, kind: r.kind })) : undefined} />
     </>
+  );
+}
+
+/** Read, change, own as filled marks: each level holds the ones before it. */
+function Marks({ level, privileges }: { level: AccessObject["level"]; privileges: string[] }) {
+  const at = level === "own" || level === "admin" ? 3 : level === "change" ? 2 : level === "read" ? 1 : 0;
+  if (!at) return <span className="ae-privs">{privileges.join(" · ")}</span>;
+  return (
+    <span className="ae-marks" title={privileges.join(" · ")}>
+      {(["read", "change", "own"] as const).map((k, i) => <i key={k} className={i < at ? `on ae-lvl-${k}` : ""} aria-label={i < at ? k : `no ${k}`} />)}
+    </span>
   );
 }
 

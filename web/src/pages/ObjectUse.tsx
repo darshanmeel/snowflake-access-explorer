@@ -3,7 +3,7 @@
 // table pages, sorts and searches on the server.
 import { useApi } from "../api/client";
 import type { ObjUsePage, ObjUseRow } from "../api/types";
-import { AgeBars, Card, DataTable, EmptyState, FilterChips, Tabs } from "../components";
+import { Fold, StackBar, Figs, AgeBars, Card, DataTable, EmptyState, FilterChips, Tabs } from "../components";
 import { useApp } from "../ctx";
 import { col, Controls, Load, Pick, Sel } from "./common";
 
@@ -16,7 +16,7 @@ export function ObjectUsePageView() {
   const s = useApi<ObjUsePage>("objuse", { ...p, limit: "0" }); // counts only: the table asks for its rows
   return (
     <>
-      <div className="ae-headrow"><h2 className="ae-h1">Object activity</h2></div>
+      <div className="ae-headrow"><h2 className="ae-sr">Used or not</h2></div>
       <Load s={s} wait="Reading the last use of every object">{(d) => <Body d={d} />}</Load>
     </>
   );
@@ -36,11 +36,19 @@ function Body({ d }: { d: ObjUsePage }) {
   return (
     <>
       <p className="ae-answer">
-        <b>{plural(d.tabs.unused, "object")}</b> not used in the last {d.days} days{d.unused_new > 0 && <> ({d.unused_new.toLocaleString("en-US")} of them new or changed)</>}
-        {d.new > 0 && <> · {plural(d.new, "object")} created or changed in the activity window</>}.
+        {d.tabs.unused.toLocaleString("en-US")} of {d.tabs.all.toLocaleString("en-US")} objects were not used in {d.days} days{d.unused_new > 0 && <> ({d.unused_new.toLocaleString("en-US")} of them new or changed)</>}
       </p>
+      <Figs items={(() => {
+        const t = (k: string) => d.types.reduce((x, y) => x + (y.buckets[k as keyof typeof y.buckets] ?? 0), 0);
+        return [
+          { key: "none", n: t("none").toLocaleString("en-US"), text: "never used in this data", bad: t("none") > 0 },
+          { key: "180", n: t("180").toLocaleString("en-US"), text: "last used 91 to 180 days ago" },
+          { key: "nodata", n: t("nodata").toLocaleString("en-US"), text: "no activity data", note: "cannot say" },
+        ];
+      })()} />
       {!d.available && d.reason && <p className="ae-warn-word">{d.reason}</p>}
       {d.notes.map((n) => <p key={n} className="ae-muted">Not read: {n}</p>)}
+      <Fold label="Period, type, database" on={d.days !== 90 || !!d.type || !!d.scope}>
       <Controls>
         <FilterChips label="Days" value={String(d.days)} onPick={(k) => c.set({ days: k === "90" ? null : k })}
           items={d.periods.map((x) => ({ key: String(x), label: `${x} days` }))} />
@@ -48,12 +56,18 @@ function Body({ d }: { d: ObjUsePage }) {
         <Pick label="Database or schema" value={d.scope} what="databases,objects" params={{ type: "SCHEMA" }} onPick={(v) => c.set({ scope: v })} />
         {d.scope && <button type="button" className="ae-chip ae-chip-plain" onClick={() => c.set({ scope: null })} aria-label="Clear database or schema">Clear ×</button>}
       </Controls>
+      </Fold>
       <Tabs nav active={tab} onChange={(k) => c.set({ tab: k === "unused" ? null : k })} tabs={[
         { key: "unused", label: "Not used", count: d.tabs.unused },
         { key: "read_only", label: "Read, never written", count: d.tabs.read_only },
         { key: "write_only", label: "Written, never read", count: d.tabs.write_only },
         { key: "all", label: "All objects", count: d.tabs.all },
       ]} />
+      {tab === "unused" && (
+        <Card title="When they were last used">
+          <StackBar parts={[["30", "Used in 30 days", "lvl-own"], ["90", "31 to 90 days", "lvl-read"], ["180", "91 to 180 days", "medium"], ["none", "Never used", "high"], ["nodata", "No data", "low"]].map(([key, label, cls]) => ({ key, label, cls,
+            value: d.types.reduce((x, y) => x + (y.buckets[key as keyof typeof y.buckets] ?? 0), 0) }))} />
+        </Card>)}
       {tab === "unused" && (
         <Card title="Last use per type" sub="Each object counted once, at its last read or write. A type picks the table below.">
           <AgeBars types={d.types} onPick={(t) => c.set({ type: t === d.type ? null : t })} />

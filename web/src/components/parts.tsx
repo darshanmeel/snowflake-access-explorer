@@ -117,6 +117,32 @@ export function KpiRow({ items }: { items: Kpi[] }) {
   );
 }
 
+/** Filters and extras, folded away under the answer. on: something is set in it, so it opens. */
+export function Fold({ label, on = false, children }: { label: ReactNode; on?: boolean; children?: ReactNode }) {
+  const [open, setOpen] = useState(on);
+  return (
+    <details className="ae-fold" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary>{label}</summary>
+      <div className="ae-fold-in">{children}</div>
+    </details>
+  );
+}
+
+export interface Fig { key: string; n: ReactNode; text: string; note?: ReactNode; bad?: boolean; go?: () => void }
+
+/** At most three open figures under a headline: the number, what it is, a line of detail. */
+export function Figs({ items }: { items: Fig[] }) {
+  return (
+    <div className="ae-figs">
+      {items.map((f) => {
+        const body = <><span className="ae-fig-n">{f.n}</span><span className="ae-fig-t">{f.text}</span>{f.note != null && <span className="ae-fig-c">{f.note}</span>}</>;
+        return f.go ? <button type="button" key={f.key} className={`ae-fig${f.bad ? " bad" : ""}`} onClick={f.go}>{body}</button>
+          : <div key={f.key} className={`ae-fig ae-fig-still${f.bad ? " bad" : ""}`}>{body}</div>;
+      })}
+    </div>
+  );
+}
+
 /** Wrapper that sets the theme variables every component reads. */
 export function Root({ theme, children }: { theme: "light" | "dark"; children?: ReactNode }) {
   return <div className="ae-root" style={themeVars(theme)}>{children}</div>;

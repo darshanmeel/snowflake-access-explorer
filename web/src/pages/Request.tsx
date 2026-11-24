@@ -24,14 +24,13 @@ export function RequestPageView() {
       <div className="ae-headrow">
         <div>
           {p.role && <button type="button" className="ae-link ae-crumb" onClick={() => c.nav("check", { ...back, obj: p.obj ?? "" })}>← Can they?</button>}
-          <h2 className="ae-h1">Request access</h2>
-          <p className="ae-muted ae-lead">Writes the SQL or Terraform; never changes Snowflake.</p>
+          <h2 className="ae-sr">Request access</h2>
         </div>
       </div>
-      <div className="ae-forstrip">
+      <div className="ae-ask"><span className="ae-ask-w">Let</span>
         {!mine && <Pick label="For (person or role)" value={name} user={!subjectIn(p, "request").role} what="users,roles"
           onPick={(v, i) => c.set({ ...pickSubject(v, i.kind === "user" ? [v] : [], i.kind === "user" ? [] : [v], "request"), obj: p.obj ?? s.data?.object ?? null, role: null, to: null })} />}
-        <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, role: null, to: null })} />
+        <span className="ae-ask-w">reach</span> <Pick label="Object" value={p.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v, role: null, to: null })} /><span className="ae-ask-w">: which role?</span>
       </div>
       {none ? <PickFirst /> : <Load s={s}>{(d) => d.object ? <Body key={`${d.user}:${d.object}:${d.need}:${d.asked?.role ?? ""}`} d={{ ...d, object: d.object }} />
         : <EmptyState title="Pick an object" art="search">Search for the table, view or other object above.</EmptyState>}</Load>}
@@ -61,6 +60,8 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
   const text = ch ? undefined : newRoleOf(d.user, d.privileges, d.type, d.object, note, viaNew, forRole, inDb);
   const now = d.level ? (LEVEL_WORD[d.level] ?? d.level).toLowerCase() : null;
   return (
+    <>
+    <p className="ae-answer">{d.has ? `${d.user} already has it` : choices.length ? <><span className="ae-mono">{d.suggestions[0]?.role ?? choices[0].role}</span> is the smallest existing role that does it</> : "No existing role fits"}</p>
     <div className="ae-req">
       <section className="ae-card ae-req-form" aria-label="Request">
         <div>
@@ -143,5 +144,6 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
           : <CodeOutput changes={changes} note={note} texts={text} name={`access_request_${d.user.toLowerCase()}`} />}
       </Card>
     </div>
+    </>
   );
 }

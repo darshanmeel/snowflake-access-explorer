@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { forget, useApi } from "../api/client";
 import type { ChangeEvent, ChangesPage, CheckPage, ListItem, WhoPage } from "../api/types";
-import { Card, EmptyState, FindingChip, GrantLink, Pager, Tabs } from "../components";
+import { FilterChips, Fold, Card, EmptyState, FindingChip, GrantLink, Pager, Tabs } from "../components";
 import { useApp } from "../ctx";
 import { useSaved } from "./changeplan";
 import { Head, Load, Pick, Sel } from "./common";
@@ -19,7 +19,7 @@ export function ChangesPageView() {
   const show = c.params.show === "watch" ? "watch" : "feed";
   return (
     <>
-      <Head title="What changed" sub="This snapshot against the previous one: who gained or lost access, and which findings are new or fixed." />
+      <Head title="What changed" quiet sub="This snapshot against the previous one: who gained or lost access, and which findings are new or fixed." />
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "feed" ? null : k })} tabs={[
         { key: "feed", label: "Changes" }, { key: "watch", label: "Watched questions", count: n }]} />
       {show === "feed" ? <ChangeFeed /> : <Watched />}
@@ -42,18 +42,15 @@ function Feed({ d }: { d: ChangesPage }) {
   const setF = (k: Filter) => c.set({ f: k === "all" ? null : k, ev_at: null });
   if (!d.available) return <Card><EmptyState title="Nothing to compare with yet" art="wait">{d.reason}</EmptyState></Card>;
   const n = d.counts!;
+  const said = (d.text ?? "").replace(/^Since [^:]*:\d\d: /, "").replace(/\.$/, "") || `Nothing changed since ${d.before}`;
   const shown = d.events, size = Number(c.params.limit) || PAGE;
   return (
-    <Card>
-      <p className="ae-answer">{d.subject ? <>For <span className="ae-mono">{d.subject}</span>: {d.text?.replace(/^Since/, "since")}</> : d.text}</p>
-      {d.severity && <Strip s={d.severity} />}
-      <Tabs nav={2} active={f} onChange={(k) => setF(k as Filter)} tabs={[
-        { key: "all", label: "All", count: n.all }, { key: "gain", label: "Gained access", count: n.gain },
-        { key: "lose", label: "Lost access", count: n.lose }, { key: "risk", label: "New findings", count: n.risk },
-        { key: "sensitive", label: "Sensitive only", count: n.sensitive }]} />
+    <>
+    <p className="ae-answer">{said[0].toUpperCase() + said.slice(1)}</p>
+    <Card title={`${d.before} to ${d.now}`} right={<FilterChips label="Show" value={f} onPick={(k) => setF(k as Filter)} items={[
+        { key: "all", label: "All" }, { key: "gain", label: "Gained" }, { key: "lose", label: "Lost" }, { key: "risk", label: "New findings" }, { key: "sensitive", label: "Sensitive" }]} />}>
       {!shown.length ? <EmptyState title={n.all ? "Nothing under this filter" : "No changes"} art={n.all ? "search" : "clear"}>{n.all ? "Pick another filter." : `Nothing changed since ${d.before}.`}</EmptyState> : (
         <div className="ae-feed">
-          <div className="ae-feed-day">{d.before} → {d.now}</div>
           {shown.map((e) => <Item key={e.id} e={e} onOpen={() => c.nav(e.link.page, e.link.params)} onRule={(num) => c.nav("rules", { rule: num })}
             onBox={(id) => c.nav(e.edge && id === e.edge.target && e.edge.target_kind === "object" ? "object" : "access",
               e.edge && id === e.edge.target && e.edge.target_kind === "object" ? { name: id } : (e.edge && id === e.edge.source && e.edge.source_kind === "user") ? { user: id } : { role: id })} />)}
@@ -63,6 +60,8 @@ function Feed({ d }: { d: ChangesPage }) {
         onPage={(k) => c.set({ ev_at: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), ev_at: null })} />}
       <p className="ae-muted ae-foot">The difference between two snapshots the app read; "by" is GRANTED_BY from the grant data. Nothing is written to Snowflake.</p>
     </Card>
+    {d.severity && <Card title="Findings: new and fixed"><Strip s={d.severity} /></Card>}
+    </>
   );
 }
 
@@ -104,7 +103,7 @@ function Item({ e, onOpen, onRule, onBox }: { e: ChangeEvent; onOpen: () => void
           {e.impact && <span>{e.impact}</span>}
           {e.by && <span className="ae-muted">by <span className="ae-mono">{e.by}</span></span>}
           {e.sensitive && <span className="ae-sens-word">sensitive</span>}
-          {e.findings.map((x) => <FindingChip key={x.num} num={x.num} severity={x.fixed ? "Fixed" : x.severity}
+          {e.kind !== "risk" && e.findings.slice(0, 1).map((x) => <FindingChip key={x.num} num={x.num} severity={x.fixed ? "Fixed" : x.severity}
             label={`${x.fixed ? "" : "New · "}#${x.num} ${x.title}`} onOpen={() => onRule(x.num)} />)}
         </div>
       </div>
@@ -131,8 +130,9 @@ function Watched() {
   };
   const draft = { kind, notify, ...(kind === "admins" ? {} : { object: obj }), ...(kind === "can" ? { user } : {}) };
   return (
-    <div className="ae-two">
-      <Card title="Watched questions" sub="Saved in this browser. Asked again on each snapshot; the answer shows Changed when it differs from the one on the snapshot before.">
+    <>
+      <p className="ae-answer">{list.length ? `${list.length} ${list.length === 1 ? "question is" : "questions are"} asked again on every snapshot` : "Pick a question to ask again on every snapshot"}</p>
+      <Card title="Answers today" sub="Saved in this browser. Asked again on each snapshot; the answer shows Changed when it differs from the one on the snapshot before.">
         {!list.length ? (
           <EmptyState title="No watched questions yet" art="plan">
             Add one, or start with{" "}
@@ -142,17 +142,17 @@ function Watched() {
           <div className="ae-watch-list">{list.map((w) => <WatchRow key={w.id} w={w} />)}</div>
         )}
       </Card>
-      <Card title="Watch a question">
+      <Fold label="Watch a question" on={!list.length}>
         <div className="ae-watch-form">
           <Sel label="Question" value={kind} options={KINDS} onPick={(v) => setKind(v as WatchKind)} />
           {kind === "can" && <Pick label="Person" value={user} what="users" onPick={setUser} />}
           {kind !== "admins" && <Pick label="Object" value={obj} what="objects" onPick={setObject} width={300} />}
           <label className="ae-field"><span>Notify (text only: nothing is sent)</span>
             <input className="ae-input" value={notify} placeholder="email or #channel" onChange={(e) => setNotify(e.target.value)} /></label>
-          <button type="button" className="ae-btn ae-btn-primary" disabled={kind !== "admins" && !obj} onClick={() => add(draft)}>Watch: {question({ id: "", ...draft })}</button>
+          <button type="button" className="ae-btn ae-btn-primary" disabled={(kind !== "admins" && !obj) || (kind === "can" && !user)} onClick={() => add(draft)}>Watch: {question({ id: "", ...draft })}</button>
         </div>
-      </Card>
-    </div>
+      </Fold>
+    </>
   );
 }
 
