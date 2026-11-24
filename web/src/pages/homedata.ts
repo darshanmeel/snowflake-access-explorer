@@ -54,6 +54,13 @@ export function headline(d: HomePage, off: (source: string) => boolean): string 
   return high ? `${plural(high, "high finding")} to fix, none critical` : "No critical or high findings";
 }
 
+export interface Reader { id: "risky" | "admin" | "service" | "active"; label: string; n: number }
+/** Who can read sensitive data, each user once, the inactive first. */
+export function readers(r: Partial<Record<Reader["id"], number>> | undefined): Reader[] {
+  const L: [Reader["id"], string][] = [["risky", "Inactive"], ["admin", "Admin"], ["service", "Service"], ["active", "Active"]];
+  return L.map(([id, label]) => ({ id, label, n: r?.[id] ?? 0 })).filter((x) => x.n > 0);
+}
+
 /** "Most findings are medium: 33 of 68." */
 export function severityTakeaway(risks: Record<string, number>): string {
   const all = Object.values(risks).reduce((s, v) => s + v, 0);

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
 import { AgeBars, Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, Tabs, type BarPart } from "../components";
-import { areaTakeaway, attention, busiest, depthRows, depthTakeaway, headline, peopleTakeaway, severityTakeaway, weekend } from "./homedata";
+import { areaTakeaway, attention, busiest, depthRows, depthTakeaway, headline, peopleTakeaway, readers, severityTakeaway, weekend } from "./homedata";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
@@ -108,8 +108,26 @@ export function HomePageView() {
   const links = shortcuts(c.meta.pages.map((p) => p.key), who);
   return (
     <div className="ae-home">
-      <section className="ae-hero" aria-labelledby="ae-home-h">
-        <h2 id="ae-home-h" className="ae-hero-h">Who can access what in Snowflake?</h2>
+      {c.view === "shared" && c.meta.inside && <p className="ae-muted">These are the app owner's rights, not yours: inside Snowflake the app reads with its owner's role.</p>}
+      {c.meta.notes.length > 0 && (
+        <Banner tone="warn" title={`Incomplete: ${c.meta.notes.length} source${c.meta.notes.length === 1 ? "" : "s"} not fully read`}
+          lines={c.meta.notes.map((n) => `${n.title}: ${n.meaning}${n.fix ? ` Fix: ${n.fix}` : ""}`)} />
+      )}
+      <Load s={s}>{(d) => (
+        <>
+          {d.me && (
+            <div className="ae-two">
+              <Card title={c.view === "mine" ? "My access" : `Access of ${d.me.user}`} right={<button type="button" className="ae-btn" onClick={() => c.nav("access", c.view === "mine" ? {} : { user: d.me!.user })}>Open</button>}>
+                <Ladder counts={d.me.counts} />
+                <p className="ae-muted">Reads {d.me.counts.read} · changes {d.me.counts.change} · owns {d.me.counts.own} · runs {d.me.counts.runnable} · {d.me.counts.account} account powers</p>
+              </Card>
+            </div>
+          )}
+          {d.risks && d.cards && d.protection && <Shared d={d} risks={d.risks} k={d.cards} prot={d.protection} />}
+        </>
+      )}</Load>
+      <section className="ae-hero ae-ask-home" aria-labelledby="ae-home-h">
+        <h2 id="ae-home-h" className="ae-hero-h">Ask who can access what</h2>
         <div className="ae-bigsearch">
           <label className="ae-sr" htmlFor="ae-home-q">Search</label>
           <svg className="ae-bigsearch-i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
@@ -176,49 +194,45 @@ export function HomePageView() {
           </div>
         )}
       </section>
-      {c.view === "shared" && c.meta.inside && <p className="ae-muted">These are the app owner's rights, not yours: inside Snowflake the app reads with its owner's role.</p>}
-      {c.meta.notes.length > 0 && (
-        <Banner tone="warn" title={`Incomplete: ${c.meta.notes.length} source${c.meta.notes.length === 1 ? "" : "s"} not fully read`}
-          lines={c.meta.notes.map((n) => `${n.title}: ${n.meaning}${n.fix ? ` Fix: ${n.fix}` : ""}`)} />
-      )}
-      <Load s={s}>{(d) => (
-        <>
-          {d.me && (
-            <div className="ae-two">
-              <Card title={c.view === "mine" ? "My access" : `Access of ${d.me.user}`} right={<button type="button" className="ae-btn" onClick={() => c.nav("access", c.view === "mine" ? {} : { user: d.me!.user })}>Open</button>}>
-                <Ladder counts={d.me.counts} />
-                <p className="ae-muted">Reads {d.me.counts.read} · changes {d.me.counts.change} · owns {d.me.counts.own} · runs {d.me.counts.runnable} · {d.me.counts.account} account powers</p>
-              </Card>
-            </div>
-          )}
-          {d.risks && d.cards && d.protection && <Shared d={d} risks={d.risks} k={d.cards} prot={d.protection} />}
-        </>
-      )}</Load>
     </div>
   );
 }
 
 const TOP = 3; // names a card lists; the rest open on the full list
 
-/** The headline and three figures, worst first; the other numbers as links on one line. */
+/** The headline, three figures, and who can read sensitive data as one picture. */
 function Attention({ d }: { d: HomePage }) {
   const c = useApp();
   const off = (k: string) => !!unread(c.meta, k);
-  const tiles = attention(d, off), top = tiles.slice(0, 3), rest = tiles.slice(3);
+  const tiles = attention(d, off), t = (k: string) => tiles.find((x) => x.key === k);
+  const risk = t("risk"), mask = t("mask"), rs = readers(d.cards?.readers), all = rs.reduce((n, x) => n + x.n, 0);
+  const idle = rs.find((x) => x.id === "risky")?.n ?? 0;
+  const bare = d.protection?.unmasked_names ?? [];
+  const figs: { key: string; n: number; text: string; note: string; bad: boolean; go: () => void }[] = [];
+  if (risk) figs.push({ key: "risk", n: risk.n, text: "critical or high findings", note: `${(d.risks!.Critical ?? 0).toLocaleString()} critical, ${(d.risks!.High ?? 0).toLocaleString()} high, ${risk.text.replace(/^findings /, "")}`, bad: risk.n > 0, go: () => c.nav(risk.page, risk.params) });
+  if (all && !off("tags")) figs.push({ key: "read", n: all, text: "people and services can read sensitive data", note: idle ? `${idle.toLocaleString()} of them ${idle === 1 ? "is" : "are"} inactive` : "none of them is inactive", bad: false, go: () => c.nav("sensitive", {}) });
+  if (mask) figs.push({ key: "mask", n: mask.n, text: `sensitive ${mask.n === 1 ? "column" : "columns"} nobody masks`, note: [...new Set(bare.map((x) => x.column))].slice(0, 3).join(", ") + (bare.length > 3 ? ", …" : ""), bad: false, go: () => c.nav(mask.page, mask.params) });
+  const rest = tiles.filter((x) => x.key === "admin" || x.key === "unused" || (figs.length < 3 && x.key === "stale"));
   return (
-    <section className="ae-home-sec" aria-labelledby="ae-attn-h">
+    <section aria-labelledby="ae-attn-h">
       <h2 id="ae-attn-h" className="ae-home-lead">{headline(d, off)}</h2>
-      <div className="ae-attn">
-        {top.map((t) => (
-          <button type="button" key={t.key} className={`ae-attn-tile${t.tone ? ` ae-tone-${t.tone}` : ""}`} onClick={() => c.nav(t.page, t.params)}>
-            <span className="ae-attn-l">{t.label}</span>
-            <span className="ae-attn-n">{t.n.toLocaleString()}</span>
-            <span className="ae-attn-t">{t.text}</span>
+      <div className="ae-figs">
+        {figs.map((f) => (
+          <button type="button" key={f.key} className={`ae-fig${f.bad ? " bad" : ""}`} onClick={f.go}>
+            <span className="ae-fig-n">{f.n.toLocaleString()}</span><span className="ae-fig-t">{f.text}</span><span className="ae-fig-c">{f.note}</span>
           </button>
         ))}
       </div>
-      {rest.length > 0 && <p className="ae-home-also"><span className="ae-muted">Also</span>{rest.map((t) => (
-        <button type="button" key={t.key} className="ae-link" onClick={() => c.nav(t.page, t.params)}>{t.label} <b>{t.n.toLocaleString()}</b> <span className="ae-muted">{t.text}</span></button>))}</p>}
+      {all > 0 && !off("tags") && (
+        <Card title={idle ? `${idle.toLocaleString()} of the ${all.toLocaleString()} readers of sensitive data ${idle === 1 ? "is" : "are"} inactive` : `${all.toLocaleString()} can read sensitive data, all in use`}>
+          {all <= 66
+            ? <div className="ae-dots" role="img" aria-label={rs.map((x) => `${x.label} ${x.n}`).join(", ")}>{rs.flatMap((x) => Array.from({ length: x.n }, (_, k) => <i key={`${x.id}${k}`} className={`ae-d-${x.id}`} />))}</div>
+            : <div className="ae-dotbar" role="img" aria-label={rs.map((x) => `${x.label} ${x.n}`).join(", ")}>{rs.map((x) => <i key={x.id} className={`ae-d-${x.id}`} style={{ flex: x.n }} />)}</div>}
+          <div className="ae-dotkey">{rs.map((x) => <span key={x.id}><i className={`ae-d-${x.id}`} />{x.label}: {x.n.toLocaleString()}</span>)}</div>
+        </Card>
+      )}
+      {rest.length > 0 && <p className="ae-home-also" style={{ margin: "0 0 18px" }}><span className="ae-muted">Also</span>{rest.map((x) => (
+        <button type="button" key={x.key} className="ae-link" onClick={() => c.nav(x.page, x.params)}>{x.label} <b>{x.n.toLocaleString()}</b> <span className="ae-muted">{x.text}</span></button>))}</p>}
     </section>
   );
 }
@@ -233,10 +247,10 @@ function ActRow({ r }: { r: Act }) {
   return (
     <details className="ae-act-row">
       <summary>
+        <b className="ae-act-t">{rule?.fix ? rule.fix.split(/(?<=[.;])\s/)[0].replace(/[.;]$/, "") : r.title}</b>
+        <span className="ae-act-why">{r.title}: {r.names.slice(0, TOP).map((x) => x.id.replace(/ \(user\)$/, "")).join(", ")}{r.subjects > TOP ? ` and ${(r.subjects - TOP).toLocaleString()} more` : ""}</span>
         <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
-        <span className="ae-act-main"><b className="ae-act-t">{r.title}</b>
-          <span className="ae-muted">{r.names.slice(0, TOP).map((x) => x.id.replace(/ \(user\)$/, "")).join(", ")}{r.subjects > TOP ? ` and ${(r.subjects - TOP).toLocaleString()} more` : ""}</span></span>
-        <span className="ae-act-n">fixing it closes <b>{r.findings.toLocaleString()}</b> {r.findings === 1 ? "finding" : "findings"}</span>
+        <span className="ae-act-n">closes {r.findings.toLocaleString()} {r.severity.toLowerCase()} {r.findings === 1 ? "finding" : "findings"}</span>
       </summary>
       <div className="ae-act-more">
         {rule?.why && <p><b>Why.</b> {rule.why}</p>}
@@ -269,19 +283,19 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
   return (
     <>
       <Tabs nav active={tab} onChange={(t) => c.set({ show: t === "risks" ? null : t })} tabs={[
-        { key: "risks", label: "Risks", count: grantsOff ? null : total },
+        { key: "risks", label: "Now" },
         { key: "glance", label: "At a glance" },
         { key: "changes", label: "Changes", count: k.changes?.counts?.all ?? null }]} />
       {tab === "risks" && <>
       <Attention d={d} />
+      <Card title="What to do first" sub="Critical, then high; the shortest list first. Open a line for why, how and who. Nothing changes in Snowflake.">
+        {d.act_first && d.act_first.length > 0 ? <div className="ae-act" aria-label="What to do first">{d.act_first.map((r) => <ActRow key={`${r.severity}${r.num}`} r={r} />)}</div>
+          : <p className="ae-muted">No critical or high findings.</p>}
+      </Card>
       <Card title={severityTakeaway(risks)} sub={grantsOff ? `${grantsOff.title}: not read` : `${plural(total, "finding")} in ${plural(ruleN, "rule")}`}
         right={<button type="button" className="ae-link" onClick={() => c.nav("rules", {})}>All {grantsOff ? "" : `${total.toLocaleString()} `}findings</button>}>
         <StackBar label={`Findings: ${sevParts(risks).map((p) => `${p.label} ${p.value}`).join(", ")}`} parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
         {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
-      </Card>
-      <Card title="What to do first" sub="Critical, then high; the shortest list first. Open a line for why, how and who. Nothing changes in Snowflake.">
-        {d.act_first && d.act_first.length > 0 ? <div className="ae-act" aria-label="What to do first">{d.act_first.map((r) => <ActRow key={`${r.severity}${r.num}`} r={r} />)}</div>
-          : <p className="ae-muted">No critical or high findings.</p>}
       </Card>
       </>}
 

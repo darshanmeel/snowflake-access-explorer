@@ -1,6 +1,6 @@
 // App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
 // Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
@@ -145,7 +145,7 @@ function useTheme(): [ThemeName, () => void] {
     try { const s = localStorage.getItem("ae-theme"); if (s === "light" || s === "dark") return s; } catch { /* no storage */ }
     return "light";  // light by default; the top-bar button switches and the choice is kept in this browser
   });
-  useEffect(() => { document.body.style.background = t === "dark" ? "#0F1216" : "#F6F7F9"; }, [t]);
+  useEffect(() => { document.body.style.background = t === "dark" ? "#0F1216" : "#F8FAFE"; }, [t]);
   return [t, () => setT((x) => { const n = x === "dark" ? "light" : "dark"; try { localStorage.setItem("ae-theme", n); } catch { /* no storage */ } return n; })];
 }
 
@@ -153,7 +153,7 @@ function useTheme(): [ThemeName, () => void] {
 export function Find({ view, onOpen }: { view: string; onOpen: (i: FindItem) => void }) {
   return (
     <div className="find">
-      <Combo<FindItem> label="Find" placeholder="Find a person, role or object" value="" clear min={2} wait={180} keyOf={(i) => i.id} onPick={onOpen}
+      <Combo<FindItem> label="Find" placeholder="Find anything" value="" clear min={2} wait={180} keyOf={(i) => i.id} onPick={onOpen}
         search={(q) => get<{ items: FindItem[] }>("find", { q, view, limit: "20" }).then((r) => r.items)}
         render={(i) => <><span className="ae-mono">{i.name}{i.sensitive && <span className="ae-sens-word"> · sensitive</span>}</span><span className="ae-muted">{i.kind_label}</span></>} />
     </div>
@@ -208,7 +208,7 @@ export function family(page: Page, here: Page[]): Page[] {
   return xs.length > 1 ? xs : [];
 }
 
-function Side({ meta, page, nav, onShut }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void; onShut: () => void }) {
+function Side({ meta, page, nav, onShut, foot }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void; onShut: () => void; foot: ReactNode }) {
   const wide = useWide();
   const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
@@ -252,6 +252,7 @@ function Side({ meta, page, nav, onShut }: { meta: Meta; page: Page; nav: (p: Pa
         </details>
       )}
       <DataInfo meta={meta} />
+      {foot}
     </aside>
   );
 }
@@ -424,11 +425,24 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   // the first load: everything but its log waits (inert: no clicks, no keyboard); a refresh keeps the page usable
   const lock = loadingShared || (!!busy && !meta?.loaded) ? ({ inert: "", "aria-busy": true } as Record<string, unknown>) : {};
   const hasData = !!meta?.loaded;
+  const controls = (
+    <span className="top-right">
+            {meta && <DataTime meta={meta} reload={reload} busy={!!busy || !!bg} />}
+            {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => setShut(false)}
+              title={meta.notes.map((n) => `${n.title}: ${n.meaning}`).join("\n")}><span className="side-notes-dot" aria-hidden />Incomplete · {meta.notes.length}</button>}
+            {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
+            {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (every card has its own </> mark too)">{"</>"} SQL</button>}
+            {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
+            <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
+            <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
+          </span>
+  );
   return (
     <Root theme={printing ? "light" : theme}>
       <SqlCtx.Provider value={hasData ? setSql : null}>
       <CsvOn.Provider value={meta?.csv !== false}>
       <div className={`app${shut ? " side-shut" : ""}`}>
+        <div className="left">
         <header className="top">
           <button type="button" className="top-logo" onClick={() => nav("home")} aria-label="Access explorer: home">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
@@ -437,7 +451,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           <div className="top-lock" {...lock}>
           <Find view={view} onOpen={(i) => openFound(i, nav)} />
           <div className="seg" role="group" aria-label="Data">
-            <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)}>Shared snapshot</button>
+            <button className={!loc.mine ? "on" : ""} onClick={() => setView(false)} title="Everyone: the shared snapshot">Everyone</button>
             {meta?.mine_available !== false && <button className={loc.mine ? "on" : ""} disabled={!!busy && !meta?.mine.loaded} onClick={() => (meta?.mine.loaded ? setView(true) : loadMine())}>My access</button>}
           </div>
           {meta?.mine_available === false && <span className="ae-muted top-chip" title={meta.mine_note ?? undefined}>My access: off{meta.inside ? " (owner's rights)" : ""}</span>}
@@ -449,23 +463,14 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
               <span className="ae-spin" aria-hidden /><b>{bg.what === "rebuild" ? "Rebuilding" : "Reading again"}:</b>&nbsp;<span className="top-bg-line">{bg.line}</span>
             </button>
           )}
-          <span className="top-right">
-            {meta && <DataTime meta={meta} reload={reload} busy={!!busy || !!bg} />}
-            {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => setShut(false)}
-              title={meta.notes.map((n) => `${n.title}: ${n.meaning}`).join("\n")}><span className="side-notes-dot" aria-hidden />Incomplete · {meta.notes.length}</button>}
-            {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
-            {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (every card has its own </> mark too)">{"</>"} SQL</button>}
-            {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
-            <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
-            <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
-          </span>
           </div>
           {busy && <span className="ae-muted top-busy" role="status"><span className="ae-spin" aria-hidden />{busy}</span>}
         </header>
         <div className="top-lock" {...lock}>
-        {!meta ? <aside className="side" /> : shut
+        {!meta ? <aside className="side">{controls}</aside> : shut
           ? <aside className="side side-rail"><button type="button" className="side-open" onClick={() => setShut(false)} title="Show the menu" aria-label="Show the menu">»</button></aside>
-          : <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} />}
+          : <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} foot={controls} />}
+        </div>
         </div>
         <main className="main">
           {meta && <PrintHead meta={meta} page={loc.page} params={loc.params} />}

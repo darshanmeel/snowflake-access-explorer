@@ -1142,6 +1142,7 @@ export interface HomePage {
 export interface HomeCards {
   admins: { total: number; service: number; by_role: { role: string; people: number }[]; account_only: number; names: { user: string; role: string; login: string }[];
     service_names?: { user: string; role: string; login: string }[] }; // riskiest first; service_names: service users only
+  readers: Partial<Record<"active" | "risky" | "admin" | "service", number>>; // users who can read sensitive data, each once
   stale: { total: number; by_status: Record<string, number>; of_status: Record<string, number>; names: string[] }; // of_status: all users per status
   people: { by_status: Record<string, number>; service: number };
   roles: Record<string, number>; // per role kind

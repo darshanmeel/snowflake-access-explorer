@@ -92,6 +92,52 @@ function Body({ d }: { d: AccessPage }) {
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
   const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
     w.last_login && w.status !== "never" ? ` · last login ${w.last_login}` : ""}` : "";
+  const objects_ = (
+      <Card title="Data they can access" sub="One row per object, at the most it allows. Riskiest first.">
+        <ListToolbar search={q} onSearch={setQ} onCsv={() => saveCsv("access.csv", { ...ask, offset: null }, `${w.name}_access.csv`)}>
+          <FilterChips label="Filter by access" value={lvl} onPick={setLvl} items={[
+            { key: "all", label: "All", count: list.data }, { key: "read", label: "Read only" }, { key: "change", label: "Can change" },
+            { key: "own", label: "Owns" }, { key: "multi", label: "More than one way" }]} />
+          <Toggle label={`Show ${n.usage} database/schema USAGE grants`} on={usage} onPick={setUsage} />
+          <Sel label="Type" value={otype} onPick={setOtype}
+            options={[["", "Every type"], ...(list.types ?? d.types ?? []).map((t): [string, string] => [t.type, `${t.type.toLowerCase()} (${t.n})`])]} />
+          <FilterChips label="Group by" value={group} onPick={(k) => setGroup(k as GroupBy)} items={[{ key: "none", label: "No groups" }, { key: "schema", label: "Schema" }, { key: "type", label: "Type" }]} />
+          <FilterChips label="Sort" value={sort} onPick={setSort} items={[{ key: "risk", label: "Riskiest first" }, { key: "name", label: "Name" }]} />
+          {cell && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setCell(null)}>{cell.schema} · {cell.min} ×</button>}
+        </ListToolbar>
+        {!shown.length ? <EmptyState title="Nothing matches">Change the filter, or clear the search.</EmptyState> : (
+          <div className={`ae-olist${!first && l.loading ? " ae-fade" : ""}`} role="table">
+            <div className="ae-orow ae-orow-h" role="row"><span>Object</span><span>Access</span><span>Sensitive columns</span><span>Granted through</span><span /></div>
+            {groups.map((g) => (
+              <Fragment key={g}>
+                {g && <div className="ae-ogroup" role="row"><span className="ae-mono">{g}</span> <span className="ae-muted">{list.groups[g] ?? 0}</span></div>}
+                {shown.filter((x) => !g || groupKey(x, group) === g).map((x) => {
+                  const id = x.object + x.category;
+                  const isOpen = open === id;
+                  return (
+                    <Fragment key={id}>
+                      <div className="ae-orow" role="row">
+                        <span className="ae-ocell">
+                          <button type="button" className="ae-link ae-mono ae-oname" onClick={() => lo.open(x.object)}>{x.label ?? x.object.split(".").pop()}</button>
+                          <span className="ae-muted ae-osub">{x.type.toLowerCase()}{x.schema ? ` · ${x.database}.${x.schema}` : ""}</span>
+                          {x.findings.length > 0 && <span className="ae-ochips">{x.findings.map((f) => <FindingChip key={f.num} {...f} onOpen={() => ruleLink(f.num)} />)}</span>}
+                        </span>
+                        <AccessPill level={x.level} privileges={x.privileges} />
+                        <SensitiveCell sensitive={x.sensitive} columns={x.columns} />
+                        <PathChips first={x.first} holder={x.holder} ways={x.ways} kinds={list.refs.kinds} onOpen={lo.open} />
+                        <button type="button" className="ae-btn" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : id)}>{isOpen ? "Close" : "How?"}</button>
+                      </div>
+                      {isOpen && <How x={x} who={w.name} user={user} />}
+                    </Fragment>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </div>
+        )}
+        {list.total > list.limit && <Pager at={page} size={list.limit} total={list.total} onPage={setPage} />}
+      </Card>
+  );
   return (
     <>
       <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
@@ -143,6 +189,7 @@ function Body({ d }: { d: AccessPage }) {
         <div className="ae-tile ae-tile-sens" title={tagsOff ? `${tagsOff.title}: sensitivity unknown` : undefined}><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{tagsOff ? "not read" : n.sensitive}</span></div>
         <button type="button" className="ae-tile" onClick={() => c.set({ show: "runs" })}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{d.runs_total + d.powers_total}</span><span className="ae-muted ae-tile-c">{d.runs_total} warehouses, apps, tasks, functions, procedures{d.powers_total > 0 ? ` · ${plural(d.powers_total, "power")} over the account` : ""}</span></button>
       </div>
+      {n.read > 0 && objects_}
       <div>
         <Card title="Why they have it" sub={`${plural(d.roles, "role")} · deepest ${d.deepest}`}>
           <ul className="ae-why">
@@ -193,51 +240,8 @@ function Body({ d }: { d: AccessPage }) {
           </div>
         ) : sq2 ? <EmptyState title="No schema matches">Clear the search.</EmptyState> : <EmptyState title="No data objects">Only names, runnable things or account powers.</EmptyState>}
       </Card>
-      <Card title="Data they can access" sub="One row per object, at the most it allows. Riskiest first.">
-        <ListToolbar search={q} onSearch={setQ} onCsv={() => saveCsv("access.csv", { ...ask, offset: null }, `${w.name}_access.csv`)}>
-          <FilterChips label="Filter by access" value={lvl} onPick={setLvl} items={[
-            { key: "all", label: "All", count: list.data }, { key: "read", label: "Read only" }, { key: "change", label: "Can change" },
-            { key: "own", label: "Owns" }, { key: "multi", label: "More than one way" }]} />
-          <Toggle label={`Show ${n.usage} database/schema USAGE grants`} on={usage} onPick={setUsage} />
-          <Sel label="Type" value={otype} onPick={setOtype}
-            options={[["", "Every type"], ...(list.types ?? d.types ?? []).map((t): [string, string] => [t.type, `${t.type.toLowerCase()} (${t.n})`])]} />
-          <FilterChips label="Group by" value={group} onPick={(k) => setGroup(k as GroupBy)} items={[{ key: "none", label: "No groups" }, { key: "schema", label: "Schema" }, { key: "type", label: "Type" }]} />
-          <FilterChips label="Sort" value={sort} onPick={setSort} items={[{ key: "risk", label: "Riskiest first" }, { key: "name", label: "Name" }]} />
-          {cell && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setCell(null)}>{cell.schema} · {cell.min} ×</button>}
-        </ListToolbar>
-        {!shown.length ? <EmptyState title="Nothing matches">Change the filter, or clear the search.</EmptyState> : (
-          <div className={`ae-olist${l.loading ? " ae-fade" : ""}`} role="table">
-            <div className="ae-orow ae-orow-h" role="row"><span>Object</span><span>Access</span><span>Sensitive columns</span><span>Granted through</span><span /></div>
-            {groups.map((g) => (
-              <Fragment key={g}>
-                {g && <div className="ae-ogroup" role="row"><span className="ae-mono">{g}</span> <span className="ae-muted">{list.groups[g] ?? 0}</span></div>}
-                {shown.filter((x) => !g || groupKey(x, group) === g).map((x) => {
-                  const id = x.object + x.category;
-                  const isOpen = open === id;
-                  return (
-                    <Fragment key={id}>
-                      <div className="ae-orow" role="row">
-                        <span className="ae-ocell">
-                          <button type="button" className="ae-link ae-mono ae-oname" onClick={() => lo.open(x.object)}>{x.label ?? x.object.split(".").pop()}</button>
-                          <span className="ae-muted ae-osub">{x.type.toLowerCase()}{x.schema ? ` · ${x.database}.${x.schema}` : ""}</span>
-                          {x.findings.length > 0 && <span className="ae-ochips">{x.findings.map((f) => <FindingChip key={f.num} {...f} onOpen={() => ruleLink(f.num)} />)}</span>}
-                        </span>
-                        <AccessPill level={x.level} privileges={x.privileges} />
-                        <SensitiveCell sensitive={x.sensitive} columns={x.columns} />
-                        <PathChips first={x.first} holder={x.holder} ways={x.ways} kinds={list.refs.kinds} onOpen={lo.open} />
-                        <button type="button" className="ae-btn" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : id)}>{isOpen ? "Close" : "How?"}</button>
-                      </div>
-                      {isOpen && <How x={x} who={w.name} user={user} />}
-                    </Fragment>
-                  );
-                })}
-              </Fragment>
-            ))}
-          </div>
-        )}
-        {list.total > list.limit && <Pager at={page} size={list.limit} total={list.total} onPage={setPage} />}
-      </Card>
       </>}
+      {show === "summary" && objects_}
     </>
   );
 }

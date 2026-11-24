@@ -24,6 +24,7 @@ const home: HomePage = {
   cards: {
     admins: { total: 2, service: 1, by_role: [{ role: "ACCOUNTADMIN", people: 2 }], account_only: 0, names: [{ user: "NAME_01", role: "ACCOUNTADMIN", login: "2026-11-01" }],
       service_names: [{ user: "NAME_03", role: "ACCOUNTADMIN", login: "never" }] },
+    readers: { active: 3, risky: 1, admin: 2, service: 1 },
     stale: { total: 1, by_status: { dormant: 1 }, of_status: { active: 3, dormant: 1 }, names: ["NAME_04"] },
     people: { by_status: { active: 3, dormant: 1 }, service: 1 }, roles: { functional: 2, technical: 4 }, objects: { by_type: [{ type: "TABLE", n: 9 }] },
     depth: { users: { 2: 1, 4: 3 }, objects: { 3: 9 }, schemas: { 3: 2 }, databases: { 3: 1 } },
@@ -64,8 +65,9 @@ describe("Home page", () => {
   it("keeps the sections of each tab in order with headings that never skip a level", async () => {
     view();
     await screen.findByText("1 inactive person can still read sensitive data");
-    expect(heads()[0]).toBe("H2:Who can access what in Snowflake?");
-    inOrder(["1 inactive person", "Most findings are medium: 4 of 7", "What to do first"]);
+    expect(heads()[0]).toBe("H2:1 inactive person can still read sensitive data");
+    expect(screen.getByRole("img", { name: "Inactive 1, Admin 2, Service 1, Active 3" }).children).toHaveLength(7);
+    inOrder(["1 inactive person", "1 of the 7 readers of sensitive data is inactive", "What to do first", "Most findings are medium: 4 of 7", "Ask who can access what"]);
     fireEvent.click(screen.getByRole("tab", { name: "At a glance" }));
     inOrder(["Admin holders", "Dormant", "Sensitive data", "Findings by area", "People", "Role chain depth", "Activity", "Object activity"]);
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
@@ -74,7 +76,7 @@ describe("Home page", () => {
 
   it("tiles open their page; quick links are grouped; the depth switch is pressed", async () => {
     const nav = view();
-    fireEvent.click(await screen.findByRole("button", { name: /Critical or high\s*3/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /3\s*critical or high findings/ }));
     expect(nav).toHaveBeenCalledWith("rules", { sev: "Critical" });
     fireEvent.click(screen.getByRole("button", { name: /Not used\s*4/ }));
     expect(nav).toHaveBeenCalledWith("objuse", {});
@@ -92,8 +94,8 @@ describe("Home page", () => {
     expect(await screen.findByRole("img", { name: /busiest 2026-11-16 with 9 queries/ })).toBeTruthy();
     expect(screen.getByText(/75% active/)).toBeTruthy();
     expect(screen.getByText("NAME_03")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: /Risks/ }));
-    expect(screen.getByText(/Admin role on a person/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /Now/ }));
+    expect(screen.getAllByText(/Admin role on a person/).length).toBeGreaterThan(0);
     await act(async () => { fireEvent.keyDown(window, { key: "/" }); });
     expect(document.activeElement).toBe(screen.getByLabelText("Search"));
   });
