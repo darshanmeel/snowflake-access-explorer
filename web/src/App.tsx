@@ -1,10 +1,10 @@
 // App shell: header (logo to Home, find, data mode, snapshot time, demo badge, theme), side nav in groups (Answers,
 // Admin, Detail) that folds into a menu below 1000px, URL state with redirects from old links, page switch.
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
-import { Banner, Card, Combo, CsvOn, LoadLog, NavTabsCtx, Root, SEVERITIES, SqlCtx, Waiting, type NavTabs, type ThemeName } from "./components";
+import { Banner, Card, Combo, CsvOn, LoadLog, Root, SEVERITIES, SqlCtx, Waiting, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { ChangesPageView } from "./pages/Changes";
@@ -13,7 +13,7 @@ import { ComparePageView } from "./pages/Compare";
 import { ErrorBox, SqlPanel } from "./pages/common";
 import { FlowPageView } from "./pages/Flow";
 import { GraphPageView } from "./pages/Map";
-import { GROUPS, HomePageView, openFound } from "./pages/Home";
+import { HomePageView, openFound } from "./pages/Home";
 import { askedOf, startWith, type Asked } from "./pages/screens";
 import { ObjectPageView } from "./pages/Object";
 import { RequestPageView } from "./pages/Request";
@@ -33,10 +33,10 @@ const SHARED_ONLY: Page[] = ["review", "flow", "changes", "objuse"];
 export const viewPage = (page: Page, mine: boolean): Page => (mine && SHARED_ONLY.includes(page) ? "access" : page);
 const PAGES: Page[] = ["home", "access", "user", "role", "object", "check", "graph", "see", "compare", "request", "sensitive", "flow", "rules", "review", "whatif", "usage", "objuse", "changes"];
 const LABEL: Record<Page, string> = {
-  home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "Object", check: "Can they?", graph: "Access graph",
+  home: "Home", access: "Access", user: "User paths", role: "Role paths", object: "An object", check: "Can they?", graph: "Access graph",
   see: "What they see", compare: "Compare", request: "Request access",
-  sensitive: "Sensitive data", flow: "Sensitive data flow", rules: "Risks & fixes", review: "Review & sign-off", whatif: "What if",
-  usage: "Granted vs used", objuse: "Object activity", changes: "What changed",
+  sensitive: "Sensitive data", flow: "How it flows", rules: "Risks", review: "Review & sign-off", whatif: "Change plan",
+  usage: "Grants to trim", objuse: "Objects", changes: "What changed",
 };
 
 /** Old links to the new screens (docs/redesign-notes.md). No page: Home; an unknown page: Home. */
@@ -142,7 +142,7 @@ function useLoc() {
 function useTheme(): [ThemeName, () => void] {
   const [t, setT] = useState<ThemeName>(() => {
     try { const s = localStorage.getItem("ae-theme"); if (s === "light" || s === "dark") return s; } catch { /* no storage */ }
-    return "dark";  // dark by default; the top-bar button switches and the choice is kept in this browser
+    return "light";  // light by default; the top-bar button switches and the choice is kept in this browser
   });
   useEffect(() => { document.body.style.background = t === "dark" ? "#0F1216" : "#F6F7F9"; }, [t]);
   return [t, () => setT((x) => { const n = x === "dark" ? "light" : "dark"; try { localStorage.setItem("ae-theme", n); } catch { /* no storage */ } return n; })];
@@ -189,111 +189,42 @@ function PrintHead({ meta, page, params }: { meta: Meta; page: Page; params: Par
 /** 96412 -> "96k", 1234567 -> "1.2M": side menu counts stay one short word; the exact number is in the tooltip. */
 export const short = (n: number) => n < 1000 ? String(n) : n < 1e6 ? `${+(n / 1e3).toFixed(n < 1e4 ? 1 : 0)}k` : `${+(n / 1e6).toFixed(1)}M`;
 
-function Count({ n, cls = "", unit }: { n: number; cls?: string; unit?: string }) {
-  return <span className={`ae-tab-count${cls}`} title={n.toLocaleString()}>{short(n)}{unit && ` ${unit}`}</span>;
+/** The menu: one entry per question. An entry with several pages opens its first; the others are tabs on top of it. */
+const MENU: [string, { label: string; pages: Page[] }[]][] = [
+  ["", [{ label: "Home", pages: ["home"] }]],
+  ["Ask", [{ label: "Can they?", pages: ["check"] }, { label: "A person or role", pages: ["access", "see", "user", "role"] },
+    { label: "An object", pages: ["object"] }, { label: "Access graph", pages: ["graph"] }, { label: "Compare & request", pages: ["compare", "request"] }]],
+  ["Act", [{ label: "Risks", pages: ["rules"] }, { label: "Sensitive data", pages: ["sensitive", "flow"] },
+    { label: "Used or not", pages: ["objuse", "usage"] }, { label: "Change plan", pages: ["whatif"] }]],
+  ["Govern", [{ label: "Review & sign-off", pages: ["review"] }, { label: "What changed", pages: ["changes"] }]],
+];
+const NAV_HIDDEN = new Set<Page>(["user", "role"]); // Access shows them; the pages still open from links
+
+/** The pages shown as tabs above this one: its menu entry's, when it has more than one here. */
+export function family(page: Page, here: Page[]): Page[] {
+  const f = MENU.flatMap(([, es]) => es).find((e) => e.pages.includes(page));
+  const xs = (f?.pages ?? []).filter((p) => here.includes(p) && (!NAV_HIDDEN.has(p) || p === page));
+  return xs.length > 1 ? xs : [];
 }
 
-/** Under the open page's entry: the person, role or object it shows, then its tabs (Tabs nav), so they are one click
- * away without the page's own tab bar. */
-function SideSub({ tabs, subject, fill, under }: { tabs: NavTabs[]; subject?: string; fill: boolean; under?: Under }) {
-  if (!tabs[0] && !subject) return null;
-  return (
-    <div className="side-sub">
-      {subject && <div className="side-subject ae-mono" title={subject}>{subject}</div>}
-      {tabs[0] && <SideTabs tabs={tabs} fill={fill} under={under} />}
-    </div>
-  );
-}
-
-type Under = { key: string; node: ReactNode }; // entries nested under one main tab while it is open (Findings: its severities)
-
-/** One level of a page's tabs; the next level (the tabs inside the open one) nests under the open tab. fill: the
- * deepest open tab is the one filled entry (false when an entry further down, a rule or a shortcut, is). */
-function SideTabs({ tabs, fill, under }: { tabs: NavTabs[]; fill: boolean; under?: Under }) {
-  const [t, ...deeper] = tabs;
-  return (
-    <div role="tablist" aria-label="Sections of this page">
-      {t.tabs.map((x) => (
-        <Fragment key={x.key}>
-          <button type="button" role="tab" aria-selected={x.key === t.active} className={x.key !== t.active ? "" : deeper[0] || !fill ? "open" : "on"} onClick={() => t.pick(x.key)}>
-            <span>{x.label}</span>{x.count != null && <Count n={x.count} cls={x.tone ? ` ae-tone-${x.tone}` : ""} />}
-          </button>
-          {x.key === t.active && deeper[0] && <div className="side-sub">{<SideTabs tabs={deeper} fill={fill} />}</div>}
-          {x.key === t.active && x.key === under?.key && under.node}
-        </Fragment>
-      ))}
-    </div>
-  );
-}
-
-/** Findings in the side menu (Risks & fixes open): each severity with findings, opening to its rules (fewest findings
- * first: the rare ones are easy to miss); a rule opens on Risks & fixes with the rule on top and its findings per role
- * or user. Rules 5 and 9 can sit under Critical and High: the one picked is the one at the page's severity. */
-function SideFindings({ meta, rule, sev, nav }: { meta: Meta; rule?: string; sev?: string; nav: (p: Page, params?: Params) => void }) {
-  const sevs = SEVERITIES.map((s) => [s, Object.entries(meta.rule_sev?.[s] ?? {}).sort((a, b) => a[1] - b[1] || +a[0] - +b[0])] as const)
-    .filter(([, rs]) => rs.length);
-  if (!sevs.length) return null;
-  const has = (rs: (typeof sevs)[number][1]) => rs.some(([num]) => num === rule);
-  const at = (sevs.find(([s, rs]) => s === sev && has(rs)) ?? sevs.find(([, rs]) => has(rs)))?.[0];
-  return (
-    <div aria-label="Findings by severity, then rule" className="side-findings">
-      {sevs.map(([s, rs], i) => (
-        <details key={s} open={s === at || (i === 0 && !rule)}>
-          <summary><span className={`ae-sevpill ae-sev-${s}`}>{s}</span><Count n={rs.reduce((t, [, v]) => t + v, 0)} /></summary>
-          {rs.map(([num, v]) => {
-            const r = meta.rules.find((x) => x.num === num), on = num === rule && s === at;
-            return (
-              <button type="button" key={num} className={on ? "on" : ""} aria-current={on ? "page" : undefined}
-                onClick={() => nav("rules", { rule: num, sev: s })} title={r ? `${num} ${r.title}: ${r.why}` : num}>
-                <span><span className="side-rule-n">{num}</span>{r?.title}</span><Count n={v} />
-              </button>
-            );
-          })}
-        </details>
-      ))}
-    </div>
-  );
-}
-
-const NAV_HIDDEN = new Set(["user", "role"]); // Access shows them; the pages still open from links
-
-function Side({ meta, page, params, tabs, nav, onShut }: {
-  meta: Meta; page: Page; params: Params; tabs: NavTabs[]; nav: (p: Page, params?: Params) => void; onShut: () => void;
-}) {
+function Side({ meta, page, nav, onShut }: { meta: Meta; page: Page; nav: (p: Page, params?: Params) => void; onShut: () => void }) {
   const wide = useWide();
   const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (menu.current) menu.current.open = wide; }, [wide, page]); // narrow: a pick folds the menu again
-  const rule = page === "rules" ? params.rule : undefined;
-  const subject = params.user ?? params.role ?? params.name ?? params.table ?? params.a;
-  const ppl = meta.people;
+  const here = meta.pages.map((p) => p.key);
   return (
     <aside className="side">
-      {wide && <button type="button" className="side-hide" onClick={onShut} title="Hide the menu: the page takes the full width and shows its own tabs" aria-label="Hide the menu">«</button>}
+      {wide && <button type="button" className="side-hide" onClick={onShut} title="Hide the menu: the page takes the full width" aria-label="Hide the menu">«</button>}
       <details className="side-menu" ref={menu} open={wide}>
         <summary>Menu · {LABEL[page]}</summary>
-        {GROUPS.map(([g, title]) => {
-          const ps = meta.pages.filter((p) => (p.group ?? "access") === g && (!NAV_HIDDEN.has(p.key) || p.key === page));
-          return ps.length ? (
-            <nav key={g} aria-label={title}>
+        {MENU.map(([title, es]) => {
+          const xs = es.map((e) => ({ ...e, first: e.pages.find((p) => here.includes(p)) })).filter((e) => e.first);
+          return xs.length ? (
+            <nav key={title} aria-label={title || undefined}>
               {title && <h4>{title}</h4>}
-              {ps.map((p) => {
-                const on = p.key === page; // only the deepest open entry is filled; the ones above it are bold
-                return (
-                  <Fragment key={p.key}>
-                    <button type="button" className={on ? (tabs[0] ? "open" : "on") : ""} aria-current={on ? "page" : undefined} onClick={() => nav(p.key)}>
-                      <span>{p.label}</span>
-                      {p.badge != null && <span className={`ae-tab-count${p.severity ? ` ae-sevpill ae-sev-${p.severity}` : ""}`} title={p.title ?? p.badge.toLocaleString()}>{p.severity ? `${short(p.badge)} ${p.severity.toLowerCase()}` : short(p.badge)}</span>}
-                    </button>
-                    {on && <SideSub tabs={tabs} subject={subject} fill={!rule}
-                      under={p.key === "rules" ? { key: "checks", node: <SideFindings meta={meta} rule={rule} sev={params.sev} nav={nav} /> } : undefined} />}
-                    {p.key === "rules" && page !== "rules" && ppl && <>
-                      <button type="button" onClick={() => nav("rules", { part: "admins" })}
-                        title="Users holding an admin role or an account-level privilege"><span>Admin holders</span><Count n={ppl.admins} unit="people" cls={ppl.admins ? " ae-tone-bad" : ""} /></button>
-                      <button type="button" onClick={() => nav("rules", { part: "stale" })}
-                        title="People disabled, dormant or never logged in who still hold roles (rules 8 and 16), each once"><span>Dormant & disabled</span><Count n={ppl.stale} unit="people" cls={ppl.stale ? " ae-tone-warn" : ""} /></button>
-                    </>}
-                  </Fragment>
-                );
+              {xs.map((e) => {
+                const on = e.pages.includes(page);
+                return <button key={e.label} type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => nav(e.first!)}><span>{e.label}</span></button>;
               })}
             </nav>
           ) : null;
@@ -434,11 +365,6 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   // data they have; inside Streamlit it answers when done
   const [bg, setBg] = useState<{ job: number; what: string; line: string } | null>(null);
   const [logOpen, setLogOpen] = useState(false);  // the load log: its own panel, opened from the top bar
-  // the open page's tabs per level (Tabs nav), listed in the side menu; a level stops at the first one missing
-  const [navLevels, setNavLevels] = useState<(NavTabs | null)[]>([]);
-  const publishTabs = useCallback((level: number, t: NavTabs | null) => setNavLevels((xs) => { const n = [...xs]; n[level - 1] = t; return n; }), []);
-  const navTabs: NavTabs[] = [];
-  for (const t of navLevels) { if (!t) break; navTabs.push(t); }
   const [shut, setShutState] = useState(() => { try { return localStorage.getItem("ae-side") === "shut"; } catch { return false; } });
   const setShut = (v: boolean) => { setShutState(v); try { localStorage.setItem("ae-side", v ? "shut" : "open"); } catch { /* no storage */ } };
   const title = (what: string, ok: boolean | null) => what === "rebuild" ? (ok ? "Snapshot rebuilt" : "Snapshot not rebuilt")
@@ -485,6 +411,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   useEffect(() => { document.title = `${LABEL[loc.page]} · Access explorer`; }, [loc.page]);
 
   const Body = VIEWS[loc.page];
+  const fam = family(loc.page, meta?.pages.map((p) => p.key) ?? []);
   const needMine = loc.mine && meta && !meta.mine.loaded;
   const needShared = !loc.mine && meta?.error?.detail === "shared_not_loaded";
   const loadingShared = !loc.mine && meta?.error?.detail === "shared_loading";  // another tab's or the first page's load
@@ -526,8 +453,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => setShut(false)}
               title={meta.notes.map((n) => `${n.title}: ${n.meaning}`).join("\n")}><span className="side-notes-dot" aria-hidden />Incomplete · {meta.notes.length}</button>}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
-            {hasData && <span className="ae-muted top-sqlnote" title="Every card has a </> mark in its top-right corner">{"</>"} on any card: its SQL</span>}
-            {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself">{"</>"} SQL</button>}
+            {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (every card has its own </> mark too)">{"</>"} SQL</button>}
             {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
             <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
             <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
@@ -538,7 +464,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
         <div className="top-lock" {...lock}>
         {!meta ? <aside className="side" /> : shut
           ? <aside className="side side-rail"><button type="button" className="side-open" onClick={() => setShut(false)} title="Show the menu" aria-label="Show the menu">»</button></aside>
-          : <Side meta={meta} page={loc.page} params={loc.params} tabs={navTabs} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} />}
+          : <Side meta={meta} page={loc.page} nav={(p, params) => nav(p, params ?? startWith(p, loc.mine ? {} : asked.current))} onShut={() => setShut(true)} />}
         </div>
         <main className="main">
           {meta && <PrintHead meta={meta} page={loc.page} params={loc.params} />}
@@ -570,9 +496,13 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
           {loadingShared && !busy && <p className="ae-muted" role="status">The shared data is being read from Snowflake: the pages open when it is done.</p>}
           {ctx && !needMine && !needShared && !loadingShared && (
             <AppCtx.Provider value={ctx}>
-              <NavTabsCtx.Provider value={publishTabs}>
-                <Body key={`${view}:${loc.page}`} />
-              </NavTabsCtx.Provider>
+              {fam.length > 0 && (
+                <nav className="ae-family" aria-label={LABEL[loc.page]}>
+                  {fam.map((p) => <button key={p} type="button" className={p === loc.page ? "on" : ""} aria-current={p === loc.page ? "page" : undefined}
+                    onClick={() => { if (p !== loc.page) nav(p, startWith(p, loc.mine ? {} : asked.current)); }}>{LABEL[p]}</button>)}
+                </nav>
+              )}
+              <Body key={`${view}:${loc.page}`} />
             </AppCtx.Provider>
           )}
         </main>

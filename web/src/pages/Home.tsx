@@ -12,7 +12,7 @@ import { skipNote } from "./Risks";
 
 const RECENT = "ae-recent";
 /** Side menu groups (server.GROUP); Home has no heading. */
-export const GROUPS: [string, string][] = [["home", ""], ["access", "Access"], ["ask", "Ask"], ["risk", "Risk"], ["govern", "Govern"]];
+export const GROUPS: [string, string][] = [["home", ""], ["access", "Ask"], ["ask", "Ask"], ["risk", "Act"], ["govern", "Govern"]];
 
 /** A search hit (top bar or Home): a person or role opens on Access, an object on Who has access. */
 export function openFound(i: FindItem, nav: (p: Page, params: Record<string, string>) => void) {
@@ -55,8 +55,8 @@ const SHORT: [Page, string, ((w: Who) => Short | null)?][] = [
   ["check", "Can they read …?", (w) => (w.kind === "object" ? null : { page: "check", label: `Can ${w.name} read …?`, params: { [w.kind === "user" ? "name" : "role"]: w.kind === "user" ? w.name : w.id } })],
   ["graph", "Access graph", (w) => ({ page: "graph", label: `Graph of ${w.name}`, params: { [w.kind === "user" ? "user" : w.kind === "object" ? "table" : "role"]: w.kind === "user" ? w.name : w.id } })],
   ["compare", "Compare two people", (w) => (w.kind === "object" ? null : { page: "compare", label: `Compare ${w.name} with …`, params: { a: w.id } })],
-  ["request", "Request access"], ["rules", "Risks & fixes"], ["whatif", "What if a role goes?"], ["sensitive", "Sensitive data"],
-  ["flow", "Sensitive data flow"], ["usage", "Granted vs used"], ["objuse", "Object activity"], ["changes", "What changed"]];
+  ["request", "Request access"], ["rules", "Risks"], ["whatif", "What if a role goes?"], ["sensitive", "Sensitive data"],
+  ["flow", "Sensitive data flow"], ["usage", "Grants to trim"], ["objuse", "Used or not"], ["changes", "What changed"]];
 
 /** The shortcuts to the pages in the nav (My access has no flow or changes), filled in with who (the first search hit
  * or the default user) where the question is about someone. */

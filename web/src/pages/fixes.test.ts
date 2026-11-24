@@ -53,7 +53,7 @@ describe("Home search", () => {
   });
   it("fills the shortcuts with the first hit", () => {
     const u = shortcuts(["check", "graph", "compare", "rules"], { kind: "user", id: "ENGINEER_01", name: "ENGINEER_01" });
-    expect(u.map((s) => s.label)).toEqual(["Can ENGINEER_01 read …?", "Graph of ENGINEER_01", "Compare ENGINEER_01 with …", "Risks & fixes"]);
+    expect(u.map((s) => s.label)).toEqual(["Can ENGINEER_01 read …?", "Graph of ENGINEER_01", "Compare ENGINEER_01 with …", "Risks"]);
     expect(u[0].params).toEqual({ name: "ENGINEER_01" });
     const t = shortcuts(["check", "graph", "compare"], { kind: "object", id: "DB.S.T", name: "DB.S.T" });
     expect(t.map((s) => s.label)).toEqual(["Can they read …?", "Graph of DB.S.T", "Compare two people"]);

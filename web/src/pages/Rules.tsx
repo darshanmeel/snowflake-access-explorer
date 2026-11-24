@@ -29,7 +29,7 @@ export function RulesPageView() {
     : k === "checks" ? { show: null, part: null, sev: null, rule: null } : { show: k, part: null });
   return (
     <>
-      <Head title="Risks & fixes" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
+      <Head title="Risks" sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
         right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString()} rows)` : ""}</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
@@ -93,7 +93,7 @@ function FindingGroups({ d, q, f, setF }: {
   if (!all && !why) return null;
   return (
     <div className="ae-findings">
-      <div className="ae-wide-hide">{/* wide with the menu open: the side menu's findings pick the severity */}
+      <div>
         <Tabs active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
           tabs={[...SEVERITIES.filter((s) => d.sev_counts[s]).map((s) => ({ key: s, label: s, count: d.sev_counts[s], tone: s === "Medium" ? "warn" as const : s === "Low" ? null : "bad" as const })),
             { key: "All", label: "All", count: all }]} />

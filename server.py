@@ -33,10 +33,10 @@ DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
 TTL = cache.TTL  # the My access session cookie (seconds); the data itself stays until read again
 DIST = pathlib.Path(__file__).with_name("web") / "dist"
 
-PAGES = {"home": "Home", "access": "A person or role", "object": "Who has access to an object", "check": "Can they?",
+PAGES = {"home": "Home", "access": "A person or role", "object": "An object", "check": "Can they?",
          "graph": "Access graph", "see": "What they see", "compare": "Compare", "request": "Request access",
-         "rules": "Risks & fixes", "whatif": "What if", "review": "Review & sign-off", "sensitive": "Sensitive data",
-         "flow": "Sensitive data flow", "usage": "Granted vs used", "objuse": "Object activity", "changes": "What changed",
+         "rules": "Risks", "whatif": "Change plan", "review": "Review & sign-off", "sensitive": "Sensitive data",
+         "flow": "Sensitive data flow", "usage": "Grants to trim", "objuse": "Used or not", "changes": "What changed",
          "user": "User paths", "role": "Role paths"}
 GROUP = {"home": "home", "access": "access", "object": "access", "see": "access", "user": "access", "role": "access",
          "check": "ask", "compare": "ask", "request": "ask", "graph": "ask", "whatif": "ask",

@@ -98,7 +98,7 @@ Read-only Streamlit app that explains Snowflake access: who has what, and throug
   admin role / account privilege = red. Put the legend next to each graph.
 - Keep `FAKE=1` mode on the fake data in `access.py`, so it runs without Snowflake. Fake data keeps at least
   one finding per rule.
-- UI: a page's sections are sub-entries of its left-nav entry (`Tabs nav`, level 2+ nests; a tab bar only where the menu does not show), never stacked one under the other; long lists fold (first few, then +N more). One exception: the Activity
+- UI: a short left menu, one entry per question (`MENU` in `App.tsx`; an entry with several pages shows them as tabs on top), a page's sections as a tab bar on the page (`Tabs nav`, level 2 as chips), never stacked one under the other; long lists fold (first few, then +N more). One exception: the Activity
   section (`pages/Activity.tsx`) is one access log of stacked sections, shaped by the object's type. Small charts (bars, heat grid,
   overlap circles, grant links, crossed-out cuts) are plain SVG / CSS in `components/kit.tsx` and `visuals.tsx`, colours from
   the `--ae-*` tokens (light and dark). Pickers search the server (`/api/list?q=&limit=`), never download every name.

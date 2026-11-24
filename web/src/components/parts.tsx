@@ -1,5 +1,5 @@
 // Small building blocks: Card, Tabs, Chips, Banner, KpiRow. Colours only through --ae-* variables (themeVars).
-import { createContext, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useState, type MouseEvent, type ReactNode } from "react";
 import { copyText } from "./kit";
 import { themeVars } from "./theme";
 
@@ -51,25 +51,11 @@ export function Card({ title, sub, right, children, scroll = false, sql }: {
 
 export interface TabItem { key: string; label: string; count?: number | null; tone?: "bad" | "warn" | null }
 
-/** A page's own tabs, shown nested under its entry in the side menu (set by the app, absent in tests). */
-export interface NavTabs { tabs: TabItem[]; active: string; pick: (key: string) => void }
-export const NavTabsCtx = createContext<((level: number, t: NavTabs | null) => void) | null>(null);
-
-/** `nav`: the page's tabs, also listed in the side menu; 1 (true) the main ones, 2 the tabs inside the open one, ...
- * The bar then shows only where that menu does not (narrow screens, print: app.css .ae-tabs-nav). */
+/** `nav`: the page's own tabs (1 or true the main ones, 2 the tabs inside the open one, drawn as chips). */
 export function Tabs({ tabs, active, onChange, nav }: { tabs: TabItem[]; active: string; onChange: (key: string) => void; nav?: boolean | number }) {
   const level = nav === true ? 1 : nav || 0;
-  const publish = useContext(NavTabsCtx);
-  const pick = useRef(onChange);
-  pick.current = onChange;
-  const sig = JSON.stringify(tabs);
-  useEffect(() => {
-    if (!level || !publish) return;
-    publish(level, { tabs: JSON.parse(sig), active, pick: (k) => pick.current(k) });
-  }, [level, publish, sig, active]);
-  useEffect(() => (level && publish ? () => publish(level, null) : undefined), [level, publish]);
   return (
-    <div className={`ae-tabs${level && publish ? " ae-tabs-nav" : ""}`} role="tablist">
+    <div className={`ae-tabs${level ? ` ae-tabs-l${level}` : ""}`} role="tablist">
       {tabs.map((t) => (
         <button key={t.key} role="tab" aria-selected={t.key === active}
           className={`ae-tab${t.key === active ? " on" : ""}${t.tone ? ` ae-tone-${t.tone}` : ""}`} onClick={() => onChange(t.key)}>
