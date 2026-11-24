@@ -6719,7 +6719,9 @@ def app_rights(app):
             if x.get("APP") == app:
                 used[x["ACTION"]] = used.get(x["ACTION"], 0) + int(x["QUERIES"] or 0)
                 people.add(x["USER_NAME"])
-        return dict(owner=owner, reads=len(reads), changes=len(changes), used=used, users=len(people))
+        sens_ = sorted(o for o in reads if o in sens)  # the sensitive ones first: they are what viewers see
+        return dict(owner=owner, reads=len(reads), changes=len(changes), used=used, users=len(people),
+                    shows=sens_[:3] or sorted(reads)[:3], shows_sensitive=len(sens_))
     return cached(("app_rights", app), make)
 
 

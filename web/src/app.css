@@ -1198,3 +1198,11 @@ div.ae-tile { cursor: default; }
 
 .ae-plan-care { margin: 0 0 18px; padding-left: 20px; display: grid; gap: 4px; }
 .ae-losstab td { vertical-align: top; } .ae-losstab ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; } .ae-losstab td:first-child { width: 22%; } .ae-losstab td:nth-child(2) { width: 42%; }
+
+.ae-orow { grid-template-columns: minmax(190px, 1.5fr) 168px minmax(120px, .9fr) minmax(130px, 1fr) minmax(190px, 1.6fr) 48px; }
+.ae-runlist { list-style: none; margin: 0; padding: 0; } .ae-runlist li { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-top: 1px solid var(--ae-line); flex-wrap: wrap; } .ae-runlist li:first-child { border-top: 0; }
+.ae-fg-head.ae-fg-line { display: grid; grid-template-columns: 84px minmax(220px, 1.2fr) 56px minmax(0, 1.6fr); gap: 12px; align-items: center; text-align: left; width: 100%; padding: 11px 0; }
+.ae-fg-line .ae-sevpill { text-align: center; font-family: var(--ae-sans); } .ae-fg-line .ae-fg-title { font-weight: 600; } .ae-fg-no { font-weight: 400; font-size: 12px; } .ae-fg-names { overflow-wrap: anywhere; font-size: 13px; }
+.ae-fg { border: 0; border-top: 1px solid var(--ae-line); border-radius: 0; background: none; } .ae-fg:first-of-type { border-top: 0; }
+.ae-cuttab tr.on td { background: var(--ae-accent_soft); }
+.ae-route-say { font-size: 12px; font-style: italic; color: var(--ae-muted); position: absolute; top: -18px; left: 0; right: 0; text-align: center; } .ae-route-link { position: relative; min-width: 52px; }

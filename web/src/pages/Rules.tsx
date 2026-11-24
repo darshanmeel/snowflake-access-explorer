@@ -24,7 +24,8 @@ export function RulesPageView() {
   const [q0, setQ0] = useState("");
   useEffect(() => { const t = setTimeout(() => setQ0(f.q), 300); return () => clearTimeout(t); }, [f.q]);
   const show = c.params.show === "fixes" || c.params.show === "list" ? c.params.show : "checks"; // the old page first
-  const q = rulesQuery(apiParams(c), show, all ? [] : off, show === "checks" ? { ...f, q: q0 } : NONE);
+  const top = show === "checks" && !c.params.sev && !c.params.rule && !c.params.grantee; // critical and high, one line per rule
+  const q = { ...rulesQuery(apiParams(c), show, all ? [] : off, show === "checks" ? { ...f, q: q0 } : NONE), ...(top ? { sev: "all" } : {}) };
   const s = useApi<RulesPage>("rules", q);
   const tab = c.params.part === "admins" || c.params.part === "stale" ? c.params.part : show; // part=: linkable from other pages
   const pick = (k: string) => c.set(k === "admins" || k === "stale" ? { part: k, show: null }
@@ -59,23 +60,23 @@ export function RulesPageView() {
             {tab === "list" && <RuleList d={d} />}
             {tab === "checks" && !d.filters.rule && !scope.length && <Lead d={d} />}
             {tab === "admins" && <p className="ae-answer">{d.admins_total.toLocaleString("en-US")} {d.admins_total === 1 ? "person holds" : "people hold"} an admin role or power over the account</p>}
-            {tab === "stale" && <p className="ae-answer">{d.stale_total.toLocaleString("en-US")} inactive {d.stale_total === 1 ? "person still holds" : "people still hold"} roles</p>}
+            {tab === "stale" && <p className="ae-answer">{d.stale_total.toLocaleString("en-US")} inactive {d.stale_total === 1 ? "person still holds" : "people still hold"} roles{d.stale.some((x) => x.sensitive) && " and read sensitive data"}</p>}
             {tab === "checks" && (
-              <Card>
+              <Card title={d.filters.rule ? `Rule ${d.filters.rule}` : top ? "Critical and high, worst first" : d.filters.sev ? `${d.filters.sev} findings` : "All findings"}>
                 {d.filters.rule ? <RuleHead d={d} /> : chips}
-                <FindingGroups key={scope.join()} d={d} q={q} f={f} setF={setF} />
+                <FindingGroups key={scope.join()} d={d} q={q} f={f} setF={setF} top={top} />
                 <p className="ae-muted">{d.counts.Passing > 0 && `${d.counts.Passing} of ${c.meta.rules.length} rules pass.`}{skipNote(d.skipped)}</p>
               </Card>
             )}
             {tab === "admins" && (
-              <Card title="People with admin roles or account privileges" scroll
+              <Card title="Who and how"
                 right={<button className="ae-btn" onClick={() => c.nav("object", { preset: "admin" })}>Who holds each admin role</button>}>
                 <AdminTable admins={d.admins} refs={d.refs} total={d.admins_total} />
               </Card>
             )}
+            {tab === "admins" && <AdminWork />}
             {tab === "stale" && (
-              <Card title="Disabled, dormant or never logged in, still holding roles" scroll
-                sub={`Rules 8 and 16, each person once. People who can read sensitive data (rule 7) come first. Dormant: no login for ${c.meta.limits.dormant_days} days.`}>
+              <Card title="Worst first" sub={`Dormant: no login for ${c.meta.limits.dormant_days} days.`}>
                 <StaleTable d={d} />
               </Card>
             )}
@@ -105,17 +106,21 @@ function Lead({ d }: { d: RulesPage }) {
 
 /** Findings: severity tabs and filters answered by the server, one group per rule (most people
  * affected first); an opened group loads its findings a page at a time, an opened finding its fix. */
-function FindingGroups({ d, q, f, setF }: {
-  d: RulesPage; q: Record<string, string | undefined>; f: Filters; setF: (f: Filters) => void;
+function FindingGroups({ d, q, f, setF, top }: {
+  d: RulesPage; q: Record<string, string | undefined>; f: Filters; setF: (f: Filters) => void; top?: boolean;
 }) {
+  const [low, setLow] = useState(false); // medium and low too
   const c = useApp();
   const sev = d.filters.sev;
   const all = SEVERITIES.reduce((n, s) => n + (d.sev_counts[s] ?? 0), 0);
   const why = [f.area && `area = ${f.area}`, f.people && "people only", f.q.trim() && `search "${f.q.trim()}"`].filter(Boolean).join(", ");
   if (!all && !why) return null;
+  const worst = (g: FindingGroup) => SEVERITIES.indexOf(g.severity as (typeof SEVERITIES)[number]);
+  const many = (g: FindingGroup) => g.sevs?.[g.severity] ?? g.findings;
+  const groups = top ? [...d.groups].sort((x, y) => worst(x) - worst(y) || many(y) - many(x)) : d.groups;
   return (
     <div className="ae-findings">
-      <Fold label="Severity, area, search" on={!!why || sev !== "Critical"}>
+      <Fold label="Severity, area, search" on={!!why || (!top && !d.filters.rule)}>
         <Tabs active={sev || "All"} onChange={(s) => c.set({ sev: s === "All" ? "all" : s })}
           tabs={[...SEVERITIES.filter((s) => d.sev_counts[s]).map((s) => ({ key: s, label: s, count: d.sev_counts[s], tone: s === "Medium" ? "warn" as const : s === "Low" ? null : "bad" as const })),
             { key: "All", label: "All", count: all }]} />
@@ -130,7 +135,8 @@ function FindingGroups({ d, q, f, setF }: {
       </div>
       </Fold>
       {why && <p className="ae-muted ae-fd-hidden">{plural(d.total, "finding")} match {why}.</p>}
-      {d.groups.map((g, i) => <Group key={`${sev}:${g.key}`} g={g} q={q} open={d.groups.length === 1 || (i === 0 && g.findings <= 5)} />)}
+      {groups.filter((g) => !top || low || worst(g) < 2).map((g) => <Group key={`${sev}:${g.key}`} g={g} q={q} open={d.groups.length === 1} />)}
+      {top && groups.some((g) => worst(g) >= 2) && <button type="button" className="ae-link" onClick={() => setLow(!low)}>{low ? "Only critical and high" : `+${groups.filter((g) => worst(g) >= 2).length} medium and low rules`}</button>}
       {firstOf(d, d.filters.rule ? "roles and users" : "rules")}
       {!d.groups.length && <p className="ae-muted">Nothing here.</p>}
     </div>
@@ -195,11 +201,11 @@ function Group({ g, q, open }: { g: FindingGroup; q: Record<string, string | und
   );
   return (
     <div className={`ae-fg ae-sev-${g.severity}`}>
-      <button className="ae-fg-head" onClick={() => setOn(!on)} aria-expanded={on}>
-        <span className="ae-fg-caret">{on ? "▾" : "▸"}</span>
-        <span className="ae-fg-num">{g.key}</span>
-        <span className="ae-fg-title">{g.title}</span>
-        <span className="ae-muted">{plural(g.findings, "finding")}{g.people ? ` · ${g.people === 1 ? "1 person" : `${g.people.toLocaleString("en-US")} people`}` : ""}</span>
+      <button className="ae-fg-head ae-fg-line" onClick={() => setOn(!on)} aria-expanded={on}>
+        <span className={`ae-sevpill ae-sev-${g.severity}`}>{g.severity}</span>
+        <span className="ae-fg-title">{g.title} <span className="ae-muted ae-fg-no">rule {g.key}</span></span>
+        <b className="ae-fg-n">{(g.sevs?.[g.severity] ?? g.findings).toLocaleString("en-US")}</b>
+        <span className="ae-muted ae-fg-names">{(g.names ?? []).map((x) => x.replace(/ \(user\)$/, "")).join(", ")}{(g.subjects ?? 0) > (g.names?.length ?? 0) ? ` +${(g.subjects! - g.names!.length).toLocaleString("en-US")}` : ""}</span>
       </button>
       {on && (
         <>
@@ -254,15 +260,12 @@ function StaleTable({ d }: { d: RulesPage }) {
         { key: "never", label: "Never logged in", value: n("never"), cls: "low" }]} />
       <div className="ae-row"><input type="search" className="ae-input" aria-label="Find a person" placeholder="Find a person" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="ae-muted">{d.stale_matched < d.stale_total ? `${d.stale_matched.toLocaleString("en-US")} of ${d.stale_total.toLocaleString("en-US")} people match` : `${d.stale_total.toLocaleString("en-US")} people`}</span></div>
-      <PagedTable path="rules" at="s_offset" total={d.stale_matched} offset={d.stale_offset} pick={(x: RulesPage) => x.stale} csv="stale_people.csv" rows={d.stale} rowTone={(r: StalePerson) => (r.sensitive ? "bad" : null)} onRowClick={(r: StalePerson) => c.nav("access", { user: r.user })}
+      <PagedTable path="rules" at="s_offset" total={d.stale_matched} offset={d.stale_offset} pick={(x: RulesPage) => x.stale} csv="stale_people.csv" rows={d.stale} onRowClick={(r: StalePerson) => c.nav("access", { user: r.user })}
         columns={[
-          col("u", "User", (r: StalePerson) => r.user, { wrap: "nowrap", render: (r: StalePerson) => <span className="ae-mono">{r.user}</span> }),
-          col("s", "Status", (r: StalePerson) => r.status, { wrap: "nowrap" }),
-          col("t", "Type", (r: StalePerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
-          col("r", "Roles held", (r: StalePerson) => r.roles, { num: true }),
-          col("f", "Findings", (r: StalePerson) => r.findings, { num: true }),
-          col("x", "Reads sensitive", (r: StalePerson) => (r.sensitive ? "yes" : ""), { wrap: "nowrap" }),
-          col("l", "Last login", (r: StalePerson) => r.last_login ?? "never", { wrap: "nowrap" }),
+          col("u", "Person", (r: StalePerson) => r.user, { wrap: "nowrap", render: (r: StalePerson) => <span className="ae-mono">{r.user}{r.service && <span className="ae-muted"> service</span>}</span> }),
+          col("s", "Why", (r: StalePerson) => `${r.status} ${r.login ?? ""}`, { wrap: "wrap", render: (r: StalePerson) => <span className="ae-bad">{r.status === "never" ? "never logged in" : `${r.status}${r.login?.includes("·") ? `, ${r.login.split("·").pop()!.trim().replace(/ ago$/, "")}` : ""}`}</span> }),
+          col("x", "Reads", (r: StalePerson) => r.reads || (r.sensitive ? "sensitive data" : ""), { wrap: "wrap", render: (r: StalePerson) => (r.reads ? r.reads.replace(/[A-Z0-9_$]+\.[A-Z0-9_$]+\./g, "") : <span className="ae-muted">nothing sensitive</span>) }),
+          col("h", "Holds", (r: StalePerson) => (r.holds ?? []).join(", "), { wrap: "wrap", render: (r: StalePerson) => <span className="ae-mono">{(r.holds ?? []).join(", ")}{r.roles > (r.holds?.length ?? 0) ? ` +${r.roles - (r.holds?.length ?? 0)}` : ""}</span> }),
         ]} />
     </>
   );
@@ -285,21 +288,32 @@ function Lines({ items, strong }: { items: string[]; strong: string[] }) {
   );
 }
 
+/** Data work done with an admin role (rule 26): the first findings. */
+function AdminWork() {
+  const c = useApp();
+  const s = useApi<RulesPage>("rules", { view: c.view, rule: "26", sev: "all", group: "26", limit: "5" });
+  const xs = (s.data?.findings ?? []).filter((x) => x.num === "26");
+  if (!xs.length) return null;
+  return (
+    <Card title={`${xs.length === 1 ? xs[0].grantee.replace(/ \(user\)$/, "") : "They"} worked with it`}>
+      <ul>{xs.map((x) => <li key={x.id}><span className="ae-mono">{x.grantee.replace(/ \(user\)$/, "")}</span>: {x.what}</li>)}</ul>
+      <button type="button" className="ae-link" onClick={() => c.nav("rules", { rule: "26" })}>Rule 26</button>
+    </Card>
+  );
+}
+
 export function AdminTable({ admins, refs, total }: { admins: AdminPerson[]; refs: Refs; total?: number }) {
   const o = useOpen(refs);
   return (
     <>
       {total != null && total > admins.length && <p className="ae-muted">First {admins.length} of {total} people.</p>}
-      <DataTable csv="admin_people.csv" rows={admins} rowTone={(r: AdminPerson) => (r.roles.length || r.strong.length ? "bad" : null)}
+      <DataTable csv="admin_people.csv" rows={admins} 
         columns={[
-          col("u", "User", (r: AdminPerson) => r.user, { wrap: "nowrap", render: (r: AdminPerson) => <NameLink id={r.user} refs={refs} /> }),
-          col("t", "Type", (r: AdminPerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
-          col("s", "Status", (r: AdminPerson) => r.status, { wrap: "nowrap" }),
-          col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={r.roles} strong={r.roles} /> }),
-          col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={r.account} strong={r.account} /> }),
-          col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
-          col("p", "Path", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "nowrap",
+          col("u", "Person", (r: AdminPerson) => r.user, { wrap: "nowrap", render: (r: AdminPerson) => <><NameLink id={r.user} refs={refs} />{r.service && <span className="ae-muted"> service</span>}{r.status !== "active" && <span className="ae-bad"> {r.status}</span>}</> }),
+          col("r", "Holds", (r: AdminPerson) => [...r.roles, ...r.account].join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={[...r.roles.map((x) => (x === r.default_role ? `${x}, as default role` : x)), ...r.account.map((x) => `${x} (account power)`)]} strong={[...r.roles.map((x) => (x === r.default_role ? `${x}, as default role` : x)), ...r.account.map((x) => `${x} (account power)`)]} /> }),
+          col("p", "How", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "wrap",
             render: (r: AdminPerson) => <PathText path={r.paths[0] ?? []} more={r.paths.slice(1)} kinds={refs.kinds} onOpen={o.open} /> }),
+          col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
         ]} />
     </>
   );

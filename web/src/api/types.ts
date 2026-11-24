@@ -690,7 +690,7 @@ export interface UsedRow { user: string; app: string | null; role: string | null
 
 export interface CheckPage {
   access: { words: string; share: Record<string, string>; days: number; activity: boolean; // what the privileges allow, in words; share: privilege -> role (WITH GRANT OPTION)
-    app: { owner: string[]; reads: number; changes: number; used: Partial<Record<"READ" | "WRITE" | "DDL", number>>; users: number } | null } | null; // app: a Streamlit app's owner rights; null: verdict na
+    app: { owner: string[]; reads: number; changes: number; used: Partial<Record<"READ" | "WRITE" | "DDL", number>>; users: number; shows?: string[]; shows_sensitive?: number } | null } | null; // app: a Streamlit app's owner rights; null: verdict na
   used_anyway: { days: number; total: number; queries: number; last: string; rows: UsedRow[] } | null; // No or Blocked only; null: activity not read
   builtin: BuiltinOn | null; // null: none left out (always with builtin=1)
   risks: RiskItem[]; // the subject's and the object's, each line prefixed with its name; [] = no strip
@@ -823,7 +823,7 @@ export interface SensitivePage {
   refs: Refs;
 }
 
-export interface StalePerson { user: string; status: UserStatus; service: boolean; roles: number; findings: number; sensitive: boolean; last_login: string | null }
+export interface StalePerson { user: string; status: UserStatus; service: boolean; roles: number; findings: number; sensitive: boolean; last_login: string | null; holds?: string[]; reads?: string; login?: string }
 
 export interface AdminPerson {
   user: string;
@@ -834,6 +834,7 @@ export interface AdminPerson {
   paths: Path[];
   status: UserStatus;
   last_login: string | null;
+  default_role?: string | null;
 }
 
 /** A finding in a Rules page list: Finding without the fix texts, with the first path and people only. The whole
@@ -859,6 +860,8 @@ export interface FindingGroup {
   said_total?: number; // patterns in all
   tags?: string[]; // rule 17: why the role counts as read-only (named / used read-only)
   sevs?: Partial<Record<Severity, number>>; // findings per severity
+  names?: string[]; // by rule: the first roles and users it is about
+  subjects?: number; // by rule: how many
 }
 
 export interface RulesPage {
@@ -1075,6 +1078,7 @@ export interface AccessObject {
   sensitive: boolean;
   columns: { column: string; state: ColState; reason: string }[];
   findings: RowFinding[];
+  used?: { queries: number; last: string } | null; // in the activity window; null: not read
   label: string | null; // "Future tables · SALES.CORE"
 }
 
@@ -1100,7 +1104,7 @@ export interface AccessPage {
   view: View;
   who: Who;
   risks: RiskItem[];
-  counts: LadderCounts & { sensitive: number; schemas: number };
+  counts: LadderCounts & { sensitive: number; schemas: number; tables?: { read: number; change: number; own: number; clear: number }; names?: { clear: string[]; change: string[]; schemas: string[] } };
   types?: { type: string; n: number }[]; // object types in the list, most first (the Type filter)
   objects: AccessObject[]; // one page (offset, limit) of the list filters asked for; total: all that match
   total: number;

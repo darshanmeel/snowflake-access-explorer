@@ -7,7 +7,7 @@ import { useApi } from "../api/client";
 import type { CheckPage, Inside, ListItem, Path, Refs } from "../api/types";
 import { Fold, Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, NameList, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { accessLines, cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, usedAnyway, verdictLine, warehouseNote } from "./verdict";
+import { accessLines, cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, subjectIn, subjectLink, usedAnyway, verdictLine, warehouseNote } from "./verdict";
 import { BuiltinNote, col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Risks, Sel, StateTag } from "./common";
 import { UseLine } from "./Activity";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
@@ -58,16 +58,17 @@ function Body({ d }: { d: CheckPage }) {
   return (
     <>
       <BuiltinNote b={d.builtin} />
-      <section className={`ae-verdict ae-verdict-${d.verdict}`} aria-label="Answer">
+      <Tabs nav active={at} onChange={(k) => c.set({ show: k === first ? null : k, part: null })} tabs={tabs} />
+      {at !== "cut" && <section className={`ae-verdict ae-verdict-${d.verdict}`} aria-label="Answer">
         <div className="ae-verdict-head">
           <span className="ae-verdict-mark" aria-hidden>{MARK[d.verdict]}</span>
           <div className="ae-verdict-word">{WORD[d.verdict]}</div>
           <div>
-            {accessLines(d).slice(0, 1).map((t) => <b key={t} className="ae-verdict-kind">{t.replace(/\.$/, "")}</b>)}
+            <b className="ae-verdict-kind">{headOf(d)}</b>
             <div>{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}{d.dormant_days ? ` · no login for ${d.dormant_days} days` : ""}</span>}
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
-            <div className="ae-verdict-line">{answerLine(d)}</div>
-            {accessLines(d).slice(1).map((t) => <div key={t} className="ae-muted">{t}</div>)}
+            <div className="ae-verdict-line">{lineOf(d)}</div>
+            {accessLines(d).slice(1).filter((t) => !t.startsWith("The app normally")).map((t) => <div key={t} className="ae-muted">{t}</div>)}
             <UsedLine d={d} />
           </div>
         </div>
@@ -87,15 +88,14 @@ function Body({ d }: { d: CheckPage }) {
           {lacks > 0 && <li className="more"><button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `${lacks} not held`}</button></li>}
         </ul>
         </Fold>
-      </section>
-      <Tabs nav active={at} onChange={(k) => c.set({ show: k === first ? null : k, part: null })} tabs={tabs} />
+      </section>}
       {at === "inside" && d.inside && <InsideCard d={d} x={d.inside} />}
       {at === "answer" && <Answer d={d} />}
       {at === "routes" && <Routes d={d} />}
       {at === "cut" && <Routes d={d} only="cut" />}
       {at === "nearest" && <NearestWays d={d} />}
       {at === "layers" && <Layers d={d} />}
-      {d.verdict !== "no" && <Risks list={d.risks} quiet />}
+      {d.verdict !== "no" && d.risks.length > 0 && <Fold label={`${d.risks.length} ${d.risks.length === 1 ? "risk" : "risks"} about them or the object`}><Risks list={d.risks} quiet /></Fold>}
     </>
   );
 }
@@ -143,6 +143,23 @@ function UsedLine({ d }: { d: CheckPage }) {
   if (!d.subject.user) return <div className="ae-warn-word">{text}</div>;
   return <div><button type="button" className="ae-link ae-warn-word"
     onClick={() => c.nav("object", { name: d.object, show: "activity", as: d.user, ...(c.params.builtin && { builtin: c.params.builtin }) })}>{text}</button></div>;
+}
+
+/** The columns read in clear and masked, when any is sensitive. */
+const colsOf = (d: CheckPage) => { const xs = d.read?.columns ?? []; return { all: xs.length, clear: xs.filter((x) => x.state === "clear").map((x) => x.column), masked: xs.filter((x) => x.state === "masked").map((x) => x.column) }; };
+
+/** The kind of access, and how many sensitive columns they see. */
+function headOf(d: CheckPage): string {
+  if (d.verdict === "no") return d.subject.user ? `None of ${d.user}'s ${d.roles_count} ${d.roles_count === 1 ? "role" : "roles"} leads there` : `Neither ${d.user} nor its roles lead there`;
+  const k = (accessLines(d)[0] ?? "").replace(/\.$/, ""), x = colsOf(d);
+  return x.all ? `${k || "They can read it"}, ${x.clear.length} of ${x.all} sensitive ${x.all === 1 ? "column" : "columns"} in clear` : k;
+}
+
+function lineOf(d: CheckPage): string {
+  const x = colsOf(d), n = d.nearest?.[0];
+  if (d.verdict === "no") return n ? `Nearest way in: ${n.role}, held by ${n.holders} ${n.holders === 1 ? "person" : "people"} today.` : "";
+  if (d.verdict === "partly" && x.all && x.masked.length) return `${x.masked.join(", ")} ${x.masked.length === 1 ? "is" : "are"} masked${x.clear.length ? `; ${x.clear.join(", ")} ${x.clear.length === 1 ? "is" : "are"} not` : ""}.`;
+  return answerLine(d);
 }
 
 /** Which warehouses a query can run on: a query needs one. */
@@ -216,27 +233,24 @@ function Routes({ d, only }: { d: CheckPage; only?: string }) {
         </div>
       </Card>}
       {part === "cut" && (
-        <Card title={d.cuts.length ? `${d.cuts.length} ${d.cuts.length === 1 ? "place" : "places"} to take it away` : "Take it away"} sub={d.cuts.length ? "Removing one of these links removes this access. The side effects differ."
+        <>
+        {d.cuts[0] && <p className="ae-answer">{cutLabel(d.cuts[0].edges).replace(/^Revoke /, "Removing ")} hits {d.cuts[0].people.length === 1 ? `only ${d.cuts[0].people[0]}` : `${d.cuts[0].people.length} people`}</p>}
+        <Card title={d.cuts.length ? `${d.cuts.length} ${d.cuts.length === 1 ? "place" : "places"} to cut, smallest effect first` : "Take it away"} sub={d.cuts.length ? undefined
           : d.view === "mine" ? "Not worked out in My access: it needs everyone's grants." : "No single link is on every route: each route needs its own cut, below."}>
-          <ul className="ae-cuts">
-            {d.cuts.map((x, i) => (
-              <li key={i} className={i === sel ? "on" : ""}>
-                <button type="button" className="ae-cut-main" aria-pressed={i === sel} onClick={() => setSel(i)}>
-                  <b>{cutLabel(x.edges)}</b>
-                  <span className="ae-muted">{x.people.length > 1
-                    ? <>Ends this access for {x.people.length} people:<NameList items={x.people} max={4} plain /></>
-                    : x.people.length ? `Ends this access only for ${x.people[0]}.` : `Ends it for ${d.user} only: no one holds it.`}{x.lost > 0 ? ` ${d.user} also loses ${x.lost} other privilege${x.lost === 1 ? "" : "s"}.` : ""}</span>
-                </button>
-                <span className="ae-cut-side">
-                  {sideEffects(x.people.length, x.lost).map((b) => <span key={b.text} className={`ae-sfx ae-sfx-${b.tone}`}>{b.text}</span>)}
-                  <button type="button" className="ae-btn ae-btn-s" title="Simulate it on the What if page: nothing changes in Snowflake" onClick={() => whatIf(c, cutWhatIf(x.edges))}>Simulate</button>
-                </span>
-              </li>
-            ))}
-          </ul>
+          {d.cuts.length > 0 && <div className="ae-table-scroll"><table className="ae-table ae-cuttab">
+            <thead><tr><th>Cut here</th><th>Who loses it</th><th>What else {d.user} loses</th><th /></tr></thead>
+            <tbody>{d.cuts.map((x, i) => (
+              <tr key={i} className={i === sel ? "on" : ""}>
+                <td><button type="button" className="ae-link ae-mono" aria-pressed={i === sel} onClick={() => setSel(i)}>{cutLabel(x.edges).replace(/^Revoke /, "").replace(" from user ", " from ")}</button></td>
+                <td><b>{x.people.length}</b> {x.people.length === 1 ? `only ${x.people[0]}` : x.people.length <= 2 ? x.people.join(", ") : <NameList items={x.people} max={2} plain />}</td>
+                <td>{x.lost ? `${x.lost} other ${x.lost === 1 ? "privilege" : "privileges"}` : "nothing"}</td>
+                <td><button type="button" className="ae-btn ae-btn-s" title="Simulate it on the change plan: nothing changes in Snowflake" onClick={() => whatIf(c, cutWhatIf(x.edges))}>Simulate</button></td>
+              </tr>))}</tbody>
+          </table></div>}
           {cut && <CodeOutput changes={[]} texts={cutTexts(cut, d.user)} name={`revoke_${d.user.toLowerCase()}`} />}
           {!d.cuts.length && <RemoveOptions d={d} />}
         </Card>
+        </>
       )}
       {part === "table" && <RouteTable d={d} />}
     </>
@@ -415,6 +429,7 @@ export function Blocked({ d, fix }: { d: CheckPage; fix: { iac: string; sql: str
 /** The answer tab: the nearest way in (No), why it is blocked, the graph of how the access gets there. Without
  * routes (no Routes tab) the table of routes and the ways to remove it stay here. */
 /** "2 of 3 columns in clear" */
+const policyOf = (t: string) => (/no masking/i.test(t) ? "none" : t.match(/^([\w$.]+) (shows|masks|hides)/)?.[1] ?? t);
 const columnsTitle = (cs: { state: string }[]) => `${cs.filter((x) => x.state === "clear").length} of ${cs.length} ${cs.length === 1 ? "column" : "columns"} in clear`;
 
 function Answer({ d }: { d: CheckPage }) {
@@ -430,14 +445,21 @@ function Answer({ d }: { d: CheckPage }) {
       )}
       <CutBanner capped={d.capped} no={d.verdict === "no"} />
       <GraphCard g={d.graph} refs={d.refs} title={d.lanes_total === 1 && d.lanes[0] ? `They get in through ${d.lanes[0].path.length - 2} ${d.lanes[0].path.length === 3 ? "role" : "roles"}` : d.lanes_total ? `They get in ${d.lanes_total} ways` : undefined} />
+      {d.access?.app && <Card title="The app runs as its owner" sub={d.access.app.shows_sensitive ? `Viewers see what the owner role reads: ${d.access.app.shows_sensitive} sensitive ${d.access.app.shows_sensitive === 1 ? "object" : "objects"}, whatever they hold themselves.` : undefined}>
+        <div className="ae-route">
+          {([["user", d.user, "opens"], ["object", d.object.split(".").pop()!, "runs as"], ["technical", d.access.app.owner.join(", "), "reads"], ["object", (d.access.app.shows ?? []).map((x) => x.split(".").pop()).join(", ") || "nothing", ""]] as const).map(([k, t, w], i, xs) => (
+            <span key={i} className="ae-route-step"><span className={`ae-route-node ae-route-${k}`}><span className="ae-mono">{t}</span><span className="ae-muted">{["Person", "Streamlit app", "owner of the app", d.access!.app!.shows_sensitive ? "sensitive" : "data"][i]}</span></span>
+              {i < xs.length - 1 && <span className="ae-route-link"><span className="ae-route-say">{w}</span></span>}</span>))}
+        </div>
+      </Card>}
       {!d.lanes_total && <RouteTable d={d} />}
       {a.yes && d.view !== "mine" && (
         <div className="ae-two">
           {d.read && d.read.columns.length > 0 && <Card title={columnsTitle(d.read.columns)}>
             <DataTable rows={d.read.columns} filter={false}
-              columns={[col("c", "Column", (r: any) => r.column), col("s", "They see", (r: any) => r.state, { render: (r: any) => StateTag(r) }), col("r", "Why", (r: any) => r.reason, { wrap: "wrap" })]} />
+              columns={[col("c", "Column", (r: any) => r.column), col("s", `${d.user} sees`, (r: any) => r.state, { render: (r: any) => (r.state === "masked" ? "masked" : <span className="ae-bad">{r.state === "clear" ? "in clear" : r.state}</span>) }), col("r", "Policy", (r: any) => policyOf(r.reason), { render: (r: any) => <span title={r.reason}>{policyOf(r.reason)}</span> })]} />
           </Card>}
-          {d.subject.user && <Card title="Used by them"><UseLine name={d.object} user={d.user} /></Card>}
+          {d.subject.user && <Card title="What they did with it"><UseLine name={d.object} user={d.user} /></Card>}
         </div>
       )}
       {d.options.length > 0 && !d.lanes_total && <Card title="Ways to remove this access" sub="Text to copy into your infrastructure as code. This app never runs it."><RemoveOptions d={d} /></Card>}

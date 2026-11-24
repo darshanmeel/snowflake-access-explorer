@@ -1597,9 +1597,25 @@ def access_entries(name, user, mine):
     rank = lambda o: (min((SEV_RANK.get(f["severity"], 9) for f in o["findings"]), default=9), not o["sensitive"],
                       -a.LEVELS.index(o["level"]) if o["level"] else 0, o["object"])
     objs.sort(key=rank)
+    did = {}  # the person's queries per object (a role: the queries run with it), in the activity window
+    if not mine and a.act_state()[0]:
+        for r in a.acts:
+            if (r["USER_NAME"] if user else r["ROLE_NAME"]) == name:
+                v = did.setdefault(r["OBJECT_NAME"], [0, ""])
+                v[0] += int(r["QUERIES"] or 0)
+                v[1] = max(v[1], str(r["LAST_USED"] or "")[:10])
+    for o in objs:
+        n = did.get(o["object"])
+        o["used"] = None if mine or not a.act_state()[0] else dict(queries=n[0], last=n[1]) if n else dict(queries=0, last="")
     counts = a.ladder_counts(objs)
     data = [o for o in objs if o["category"] == "data" and not o["label"]]  # future grants are not objects
     counts["sensitive"] = sum(in_clear(o, o["columns"]) for o in data)
+    tabs = [o for o in data if a.is_data(o["type"])]  # tables and views: what the headline counts
+    nm = lambda xs: [o["object"].split(".")[-1] for o in xs[:3]] + [f"{len(xs) - 3:,} more"] * (len(xs) > 3)
+    clear = [o for o in tabs if in_clear(o, o["columns"])]
+    counts["tables"] = dict(read=len(tabs), change=sum(at_least(o, "change") for o in tabs), own=sum(at_least(o, "own") for o in tabs), clear=len(clear))
+    counts["names"] = dict(clear=nm(clear), change=nm([o for o in tabs if at_least(o, "change")]),
+                           schemas=(lambda xs: xs[:3] + [f"{len(xs) - 3:,} more"] * (len(xs) > 3))(list(dict.fromkeys(f'{o["database"]}.{o["schema"]}' for o in tabs))))
     counts["schemas"] = len({(o["database"], o["schema"] or o["object"]) for o in data})
     heat = {}
     for o in data:
@@ -1637,7 +1653,10 @@ def access_list(p, objs):
                                        else True)) \
         and (not q or q in x["object"].lower()) and (not otype or x["type"] == otype) \
         and (not cell or (group_of(x, "schema") == cell and (x["sensitive"] if low == "sensitive" else step(x, low))))
+    plain = lambda x: usage or lvl != "all" or q or otype or cell or p.get("more") or p.get("offset") or (not x["label"] and x["type"] not in ("SCHEMA", "DATABASE"))
     xs = [x for x in objs if (x["category"] == "data" or (usage and x["category"] == "names")) and keep(x)]
+    if p.get("short"):  # the page's first list: tables, views and the like; schemas and future grants with more=1
+        xs = [x for x in xs if plain(x)]
     if p.get("sort") == "name":
         xs.sort(key=lambda x: x["object"])
     by = p.get("group", "none")
@@ -3535,6 +3554,10 @@ def rule_groups(ix, idx, by):
                  sevs=dict(Counter(ix[i]["sev"] for i in its)),
                  kind=ix[its[0]]["kind"] if by in ("grid", "grantee") else None,
                  people=people(its) if by in ("object", "grantee") else g["people"])
+        if by == "rule":  # who it is about, most people affected first
+            top = sorted(its, key=lambda i: (SEV_RANK.get(ix[i]["sev"], 9), -ix[i]["reach"], ix[i]["gid"]))
+            xs = list(dict.fromkeys(ix[i]["grantee"] for i in top))
+            g.update(names=xs[:4], subjects=len(xs))
         if by == "grantee":  # thousands of findings that say the same thing: its objects, and what most of them say
             g["objects"] = len({o for i in its for o in ix[i]["objects"]})
             if all(ix[i]["num"] == "17" for i in its):  # one finding per object: one example, why it is read-only
@@ -3632,6 +3655,7 @@ def rules_page(p, view):
             dict(user=x["user"], service=x["service"], roles=x["roles"], account=sorted(acct := {pv for pv, q in x["account"] if q[-1] != "PUBLIC"},
                                                                                    key=lambda pv: (pv not in a.ADMIN_LEVEL, pv)),
                  strong=sorted(acct & a.ADMIN_LEVEL), paths=x["paths"] + [q for _, q in x["account"] if q[-1] != "PUBLIC"], status=x["status"],
+                 default_role=(a.profile.get(x["user"]) or {}).get("DEFAULT_ROLE"),
                  last_login=str(x["last_login"])[:16] if x["last_login"] else None) for x in admins[:MAX_ADMINS]])
     return out
 
@@ -3655,7 +3679,9 @@ def stale_list():
     sensitive data (rule 7) first, then by findings."""
     def make():
         n, r7 = Counter(x["grantee"] for x in S["rows"]), {x["grantee"] for x in S["rows"] if x["num"] == "7"}
+        reads = {x["grantee"]: x["detail"].partition("reads ")[2] for x in S["rows"] if x["num"] == "7"}
         out = [dict(user=u, status=a.status(u), service=a.is_service(u), roles=len(a.roles_of[u]), findings=n[u],
+                    holds=sorted(a.roles_of[u])[:3], reads=reads.get(u, ""), login=login(u)[0],
                     sensitive=u in r7, last_login=str(v)[:16] if (v := (a.profile.get(u) or {}).get("LAST_SUCCESS_LOGIN")) else None)
                for u in a.users if a.stale(u) and a.roles_of.get(u)]
         return sorted(out, key=lambda x: (not x["sensitive"], -x["findings"], x["user"]))
