@@ -271,7 +271,7 @@ function lead(d: ActivityPage, objs: number, total: number, days: number): React
   if (d.what === "app") return <>The app {n} ran {fmt(total)} queries on {plural(objs, "object")} for {plural(d.by!.user.length, "user")} in {days} days, with its owner's rights.</>;
   if (d.what === "scope") return <>{plural(objs, "object")} in {d.kind?.toLowerCase()} {n} {objs === 1 ? "was" : "were"} read or changed {fmt(total)} times in {days} days.</>;
   if (d.what === "role") return <>{n} is used by {plural(d.by!.user.length, "user")}, on {plural(objs, "object")}</>;
-  return <>{n} used {plural(objs, "object")}{ob && <>, mostly {ob.key.split(".").pop()} ({ob.pc}%)</>}</>;
+  return <>{n} used {plural(objs, "object")}{ob && objs === 1 ? <>: {ob.key.split(".").pop()}</> : ob && <>, mostly {ob.key.split(".").pop()} ({ob.pc}%)</>}</>;
 }
 
 function Tiles({ d, work, open }: { d: ActivityPage; work: Work; open: Open }) {

@@ -68,11 +68,12 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
   const [fetching, setFetching] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [pick, setPick] = useState<GraphNode | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
   const bar = useRef<HTMLDivElement>(null);
   const whole = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false); // Show only this removed its own button: the focused graph puts the keyboard on Whole graph
   useEffect(() => { if (refocus.current && graph.focus) { refocus.current = false; whole.current?.focus({ preventScroll: true }); } }, [graph]);
-  useEffect(() => { setOpen(new Map()); setGot({}); setFailed(null); setPick(null); }, [graph]);
+  useEffect(() => { setOpen(new Map()); setGot({}); setFailed(null); setPick(null); setHover(null); }, [graph]);
   const full = useMemo(() => (Object.keys(got).length ? { ...graph, groups: { ...graph.groups, ...got } } : graph), [graph, got]);
   const folded = useMemo(() => foldRoles(full), [full]);
   const shown = useMemo(() => expand(folded, new Set(open.keys())), [folded, open]);
@@ -95,12 +96,12 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     return () => ro.disconnect();
   }, []);
 
-  const [hover, setHover] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const mark = focus ?? pick?.id ?? null;
-  const lit = hover ?? (mark && shown.nodes.some((n) => n.id === mark) ? mark : null);
-  const hot = useMemo(() => (lit ? related(shown, lit) : null), [shown, lit]);
   const byId = useMemo(() => new Map(shown.nodes.map((n) => [n.id, n])), [shown]);
+  // a box gone from the drawing (opened, narrowed) never sends its mouse-leave: its hover must not fade the rest
+  const lit = (hover && (byId.has(hover) || shown.edges.some((e) => e.id === hover)) ? hover : null) ?? (mark && shown.nodes.some((n) => n.id === mark) ? mark : null);
+  const hot = useMemo(() => (lit ? related(shown, lit) : null), [shown, lit]);
   const { nodes, edges } = useMemo(() => toFlow(shown, lay, t, hot, mark, hi, flow), [shown, lay, t, hot, mark, hi, flow]);
 
   // the panel is as tall as the drawing; a resize keeps the reader's pan and zoom once they moved it

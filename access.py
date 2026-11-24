@@ -3138,10 +3138,12 @@ def admin_via(obj, privs=None, kind=None):
     """{admin role: shortest path role->...->holder->obj} of the admin roles that reach a grant on obj (privilege in
     privs, None = any; of type kind, None = any) through their real links (admin_below)."""
     hs = {r for r, pv, k in on.get(obj, []) if (privs is None or pv in privs) and kind in (None, k)}
+    # two holders equally near: the one that gives the most, never whichever comes first out of a set
+    gives = lambda h: max((OBJ_LEVELS.index(obj_level(pv, k)) for r, pv, k in on[obj] if r == h), default=-1)
     out = {}
     for r in sorted(ADMIN & set(admin_links) | ADMIN & hs):
         b = admin_below(r)
-        p = min((b[h] for h in hs if h in b), key=len, default=None)
+        p = min((b[h] for h in hs if h in b), key=lambda q: (len(q), -gives(q[-1]), q), default=None)
         if p:
             out[r] = p + [obj]
     return out
@@ -4546,18 +4548,18 @@ def lean_rows(rows, start, user):
         if x not in seen:
             seen.add(x)
             todo += [k for k in kids.get(x, []) if k != "PUBLIC"]
-    out, left = [], Counter()
+    out, left = [], {}
     for r in rows:
         mine = [h for h in r["holders"] if h in seen]
         if not mine:
-            left["what only PUBLIC gives"] += 1
+            left.setdefault("reached only through PUBLIC", set()).add(r["object"])
         elif r["type"] in ("DATABASE", "SCHEMA"):
-            left["databases and schemas"] += 1
+            left.setdefault("databases and schemas", set()).add(r["object"])
         elif r["type"].startswith("FUTURE"):
-            left["future grants"] += 1
+            left.setdefault("future grants", set()).add(r["object"])
         else:
             out.append(r | dict(holders=mine, paths=[p for p in r["paths"] if start == "PUBLIC" or "PUBLIC" not in p[1:]]))
-    return (out, ", ".join(left)) if out else (rows, "")
+    return (out, ", ".join(f"{len(v):,} {k}" for k, v in left.items())) if out else (rows, "")
 
 
 def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False, limit=None, user=None, otype=None,

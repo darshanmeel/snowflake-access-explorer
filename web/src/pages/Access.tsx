@@ -94,7 +94,7 @@ function Body({ d }: { d: AccessPage }) {
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
   const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
     w.last_login && w.status !== "never" ? ` · last login ${w.last_login}` : ""}` : "";
-  const all = list.data; // stages, streams, tasks: in the list, not tables or views
+  const all = lvl === "all" && !q && !otype && !cell ? list.total : 0; // stages, streams, tasks: in the list, not tables or views
   const objects_ = (
       <Card title={tagsOff || !tb.clear ? (user ? "What they can access" : "What it opens") : `${tb.clear.toLocaleString("en-US")} of ${tb.read.toLocaleString("en-US")} show sensitive columns in clear`}>
         <details className="ae-filter" open={lvl !== "all" || !!q || usage || group !== "none" || !!otype || !!cell || undefined}><summary>Filter, group, CSV</summary>
@@ -110,7 +110,7 @@ function Body({ d }: { d: AccessPage }) {
           {cell && <button type="button" className="ae-chip ae-chip-plain" onClick={() => setCell(null)}>{cell.schema} · {cell.min} ×</button>}
         </ListToolbar>
         </details>
-        {show === "overview" && d.data > list.total && !rest && lvl === "all" && !q && <p><button type="button" className="ae-link" onClick={() => setRest(true)}>+{(d.data - list.total).toLocaleString("en-US")} schemas, future grants and the like</button></p>}
+        {show === "overview" && d.data > list.total && !rest && lvl === "all" && !q && <p><button type="button" className="ae-link" onClick={() => setRest(true)}>+{(d.data - list.total).toLocaleString("en-US")} more: schemas, future grants and the like</button></p>}
         {show === "overview" && d.heat_total > 1 && <p><button type="button" className="ae-link" onClick={() => c.set({ show: "summary" })}>Objects per schema</button></p>}
         {!shown.length ? <EmptyState title="Nothing matches">Change the filter, or clear the search.</EmptyState> : (
           <div className={`ae-olist${!first && l.loading ? " ae-fade" : ""}`} role="table">
@@ -159,7 +159,7 @@ function Body({ d }: { d: AccessPage }) {
         ...rtabs.slice(1).filter((t) => t.key !== "held"),
         { key: "runs", label: "Can run", count: d.runs_total + d.powers_total, tone: d.powers_total > 0 ? "bad" as const : null },
       ]} />
-      {show === "detail" && <p className="ae-answer"><span className="ae-mono">{w.name}</span> {user ? "reaches" : "opens"} {plural(tb.read, "table or view", "tables and views")} through {plural(d.roles, "role")}</p>}
+      {show === "detail" && <p className="ae-answer"><span className="ae-mono">{w.name}</span> {user ? "reaches" : "opens"} {plural(tb.read, "table or view", "tables and views")}</p>}
       {show === "held" && <p className="ae-answer">{plural(w.held_by?.users ?? 0, "person", "people")}{(w.held_by?.roles ?? 0) > 0 && <> and {plural(w.held_by!.roles, "role")}</>} {(w.held_by?.users ?? 0) + (w.held_by?.roles ?? 0) === 1 ? "holds" : "hold"} <span className="ae-mono">{w.name}</span></p>}
       {show === "detail" ? <Detail name={w.name} user={user} pane="diagram" />
         : ROLE_PARTS.includes(show) ? <Detail name={w.name} user={user} pane={show} /> : null}

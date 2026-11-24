@@ -95,7 +95,7 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
                     {x.broad && <span className="ae-warn-word">; too broad: everyone holding {d.user} ({x.people} people) gets it</span>}{forRole && !x.broad && <span className="ae-muted">; its {x.people} {x.people === 1 ? "holder gets" : "holders get"} it too</span>}</td>
                 </tr>))}</tbody>
             </table>
-            {d.suggestions.length > 3 && <button type="button" className="ae-link" onClick={() => setMore(!more)}>{more ? "Fewer roles" : `+${d.suggestions.length - 3} more roles`}</button>}
+            {d.suggestions.length > 3 && <button type="button" className="ae-link" onClick={() => setMore(!more)}>{more ? "Fewer roles" : `+${d.suggestions.length - 3} more ${d.suggestions.length === 4 ? "role" : "roles"}`}</button>}
             <label className={`ae-req-role${!ch ? " on" : ""}`}>
               <input type="radio" name="role" checked={!ch} onChange={() => setPick("")} />
               <span><b>None of these</b><span className="ae-muted"> · a skeleton for a new role, for the owner to decide</span></span>

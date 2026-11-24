@@ -1225,3 +1225,5 @@ div.ae-tile { cursor: default; }
 .ae-ps { white-space: normal; flex-wrap: wrap; row-gap: 3px; max-width: 100%; }
 .ae-log-sw { display: inline-block; width: 16px; height: 10px; border-radius: 2px; }
 .ae-ev-text .ae-link { font-weight: 600; text-align: left; white-space: normal; color: inherit; }
+
+.ae-ps-chip { overflow-wrap: normal; word-break: normal; }

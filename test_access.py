@@ -1356,6 +1356,11 @@ def test_duck_reach():
     assert len(a.DUCKS) <= n + a.KEEP_BUILT + 1, (n, len(a.DUCKS))
 
 
+def test_admin_tie():
+    """Two holders equally near an admin role: the one that gives the most, whatever the hash order."""
+    assert a.admin_via("SALES.CORE.TBL_CUSTOMER")["SYSADMIN"][-2] == a.TECH + "SALES_CORE_OWNER"
+
+
 def test_lean():
     """A graph's first drawing leaves out PUBLIC, databases and schemas, future grants, and says so; never to nothing."""
     g, every = a.graph_input("ENGINEER_01", user=True, lean=True), a.graph_input("ENGINEER_01", user=True)
