@@ -37,7 +37,7 @@ export function AccessPageView() {
       <div className="ae-headrow">
         <div>
           {mine ? <h2 className="ae-h1">My access</h2> : (
-            <div className="ae-h1 ae-h1-pick">Access for <Pick label="Person or role" value={role || user} user={!role} what="users,roles" onPick={pick} width={260} />
+            <div className="ae-h1 ae-h1-pick">What can <Pick label="Person or role" value={role || user} user={!role} what="users,roles" onPick={pick} width={260} /> {role ? "open?" : "do?"}
               {recent().filter((r) => (r.page === "user" || r.page === "role") && r.id !== (role || user)).slice(0, 4).map((r) => (
                 <button type="button" key={r.id} className="ae-pchip" title="Recently viewed" onClick={() => c.set(r.page === "role" ? { role: r.id, user: null } : { user: r.label, role: null })}>{r.label}</button>))}
             </div>
@@ -108,10 +108,10 @@ function Body({ d }: { d: AccessPage }) {
         </details>
       </div>}
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "overview" ? null : k, part: null })} tabs={[
-        { key: "overview", label: "Overview" },
+        { key: "overview", label: "Can do" },
         { key: "summary", label: "Objects", count: d.data },
         user ? { key: "privs", label: "Privileges" } : rtabs[0],
-        { key: "detail", label: "Paths" },
+        { key: "detail", label: "Graph" },
         ...rtabs.slice(1),
         { key: "runs", label: "Can run", count: d.runs_total + d.powers_total, tone: d.powers_total > 0 ? "bad" as const : null },
         { key: "activity", label: "Activity" },
@@ -122,18 +122,17 @@ function Body({ d }: { d: AccessPage }) {
       {show === "activity" && <ActivityTab what={user ? "user" : "role"} name={w.name} />}
       {show === "history" && <ChangeFeed subject={w.id} />}
       {show === "overview" && <>
-      <Risks list={d.risks} />
       {adminRole ? <p className="ae-answer">
         <span className="ae-mono">{w.name}</span> <b className="ae-bad">is an admin role: it can do everything below it, not listed here.</b>
         {" "}Only its own account powers are listed. <button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button>
       </p> : <p className="ae-answer">
+        {adm.length > 0 && <><span className="ae-mono">{w.name}</span> <b className="ae-bad">holds {adm.join(", ")}: can do everything below {adm.length > 1 ? "them" : "it"}, not counted here.</b>
+          {" "}<button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button> Without {adm.length > 1 ? "them" : "it"}: </>}
         <span className="ae-mono">{w.name}</span> can <b>read data in {plural(n.read, "object")}</b> across {plural(n.schemas, "schema")}.
         {" "}{user ? "They" : "It"} can <b>change {n.change}</b> of them and <b>own {n.own}</b>.
         {n.sensitive > 0 && <> <span className="ae-sens-word">{n.sensitive} hold sensitive columns</span> seen unmasked.</>}
         {n.admin > 0 && <> <b className="ae-bad">{n.admin} through an admin role.</b></>}
         {(n.future ?? 0) > 0 && <> Plus {plural(n.future ?? 0, "future grant")} (every new object in those schemas).</>}
-        {adm.length > 0 && <> <b className="ae-bad">Holds {adm.join(", ")}: can also do everything below {adm.length > 1 ? "them" : "it"}, not counted here.</b>
-          {" "}<button type="button" className="ae-link" onClick={() => c.nav("rules", { part: "admins" })}>People with admin roles</button></>}
       </p>}
       <div className="ae-ladder">
         <div className="ae-ladder-bar">
@@ -142,7 +141,7 @@ function Body({ d }: { d: AccessPage }) {
             onPick={(k) => { setLvl(lvl === k ? "all" : k); c.set({ show: "summary" }); }} />
         </div>
         <div className="ae-tile ae-tile-sens" title={tagsOff ? `${tagsOff.title}: sensitivity unknown` : undefined}><span className="ae-tile-l">Sensitive, unmasked</span><span className="ae-tile-v">{tagsOff ? "not read" : n.sensitive}</span></div>
-        <button type="button" className="ae-tile" onClick={() => c.set({ show: "runs" })}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{n.runnable}</span><span className="ae-muted ae-tile-c">warehouses, tasks, functions, procedures</span></button>
+        <button type="button" className="ae-tile" onClick={() => c.set({ show: "runs" })}><span className="ae-tile-l">Can run</span><span className="ae-tile-v">{d.runs_total + d.powers_total}</span><span className="ae-muted ae-tile-c">{d.runs_total} warehouses, apps, tasks, functions, procedures{d.powers_total > 0 ? ` · ${plural(d.powers_total, "power")} over the account` : ""}</span></button>
       </div>
       <div>
         <Card title="Why they have it" sub={`${plural(d.roles, "role")} · deepest ${d.deepest}`}>
@@ -160,6 +159,7 @@ function Body({ d }: { d: AccessPage }) {
           {w.secondary_all && <p className="ae-note">Secondary roles are <b>ALL</b>, so every query uses all of these roles at once.</p>}
         </Card>
       </div>
+      <Risks list={d.risks} />
       </>}
       {show === "runs" && <>
       <div className="ae-two" id="runs">

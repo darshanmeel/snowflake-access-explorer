@@ -938,3 +938,6 @@ div.ae-tile { cursor: default; }
 .ae-log-more[open] > summary { margin-bottom: 14px; }
 @media (max-width: 1000px) { .ae-log-three { grid-template-columns: 1fr; } }
 .ae-log > .ae-seg2 { align-self: flex-start; }
+.ae-privrow li.more { background: none; text-decoration: none; padding: 0 4px; }
+.ae-privrow li.more .ae-link { font-size: 13px; }
+.ae-risks { margin-top: 16px; }

@@ -41,6 +41,8 @@ const WORD = { yes: "Yes", partly: "Partly", no: "No", blocked: "Blocked", na: "
 function Body({ d }: { d: CheckPage }) {
   const c = useApp();
   const show = c.params.show ?? "answer";
+  const [all, setAll] = useState(false); // the privileges not held too
+  const lacks = d.held.filter((p) => !p.held && p.privilege !== d.priv).length;
   const tabs = [
     ...(d.inside ? [{ key: "inside", label: "Inside", count: d.inside.total }] : []),
     { key: "answer", label: "Answer" },
@@ -53,7 +55,6 @@ function Body({ d }: { d: CheckPage }) {
   return (
     <>
       <BuiltinNote b={d.builtin} />
-      <Risks list={d.risks} quiet />
       <section className={`ae-verdict ae-verdict-${d.verdict}`} aria-label="Answer">
         <div className="ae-verdict-head">
           <span className="ae-verdict-mark" aria-hidden>{MARK[d.verdict]}</span>
@@ -67,7 +68,7 @@ function Body({ d }: { d: CheckPage }) {
           </div>
         </div>
         <ul className="ae-privrow" aria-label={`Privileges on ${d.object}`}>
-          {d.held.map((p) => (
+          {(all ? d.held : d.held.filter((p) => p.held || p.privilege === d.priv)).map((p) => (
             <li key={p.privilege} className={p.held ? "on" : ""}>
               <span aria-hidden>{p.held ? "✓" : "✕"}</span>{p.privilege}<span className="ae-sr">{p.held ? " held" : " not held"}</span>
             </li>
@@ -77,6 +78,7 @@ function Body({ d }: { d: CheckPage }) {
               <span aria-hidden>{u.held ? "✓" : "✕"}</span>USAGE on {u.type.toLowerCase()}<span className="ae-sr">{u.held ? " held" : " not held"}</span>
             </li>
           ))}
+          {lacks > 0 && <li className="more"><button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `${lacks} not held`}</button></li>}
         </ul>
       </section>
       <Tabs nav active={at} onChange={(k) => c.set({ show: k === first ? null : k, part: null })} tabs={tabs} />
@@ -85,6 +87,7 @@ function Body({ d }: { d: CheckPage }) {
       {at === "routes" && <Routes d={d} />}
       {at === "nearest" && <NearestWays d={d} />}
       {at === "layers" && <Layers d={d} />}
+      <Risks list={d.risks} quiet />
     </>
   );
 }

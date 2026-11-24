@@ -59,7 +59,7 @@ function Who({ d }: { d: WhoPage }) {
   // old links: show=who is People by level; part=users|who (People) and sens|sees (Columns) without a show
   const show = sh === "who" || sh === "people" ? "people" : sh === "columns" && cols ? "columns"
     : (sh === "history" || sh === "activity") && !admin ? sh
-    : !sh && !admin && (pp === "users" || pp === "who") ? "people" : !sh && cols && (pp === "sens" || pp === "sees") ? "columns" : "detail";
+    : !sh && cols && (pp === "sens" || pp === "sees") ? "columns" : sh === "detail" || admin ? "detail" : "people"; // who first
   const part = show === "people" ? (!admin && (pp === "who" || pp === "users") ? pp : "level") : show === "columns" ? (pp === "sees" ? "sees" : "sens") : "summary";
   const save = () => saveCsv("who.csv", { view: c.view, builtin: c.params.builtin, ...(admin ? { preset: "admin" } : { name: o.id }) }, `${o.id ?? "admin_roles"}_who.csv`);
   const tags = [
@@ -87,16 +87,17 @@ function Who({ d }: { d: WhoPage }) {
         {csvOn && <button type="button" className="ae-btn" onClick={save}>Export CSV</button>}
       </div>
       <BuiltinNote b={d.builtin} />
-      <Risks list={d.risks} />
       {d.app && <AppNote app={d.app} />}
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k, part: null })} tabs={[
-        { key: "detail", label: admin ? "Admin holders table" : "Overview" },
-        { key: "people", label: "People", count: d.counts.people },
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === (admin ? "detail" : "people") ? null : k, part: null })} tabs={[
+        ...(admin ? [{ key: "detail", label: "Admin holders table" }] : []),
+        { key: "people", label: "Who", count: d.counts.people },
         ...(cols ? [{ key: "columns", label: "Columns" }] : []),
+        ...(admin ? [] : [{ key: "detail", label: "Graph" }]),
         ...(admin ? [] : [{ key: "activity", label: "Activity" }, { key: "history", label: "History" }]),
       ]} />
       {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} part="summary" />)}
       {show === "people" && <>
+        {!admin && <Answer d={d} />}
         {!admin && lvl2([{ key: "level", label: "By level", count: d.counts.people }, { key: "who", label: "By path" }, { key: "users", label: "Users × privileges" }], "level")}
         {part === "level" ? <><For d={d} /><List d={d} /><UsedNoGrant d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
       </>}
@@ -107,7 +108,23 @@ function Who({ d }: { d: WhoPage }) {
       </>}
       {show === "activity" && <ActivityTab what="object" name={o.id ?? ""} user={c.params.as} />}
       {show === "history" && <ChangeFeed subject={o.id ?? ""} />}
+      {(show === "people" || show === "detail") && <Risks list={d.risks} />}
     </>
+  );
+}
+
+/** Who has access in one sentence: how many, who can do more than read, who is inactive. */
+function Answer({ d }: { d: WhoPage }) {
+  const n = d.counts, lv = (k: (typeof ORDER)[number]) => n.levels[k] ?? 0;
+  if (!n.people) return null;
+  const idle = n.disabled + n.dormant;
+  return (
+    <p className="ae-answer">
+      <b>{plural(n.people, "user")}</b> {n.people === 1 ? "has" : "have"} access to <span className="ae-mono">{d.object.name}</span>
+      {lv("admin") > 0 && <>, <b>{lv("admin")} of them through an admin role</b></>}
+      {lv("own") + lv("change") > 0 && <>. {lv("own") > 0 && <><b>{lv("own")}</b> {lv("own") === 1 ? "owns" : "own"} it</>}{lv("own") > 0 && lv("change") > 0 && ", "}{lv("change") > 0 && <><b>{lv("change")}</b> can change it</>}</>}
+      {idle > 0 && <>. <b className="ae-bad">{idle} {idle === 1 ? "is" : "are"} dormant or disabled</b></>}.
+    </p>
   );
 }
 
@@ -121,7 +138,7 @@ function AppNote({ app }: { app: NonNullable<WhoPage["app"]> }) {
     <Banner tone={out.length ? "bad" : "info"} title={`Viewers see the data of its owner role ${app.owner.join(", ")}, not their own`}>
       <button type="button" className="ae-link" onClick={() => c.set({ show: "activity" })}>Who opened it →</button>
       <details><summary>Why</summary><ul>{[
-      `${viewers === 1 ? "1 person" : `${viewers} people`} can open it, through ${Object.keys(app.holders).join(", ") || "no role"}.`,
+      `${viewers === 1 ? "1 person" : `${viewers} people`} can open it by a grant on the app${viewers ? `, through ${Object.keys(app.holders).join(", ")}` : ""} (its owner and admin roles can too).`,
       sens.length ? `The owner reads sensitive ${sens.map(([o, cs]) => `${o}${cs.length ? ` (${cs.join(", ")})` : ""}`).join(", ")}.` : "The owner reads no sensitive data.",
       ...(out.length ? [<>{out.length === 1 ? "1 person" : `${out.length} people`} can see it here but can't read it themselves:
         <NameList items={out.map(([u, os]) => ({ key: u, n: os.length === 1 ? os[0] : `${os.length} objects` }))} onOpen={(u) => c.nav("access", { user: u })} /></>] : []),

@@ -46,7 +46,6 @@ function Body({ d }: { d: SeePage }) {
       <IdentityCard name={w.name} tag={c.view === "mine" ? "You" : "Viewing"}
         line={user ? `${w.type === "SERVICE" ? "Service user" : "Person"} · ${w.status ?? ""}${w.default_role ? ` · default role ${w.default_role}` : ""}${w.secondary_all ? " · secondary roles ALL" : ""}` : w.type}
         roles={user ? w.roles.map((r) => ({ id: r, note: r === w.default_role ? "default" : "" })) : undefined} />
-      <Risks list={d.risks} quiet />
       <div className="ae-actions">
         <button type="button" className="ae-btn" onClick={() => c.nav("access", sub)}>Access</button>
         <button type="button" className="ae-btn" onClick={() => c.nav("graph", sub)}>Show as graph</button>
@@ -74,6 +73,7 @@ function Body({ d }: { d: SeePage }) {
         </Card>
       )}
       {tab === "usage" && (d.usage ? <Usage u={d.usage} refs={d.refs} /> : <RoleUse d={d} />)}
+      <Risks list={d.risks} quiet />
     </>
   );
 }
