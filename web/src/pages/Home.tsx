@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
 import { AgeBars, Banner, Card, EmptyState, FilterChips, NameList, SEVERITIES, StackBar, Tabs, type BarPart } from "../components";
-import { areaTakeaway, attention, busiest, depthRows, depthTakeaway, peopleTakeaway, weekend } from "./homedata";
+import { areaTakeaway, attention, busiest, depthRows, depthTakeaway, headline, peopleTakeaway, severityTakeaway, weekend } from "./homedata";
 import { useApp } from "../ctx";
 import { Load, unread } from "./common";
 import { skipNote } from "./Risks";
@@ -200,16 +200,16 @@ export function HomePageView() {
 
 const TOP = 3; // names a card lists; the rest open on the full list
 
-/** Needs attention: one clickable tile per problem, its label saying what it is (the tone only repeats it). */
+/** The headline and three figures, worst first; the other numbers as links on one line. */
 function Attention({ d }: { d: HomePage }) {
   const c = useApp();
-  const tiles = attention(d, (k) => !!unread(c.meta, k));
-  if (!tiles.length) return null;
+  const off = (k: string) => !!unread(c.meta, k);
+  const tiles = attention(d, off), top = tiles.slice(0, 3), rest = tiles.slice(3);
   return (
     <section className="ae-home-sec" aria-labelledby="ae-attn-h">
-      <h2 id="ae-attn-h" className="ae-home-sec-h">Needs attention</h2>
+      <h2 id="ae-attn-h" className="ae-home-lead">{headline(d, off)}</h2>
       <div className="ae-attn">
-        {tiles.map((t) => (
+        {top.map((t) => (
           <button type="button" key={t.key} className={`ae-attn-tile${t.tone ? ` ae-tone-${t.tone}` : ""}`} onClick={() => c.nav(t.page, t.params)}>
             <span className="ae-attn-l">{t.label}</span>
             <span className="ae-attn-n">{t.n.toLocaleString()}</span>
@@ -217,12 +217,40 @@ function Attention({ d }: { d: HomePage }) {
           </button>
         ))}
       </div>
+      {rest.length > 0 && <p className="ae-home-also"><span className="ae-muted">Also</span>{rest.map((t) => (
+        <button type="button" key={t.key} className="ae-link" onClick={() => c.nav(t.page, t.params)}>{t.label} <b>{t.n.toLocaleString()}</b> <span className="ae-muted">{t.text}</span></button>))}</p>}
     </section>
   );
 }
 
-/** Home's shared view below the hero: attention tiles, act first and findings, the three risk cards, the account at
- * a glance, What changed last. */
+type Act = NonNullable<HomePage["act_first"]>[number];
+
+/** One thing to do: the rule, who it is about, what fixing it closes; opens to why, the steps and the findings. */
+function ActRow({ r }: { r: Act }) {
+  const c = useApp();
+  const rule = c.meta.rules.find((x) => x.num === r.num);
+  const go = () => c.nav("rules", { rule: r.num, sev: r.severity });
+  return (
+    <details className="ae-act-row">
+      <summary>
+        <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
+        <span className="ae-act-main"><b className="ae-act-t">{r.title}</b>
+          <span className="ae-muted">{r.names.slice(0, TOP).map((x) => x.id.replace(/ \(user\)$/, "")).join(", ")}{r.subjects > TOP ? ` and ${(r.subjects - TOP).toLocaleString()} more` : ""}</span></span>
+        <span className="ae-act-n">fixing it closes <b>{r.findings.toLocaleString()}</b> {r.findings === 1 ? "finding" : "findings"}</span>
+      </summary>
+      <div className="ae-act-more">
+        {rule?.why && <p><b>Why.</b> {rule.why}</p>}
+        {rule?.fix && <p><b>How.</b> {rule.fix}</p>}
+        <p><b>Who.</b> <span className="ae-act-names"><NameList items={r.names.map((x) => ({ key: x.id, label: x.id.replace(/ \(user\)$/, ""), open: () => openNode(c.nav, x.id, x.kind) }))}
+          total={r.subjects} max={TOP} onMore={go} /></span></p>
+        <button type="button" className="ae-btn" onClick={go}>Open rule {r.num}: findings and fixes</button>
+      </div>
+    </details>
+  );
+}
+
+/** Home's shared view below the hero: the headline, three figures, findings by severity and what to do first; At a glance
+ * (admins, dormant, sensitive, areas, the account) and Changes are its other tabs. */
 function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, number>; k: HomeCards; prot: NonNullable<HomePage["protection"]> }) {
   const c = useApp();
   const total = Object.values(risks).reduce((a, b) => a + b, 0);
@@ -246,26 +274,61 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
         { key: "changes", label: "Changes", count: k.changes?.counts?.all ?? null }]} />
       {tab === "risks" && <>
       <Attention d={d} />
-      <div className="ae-home-two">
-        <Card title="Act first" sub="Critical, then high. Within each, the rarest first: small lists are quick wins."
-          right={<button type="button" className="ae-link" onClick={() => c.nav("rules", {})}>All {grantsOff ? "" : `${total.toLocaleString()} `}findings</button>}>
-          {d.act_first && d.act_first.length > 0 ? (
-            <div className="ae-act" aria-label="Act first">
-              {d.act_first.map((r) => (
-                <div key={`${r.severity}${r.num}`} className="ae-act-row">
-                  <span className={`ae-sevpill ae-sev-${r.severity}`}>{r.severity}</span>
-                  <div className="ae-act-main">
-                    <button type="button" className="ae-link ae-act-t" onClick={() => c.nav("rules", { rule: r.num, sev: r.severity })}><span className="ae-muted">#{r.num}</span> {r.title}</button>
-                    <span className="ae-act-names"><NameList items={r.names.map((x) => ({ key: x.id, label: x.id.replace(/ \(user\)$/, ""), open: () => openNode(c.nav, x.id, x.kind) }))}
-                      total={r.subjects} max={TOP} onMore={() => c.nav("rules", { rule: r.num, sev: r.severity })} /></span>
-                  </div>
-                  <span className="ae-act-n"><b>{r.findings.toLocaleString()}</b> {r.findings === 1 ? "finding" : "findings"}</span>
-                </div>
-              ))}
+      <Card title={severityTakeaway(risks)} sub={grantsOff ? `${grantsOff.title}: not read` : `${plural(total, "finding")} in ${plural(ruleN, "rule")}`}
+        right={<button type="button" className="ae-link" onClick={() => c.nav("rules", {})}>All {grantsOff ? "" : `${total.toLocaleString()} `}findings</button>}>
+        <StackBar label={`Findings: ${sevParts(risks).map((p) => `${p.label} ${p.value}`).join(", ")}`} parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
+        {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
+      </Card>
+      <Card title="What to do first" sub="Critical, then high; the shortest list first. Open a line for why, how and who. Nothing changes in Snowflake.">
+        {d.act_first && d.act_first.length > 0 ? <div className="ae-act" aria-label="What to do first">{d.act_first.map((r) => <ActRow key={`${r.severity}${r.num}`} r={r} />)}</div>
+          : <p className="ae-muted">No critical or high findings.</p>}
+      </Card>
+      </>}
+
+      {tab === "glance" && <section className="ae-home-sec" aria-labelledby="ae-glance-h">
+        <h2 id="ae-glance-h" className="ae-home-sec-h">Your Snowflake at a glance</h2>
+        <div className="ae-home-grid">
+          <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>} sub="Admin role or account privilege">
+            <HBars label="Admin holders per admin role" rows={ad.by_role.map((r) => ({ key: r.role, label: r.role, n: r.people, cls: "high" }))
+              .concat(ad.account_only ? [{ key: "acct", label: "Account privilege only", n: ad.account_only, cls: "medium" }] : [])} />
+            <div className="ae-home-sub">
+              <h4>Riskiest first</h4>
+              <NameList items={ad.names.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.names.length} max={TOP} />
             </div>
-          ) : <p className="ae-muted">No critical or high findings.</p>}
-        </Card>
-        <Card title="All findings by severity" sub={grantsOff ? `${grantsOff.title}: not read` : `${plural(total, "finding")} in ${plural(ruleN, "rule")}`}>
+            {(ad.service_names?.length ?? 0) > 0 && (
+              <div className="ae-home-sub">
+                <h4>Service users with admin</h4>
+                <NameList items={ad.service_names!.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.service} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
+              </div>
+            )}
+            <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("rules", { part: "admins" })}>All {plural(ad.total, "holder")} →</button>
+          </Card>
+          <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{nr(usersOff ?? grantsOff, k.stale.total)}</b></>}
+            sub="Still hold roles; dormant service users left out">
+            {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <>
+              <StackBar parts={stale} legend={false} />
+              <ul className="ae-keyrows">
+                {stale.map((p) => (
+                  <li key={p.key}><span className={`ae-dot2 ae-bar-${p.cls}`} /><span>{p.label} <span className="ae-muted">· {p.value.toLocaleString()} of {(k.stale.of_status[p.key] ?? 0).toLocaleString()}</span></span><b>{p.value.toLocaleString()}</b></li>
+                ))}
+              </ul>
+            </>}
+            <div className="ae-home-sub"><NameList items={k.stale.names.map(open)} total={k.stale.total} max={TOP} onMore={() => c.nav("rules", { part: "stale" })} /></div>
+          </Card>
+          <Card title={<>Sensitive data <b className="ae-hc-n">{nr(tagsOff, d.counts.sensitive)}</b> {!tagsOff && <span className="ae-muted ae-hc-unit">objects</span>}</>}
+            sub={tagsOff ? `${tagsOff.title}: sensitivity unknown` : "Objects with a sensitive tag, and how their columns are protected."}>
+            {polOff ? <p className="ae-muted">{polOff.title}: masked or not is unknown.</p>
+              : <StackBar label={`Sensitive columns: ${prot.unmasked_columns} not masked, ${prot.masked} masked`} parts={[{ key: "u", label: "Not masked", value: prot.unmasked_columns, cls: "high" }, { key: "m", label: "Masked", value: prot.masked, cls: "low" }]} />}
+            <div className="ae-linerows">
+              {!polOff && <button type="button" className="ae-linerow" onClick={() => c.nav("rules", { rule: "6" })}><span>Columns not masked</span><b className={prot.unmasked_columns ? "ae-tone-bad" : ""}>{prot.unmasked_columns.toLocaleString()}</b></button>}
+              <button type="button" className="ae-linerow" onClick={() => c.nav("rules", { rule: "7" })}><span>Dormant or disabled people read it</span><b className={prot.dormant ? "ae-tone-bad" : ""}>{prot.dormant.toLocaleString()}</b></button>
+              <button type="button" className="ae-linerow" onClick={() => c.nav("sensitive", { show: "rows" })} disabled={!prot.row_tables}><span>Tables with row policies</span><b>{prot.row_tables.toLocaleString()}</b></button>
+            </div>
+            <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("flow", {})}>Where it flows: people → roles → objects</button>
+            <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("sensitive", {})}>Open Sensitive data →</button>
+          </Card>
+        </div>
+        <Card title="Findings by area">
           {d.subjects && (
             <div className="ae-sevrows" aria-label="People and roles per severity">
               {SEVERITIES.filter((s) => risks[s]).map((s) => (
@@ -277,60 +340,8 @@ function Shared({ d, risks, k, prot }: { d: HomePage; risks: Record<string, numb
               ))}
             </div>
           )}
-          <StackBar label={`Findings: ${sevParts(risks).map((p) => `${p.label} ${p.value}`).join(", ")}`} parts={sevParts(risks)} onPick={(s) => c.nav("rules", { sev: s })} />
-          <details className="ae-home-sub">
-            <summary>By area</summary>
-            <Areas ruleSev={d.rule_sev ?? {}} />
-          </details>
-          {d.skipped && skipNote(d.skipped) && <p className="ae-muted">{skipNote(d.skipped).trim()} Their findings are not counted here.</p>}
+          <Areas ruleSev={d.rule_sev ?? {}} />
         </Card>
-      </div>
-
-      <div className="ae-home-grid">
-        <Card title={<>Admin holders <b className={`ae-hc-n${ad.total ? " ae-tone-bad" : ""}`}>{nr(grantsOff, ad.total)}</b></>} sub="Admin role or account privilege">
-          <HBars label="Admin holders per admin role" rows={ad.by_role.map((r) => ({ key: r.role, label: r.role, n: r.people, cls: "high" }))
-            .concat(ad.account_only ? [{ key: "acct", label: "Account privilege only", n: ad.account_only, cls: "medium" }] : [])} />
-          <div className="ae-home-sub">
-            <h4>Riskiest first</h4>
-            <NameList items={ad.names.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.names.length} max={TOP} />
-          </div>
-          {(ad.service_names?.length ?? 0) > 0 && (
-            <div className="ae-home-sub">
-              <h4>Service users with admin</h4>
-              <NameList items={ad.service_names!.map((x) => ({ ...open(x.user), n: `${x.role} · ${x.login}` }))} total={ad.service} max={TOP} onMore={() => c.nav("rules", { part: "admins" })} />
-            </div>
-          )}
-          <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("rules", { part: "admins" })}>All {plural(ad.total, "holder")} →</button>
-        </Card>
-        <Card title={<>Dormant & disabled <b className={`ae-hc-n${k.stale.total ? " ae-tone-warn" : ""}`}>{nr(usersOff ?? grantsOff, k.stale.total)}</b></>}
-          sub="Still hold roles; dormant service users left out">
-          {usersOff ? <p className="ae-muted">{usersOff.title}: {usersOff.meaning}</p> : <>
-            <StackBar parts={stale} legend={false} />
-            <ul className="ae-keyrows">
-              {stale.map((p) => (
-                <li key={p.key}><span className={`ae-dot2 ae-bar-${p.cls}`} /><span>{p.label} <span className="ae-muted">· {p.value.toLocaleString()} of {(k.stale.of_status[p.key] ?? 0).toLocaleString()}</span></span><b>{p.value.toLocaleString()}</b></li>
-              ))}
-            </ul>
-          </>}
-          <div className="ae-home-sub"><NameList items={k.stale.names.map(open)} total={k.stale.total} max={TOP} onMore={() => c.nav("rules", { part: "stale" })} /></div>
-        </Card>
-        <Card title={<>Sensitive data <b className="ae-hc-n">{nr(tagsOff, d.counts.sensitive)}</b> {!tagsOff && <span className="ae-muted ae-hc-unit">objects</span>}</>}
-          sub={tagsOff ? `${tagsOff.title}: sensitivity unknown` : "Objects with a sensitive tag, and how their columns are protected."}>
-          {polOff ? <p className="ae-muted">{polOff.title}: masked or not is unknown.</p>
-            : <StackBar label={`Sensitive columns: ${prot.unmasked_columns} not masked, ${prot.masked} masked`} parts={[{ key: "u", label: "Not masked", value: prot.unmasked_columns, cls: "high" }, { key: "m", label: "Masked", value: prot.masked, cls: "low" }]} />}
-          <div className="ae-linerows">
-            {!polOff && <button type="button" className="ae-linerow" onClick={() => c.nav("rules", { rule: "6" })}><span>Columns not masked</span><b className={prot.unmasked_columns ? "ae-tone-bad" : ""}>{prot.unmasked_columns.toLocaleString()}</b></button>}
-            <button type="button" className="ae-linerow" onClick={() => c.nav("rules", { rule: "7" })}><span>Dormant or disabled people read it</span><b className={prot.dormant ? "ae-tone-bad" : ""}>{prot.dormant.toLocaleString()}</b></button>
-            <button type="button" className="ae-linerow" onClick={() => c.nav("sensitive", { show: "rows" })} disabled={!prot.row_tables}><span>Tables with row policies</span><b>{prot.row_tables.toLocaleString()}</b></button>
-          </div>
-          <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("flow", {})}>Where it flows: people → roles → objects</button>
-          <button type="button" className="ae-link ae-home-more" onClick={() => c.nav("sensitive", {})}>Open Sensitive data →</button>
-        </Card>
-      </div>
-      </>}
-
-      {tab === "glance" && <section className="ae-home-sec" aria-labelledby="ae-glance-h">
-        <h2 id="ae-glance-h" className="ae-home-sec-h">Your Snowflake at a glance</h2>
         <div className="ae-home-grid">
           <Card title={<>People <b className="ae-hc-n">{d.counts.users.toLocaleString()}</b></>}
             right={<button type="button" className="ae-btn" onClick={() => c.nav("access", {})}>Find one</button>}>

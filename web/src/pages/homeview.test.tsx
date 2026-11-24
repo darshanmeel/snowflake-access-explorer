@@ -63,11 +63,11 @@ const inOrder = (names: string[]) => {
 describe("Home page", () => {
   it("keeps the sections of each tab in order with headings that never skip a level", async () => {
     view();
-    await screen.findByText("Needs attention");
+    await screen.findByText("1 inactive person can still read sensitive data");
     expect(heads()[0]).toBe("H2:Who can access what in Snowflake?");
-    inOrder(["Needs attention", "Act first", "All findings by severity", "Admin holders", "Dormant", "Sensitive data"]);
+    inOrder(["1 inactive person", "Most findings are medium: 4 of 7", "What to do first"]);
     fireEvent.click(screen.getByRole("tab", { name: "At a glance" }));
-    inOrder(["People", "Role chain depth", "Activity", "Object activity"]);
+    inOrder(["Admin holders", "Dormant", "Sensitive data", "Findings by area", "People", "Role chain depth", "Activity", "Object activity"]);
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     expect(screen.getByText("No earlier snapshot yet.")).toBeTruthy();
   });
@@ -91,8 +91,9 @@ describe("Home page", () => {
     view(vi.fn(), { show: "glance" });
     expect(await screen.findByRole("img", { name: /busiest 2026-11-16 with 9 queries/ })).toBeTruthy();
     expect(screen.getByText(/75% active/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: /Risks/ }));
     expect(screen.getByText("NAME_03")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /Risks/ }));
+    expect(screen.getByText(/Admin role on a person/)).toBeTruthy();
     await act(async () => { fireEvent.keyDown(window, { key: "/" }); });
     expect(document.activeElement).toBe(screen.getByLabelText("Search"));
   });

@@ -45,6 +45,23 @@ export function areaTakeaway(rows: { area: string; total: number }[]): string {
   return `${top.area} has ${pct(top.total, all)} of all findings.`;
 }
 
+/** Home's headline: the worst thing true now, with its number. */
+export function headline(d: HomePage, off: (source: string) => boolean): string {
+  const crit = d.risks?.Critical ?? 0, high = d.risks?.High ?? 0, n = d.protection?.dormant ?? 0;
+  if (!d.risks || off("grants")) return "The grants were not read";
+  if (n && !off("users")) return `${plural(n, "inactive person", "inactive people")} can still read sensitive data`;
+  if (crit) return `${plural(crit, "critical finding")} to fix`;
+  return high ? `${plural(high, "high finding")} to fix, none critical` : "No critical or high findings";
+}
+
+/** "Most findings are medium: 33 of 68." */
+export function severityTakeaway(risks: Record<string, number>): string {
+  const all = Object.values(risks).reduce((s, v) => s + v, 0);
+  if (!all) return "No findings";
+  const [sev, n] = Object.entries(risks).reduce((a, b) => (b[1] > a[1] ? b : a));
+  return `${2 * n > all ? "Most" : "The biggest group of"} findings ${2 * n > all ? "are" : "is"} ${sev.toLowerCase()}: ${n0(n)} of ${n0(all)}`;
+}
+
 export interface Tile { key: string; label: string; n: number; text: string; tone: "bad" | "warn" | null; page: Page; params: Record<string, string> }
 
 /** Needs attention: one number per tile, each opening where it is acted on. A tile whose source was not read is left

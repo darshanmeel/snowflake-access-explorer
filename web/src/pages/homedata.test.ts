@@ -50,3 +50,17 @@ describe("Needs attention", () => {
     expect(attention(off, () => false).map((x) => x.key)).not.toContain("unused");
   });
 });
+
+describe("headline", () => {
+  const d = (risks: Record<string, number>, dormant: number) => ({ risks, protection: { dormant } }) as unknown as HomePage;
+  it("says the worst thing true now, and never a number from a source that was not read", async () => {
+    const { headline, severityTakeaway } = await import("./homedata");
+    const none = () => false;
+    expect(headline(d({ Critical: 5, High: 1 }, 4), none)).toBe("4 inactive people can still read sensitive data");
+    expect(headline(d({ Critical: 5, High: 1 }, 4), (k) => k === "users")).toBe("5 critical findings to fix");
+    expect(headline(d({ Critical: 0, High: 1 }, 0), none)).toBe("1 high finding to fix, none critical");
+    expect(headline(d({ Critical: 0, High: 0 }, 0), none)).toBe("No critical or high findings");
+    expect(headline(d({ Critical: 5 }, 4), (k) => k === "grants")).toBe("The grants were not read");
+    expect(severityTakeaway({ Critical: 5, High: 18, Medium: 33, Low: 12 })).toBe("The biggest group of findings is medium: 33 of 68");
+  });
+});
