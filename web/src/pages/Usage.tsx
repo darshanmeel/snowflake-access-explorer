@@ -17,7 +17,7 @@ const trimTexts = (d: UsagePage) => {
   const why = `not used in the last ${d.days} days (ACCESS_HISTORY)`;
   return { sql: `-- Reason: ${why}\n${t.sql}`, tf: `# Reason: ${why}\n${t.tf}`, ticket: t.ticket.replace("Reason: (fill in)", `Reason: ${why}`) };
 };
-const SUGGEST = { keep: "ae-sg-keep", trim: "ae-sg-trim", drop: "ae-sg-drop", none: "ae-sg-keep" } as const;
+const SUGGEST = { keep: "ae-sg-keep", trim: "ae-sg-trim", drop: "ae-sg-drop", check: "ae-sg-check", none: "ae-sg-keep" } as const;
 
 export function UsagePageView() {
   const c = useApp();
@@ -83,7 +83,7 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
         </p> : !n.objects ? <p className="ae-answer">
           No data grants to compare: <span className="ae-mono">{w.name}</span> reaches no tables or views (what admin roles reach is not listed).
         </p> : <p className="ae-answer">
-          {w.kind === "user" ? "" : "People holding "}<span className="ae-mono">{w.name}</span> used {n.used} of {n.objects} tables and views in {d.days} days{n.changes > 0 ? `; ${plural(n.changes, "unused grant")} found` : "; every grant is in use"}
+          {w.kind === "user" ? "" : "People holding "}<span className="ae-mono">{w.name}</span>{n.changes > 0 ? `: ${plural(n.drop + n.trim, "grant")} could go, ${n.used} of ${n.objects} tables and views used in ${d.days} days` : ` used ${n.used} of ${n.objects} tables and views in ${d.days} days; nothing to remove`}
         </p>}
         {n.objects > 0 && !d.base_read && <p className="ae-muted">Direct use only: this snapshot has no reads through views or procedures, so a table used only that way shows as not used. The next snapshot run reads them.</p>}
         {period}
@@ -111,6 +111,7 @@ function Used({ d, period }: { d: UsagePage; period: React.ReactNode }) {
             Source: ACCESS_HISTORY, refreshed with each snapshot.</p>
         </Card>
       )}
+      {show === "table" && n.changes > 0 && <Card title="Take care"><p>These grants sit on roles. Everyone else holding the role loses them too.</p></Card>}
       {show === "trim" && (
         <Card title="Trim to what is used" sub="Revokes of the grants not used in this period, where they are granted: everyone else holding that role loses them too. Simulate before you change anything.">
           {d.changes_capped ? <EmptyState title={`${plural(n.changes, "revoke")}: too many to list here`}>The CSV of Granted vs used has every unused privilege, object by object.</EmptyState>
@@ -138,7 +139,7 @@ function Row({ r, weeks, open }: { r: UsageRow; weeks: string[]; open: (id: stri
         <span className="ae-muted ae-osub">{r.type.toLowerCase()}{ns ? ` · ${ns}` : ""}{r.sensitive && <span className="ae-sens-word"> · sensitive</span>}</span>
       </span>
       <AccessPill level={r.level} />
-      {r.used ? <AccessPill level={r.used} /> : <span className="ae-lvl ae-lvl-none">Not used</span>}
+      {r.suggest === "check" ? <b className="ae-bad">sources disagree</b> : r.used ? <AccessPill level={r.used} /> : <span className="ae-lvl ae-lvl-none">Not used</span>}
       <span className="ae-bars ae-sr" role="img" aria-label={r.used ? `Queries per week over ${weeks.length} weeks: ${r.weeks.join(", ")}` : `No queries in ${weeks.length} weeks`}>
         {hs.map((h, i) => <span key={weeks[i] ?? i} className={r.weeks[i] ? "on" : ""} style={{ height: h }} title={`Week of ${weeks[i]}: ${r.weeks[i]} quer${r.weeks[i] === 1 ? "y" : "ies"}`} />)}
       </span>

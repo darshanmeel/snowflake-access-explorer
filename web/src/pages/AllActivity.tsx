@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useApi } from "../api/client";
 import type { ActDim, AllActivityPage } from "../api/types";
-import { Banner, Card, DataTable, EmptyState, FilterChips, Tabs } from "../components";
+import { Banner, Card, DataTable, EmptyState, FilterChips, Fold, Tabs } from "../components";
 import { useApp } from "../ctx";
 import { Heat } from "./Activity";
 import { col, Head, Load } from "./common";
@@ -37,32 +37,55 @@ export function AllActivityPageView() {
             items={d.periods.map((n) => ({ key: String(n), label: n === 7 ? "Last 7 days" : n === 30 ? "Last month" : `Last ${n} days` }))} />
           {d.note && <Banner title="Activity partly read" lines={[d.note]} />}
           {!d.total ? <p className="ae-log-lead">No use recorded in the last {d.days} days.</p> : <>
-            <p className="ae-log-lead"><span className="ae-mono">{r === "object" ? tail(d.dims![r][0].key) : d.dims![r][0].key}</span> has {Math.round((100 * d.dims![r][0].n) / d.total)}% of all queries.</p>
+            <p className="ae-log-lead">{r === "object" ? tail(d.dims![r][0].key) : d.dims![r][0].key} {r === "object" ? "gets" : r === "client" ? "brings" : "makes"} {Math.round((100 * d.dims![r][0].n) / d.total)}% of all queries</p>
             <div className="ae-log-tiles ae-log-three">
               <Tile label="Queries" value={fmt(d.total)} cap={`${fmt(d.reads!)} reads · ${fmt(d.writes!)} writes · ${fmt(d.ddl!)} definition changes · ${d.days} days`} />
               <Tile label="Main client" value={d.dims!.client[0].key} cap={`${Math.round((100 * d.dims!.client[0].n) / d.total)}% of the queries${d.dims!.client.length > 1 ? `, then ${d.dims!.client.slice(1, 4).map((x) => x.key).join(", ")}` : ""}`} />
               <Tile label="Outside business hours" value={d.hours === false ? "not recorded" : fmt(d.off!)} warn={d.hours !== false && d.off! > 0} cap={d.hours === false ? "this snapshot has no hours" : `${Math.round((100 * d.off!) / d.total)}% · weekends or outside ${String(d.work.start).padStart(2, "0")}:00–${d.work.end}:00 UTC`} />
             </div>
-            <Card title={`${ONE[r]} by ${ONE[across].toLowerCase()}`} sub="Red: of these, outside business hours."
+            <Card title={`${ONE[r]}s by ${ONE[across].toLowerCase()}`} sub="Red: of these, outside business hours."
               right={<FilterChips label="Across" value={across} onPick={(v) => c.set({ c: v })} items={others.map((k) => ({ key: k, label: `× ${ONE[k].toLowerCase()}` }))} />}>
               <Cross d={d} link={link} />
             </Card>
             <Card title="Who did what, with what, and when last" sub={d.who_total! > d.who!.length ? `The busiest ${d.who!.length} of ${fmt(d.who_total!)}` : undefined}>
-              <DataTable csv="activity.csv" rows={d.who!} sort={{ key: "q", dir: -1 }} columns={[
-                col("user", "User", (x: Who) => x.user, { render: (x: Who) => <>{link("user", x.user)}{x.kind === "service" && <span className="ae-muted"> · service</span>}</> }),
-                col("role", "Role used", (x: Who) => x.role, { render: (x: Who) => link("role", x.role) }),
-                col("client", "Client", (x: Who) => x.client),
-                col("object", "Object", (x: Who) => x.object, { render: (x: Who) => <>{link("object", x.object)}{x.sensitive && <> <span className="ae-sens-word">sensitive</span></>}</> }),
-                col("q", "Queries", (x: Who) => x.queries, { num: true }), col("rd", "Reads", (x: Who) => x.read, { num: true }),
-                col("w", "Writes", (x: Who) => x.write, { num: true }), col("ddl", "DDL", (x: Who) => x.ddl, { num: true }),
-                col("off", "Outside hours", (x: Who) => x.off, { num: true }), col("last", "Last", (x: Who) => x.last),
+              <DataTable csv="activity.csv" rows={d.who!} columns={[
+                col("user", "User", (x: Who) => x.user, { wrap: "wrap", render: (x: Who) => <>{link("user", x.user)}{x.kind === "service" && <span className="ae-muted"> service</span>}</> }),
+                col("role", "Role used", (x: Who) => x.role, { wrap: "wrap", render: (x: Who) => link("role", x.role) }),
+                col("client", "Client", (x: Who) => x.client, { wrap: "wrap" }),
+                col("object", "Object", (x: Who) => x.object, { wrap: "wrap", render: (x: Who) => <>{link("object", x.object)}{x.sensitive && <span className="ae-sens-dot" title="sensitive" aria-label="sensitive" />}</> }),
+                col("rd", "Reads", (x: Who) => x.read, { num: true }), col("w", "Writes", (x: Who) => x.write, { num: true }),
+                col("ddl", "Defs", (x: Who) => x.ddl, { num: true, help: "Definition changes: CREATE, ALTER, DROP" }),
+                col("off", "Off-hours", (x: Who) => x.off, { num: true }), col("last", "Last", (x: Who) => x.last, { wrap: "nowrap", render: (x: Who) => x.last.slice(5) }),
               ]} />
+              <p className="ae-muted"><span className="ae-sens-dot" /> sensitive</p>
             </Card>
+            <When d={d} />
             <p className="ae-muted">ACCESS_HISTORY with QUERY_HISTORY and SESSIONS, {d.days} days to {d.last}. No query text.</p>
           </>}
         </div>
       )}</Load>
     </>
+  );
+}
+
+const DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Per day, and per weekday and hour, folded. */
+function When({ d }: { d: AllActivityPage }) {
+  const xs = d.daily ?? [], top = Math.max(1, ...xs.map((x) => x.queries)), hs = d.by_hour ?? [], most = Math.max(1, ...hs.flat());
+  if (!xs.length) return null;
+  return (
+    <Fold label="When: per day and hour">
+      <Card title="Queries per day" sub={`${xs[0].day} to ${xs[xs.length - 1].day}. Red: outside business hours.`}>
+        <div className="ae-daybars" role="img" aria-label={`Queries per day, at most ${fmt(top)}`}>
+          {xs.map((x) => <span key={x.day} title={`${x.day}: ${fmt(x.queries)} queries, ${fmt(x.off)} outside business hours`} style={{ height: `${(100 * x.queries) / top}%` }}><i style={{ height: `${x.queries ? (100 * x.off) / x.queries : 0}%` }} /></span>)}</div>
+      </Card>
+      {d.hours !== false && <Card title="Queries per weekday and hour (UTC)">
+        <div className="ae-hourgrid" role="img" aria-label="Queries per weekday and hour">
+          {hs.map((row, i) => <div key={DAY[i]}><span className="ae-muted">{DAY[i]}</span>{row.map((n, h) => <i key={h} title={`${DAY[i]} ${h}:00: ${fmt(n)}`} style={{ background: n ? `color-mix(in srgb, var(--ae-accent) ${10 + (70 * n) / most}%, var(--ae-panel))` : undefined }} />)}</div>)}
+          <div><span />{Array.from({ length: 24 }, (_, h) => <b key={h} className="ae-muted">{h % 3 ? "" : h}</b>)}</div></div>
+      </Card>}
+    </Fold>
   );
 }
 

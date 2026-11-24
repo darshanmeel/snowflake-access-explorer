@@ -1402,7 +1402,7 @@ export interface UsageRow {
   writes: number;
   last: string | null;
   holder: string;
-  suggest: "keep" | "trim" | "drop" | "none"; // none: nobody holds the role
+  suggest: "keep" | "trim" | "drop" | "check" | "none"; // none: nobody holds the role
   text: string;
   through: boolean; // read only through a view or procedure: kept
 }
@@ -1539,7 +1539,7 @@ export type ActDim = "user" | "role" | "client" | "object";
 export interface AllActivityPage {
   view: View; available: boolean; reason: string | null; note: string | null; days: number; periods: number[]; last: string;
   work: { start: number; end: number };
-  total?: number; reads?: number; writes?: number; ddl?: number; off?: number; hours?: boolean; // hours: false = an older snapshot without hours, off unknown
+  total?: number; reads?: number; writes?: number; ddl?: number; off?: number; daily?: { day: string; queries: number; off: number }[]; by_hour?: number[][]; hours?: boolean; // hours: false = an older snapshot without hours, off unknown
   dims?: Record<ActDim, { key: string; n: number }[]>; // the busiest 12
   n?: Record<ActDim, number>;
   cross?: { r: ActDim; c: ActDim; rows: string[]; cols: string[]; cells: number[][]; off: number[][] }; // the quiet rest: one "Other (n)"

@@ -1214,7 +1214,8 @@ def test_rule_by_grantee():
 def test_usage_changes():  # screens 13, 14
     u = js("/api/usage?user=ENGINEER_01", ["who", "days", "periods", "available", "rows", "weeks", "counts", "changes", "refs"])
     assert u["available"] and u["days"] == 90 and u["periods"] == [30, 90, 180] and u["source"] == "demo values"
-    assert u["rows"][0]["suggest"] == "drop" and u["counts"]["changes"] == len(u["changes"]) > 0
+    assert u["rows"][0]["suggest"] == "check" and "Activity shows" in u["rows"][0]["text"] and not u["rows"][0]["unused"]  # two sources disagree: never a revoke
+    assert u["counts"]["changes"] == len(u["changes"]) > 0
     assert u["sql"].startswith("REVOKE ") and js("/api/usage?user=ENGINEER_01&days=30")["sql"]  # the trim, from access.py
     one = js("/api/usage?user=ENGINEER_01&limit=1&u_offset=1")  # one page; the filter, search and CSV (limit=0) on the server
     assert len(one["rows"]) == 1 and one["offset"] == 1 and one["rows_total"] == u["counts"]["objects"] and "changes" not in one["rows"][0]

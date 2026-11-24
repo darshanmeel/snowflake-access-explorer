@@ -319,7 +319,7 @@ function AeNode({ data }: NodeProps) {
       {badgeLines(n.badge).map((l, i) => <div key={i} className="ae-node-badge" style={{ color: group ? s.text : t.muted }}>{l}</div>)}
       {n.rules.length > 0 && (() => {
         const worst = SEV.find((v) => n.rules.some((r) => r.severity === v)) ?? "Low";
-        return <span className={`ae-node-rules ae-sevpill ae-sev-${worst}`}>{worst} · {n.rules.length}</span>;
+        return <span className={`ae-node-rules ae-sevpill ae-sev-${worst}`}>{n.rules.length}</span>;
       })()}
       <Handle type="source" position={Position.Right} className="ae-handle" />
     </div>

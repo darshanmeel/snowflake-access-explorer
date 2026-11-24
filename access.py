@@ -6232,11 +6232,12 @@ ACT_PERIODS = (7, 30, ACTIVITY_DAYS)  # Activity page: days to look back
 
 
 def activity_cube(days):
-    """The whole account's table use in the last days (Activity page): {(user, role, client, object): [queries, reads,
+    """The whole account's table use in the last days (Activity page; None: every period, per day (queries, off,
+    by hour), and the age of each day): {(user, role, client, object): [queries, reads,
     writes, ddl, off-hours queries (weekends or outside WORK_HOURS, UTC), last]}, one pass for every period, kept per
     loaded data. A query that reads one object and changes it counts in both, as on the Activity tabs."""
     def make():  # one pass fills every period
-        end, cubes, seen = day(ref_time()), {n: {} for n in ACT_PERIODS}, {}
+        end, cubes, seen, when = day(ref_time()), {n: {} for n in ACT_PERIODS}, {}, {}
         for x in acts:
             dd = x["DAY"]
             if dd not in seen:
@@ -6247,7 +6248,13 @@ def activity_cube(days):
                 continue
             k = (x["USER_NAME"], x["ROLE_NAME"] or "–", client_label(x["CLIENT"]), x["OBJECT_NAME"])
             q, act, last = int(x["QUERIES"] or 0), {"READ": 1, "WRITE": 2, "DDL": 3}[x["ACTION"]], str(x["LAST_USED"] or "")[:16]
-            off = q if weekend else sum(int(n) for h, n in (x.get("HOURS") or {}).items() if not WORK_HOURS[0] <= int(h) < WORK_HOURS[1])
+            hours = x.get("HOURS") or {}
+            off = q if weekend else sum(int(n) for h, n in hours.items() if not WORK_HOURS[0] <= int(h) < WORK_HOURS[1])
+            w = when.setdefault(dd, [0, 0, [0] * 24])
+            w[0] += q
+            w[1] += off
+            for h, n in hours.items():
+                w[2][int(h)] += int(n)
             for n, cube in cubes.items():
                 if age < n:
                     v = cube.setdefault(k, [0, 0, 0, 0, 0, ""])
@@ -6255,8 +6262,9 @@ def activity_cube(days):
                     v[act] += q
                     v[4] += off
                     v[5] = max(v[5], last)
-        return cubes
-    return cached("activity_cubes", make)[days]
+        return cubes, when, {d: v[0] for d, v in seen.items()}
+    got = cached("activity_cubes", make)
+    return got if days is None else got[0][days]
 
 
 def activity_all(days, r, c, rows=11, cols=7, who=50):
@@ -6286,8 +6294,15 @@ def activity_all(days, r, c, rows=11, cols=7, who=50):
         i, j = ri[k[ra]], ci[k[ca]]
         cells[i][j] += v[0]
         off[i][j] += v[4]
+    _, when, age = activity_cube(None)
+    back = sorted(d for d in when if age[d] < days)
+    hours = [[0] * 24 for _ in range(7)]
+    for d in back:
+        for h, n in enumerate(when[d][2]):
+            hours[day(d).weekday()][h] += n
     best = heapq.nsmallest(who, cube.items(), key=lambda kv: (-kv[1][0], kv[0]))
     return dict(total=tot[0], reads=tot[1], writes=tot[2], ddl=tot[3], off=tot[4], hours=any(x.get("HOURS") for x in acts),
+                daily=[dict(day=str(d)[:10], queries=when[d][0], off=when[d][1]) for d in back], by_hour=hours,
                 dims={d: [dict(key=k, n=n) for k, n in xs[:12]] for d, xs in top.items()}, n={d: len(xs) for d, xs in top.items()},
                 cross=dict(r=r, c=c, rows=rn, cols=cn, cells=cells, off=off), who_total=len(cube),
                 who=[dict(zip(names, k), queries=v[0], read=v[1], write=v[2], ddl=v[3], off=v[4], last=v[5],
@@ -6917,13 +6932,18 @@ def base_read():
 def granted_used(name, user=True, days=90):
     """Screen 13: every table and view name reaches, at its granted step next to the step used in the last days (by
     name; for a role, by anyone who reaches it), weekly queries, last use and a suggestion: keep, trim (write or
-    ownership never used) or drop (not used at all). changes: what_if() revokes of the unused privileges where they are
+    ownership never used), drop (not used at all) or check (the activity shows use these reads do not). changes: what_if() revokes of the unused privileges where they are
     granted (OWNERSHIP is transferred, not revoked: left out), so the change plan shows who else loses them."""
     rows, hold = grants(name, user), {}
     for r in rows:
         hold.setdefault((r["object"], r["privilege"]), set()).update(r["holders"])
     who = {name} if user else ups(name)[1]
-    use, n, out = used_on(who, days), weeks_of(days), []
+    use, n, out, acted = used_on(who, days), weeks_of(days), [], {}
+    for r in acts:
+        if r["USER_NAME"] in who and r["ACTION"] != "DDL" and (day(ref_time()) - day(r["DAY"])).days <= days:
+            v = acted.setdefault(r["OBJECT_NAME"], [0, 0, ""])
+            v[r["ACTION"] == "WRITE"] += int(r["QUERIES"] or 0)
+            v[2] = max(v[2], str(r["DAY"]))
     for x in access_objects(rows, user):
         if x["category"] != "data" or not x["level"] or not is_data(x["type"]):
             continue
@@ -6946,6 +6966,11 @@ def granted_used(name, user=True, days=90):
             kind, text = "trim", f"Keep {'read' if used == 'read' else 'read + change'} · ownership unused"
         else:
             kind, text = "keep", "Keep"
+        seen = acted.get(x["object"])  # the activity says otherwise: two sources disagree, so nothing is suggested
+        if seen and cut and (used is None or (seen[1] and any(p in WRITE_PRIVS for p in cut))):
+            n = seen[0] + seen[1] if used is None else seen[1]
+            kind, unused, cut = "check", [], []
+            text = f"Do not remove yet: Activity shows {n:,} {'query' if n == 1 else 'queries'}, the last on {seen[2][:10]}"
         out.append(dict(object=x["object"], type=x["type"], database=x["database"], schema=x["schema"],
                         sensitive=x["object"] in sens, level=x["level"], used=used, privileges=x["privileges"],
                         unused=unused, weeks=u["weeks"] if u else [0] * n, reads=u["read"] if u else 0,
@@ -6953,11 +6978,11 @@ def granted_used(name, user=True, days=90):
                         people=sorted(u["users"]) if u else [], holder=x["holder"], suggest=kind, text=text, through=through,
                         changes=[dict(op="revoke_priv", role=h, privilege=p, object=x["object"])
                                  for p in cut for h in sorted(hold.get((x["object"], p), ()))]))
-    out.sort(key=lambda r: (("drop", "trim", "keep", "none").index(r["suggest"]), not r["sensitive"], r["object"]))
+    out.sort(key=lambda r: (("check", "drop", "trim", "keep", "none").index(r["suggest"]), not r["sensitive"], r["object"]))
     w0 = monday(ref_time())
     changes = [c for r in out for c in r["changes"]]
     counts = dict(objects=len(out), used=sum(bool(r["used"]) for r in out), drop=sum(r["suggest"] == "drop" for r in out),
-                  trim=sum(r["suggest"] == "trim" for r in out), keep=sum(r["suggest"] == "keep" for r in out),
+                  trim=sum(r["suggest"] == "trim" for r in out), check=sum(r["suggest"] == "check" for r in out), keep=sum(r["suggest"] == "keep" for r in out),
                   write_unused=sum(r["used"] == "read" and any(p in WRITE_PRIVS for p in r["unused"]) for r in out),
                   changes=len(changes))
     return dict(days=days, weeks=[(w0 - timedelta(weeks=n - 1 - i)).isoformat() for i in range(n)], rows=out,
@@ -7350,7 +7375,7 @@ def grant_events(keys, links, gain, blocks, fs, by):
             objs = reach(o) if link else {o}
             text = (f"{r} was granted role {o}" if link else f"{r} was granted {pv} on {o}") if gain else \
                 (f"Role {o} was revoked from {r}" if link else f"{pv} on {o} was revoked from {r}")
-            edge, subj, who = (r, o, None if link else pv), [r, o], []
+            edge, subj, who = (r, o, None if link else pv), [r, o, *heapq.nsmallest(EVENT_NAMES, ups(r)[0])], []
             ends = (role_kind(r), role_kind(o) if link else "object")
         people, objects, top = hits(us, objs)
         out.append(dict(edge=edge, ends=ends, people=sorted(people), objects=objects, top=top, subjects=subj, users=who,

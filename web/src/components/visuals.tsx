@@ -168,9 +168,9 @@ export function DayStack({ first, series, label, pinned = null, onPin, focus = n
 /** Last use per object type (Object activity, Home): one stacked bar per type, all as wide as the largest type's
  * total, so a big type reads big and a small one still shows its parts. The real numbers are in the legend and tips. */
 export const AGE: { key: string; label: string; cls: string }[] = [
-  { key: "30", label: "Used in 30 days", cls: "keep" }, { key: "90", label: "31–90 days ago", cls: "lvl-change" },
+  { key: "30", label: "Used in 30 days", cls: "lvl-own" }, { key: "90", label: "31–90 days ago", cls: "lvl-read" },
   { key: "180", label: "91–180 days ago", cls: "medium" }, { key: "none", label: "Never used in this data", cls: "high" },
-  { key: "nodata", label: "No activity data", cls: "lvl-names" }];
+  { key: "nodata", label: "No activity data", cls: "low" }];
 
 export function AgeBars({ types, onPick }: { types: { type: string; buckets: Record<string, number> }[]; onPick?: (type: string) => void }) {
   if (!types.length) return <p className="ae-muted">No objects.</p>;

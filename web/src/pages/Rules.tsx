@@ -32,7 +32,7 @@ export function RulesPageView() {
   return (
     <>
       <Head title="Risks" quiet={c.view !== "mine"} sub={c.view === "mine" ? "The rules run on your own slice of the data." : "Checks over the whole account."}
-        right={csvOn && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString("en-US")} rows${s.data.filters.sev ? `, ${s.data.filters.sev.toLowerCase()} only` : ""})` : ""}</button>} />
+        right={csvOn && tab !== "admins" && tab !== "stale" && <button className="ae-btn" onClick={() => download("rules.csv", q, "findings.csv")}>Download CSV{s.data ? ` (${s.data.total.toLocaleString("en-US")} rows${s.data.filters.sev ? `, ${s.data.filters.sev.toLowerCase()} only` : ""})` : ""}</button>} />
       <Load s={s}>{(d) => {
         const scope = [d.filters.rule && `rule ${d.filters.rule}`, d.filters.grantee && d.filters.grantee].filter(Boolean);
         const chips = scope.length > 0 && (
@@ -296,7 +296,7 @@ export function AdminTable({ admins, refs, total }: { admins: AdminPerson[]; ref
           col("t", "Type", (r: AdminPerson) => (r.service ? "service" : "person"), { wrap: "nowrap" }),
           col("s", "Status", (r: AdminPerson) => r.status, { wrap: "nowrap" }),
           col("r", "Admin roles", (r: AdminPerson) => r.roles.join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={r.roles} strong={r.roles} /> }),
-          col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={r.account} strong={r.strong} /> }),
+          col("a", "Account privileges", (r: AdminPerson) => r.account.join(", "), { wrap: "wrap", render: (r: AdminPerson) => <Lines items={r.account} strong={r.account} /> }),
           col("l", "Last login", (r: AdminPerson) => r.last_login ?? "never", { wrap: "nowrap" }),
           col("p", "Path", (r: AdminPerson) => r.paths.map((p) => p.join(" > ")).join(" | "), { wrap: "nowrap",
             render: (r: AdminPerson) => <PathText path={r.paths[0] ?? []} more={r.paths.slice(1)} kinds={refs.kinds} onOpen={o.open} /> }),

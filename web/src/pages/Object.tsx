@@ -5,7 +5,7 @@ import { download as saveCsv, useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole, WhoState } from "../api/types";
 import { Fold, Banner, Card, Chips, DataTable, EmptyState, Figs, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
-import { BuiltinNote, col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, Risks, Sel, StateTag, Tog } from "./common";
+import { BuiltinNote, col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Risks, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { remember } from "./Home";
@@ -27,7 +27,8 @@ export function ObjectPageView() {
   const c = useApp();
   const admin = c.params.preset === "admin";
   // a big object sends the first people matching the search (wq), plus the person picked (as, sel)
-  const s = useApi<WhoPage>("who", { view: c.view, builtin: c.params.builtin, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }),
+  const none = !admin && !c.params.name && c.view === "shared"; // nothing picked yet
+  const s = useApi<WhoPage>(none ? null : "who", { view: c.view, builtin: c.params.builtin, ...(admin ? { preset: "admin" } : { name: c.params.name ?? "" }),
     q: c.params.wq, st: c.params.st, as: c.params.as, sel: c.params.sel });
   const id = s.data?.object.id ?? c.params.name ?? "";
   const types = useApi<{ items: ListItem[] }>("list", { what: "types", view: c.view, builtin: c.params.builtin });
@@ -43,7 +44,7 @@ export function ObjectPageView() {
               options={[["", "any type"], ...(types.data?.items ?? []).map((i): [string, string] => [i.id, i.id.toLowerCase()])]} /></>}
         </div>
       </div>
-      <Load s={s}>{(d) => <Who d={d} />}</Load>
+      {none ? <PickFirst what="a table, view or other object" /> : <Load s={s}>{(d) => <Who d={d} />}</Load>}
     </>
   );
 }
@@ -433,7 +434,7 @@ export function ObjectDetail({ part }: { part: string }) {
               </Fold>
             </>}
             {part === "sens" && d.sensitivity && (
-              <Card title="Sensitivity" sub={`${d.sensitivity.readers.people} people can read it (${d.sensitivity.readers.admin} admin, ${d.sensitivity.readers.service} service)`}>
+              <Card title="Sensitivity" sub={`${d.sensitivity.readers.people + d.sensitivity.readers.admin + d.sensitivity.readers.service} can read it: ${d.sensitivity.readers.people} people, ${d.sensitivity.readers.service} service, ${d.sensitivity.readers.admin} as admin`}>
                 <Chips items={d.sensitivity.object_tags.map((t) => ({ id: t.label, title: t.origin, tone: t.sensitive ? "bad" : null }))} />
                 {d.sensitivity.row_policies.map((p) => (
                   <p key={p.name}><strong>Row policy {p.name}</strong> on {p.args}: <code>{p.text}</code>{!p.from_text && <span className="ae-muted"> (condition unknown)</span>}</p>

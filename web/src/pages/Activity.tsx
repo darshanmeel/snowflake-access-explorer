@@ -188,7 +188,7 @@ function Activity({ d: raw }: { d: ActivityPage }) {
       <WhoUsed d={d} work={work} open={open} />
       {d.findings!.length > 0 && <Checks d={d} />}
       <details className="ae-log-more" open={more} onToggle={(e) => setMore((e.currentTarget as HTMLDetailsElement).open)}>
-        <summary>More detail <span className="ae-muted">when: per day and hour · off-hours · each object · sensitive data seen · grant paths · every query</span></summary>
+        <summary>When, and every detail <span className="ae-muted">per day and hour · off-hours · each object · sensitive data seen · grant paths · every query</span></summary>
       {more && <div className="ae-log">
       <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} · days and hours in business time {tzl(work)} · reads, writes and DDL · no query text
         {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}
@@ -863,31 +863,23 @@ function WhoUsed({ d, work, open }: { d: ActivityPage; work: Work; open: Open })
   const tot = (x: (typeof list)[number]) => x.n.WRITE + x.n.READ + x.n.DDL;
   const shown = list.filter((x) => who === "all" || x.kind === "person")
     .sort((a, b) => sort === "volume" ? tot(b) - tot(a) : sort === "days" ? b.days.size - a.days.size : b.last.localeCompare(a.last));
-  const top = Math.max(1, ...list.map(tot)), days = d.days ?? 60;
   return (
     <Sec title={d.what === "app" ? "Who opened it" : "Who did what, with what, and when last"} sql="who" sub={`One row per user · role · client${perObj ? " · object" : ""} · ${list.length} rows${rows.length < (d.total ?? 0) ? ` (from the ${rows.length} busiest of ${d.total})` : ""}`}
       right={<div className="ae-row"><span className="ae-muted">Sort</span><Seg label="Sort" value={sort} items={[["volume", "Volume"], ["days", "Active days"], ["last", "Last seen"]]} onPick={setSort} />
         <Seg label="Who" value={who} items={[["all", "Everyone"], ["people", "People only"]]} onPick={setWho} /></div>}>
       <table className="ae-log-table ae-log-who">
-        <thead><tr><th>User</th>{perObj && <th>Object</th>}<th>Role · client</th><th>Statements</th><th>Queries</th><th className="num">Off-hrs</th><th>Activity · {short(d.first!)} – {short(d.last!)}</th></tr></thead>
-        <tbody>{(more ? shown : shown.slice(0, 15)).map((x) => {
-          const a = [...x.days].sort((p, q) => p - q);
-          return (
-            <tr key={`${x.user}|${x.role}|${x.client}|${x.object}`} className={x.kind === "person" && (x.n.WRITE || x.n.DDL) ? "warn" : ""}>
-              <td><button type="button" className="ae-link ae-mono" onClick={() => open("user", x.user)}>{x.user}</button><div><span className={`ae-otag ae-log-k-${x.kind}`}>{x.kind[0].toUpperCase() + x.kind.slice(1)}</span></div></td>
-              {perObj && <td><button type="button" className="ae-link ae-mono" title={x.object} onClick={() => open("object", x.object)}>{x.object.split(".").slice(-2).join(".")}</button>{d.objects?.[x.object]?.sensitive && <div><span className="ae-otag ae-sens-tag">sensitive</span></div>}</td>}
-              <td><span className="ae-mono">{x.role}</span><div className="ae-muted">{x.client}</div></td>
-              <td>{[...x.types].map(([t, act]) => <span key={t} className="ae-log-chip" style={{ borderColor: ACT[act as keyof typeof ACT], color: ACT[act as keyof typeof ACT] }}>{t}</span>)}</td>
-              <td className="ae-log-qcell"><Act n={x.n} w={(100 * Math.sqrt(tot(x))) / Math.sqrt(top)} /><b>{fmt(tot(x))}</b> <span className="ae-muted">{x.n.WRITE} DML · {x.n.READ} reads{x.n.DDL ? ` · ${x.n.DDL} DDL` : ""}</span></td>
-              <td className="num">{x.off ? <b className="ae-warn-ink">{x.off}</b> : <span className="ae-muted">—</span>}</td>
-              <td><span className="ae-log-window"><i style={{ left: `${(100 * (a[0] ?? 0)) / days}%`, width: `${Math.max(1.5, (100 * ((a[a.length - 1] ?? 0) - (a[0] ?? 0) + 1)) / days)}%`, opacity: Math.min(1, 0.35 + x.days.size / days) }} /></span>
-                <span className="ae-muted"><b>{x.days.size}</b> of {days} days · {short(x.first)} → {short(x.last)}</span></td>
-            </tr>
-          );
-        })}</tbody>
+        <thead><tr>{d.what !== "user" && <th>User</th>}{perObj && <th>Object</th>}{d.what !== "role" && <th>Role used</th>}<th>Client</th><th className="num">Reads</th><th className="num">Writes</th><th className="num">Defs</th><th className="num">Off-hours</th><th>Last</th></tr></thead>
+        <tbody>{(more ? shown : shown.slice(0, 15)).map((x) => (
+          <tr key={`${x.user}|${x.role}|${x.client}|${x.object}`} title={[...x.types.keys()].join(", ")}>
+            {d.what !== "user" && <td><button type="button" className="ae-link ae-mono" onClick={() => open("user", x.user)}>{x.user}</button>{x.kind !== "person" && <span className="ae-muted"> {x.kind}</span>}</td>}
+            {perObj && <td><button type="button" className="ae-link ae-mono" title={x.object} onClick={() => open("object", x.object)}>{x.object.split(".").slice(-2).join(".")}</button>{d.objects?.[x.object]?.sensitive && <span className="ae-sens-dot" title="sensitive" aria-label="sensitive" />}</td>}
+            {d.what !== "role" && <td><span className="ae-mono">{x.role}</span></td>}
+            <td>{x.client}</td><td className="num">{fmt(x.n.READ)}</td><td className="num">{fmt(x.n.WRITE)}</td><td className="num">{fmt(x.n.DDL)}</td>
+            <td className="num">{x.off ? <b className="ae-bad">{fmt(x.off)}</b> : 0}</td><td className="ae-muted">{x.last.slice(5, 16)}</td>
+          </tr>
+        ))}</tbody>
       </table>
-      <p className="ae-muted ae-log-legend"><span className="ae-otag ae-log-k-person">Person</span><span className="ae-otag ae-log-k-service">Service</span><span className="ae-otag ae-log-k-system">System</span>
-        <span>bar length on a square-root scale so small users stay visible · timeline = first → last seen, shade = how busy in between</span>
+      <p className="ae-muted ae-log-legend">{perObj && <span><span className="ae-sens-dot" /> sensitive</span>}
         {shown.length > 15 && <button type="button" className="ae-link" onClick={() => setMore(!more)}>{more ? "Show fewer" : `Show ${shown.length - 15} more`}</button>}</p>
     </Sec>
   );

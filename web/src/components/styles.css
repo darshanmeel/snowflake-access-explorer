@@ -140,7 +140,7 @@ button.ae-path-name:hover { text-decoration: underline; }
 .ae-node-box .ae-node-badge { font-weight: 500; }
 .ae-node-sub { font-size: 10.5px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
 .ae-node-badge { font-size: 10px; line-height: 14px; position: relative; white-space: nowrap; }
-.ae-node-rules { position: absolute; top: -10px; right: -6px; font-size: 10px; line-height: 14px; padding: 0 6px; cursor: pointer; white-space: nowrap; }
+.ae-node-rules { position: absolute; top: -9px; right: -9px; font-size: 10px; line-height: 15px; min-width: 15px; text-align: center; padding: 0 3px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 .ae-node-rules span, .ae-rule-dot { font-size: 10px; line-height: 16px; min-width: 16px; height: 16px; border-radius: 999px; padding: 0 4px; text-align: center; color: #fff; display: inline-block; }
 .ae-dbrole { position: absolute; inset: 0; width: 100%; height: 100%; }
 .ae-lock { vertical-align: -1px; margin-right: 4px; display: inline-block; }

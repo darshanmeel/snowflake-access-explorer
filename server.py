@@ -2640,6 +2640,8 @@ MAX_WH = 10  # Can they?: warehouses named in the note under the answer
 def check_page(p, view):
     """Can they? priv=USAGE on an object without USAGE of its own: USAGE on its database and schema (container_usage)."""
     r = check_object(p if p.get("priv") != "USAGE" else {**p, "priv": ""}, view)
+    if p.get("priv") == "USAGE" and "USAGE" in r["privileges"]:  # a privilege of its own (an app, a warehouse): asked as it is
+        r = check_object(p, view)
     r["not_applicable"] = sorted(set(a.priv_types()) - set(r["privileges"]) - ({"USAGE"} if r["usage"] else set()))
     if p.get("priv") in r["not_applicable"]:
         return r | not_applicable(r, p["priv"])

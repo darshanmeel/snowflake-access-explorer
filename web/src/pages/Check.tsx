@@ -28,6 +28,7 @@ export function CheckPageView() {
         {s.data && <Sel label="Privilege" value={s.data.priv} onPick={(v) => c.set({ priv: v, do: null })}
           options={[...s.data.privileges.map((p): [string, string] => [p, p === "*" ? "do anything to" : p]),
             ...s.data.not_applicable.map((p): [string, string] => [p, `${p} · not for this ${s.data!.type.toLowerCase()}`])]} />}
+        {!s.data && <span className="ae-ask-w">read or use</span>}
         <Pick label="Object" value={c.params.obj ?? s.data?.object ?? ""} width={340} what="objects" onPick={(v) => c.set({ obj: v })} />
         <span className="ae-ask-w">?</span>
       </div>

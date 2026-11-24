@@ -1174,3 +1174,11 @@ div.ae-tile { cursor: default; }
   .left .side-hide { top: 8px; }
 }
 @media (max-width: 1000px) { .ae-act-row > summary { grid-template-columns: minmax(0, 1fr) auto; } }
+
+.ae-sens-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ae-bad_ink); margin-left: 6px; }
+.ae-daybars { display: flex; align-items: flex-end; gap: 3px; height: 120px; } .ae-daybars span { flex: 1; min-width: 2px; background: var(--ae-accent); display: flex; align-items: flex-end; } .ae-daybars i { display: block; width: 100%; background: var(--ae-bad_ink); }
+.ae-hourgrid { display: grid; gap: 2px; } .ae-hourgrid > div { display: grid; grid-template-columns: 40px repeat(24, minmax(0, 1fr)); gap: 2px; font-size: 11px; align-items: center; } .ae-hourgrid i { height: 18px; background: var(--ae-sunk); } .ae-hourgrid b { font-weight: 400; }
+.ae-log-who { font-size: 13.5px; } .ae-log-who th { text-transform: none; letter-spacing: 0; white-space: nowrap; }
+.ae-log-who td { padding: 8px; vertical-align: top; overflow-wrap: anywhere; } .ae-log-who td.num, .ae-log-who td:last-child { white-space: nowrap; }
+
+.ae-sg.ae-sg-check { background: color-mix(in oklab, #ffc83d 38%, var(--ae-panel)); color: var(--ae-warn_ink); }
