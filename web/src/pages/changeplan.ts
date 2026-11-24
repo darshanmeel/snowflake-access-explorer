@@ -105,8 +105,8 @@ export function cutLinks(path: string[], changes: WhatIfChange[]): Set<number> {
   }
   if (!out.size) // the role is held further down (through a group): the server cuts it where it is granted
     for (let i = 0; i + 1 < path.length; i++)
-      if (i > 0 && changes.some((ch) => ch.role === path[i + 1] && (ch.op === "revoke_role_from_user"
-        || (ch.op === "revoke_role_from_role" && path.slice(0, i).includes(ch.grantee ?? ""))))) out.add(i);
+      if (i > 0 && changes.some((ch) => (ch.op === "revoke_role_from_user" && ch.role === path[i + 1])
+        || (ch.op === "revoke_role_from_role" && ch.role === path[i + 1] && path.slice(0, i).includes(ch.grantee)))) out.add(i);
   return out;
 }
 
