@@ -595,6 +595,10 @@ def test_whatif():
                                           "groups", "impact", "lost_privs", "kept_privs"])
     assert d["counts"]["users"] and "DROP ROLE" in d["sql"] and "lost_rows" not in d["users"][0]  # per person: counts only
     assert sum(g["n"] for g in d["groups"]) == d["users_total"] == len(d["users"]) and d["groups"][0]["text"]
+    crit = {"fixed": 0, "new": 0}
+    for f in d["findings"]:
+        crit[f["status"]] += f["severity"] == "Critical"
+    assert d["critical_stay"] == sum(r["severity"] == "Critical" for r in server.S["rows"]) - crit["fixed"] + crit["new"]
     assert d["lost_privs"] == sum(u["lost"] for u in d["users"]) and d["impact"][0]["people"] >= d["impact"][-1]["people"]
     assert all(d[k + "_total"] >= len(d[k]) for k in ("findings", "objects", "roles", "impact", "groups", "users"))
     u = js(f"/api/whatif?changes={ch}&user={d['users'][0]['user']}")["user"]  # one person's rows, on open

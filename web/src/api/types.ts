@@ -1039,6 +1039,7 @@ export interface WhatIfPage {
   groups_total: number;
   impact: { object: string; type: string; people: number; privileges: string[] }[]; // objects people lose, most people first
   impact_total: number;
+  critical_stay: number; // critical findings left after the plan
   lost_privs: number;
   kept_privs: number;
   rows_capped: boolean; // someone lists fewer objects than they lose

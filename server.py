@@ -3801,6 +3801,8 @@ def whatif_page(p, view):
         findings=x["findings"][:WHATIF_USERS], findings_total=len(x["findings"]), objects=x["objects"][:WHATIF_USERS],
         objects_total=len(x["objects"]), roles=x["roles"][:WHATIF_USERS], roles_total=len(x["roles"]), users=[{k: v for k, v in u.items() if k in ("user", "status", "lost", "objects", "kept")} for u in us[:WHATIF_USERS]],
         users_total=len(us), groups=gs[:WHATIF_GROUPS], groups_total=len(gs), impact=objs[:WHATIF_OBJECTS],
+        critical_stay=sum(r["severity"] == "Critical" for r in S["rows"])
+        + sum((f["status"] == "new") - (f["status"] == "fixed") for f in x["findings"] if f["severity"] == "Critical"),
         impact_total=len(objs), lost_privs=sum(u["lost"] for u in us), kept_privs=sum(u["kept"] for u in us),
         rows_capped=any(len(u["lost_rows"]) < u["objects"] for u in us))
 

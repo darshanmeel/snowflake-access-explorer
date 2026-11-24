@@ -132,11 +132,11 @@ export function Outcome({ d, changes }: { d: WhatIfPage; changes: WhatIfChange[]
   const sev = (["Critical", "High", "Medium", "Low"] as const).map((s) => [s, crit.filter((f) => f.severity === s).length] as const).filter(([, x]) => x);
   return (
     <>
-      <p className="ae-answer">{k.users ? `${n(k.users, "person loses", "people lose")} access${k.fixed ? `, ${n(k.fixed, "finding closes", "findings close")}` : ""}` : "Nobody loses access"}</p>
+      <p className="ae-answer">{k.users ? `${n(k.users, "person loses", "people lose")} access${k.fixed ? `, ${n(k.fixed, "finding closes", "findings close")}` : ""}${k.fixed && d.critical_stay ? `, ${d.critical_stay} critical ${d.critical_stay === 1 ? "one stays" : "ones stay"}` : ""}` : "Nobody loses access"}</p>
       <Figs items={[
-        { key: "u", n: k.users.toLocaleString("en-US"), text: k.users === 1 ? "person loses access" : "people lose access", bad: k.users > off, note: k.users && off >= k.users ? "all inactive" : off ? `${off} inactive` : k.users ? "all active" : undefined },
+        { key: "u", n: k.users.toLocaleString("en-US"), text: k.users === 1 ? "person loses access" : "people lose access", bad: k.users > off, note: k.users && off >= k.users ? `all inactive, ${n(k.objects, "object")} lost` : off ? `${off} inactive, ${n(k.objects, "object")} lost` : k.users ? `all active, ${n(k.objects, "object")} lost` : undefined },
         { key: "f", n: k.fixed.toLocaleString("en-US"), text: k.fixed === 1 ? "finding closes" : "findings close", note: sev.map(([s, x]) => `${x} ${s.toLowerCase()}`).join(", ") || undefined },
-        { key: "o", n: k.objects.toLocaleString("en-US"), text: k.objects === 1 ? "object is lost" : "objects are lost", note: k.kept ? `${k.kept.toLocaleString("en-US")} ${k.kept === 1 ? "person keeps" : "people keep"} some of it` : undefined },
+        { key: "c", n: d.critical_stay.toLocaleString("en-US"), text: d.critical_stay === 1 ? "critical finding stays" : "critical findings stay", bad: d.critical_stay > 0 },
       ]} />
       <Care d={d} />
       <LossGraph d={d} changes={changes} />
