@@ -54,18 +54,19 @@ export function LossGraph({ d, changes }: { d: WhatIfPage; changes: WhatIfChange
   const o = useOpen(d.refs);
   const x = useMemo(() => {
     const paths: PathIn[] = [], kinds: Record<string, string> = { ...d.refs.kinds };
-    const red = new Set<string>();
+    const red = new Set<string>(), types = d.refs.types;
     const many = d.groups.slice(0, 6).some((g) => g.n > 4) || d.groups.length > 6;
     d.groups.slice(0, 6).forEach((g, gi) => {
       const starts = many && g.n > 1 ? [`${g.n} people${gi ? " " + "\u200b".repeat(gi) : ""}`] : g.users.slice(0, 4).map((u) => `${u.user} (user)`);
       starts.forEach((s) => {
         kinds[s] = "user";
         for (const r of g.lost) {
+          if (types[r.object] === "DATABASE" || types[r.object] === "SCHEMA") continue;
           const path = [s, ...r.path.slice(1)], cuts = cutLinks(r.path, changes);
           paths.push({ path, cls: "read", privilege: r.privileges[0] });
           cuts.forEach((i) => red.add(`${path[i]}>${path[i + 1]}`));
         }
-        for (const r of g.kept) if (r.via?.length) paths.push({ path: [s, ...r.via.slice(1)], cls: "use", privilege: r.privileges[0] });
+        for (const r of g.kept) if (r.via?.length && types[r.object] !== "DATABASE" && types[r.object] !== "SCHEMA") paths.push({ path: [s, ...r.via.slice(1)], cls: "use", privilege: r.privileges[0] });
       });
     });
     if (!paths.length) return null;
@@ -76,7 +77,7 @@ export function LossGraph({ d, changes }: { d: WhatIfPage; changes: WhatIfChange
   }, [d, changes]);
   if (!x) return null;
   return (
-    <Card title="What would be cut">
+    <Card title="What would be cut" sub="Databases and schemas are left out.">
       <Graph graph={x.g} theme={c.theme} hi={x.hi} legend={false} maxHeight={460} onNodeClick={(n) => o.open(n.id)} />
       <div className="ae-bar-legend"><span><span className="ae-gline ae-gline-risk" aria-hidden />Link removed</span><span><span className="ae-gline ae-gline-read" aria-hidden />Access lost with it</span><span><span className="ae-gline ae-gline-use" aria-hidden />Kept another way</span>
         {d.groups_total > 6 && <span>First 6 of {d.groups_total} groups</span>}</div>

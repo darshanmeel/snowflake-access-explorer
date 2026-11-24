@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { download as saveCsv, useApi } from "../api/client";
 import type { ListItem, MatrixRow, ObjectPage, RulesPage, WhoEntry, WhoPage, WhoPerson, WhoRole, WhoState } from "../api/types";
-import { Fold, Banner, Card, Chips, DataTable, EmptyState, Figs, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
+import { Rows, Fold, Banner, Card, Chips, DataTable, EmptyState, Figs, FilterChips, GroupedGrantees, KpiRow, ListToolbar, MiniBar, NameList, PathChips, Tabs, Toggle, useCsv } from "../components";
 import { apiParams, AppCtx, useApp, useOpen } from "../ctx";
 import { BuiltinNote, col, Controls, CutBanner, GraphCard, Head, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Risks, Sel, StateTag, Tog } from "./common";
 import { ActivityTab, UseLine } from "./Activity";
@@ -267,7 +267,7 @@ function List({ d }: { d: WhoPage }) {
             col("c", "Can", (x: WhoPerson) => TITLE[x.level], { render: (x: WhoPerson) => <><span className={`ae-lvl ae-lvl-${x.level}`} title={x.privileges.join(", ")}>{TITLE[x.level]}</span>{x.blocked && <span className="ae-blocked"> blocked</span>}</> }),
             col("l", "Login", (x: WhoPerson) => `${STATUS[x.status]}, ${ago(x)}`, { wrap: "wrap", render: (x: WhoPerson) => <span className={off(x) ? "ae-bad" : undefined}>{STATUS[x.status].toLowerCase()}{x.status === "never" ? "" : `, ${ago(x)}`}</span> }),
             col("t", "Through", (x: WhoPerson) => through(x), { wrap: "wrap", render: (x: WhoPerson) => <span className="ae-mono">{through(x)}</span> }),
-            ...(cols ? [col("s", "In clear", (x: WhoPerson) => clear(x).join(", ") || "none", { wrap: "wrap" as const, render: (x: WhoPerson) => (clear(x).length ? <span className="ae-bad">{clear(x).join(", ")}</span> : <span className="ae-muted">none</span>) })] : []),
+            ...(cols ? [col("s", "In clear", (x: WhoPerson) => clear(x).join(", ") || "none", { wrap: "wrap" as const, render: (x: WhoPerson) => (clear(x).length ? <Rows items={clear(x)} bad /> : <span className="ae-muted">none</span>) })] : []),
             col("q", `Used, ${c.meta.limits ? "60" : ""} days`, (x: WhoPerson) => x.queries ?? -1, { num: true, render: (x: WhoPerson) => (x.queries == null ? <span className="ae-muted">not read</span> : x.queries ? x.queries.toLocaleString("en-US") : <span className="ae-muted">not recorded</span>) }),
           ]} />
         )}

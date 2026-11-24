@@ -3,7 +3,7 @@ import { useApi } from "../api/client";
 import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
 import { Banner, Card, DataTable, EmptyState, FilterChips, Fold, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph, type TabItem } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, DataViews, GraphCard, Head, Load, NameLink, pathCol, Pick, Risks, ScopePick, Sel, Tog } from "./common";
+import { lean, Banners, col, Controls, DataViews, GraphCard, Head, Load, NameLink, pathCol, Pick, Risks, ScopePick, Sel, Tog } from "./common";
 import { PagedTable } from "./paged";
 import { changeOfPath, WhatIfButton } from "./Whatif";
 
@@ -92,7 +92,7 @@ export const roleTabs = (d?: RolePage | null): TabItem[] => [
 export function RolePageView() {
   const c = useApp();
   const name = c.params.name ?? "";
-  const s = useApi<RolePage>(name ? "role" : null, { ...apiParams(c), name });
+  const s = useApi<RolePage>(name ? "role" : null, { ...apiParams(c), name, lean: lean(c) });
   const o = useOpen(s.data?.refs);
   const pane = c.inside ? c.params.pane : undefined; // the Access page's tab this one part fills (diagram, privs, held, ...)
   const [want, setPart] = useState(c.params.part ?? "diagram");

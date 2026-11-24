@@ -6,7 +6,7 @@ import { useApi } from "../api/client";
 import type { Graph as G, GraphNode, ListItem, MapNode, MapPage } from "../api/types";
 import { Fold, Card, EmptyState, Graph, LEVEL_WORD, Tabs, Toggle } from "../components";
 import { apiParams, useApp } from "../ctx";
-import { GraphCard, Load, Pick, PickFirst, ScopePick, Sel } from "./common";
+import { lean, GraphCard, Load, Pick, PickFirst, ScopePick, Sel } from "./common";
 import { riskIds, startOf } from "./screens";
 import { WhatIfButton } from "./Whatif";
 
@@ -47,7 +47,6 @@ export function GraphPageView() {
             onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />}
         ?
       </div>
-      {tab === "trace" && s.data && <p className="ae-answer">{s.data.graph.header.replace(/\.$/, "")}</p>}
       {!none && <Tabs nav={2} active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k, focus: null, sel: null })} tabs={[
         { key: "diagram", label: "Hierarchy" },
         { key: "trace", label: "Trace" },
@@ -56,7 +55,7 @@ export function GraphPageView() {
       {mode !== "object" && !none && <Fold label="Filter" on={!!(c.params.schema || c.params.otype || c.params.access)}><div className="ae-controls"><Filters trace={tab === "trace"} /></div></Fold>}
       {none ? <PickFirst what={mode === "user" ? "a person" : mode === "role" ? "a role" : "a table"} /> : <>
         {tab === "diagram" && <OldDiagram mode={mode} name={shown} />}
-        {tab === "trace" && <Load s={s}>{(d) => <Trace d={d} />}</Load>}
+        {tab === "trace" && <Load s={s}>{(d) => <><p className="ae-answer">{d.graph.header.replace(/\.$/, "")}</p><Trace d={d} /></>}</Load>}
       </>}
     </>
   );
@@ -70,9 +69,9 @@ function Difference({ tab, mode }: { tab: string; mode: string }) {
   const go = (p: Record<string, string>) => c.set({ user: null, role: null, table: null, focus: null, sel: null, ...p });
   return (
     <div className="ae-gdiff" aria-label="Hierarchy or Trace">
-      {row("diagram", "Hierarchy", "How deep is it?", "Roles in lanes by depth, one line per grant. Numbers on a box: rules broken.")}
-      {row("trace", "Trace", "Who passes through a box, and what does it lead to?", `${mode === "user" ? "The same paths" : "People on the left too"}, lines coloured by read, write or own and thicker with more people; admin bypass and risky paths drawn. Click a box for its people and objects.`)}
-      <p className="ae-muted">They differ most for a role many people hold, or a person with an admin role{c.meta.mode === "fake" && <>: try{" "}
+      {row("diagram", "Hierarchy", "How deep is it?", "Roles in lanes by depth, one line per grant.")}
+      {row("trace", "Trace", "Who passes through a box?", `${mode === "user" ? "The same paths" : "People too"}, lines thicker with more people, admin bypass and risky paths drawn.`)}
+      <p className="ae-muted">Most different for a role many people hold or a person with an admin role{c.meta.mode === "fake" && <>: try{" "}
         <button type="button" className="ae-link ae-mono" onClick={() => go({ role: "GRP_EMEA_ALL" })}>GRP_EMEA_ALL</button> (14 people) or{" "}
         <button type="button" className="ae-link ae-mono" onClick={() => go({ user: "OPS_01" })}>OPS_01</button> (admin), then switch the tab</>}.</p>
     </div>
@@ -82,13 +81,13 @@ function Difference({ tab, mode }: { tab: string; mode: string }) {
 /** The diagram the person, role or object page draws (kept: the default tab). */
 function OldDiagram({ mode, name }: { mode: string; name: string }) {
   const c = useApp();
-  const g = useApi<G>("graph", { of: mode, name: name || null, view: c.view, builtin: c.params.builtin, focus: c.params.focus,
+  const g = useApi<G>("graph", { of: mode, name: name || null, view: c.view, builtin: c.params.builtin, focus: c.params.focus, lean: lean(c),
     ...(mode !== "object" ? { schema: c.params.schema, otype: c.params.otype } : {}) });
   const said = (x: G) => {
     const roles = x.nodes.filter((n) => !["user", "object", "fold", "schema_group", "database_group", "type_group", "lane_group"].includes(n.kind) && n.id !== name).length;
     const people = x.nodes.filter((n) => n.kind === "user" && n.name !== name).length, objs = x.header.match(/([\d,]+) objects?/)?.[1] ?? String(x.nodes.filter((n) => n.kind === "object").length);
     const w = (n: number | string, one: string, many = `${one}s`) => `${n} ${String(n) === "1" ? one : many}`;
-    const short = name.split(".").pop();
+    const short = mode === "object" ? name.split(".").pop() : name; // a login can be an email: only objects are shortened
     return mode === "object" ? `${w(people, "person", "people")} come in to ${short} through ${w(roles, "role")}` : mode === "role" ? `${short} opens ${w(objs, "object")}${people ? ` for ${w(people, "person", "people")}` : ""}` : `${short} reaches ${w(objs, "object")} through ${w(roles, "role")}`;
   };
   return <Load s={g}>{(x) => (x ? <><p className="ae-answer">{said(x)}</p><GraphCard g={x} title={mode === "object" ? "Every way in" : mode === "role" ? "Who holds it, what it opens" : "Person to roles to objects"} /></> : <EmptyState title="Nothing to draw" />)}</Load>;

@@ -52,7 +52,7 @@ export function SensitiveCell({ sensitive, columns }: { sensitive: boolean; colu
   const state = !columns.length ? "tagged" : clear.length === columns.length ? "clear" : clear.length ? `${columns.length - clear.length} masked` : "masked";
   return (
     <span className="ae-sens-cell" title={columns.map((c) => `${c.column}: ${c.state} (${c.reason})`).join("\n")}>
-      <span className="ae-sens-tag">{LOCK}{columns.length ? columns.map((c) => c.column).join(", ") : "sensitive"}</span>
+      <span className="ae-sens-tag">{LOCK}{!columns.length ? "sensitive" : `${columns.slice(0, 5).map((c) => c.column).join(", ")}${columns.length > 5 ? ` +${columns.length - 5} more` : ""}`}</span>
       <span className={`ae-sens-state ae-sens-${state === "masked" ? "masked" : "clear"}`}>{state}</span>
     </span>
   );
@@ -294,6 +294,17 @@ export interface NameItem { key: string; label?: ReactNode; n?: ReactNode; open?
 
 /** Names one per line, never comma text: the first `max` (links when they open), then "+N more", which opens `onMore`
  *  or shows the rest here. Only spans and buttons, so it sits in a banner or a tile; `plain` (no buttons) inside a button. */
+/** One name per line, the first max of them, the rest behind +N more. */
+export function Rows({ items, max = 5, bad }: { items: string[]; max?: number; bad?: boolean }) {
+  const [all, setAll] = useState(false);
+  return (
+    <ul className={`ae-rowlist${bad ? " ae-bad" : ""}`}>
+      {(all ? items : items.slice(0, max)).map((x) => <li key={x} title={x}>{x}</li>)}
+      {items.length > max && <li><button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `+${items.length - max} more`}</button></li>}
+    </ul>
+  );
+}
+
 export function NameList({ items, total = items.length, max = 8, onOpen, onMore, plain }: {
   items: (string | NameItem)[]; total?: number; max?: number; onOpen?: (k: string) => void; onMore?: () => void; plain?: boolean;
 }) {

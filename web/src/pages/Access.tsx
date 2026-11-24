@@ -8,7 +8,7 @@ import { ActivityTab } from "./Activity";
 import { ChangeFeed } from "./Changes";
 import { RolePageView, roleTabs } from "./Role";
 import { UserPage } from "./User";
-import { Load, Pick, PickFirst, Risks, Sel, unread } from "./common";
+import { lean, Load, Pick, PickFirst, Risks, Sel, unread } from "./common";
 import { recent, remember } from "./Home";
 import { groupKey, type GroupBy } from "./screens";
 import { doOf } from "./verdict";
@@ -75,7 +75,7 @@ function Body({ d }: { d: AccessPage }) {
   const w = d.who, n = d.counts, tb = n.tables ?? { read: n.read, change: n.change, own: n.own, clear: n.sensitive }, nm = n.names ?? { clear: [], change: [], schemas: [] }, user = w.kind === "user";
   const adm = d.admin_roles ?? [], adminRole = !user && adm.includes(w.name); // admin role links are dropped: zero would read as safe
   useEffect(() => { if (c.view === "shared") remember({ page: user ? "user" : "role", id: w.id, label: w.name }); }, [w.id, user, w.name, c.view]);
-  const rd = useApi<RolePage>(user ? null : "role", { ...apiParams(inner(c, w.name, false)), name: w.name }).data; // a role's own tabs, the same fetch they show
+  const rd = useApi<RolePage>(user ? null : "role", { ...apiParams(inner(c, w.name, false)), name: w.name, lean: lean(c) }).data; // a role's own tabs, the same fetch they show
   const rtabs = user ? [] : roleTabs(rd);
   const part = !user && c.params.show === "detail" && ROLE_PARTS.includes(c.params.part ?? "") ? c.params.part! : c.params.show ?? ""; // old links: show=detail&part=held
   const keys = ["summary", "privs", "detail", "runs", "history", "activity", ...(user ? [] : ROLE_PARTS)];
@@ -94,6 +94,7 @@ function Body({ d }: { d: AccessPage }) {
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
   const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
     w.last_login && w.status !== "never" ? ` · last login ${w.last_login}` : ""}` : "";
+  const all = list.data; // stages, streams, tasks: in the list, not tables or views
   const objects_ = (
       <Card title={tagsOff || !tb.clear ? (user ? "What they can access" : "What it opens") : `${tb.clear.toLocaleString("en-US")} of ${tb.read.toLocaleString("en-US")} show sensitive columns in clear`}>
         <details className="ae-filter" open={lvl !== "all" || !!q || usage || group !== "none" || !!otype || !!cell || undefined}><summary>Filter, group, CSV</summary>
@@ -175,7 +176,7 @@ function Body({ d }: { d: AccessPage }) {
         {n.admin > 0 && <>, <b className="ae-bad">{n.admin} through an admin role</b></>}
       </p>}
       <Figs items={[
-        user ? { key: "read", n: tb.read.toLocaleString("en-US"), text: "tables and views they can read", note: nm.schemas.join(", ") || undefined }
+        user ? { key: "read", n: tb.read.toLocaleString("en-US"), text: `tables and views they can read${all > tb.read ? `, and ${all - tb.read} other ${all - tb.read === 1 ? "object" : "objects"}` : ""}`, note: nm.schemas.join(", ") || undefined }
           : { key: "held", n: (w.held_by?.users ?? 0).toLocaleString("en-US"), text: w.held_by?.users === 1 ? "person holds it" : "people hold it", note: w.held_by?.roles ? `and ${plural(w.held_by.roles, "role")}` : undefined, go: () => c.set({ show: "held" }) },
         user ? { key: "sens", n: tagsOff ? "not read" : tb.clear.toLocaleString("en-US"), text: "with sensitive columns seen in clear", bad: !tagsOff && tb.clear > 0, note: tagsOff ? `${tagsOff.title}: sensitivity unknown` : nm.clear.join(", ") || undefined }
           : { key: "chg", n: tb.change.toLocaleString("en-US"), text: tb.change === 1 ? "object it can change" : "objects it can change", note: nm.change.join(", ") || undefined },

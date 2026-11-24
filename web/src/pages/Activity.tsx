@@ -177,6 +177,8 @@ function Activity({ d: raw }: { d: ActivityPage }) {
       {!rows.length ? <p className="ae-log-lead">No use in the last {days} days. Pick a longer period above.</p> : <>
       <p className="ae-log-lead">{lead(d, objs, total, days)}</p>
       {d.what === "app" ? <AppViewers d={d} /> : <Brief d={d} work={work} days={days} />}
+      <WithWhat d={d} work={work} open={open} />
+      <WhoUsed d={d} work={work} open={open} />
       <Fold label={`Business time ${tzl(work)}`} on={work.tz !== 0}>
       <div className="ae-log-bar-top">
         <label className="ae-log-slide ae-log-biz"><span className="ae-log-tl">Business time</span><b>{tzl(work)}</b>
@@ -184,11 +186,8 @@ function Activity({ d: raw }: { d: ActivityPage }) {
           <span className="ae-muted">{hh(work.start)}–{hh(work.end)} local, Monday to Friday · moves every day, hour, weekend and off-hours count on this tab (stored in UTC)</span></label>
       </div>
       </Fold>
-      <WithWhat d={d} work={work} open={open} />
-      <WhoUsed d={d} work={work} open={open} />
-      {d.findings!.length > 0 && <Checks d={d} />}
       <details className="ae-log-more" open={more} onToggle={(e) => setMore((e.currentTarget as HTMLDetailsElement).open)}>
-        <summary>When, and every detail <span className="ae-muted">per day and hour · off-hours · each object · sensitive data seen · grant paths · every query</span></summary>
+        <summary>When <span className="ae-muted">per day and hour, off-hours, each object, grant paths, every query{d.findings!.length > 0 && <b className="ae-bad"> · {plural(d.findings!.length, "finding")}</b>}</span></summary>
       {more && <div className="ae-log">
       <p className="ae-muted ae-log-src">Source SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY with QUERY_HISTORY and SESSIONS · {d.first} → {d.last} · days and hours in business time {tzl(work)} · reads, writes and DDL · no query text
         {d.what === "app" && " · the queries this Streamlit app ran for each user; opening it without a table query leaves no row"}
@@ -209,7 +208,7 @@ function Activity({ d: raw }: { d: ActivityPage }) {
         </Sec>
       )}
       <QuerySql d={d} />
-      {d.findings!.length === 0 && <Checks d={d} />}
+      <Checks d={d} />
       </div>}
       </details>
       </>}
@@ -226,9 +225,9 @@ function Brief({ d, work, days }: { d: ActivityPage; work: Work; days: number })
   const pc = (v: number) => `${total ? Math.round((100 * v) / total) : 0}%`;
   return (
     <div className="ae-log-tiles ae-log-three">
-      <Tile label="Queries" value={fmt(total)} cap={`${fmt(n("READ"))} reads · ${fmt(n("WRITE"))} writes · ${fmt(n("DDL"))} definition changes · ${days} days`} />
-      <Tile label="Main client" value={cl[0]?.key ?? "–"} cap={cl[0] ? `${pc(sum(cl[0]))} of the queries${cl[1] ? `, then ${cl.slice(1, 4).map((x) => x.key).join(", ")}` : ", the only one"}` : ""} />
-      <Tile label="Outside business hours" value={fmt(off)} cap={`${pc(off)} · weekends or outside ${biz(work)}`} tone={off ? "warn" : null} />
+      <Tile label={`queries in ${days} days`} value={fmt(total)} cap={`${fmt(n("READ"))} reads, ${fmt(n("WRITE"))} writes, ${fmt(n("DDL"))} definition changes`} />
+      <Tile label={`is the main client${cl[0] ? `, ${pc(sum(cl[0]))}` : ""}`} value={cl[0]?.key ?? "–"} cap={cl[0] ? (cl[1] ? `then ${cl.slice(1, 4).map((x) => x.key).join(", ")}` : "the only one") : ""} />
+      <Tile label="outside business hours" value={fmt(off)} cap={`${pc(off)} of all`} tone={off ? "warn" : null} />
     </div>
   );
 }
@@ -256,8 +255,8 @@ function WithWhat({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
   const link = (k: ActivityKey, v: string) => k === "client" || k === "type" ? v
     : <button type="button" className="ae-link ae-mono" title={v} onClick={() => open(k, v)}>{k === "object" ? v.split(".").slice(-2).join(".") : v}</button>;
   return (
-    <Sec title="Which client, with which role" sql="matrix" sub="Red: of these, outside business hours."
-      right={<Seg label="Show" value={at} onPick={setAt} items={pairs.map(([p, q], i) => [String(i), `${LABEL[p]} × ${LABEL[q].toLowerCase()}`])} />}>
+    <Sec title="Which client, with which role" sql="matrix">
+      <Seg label="Show" value={at} onPick={setAt} items={pairs.map(([p, q], i) => [String(i), `${LABEL[p]} × ${LABEL[q].toLowerCase()}`])} />
       <Heat corner={LABEL[r]} colName={LABEL[c]} rows={names(rt)} cols={names(ct)} color="var(--ae-accent)"
         value={(p, q) => n.get(`${p}\u0001${q}`) ?? 0} off={(p, q) => o.get(`${p}\u0001${q}`) ?? 0} rowHead={(p) => link(r, p)} colHead={(q) => link(c, q)} />
     </Sec>
@@ -265,13 +264,13 @@ function WithWhat({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
 }
 
 function lead(d: ActivityPage, objs: number, total: number, days: number): ReactNode {
-  const n = <span className="ae-mono">{d.name}</span>;
+  const n = d.name;
   const top = (k: ActivityKey) => { const b = d.by![k][0]; return b && total ? { key: b.key, pc: Math.round((100 * sum(b)) / total) } : null; };
   const u = top("user"), ob = top("object");
-  if (d.what === "object" && u) return <><span className="ae-mono">{u.key}</span> makes {u.pc}% of the queries on {d.name.split(".").pop()}</>;
+  if (d.what === "object" && u) return <>{u.key} makes {u.pc}% of the queries on {d.name.split(".").pop()}</>;
   if (d.what === "app") return <>The app {n} ran {fmt(total)} queries on {plural(objs, "object")} for {plural(d.by!.user.length, "user")} in {days} days, with its owner's rights.</>;
   if (d.what === "scope") return <>{plural(objs, "object")} in {d.kind?.toLowerCase()} {n} {objs === 1 ? "was" : "were"} read or changed {fmt(total)} times in {days} days.</>;
-  if (d.what === "role") return <>{n} was used by {plural(d.by!.user.length, "user")} on {plural(objs, "object")}</>;
+  if (d.what === "role") return <>{n} is used by {plural(d.by!.user.length, "user")}, on {plural(objs, "object")}</>;
   return <>{n} used {plural(objs, "object")}{ob && <>, mostly {ob.key.split(".").pop()} ({ob.pc}%)</>}</>;
 }
 
@@ -403,7 +402,7 @@ function OffHours({ d, work, open }: { d: ActivityPage; work: Work; open: Open }
             return (
               <div key={g.key} className="ae-log-person">
                 <div className="ae-log-ph">
-                  <span className="ae-log-av">{initials((g.key ?? "").split(".").pop())}</span>
+                  <span className="ae-log-av">{initials(by === "object" ? (g.key ?? "").split(".").pop() : (g.key ?? "").split("@")[0])}</span>
                   <div><button type="button" className="ae-link ae-mono" onClick={() => open(by, g.key)}>{g.key}</button>
                     {by === "user" && kind.get(g.key) !== "person" && <span className={`ae-otag ae-log-k-${kind.get(g.key)}`}>{kind.get(g.key)}</span>}
                     {by === "object" && d.objects?.[g.key]?.sensitive && <span className="ae-otag ae-sens-tag">sensitive</span>}
@@ -470,20 +469,21 @@ export function Heat({ corner, colName, rows: allRows, cols: allCols, value: cel
       <table className={`ae-log-heat${days ? " ae-log-heat-days" : ""}`}>
         <thead><tr><th>{corner}</th>
           {cols.map((c, i) => <th key={c} title={c} className={weekend(c) ? "wk" : ""}>{days ? (i % 5 === 0 || i === cols.length - 1 ? short(c) : "") : colHead && c !== co ? colHead(c) : c}</th>)}
-          <th className="tot">Total</th></tr></thead>
+          <th className="tot">All</th></tr></thead>
         <tbody>
           {rows.map((r) => <tr key={r} className={r === ro ? "other" : undefined}><th className="ae-mono">{rowHead && r !== ro ? rowHead(r) : r}</th>
             {cols.map((c) => { const v = value(r, c);
               return <td key={c} title={`${r} · ${days ? c : c}: ${fmt(v)}`} className={weekend(c) ? "wk" : ""}
                 style={{ background: v ? `color-mix(in srgb, ${color} ${off ? 8 + (34 * v) / top : 12 + (78 * v) / top}%, var(--ae-panel))` : undefined, color: !off && v / top > 0.55 ? "#fff" : undefined }}>
                 {days ? "" : v ? fmt(v) : "·"}{off && off(r, c) > 0 && <em className="ae-log-offn2" title="outside business hours">{fmt(off(r, c))}</em>}</td>; })}
-            <td className="tot"><b>{fmt(rt(r))}</b> <span className="ae-muted">{total ? Math.round((100 * rt(r)) / total) : 0}%</span></td></tr>)}
-          <tr className="sum"><th>Total</th>{cols.map((c) => <td key={c}>{days ? "" : <b>{fmt(ct(c))}</b>}</td>)}<td className="tot"><b>{fmt(total)}</b></td></tr>
+            <td className="tot"><b>{fmt(rt(r))}</b></td></tr>)}
+          {rows.length > 1 && <tr className="sum"><th>All</th>{cols.map((c) => <td key={c}>{days ? "" : <b>{fmt(ct(c))}</b>}</td>)}<td className="tot"><b>{fmt(total)}</b></td></tr>}
         </tbody>
       </table>
       <p className="ae-muted ae-log-legend">{(rx.length > 0 || cx.length > 0 || all) && (
         <button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "Fold the quiet ones into Other" : `Show all ${allRows.length} rows${cx.length ? ` and ${allCols.length} columns` : ""}`}</button>)}
-        Fewer <i className="ae-log-ramp" style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${color} 12%, var(--ae-panel)), ${color})` }} /> More</p>
+        {days ? <>Fewer <i className="ae-log-ramp" style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${color} 12%, var(--ae-panel)), ${color})` }} /> More</>
+          : <><i className="ae-log-sw" style={{ background: `color-mix(in srgb, ${color} 42%, var(--ae-panel))` }} /> queries, darker = more{offCell && <b className="ae-bad"> red = of these, outside business hours</b>}</>}</p>
     </div>
   );
 }
@@ -864,22 +864,22 @@ function WhoUsed({ d, work, open }: { d: ActivityPage; work: Work; open: Open })
   const shown = list.filter((x) => who === "all" || x.kind === "person")
     .sort((a, b) => sort === "volume" ? tot(b) - tot(a) : sort === "days" ? b.days.size - a.days.size : b.last.localeCompare(a.last));
   return (
-    <Sec title={d.what === "app" ? "Who opened it" : "Who did what, with what, and when last"} sql="who" sub={`One row per user · role · client${perObj ? " · object" : ""} · ${list.length} rows${rows.length < (d.total ?? 0) ? ` (from the ${rows.length} busiest of ${d.total})` : ""}`}
-      right={<div className="ae-row"><span className="ae-muted">Sort</span><Seg label="Sort" value={sort} items={[["volume", "Volume"], ["days", "Active days"], ["last", "Last seen"]]} onPick={setSort} />
-        <Seg label="Who" value={who} items={[["all", "Everyone"], ["people", "People only"]]} onPick={setWho} /></div>}>
+    <Sec title={d.what === "app" ? "Who opened it" : "Who did what, and when last"} sql="who" sub={rows.length < (d.total ?? 0) ? `From the ${rows.length} busiest of ${d.total} rows` : undefined}>
+      <Fold label="Sort, people only" on={sort !== "volume" || who !== "all"}><div className="ae-row"><span className="ae-muted">Sort</span><Seg label="Sort" value={sort} items={[["volume", "Volume"], ["days", "Active days"], ["last", "Last seen"]]} onPick={setSort} />
+        <Seg label="Who" value={who} items={[["all", "Everyone"], ["people", "People only"]]} onPick={setWho} /></div></Fold>
       <table className="ae-log-table ae-log-who">
-        <thead><tr>{d.what !== "user" && <th>User</th>}{perObj && <th>Object</th>}{d.what !== "role" && <th>Role used</th>}<th>Client</th><th className="num">Reads</th><th className="num">Writes</th><th className="num">Defs</th><th className="num">Off-hours</th><th>Last</th></tr></thead>
+        <thead><tr>{d.what !== "user" && <th>User</th>}{perObj && <th>Object</th>}{d.what !== "role" && <th>Role used</th>}<th>Client</th><th className="num">Reads</th><th className="num">Writes</th><th className="num">Definition changes</th><th className="num">Outside hours</th><th>Last</th></tr></thead>
         <tbody>{(more ? shown : shown.slice(0, 15)).map((x) => (
           <tr key={`${x.user}|${x.role}|${x.client}|${x.object}`} title={[...x.types.keys()].join(", ")}>
             {d.what !== "user" && <td><button type="button" className="ae-link ae-mono" onClick={() => open("user", x.user)}>{x.user}</button>{x.kind !== "person" && <span className="ae-muted"> {x.kind}</span>}</td>}
-            {perObj && <td><button type="button" className="ae-link ae-mono" title={x.object} onClick={() => open("object", x.object)}>{x.object.split(".").slice(-2).join(".")}</button>{d.objects?.[x.object]?.sensitive && <span className="ae-sens-dot" title="sensitive" aria-label="sensitive" />}</td>}
+            {perObj && <td><button type="button" className="ae-link ae-mono" title={x.object} onClick={() => open("object", x.object)}>{x.object.split(".").pop()}</button>{d.objects?.[x.object]?.sensitive && <> <span className="ae-tag ae-tag-warn">sensitive</span></>}</td>}
             {d.what !== "role" && <td><span className="ae-mono">{x.role}</span></td>}
             <td>{x.client}</td><td className="num">{fmt(x.n.READ)}</td><td className="num">{fmt(x.n.WRITE)}</td><td className="num">{fmt(x.n.DDL)}</td>
             <td className="num">{x.off ? <b className="ae-bad">{fmt(x.off)}</b> : 0}</td><td className="ae-muted">{x.last.slice(5, 16)}</td>
           </tr>
         ))}</tbody>
       </table>
-      <p className="ae-muted ae-log-legend">{perObj && <span><span className="ae-sens-dot" /> sensitive</span>}
+      <p className="ae-muted ae-log-legend">
         {shown.length > 15 && <button type="button" className="ae-link" onClick={() => setMore(!more)}>{more ? "Show fewer" : `Show ${shown.length - 15} more`}</button>}</p>
     </Sec>
   );

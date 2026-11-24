@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, SeeCard, SeePage, SensitiveReach } from "../api/types";
-import { Card, DataTable, EmptyState, FilterChips, IdentityCard, NameList, Pager, Tabs } from "../components";
+import { Rows, Card, DataTable, EmptyState, FilterChips, IdentityCard, NameList, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { col, DataViews, Load, NameLink, pathCol, Pick, PickFirst, Risks, StateTag, unread, Usage } from "./common";
 import { PAGE } from "./paged";
@@ -66,7 +66,7 @@ function Body({ d }: { d: SeePage }) {
         <Card title="Sensitive reach" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
           <DataTable csv="sensitive_reach.csv" rows={d.sensitive.rows}
             columns={[col("o", "Object", (r: SensitiveReach) => r.object, { wrap: "nowrap" }),
-              col("c", "Columns", (r: SensitiveReach) => r.cols.join(", "), { wrap: "wrap" }),
+              col("c", "Columns", (r: SensitiveReach) => r.cols.join(", "), { wrap: "wrap", render: (r: SensitiveReach) => <Rows items={r.cols} /> }),
               col("r", "Granted role", (r: SensitiveReach) => r.role, { wrap: "nowrap", render: (r: SensitiveReach) => <NameLink id={r.role} refs={d.refs} /> }),
               col("t", "Sees", (r: SensitiveReach) => r.text, { wrap: "wrap" }),
               pathCol<SensitiveReach>(d.refs)]} />

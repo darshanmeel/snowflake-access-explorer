@@ -60,7 +60,7 @@ LAZY = 300  # over this many members in all combined boxes, a graph sends their 
 # graph?group=<box> when it is opened (a big user's graph was 27k member nodes, 19 MB)
 MAX_MULTI = 300  # User page, "Reached more than one way": paths listed (the total counts them all)
 MAX_LANE = 24  # role boxes one lane of a big (lazy) graph draws; more fold into one box, as web/src/components/graphs.ts does
-GSRC = ("view", "builtin", "roles", "depth", "dataonly", "schema", "otype", "on", "priv", "full", "sensitive", "users")
+GSRC = ("view", "builtin", "roles", "depth", "dataonly", "schema", "otype", "on", "priv", "full", "sensitive", "users", "lean")
 
 LOCK = threading.RLock()  # access.py keeps its lookups in module globals: build + answer under one lock
 LOAD = threading.Lock()  # one Snowflake read at a time
@@ -1049,19 +1049,21 @@ def fold_groups(orig, g):
     return out
 
 
-def input_graph(start, user, rows, schema=None, otype=None, default_only=False, limit=None, full=False):
+def input_graph(start, user, rows, schema=None, otype=None, default_only=False, limit=None, full=False, lean=False):
     """graph_input() of a user or role (a summary when big, unless full) with its expansion payloads, or None; once per
     data set (rows are grants() of the same walk; a box opened later asks again)."""
-    return a.cached(("input_graph", start, user, schema, otype, default_only, limit, full),
-                    lambda: drawn_input(start, user, rows, schema, otype, default_only, limit, full))
+    return a.cached(("input_graph", start, user, schema, otype, default_only, limit, full, lean),
+                    lambda: drawn_input(start, user, rows, schema, otype, default_only, limit, full, lean))
 
 
-def drawn_input(start, user, rows, schema, otype, default_only, limit, full):
-    g = a.graph_input(start, schema, default_only=default_only, limit=limit, user=user, otype=otype)
+def drawn_input(start, user, rows, schema, otype, default_only, limit, full, lean):
+    g = a.graph_input(start, schema, default_only=default_only, limit=limit, user=user, otype=otype, lean=lean)
     if not g:
         return None
     use = [r for r in rows if not (r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA"))
            and a.in_scope(r, schema) and otype in (None, r["type"])]
+    if g["left"]:
+        use, g = a.lean_rows(use, start, user)[0], g | dict(header=f"{g['header']} · left out: {g['left']}")
     gx = member_groups(use, g["level"], schema) if g["kinds"] else {}
     note, level, drawn = None, g["level"], False
     if a.too_big(g):
@@ -1334,7 +1336,7 @@ def user_graph(p, c, only=None):
         g = a.down_graph(u, rows, user=True)
         return g and build_graph("Role hierarchy, by depth", g[0], g[1], g[2], header=f"{len(rows)} privileges shown",
                                  start=u, check=True, focus=p.get("focus"))
-    ig = input_graph(u, True, c["every"], c["scope"] or None, c["otype"], c["default_only"], c["limit"], flag(p, "full"))
+    ig = input_graph(u, True, c["every"], c["scope"] or None, c["otype"], c["default_only"], c["limit"], flag(p, "full"), flag(p, "lean"))
     return ig and build_graph("Role hierarchy, by depth", ig["g"]["lanes"], ig["g"]["edges"], ig["g"]["notes"],
                               ig["g"]["info"], ig["g"]["kinds"], header=ig["g"]["header"], level=ig["level"],
                               note=ig["note"], full=ig["full"], start=u, check=True, types=ig["g"].get("types"),
@@ -2092,7 +2094,7 @@ def role_graph(p, c, up, ro, only=None):
     above = {n for _, ns in lanes[:sel] for n in ns}
     lanes = [(lab.replace("Depth ", "Held by · D"), ns) for lab, ns in lanes[:sel]] + [lanes[sel]]
     edges = [x for x in edges if len(x) == 2 and x[0] in above]
-    ig = None if admin_role else input_graph(r, False, every, c["scope"] or None, p.get("otype") or None, full=flag(p, "full"))
+    ig = None if admin_role else input_graph(r, False, every, c["scope"] or None, p.get("otype") or None, full=flag(p, "full"), lean=flag(p, "lean"))
     info, kinds, gx, types, header, level, note = a.graph_info(lanes, edges), {}, {}, {}, "", "object", None
     if ig:
         g = ig["g"]
@@ -2679,6 +2681,8 @@ def check_page(p, view):
     r["access"] = dict(words=a.access_words(r["type"], has) if r["verdict"] in ("yes", "partly") else "",
                        share=a.can_share(r["user"], r["subject"]["user"], r["object"]) if has else {},
                        app=a.app_rights(r["object"]) if r["type"] == "STREAMLIT" and has and view != "mine" else None,
+                       hidden=sorted(((a.app_exposure(r["object"]) or {}).get("exposed") or {}).get(r["user"], []))
+                       if r["type"] == "STREAMLIT" and has and view != "mine" and r["subject"]["user"] else [],
                        days=a.ACTIVITY_DAYS, activity=a.act_state()[0])
     r["used_anyway"] = None
     if view != "mine" and r["verdict"] in ("no", "blocked") and a.act_state()[0]:  # evidence beside the grants, no verdict

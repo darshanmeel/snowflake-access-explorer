@@ -3,7 +3,7 @@
 // the default is the dormant or disabled people.
 import { download, useApi } from "../api/client";
 import type { FlowNode, FlowPage, FlowRole } from "../api/types";
-import { Banner, Card, DataTable, Fold, NameList, StackBar, Tabs, Waiting } from "../components";
+import { Rows, Banner, Card, DataTable, Fold, NameList, StackBar, Tabs, Waiting } from "../components";
 import { useCsv } from "../components/table";
 import { apiParams, useApp } from "../ctx";
 import { col, Head, Load } from "./common";
@@ -13,6 +13,7 @@ import { linkKey } from "./signoff";
 
 const W = 190, COLX = [0, 330, 660], TOP = 28, GAP = 12, MIN = 44, NAMES = 5; // NAMES: a sample under the graph, the CSV has everyone
 const TONE: Record<string, string> = { active: "var(--ae-accent)", risky: "var(--ae-warn_ink)", admin: "var(--ae-lvl_admin_bg)", service: "var(--ae-line_strong)" };
+const few = (xs: string[]) => (xs.length > 5 ? `${xs.length} columns` : xs.join(", "));
 const plural = (n: number, w: string, m = `${w}s`) => `${n} ${n === 1 ? w : m}`;
 
 export function FlowPageView() {
@@ -32,8 +33,8 @@ function sub(n: FlowNode, col: number, off: boolean): string {
   if (col === 0 || n.kind === "fold") return plural(n.count, "person", "people");
   if (col === 1) return n.kind === "admin" ? `${plural(n.count, "person", "people")} · through admin roles` : plural(n.count, "person", "people");
   if (off) return `${n.ns} · masking unknown`;
-  if (n.unmasked?.length) return `${n.unmasked.join(", ")} unmasked`;
-  if (n.masked?.length) return `${n.masked.join(", ")} masked`;
+  if (n.unmasked?.length) return `${few(n.unmasked)} unmasked`;
+  if (n.masked?.length) return `${few(n.masked)} masked`;
   return n.row_policies?.length ? `${n.ns} · rows by ${n.row_policies.map((p) => p.split(".").pop()).join(", ")}` : `${n.ns} · whole object`;
 }
 
@@ -68,7 +69,7 @@ function Objects({ d }: { d: FlowPage }) {
         <DataTable csv="sensitive_objects.csv" rows={objs} rowTone={(r) => (r.unmasked?.length && !off ? "bad" : null)} onRowClick={(r) => c.nav("object", { name: r.id, show: "who" })}
           columns={[col("o", "Object", (r: Obj) => r.id, { wrap: "wrap" }), col("p", "People", (r: Obj) => r.count, { num: true }),
             col("r", "Through roles", (r: Obj) => r.roles ?? 0, { num: true }),
-            col("u", "Unmasked columns", (r: Obj) => (off ? "unknown: policies not read" : (r.unmasked ?? []).join(", "))), col("m", "Masked columns", (r: Obj) => (r.masked ?? []).join(", ")),
+            col("u", "Unmasked columns", (r: Obj) => (off ? "unknown: policies not read" : (r.unmasked ?? []).join(", ")), { wrap: "wrap", render: (r: Obj) => (off ? "unknown: policies not read" : <Rows items={r.unmasked ?? []} bad />) }), col("m", "Masked columns", (r: Obj) => (r.masked ?? []).join(", "), { wrap: "wrap", render: (r: Obj) => <Rows items={r.masked ?? []} /> }),
             col("w", "Rows", (r: Obj) => (r.row_policies?.length ? `by ${r.row_policies.map((x) => x.split(".").pop()).join(", ")}` : "whole object"))]} />
       </Card>
     </>

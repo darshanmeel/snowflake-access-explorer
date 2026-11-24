@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { SensitivePage } from "../api/types";
-import { Fold, Figs, Banner, Card, EmptyState, ListToolbar, Tabs, Waiting, type BarPart } from "../components";
+import { Rows, Fold, Figs, Banner, Card, EmptyState, ListToolbar, Tabs, Waiting, type BarPart } from "../components";
 import { apiParams, useApp } from "../ctx";
 import { Catalog } from "./Catalog";
 import { col, Controls, Head, Load, NameLink, pathCol, Sel, Tog, unread } from "./common";
@@ -69,7 +69,7 @@ export function SensitivePageView() {
                     render: (r: O) => <>{polOff && r.cols.length ? <span className="ae-muted">unknown</span> : r.cols.length ? <span className={r.masked[0] < r.masked[1] ? "ae-bad" : undefined}>{r.masked[0]} of {r.masked[1]} {r.masked[1] === 1 ? "column" : "columns"}</span> : "whole object"}
                       {r.row_policies.length > 0 && <span className="ae-muted" title={r.row_policies.join(", ")}>, rows limited by {r.row_policies.map((x) => x.split(".").pop()).join(", ")}</span>}<span className="ae-muted ae-osub" title={r.tags.map((t) => t.label).join(", ")}> {r.tags.map((t) => t.label.split("=").pop()).join(", ")}</span></> }),
                   col("p", "Who can read", readersOf, { wrap: "wrap", render: (r: O) => <>{readersOf(r).toLocaleString("en-US")}{r.readers.admin > 0 && <span className="ae-muted">, {r.readers.admin.toLocaleString("en-US")} as admin</span>}{r.readers.dormant > 0 && <span className="ae-bad">, {r.readers.dormant.toLocaleString("en-US")} inactive</span>}</> }),
-                  col("cl", "See in clear", (r: O) => r.clear ?? "unknown", { wrap: "wrap", render: (r: O) => { const open = r.columns.filter((x) => !x.masked).map((x) => x.column); return <span className={open.length ? "ae-bad" : undefined}>{open.length > 0 && `${open.join(", ")}: `}{r.clear ?? "unknown"}</span>; } }),
+                  col("cl", "See in clear", (r: O) => r.clear ?? "unknown", { wrap: "wrap", render: (r: O) => { const open = r.columns.filter((x) => !x.masked).map((x) => x.column); return <>{open.length > 0 && <Rows items={open} bad />}<span className={open.length ? "ae-bad" : undefined}>{r.clear ?? "unknown"}{typeof r.clear === "number" && open.length > 0 ? (r.clear === 1 ? " person sees them" : " people see them") : ""}</span></>; } }),
                 ]} />
             </Card>}
             {part === "readers" && <Card title="Who can read them" sub="One row per user; the shortest path to a sensitive object" scroll>

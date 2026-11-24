@@ -1217,3 +1217,11 @@ div.ae-tile { cursor: default; }
 .ae-who2-list { grid-template-columns: minmax(0, 1fr); } .ae-who2-list .ae-mono { min-width: 0; } .ae-who2-list .ae-lvl { flex: none; }
 .ae-who2-how .ae-route { min-width: 0; } .ae-who2-how .ae-route-step { min-width: 0; max-width: 100%; } .ae-who2-how .ae-route-node { max-width: 240px; min-width: 0; } .ae-who2-how .ae-route-node .ae-mono, .ae-who2-how .ae-route-node .ae-muted { white-space: normal; overflow-wrap: anywhere; }
 .ae-cuttab td { vertical-align: middle; } .ae-cuttab .ae-link { text-align: left; }
+
+.ae-rowlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; } .ae-rowlist li { overflow-wrap: anywhere; }
+.ae-graph-hintbar { background: var(--ae-accent_soft); border-radius: 6px; padding: 6px 12px; margin: 0 0 10px; font-size: 13px; }
+.ae-log-tile > .ae-muted { overflow-wrap: anywhere; }
+
+.ae-ps { white-space: normal; flex-wrap: wrap; row-gap: 3px; max-width: 100%; }
+.ae-log-sw { display: inline-block; width: 16px; height: 10px; border-radius: 2px; }
+.ae-ev-text .ae-link { font-weight: 600; text-align: left; white-space: normal; color: inherit; }

@@ -54,9 +54,7 @@ function Feed({ d, only }: { d: ChangesPage; only?: "access" | "findings" }) {
         { key: "all", label: "All" }, { key: "gain", label: "Gained" }, { key: "lose", label: "Lost" }, ...(only ? [] : [{ key: "risk", label: "New findings" }]), { key: "sensitive", label: "Sensitive" }]} />}>
       {!shown.length ? <EmptyState title={n.all ? "Nothing under this filter" : "No changes"} art={n.all ? "search" : "clear"}>{n.all ? "Pick another filter." : `Nothing changed since ${d.before}.`}</EmptyState> : (
         <div className="ae-feed">
-          {shown.map((e) => <Item key={e.id} e={e} onOpen={() => c.nav(e.link.page, e.link.params)} onRule={(num) => c.nav("rules", { rule: num })}
-            onBox={(id) => c.nav(e.edge && id === e.edge.target && e.edge.target_kind === "object" ? "object" : "access",
-              e.edge && id === e.edge.target && e.edge.target_kind === "object" ? { name: id } : (e.edge && id === e.edge.source && e.edge.source_kind === "user") ? { user: id } : { role: id })} />)}
+          {shown.map((e) => <Item key={e.id} e={e} onOpen={() => c.nav(e.link.page, e.link.params)} onRule={(num) => c.nav("rules", { rule: num })} />)}
         </div>
       )}
       {d.events_total > size && <Pager at={Math.floor(d.offset / size)} size={size} total={d.events_total} sizes={[25, 50, 100, 250]}
@@ -94,23 +92,20 @@ function Strip({ s }: { s: NonNullable<ChangesPage["severity"]> }) {
   );
 }
 
-function Item({ e, onOpen, onRule, onBox }: { e: ChangeEvent; onOpen: () => void; onRule: (n: string) => void; onBox: (id: string) => void }) {
+function Item({ e, onOpen, onRule }: { e: ChangeEvent; onOpen: () => void; onRule: (n: string) => void }) {
   return (
     <div className={`ae-ev ae-ev-${e.kind}`}>
       <span className="ae-ev-icon" aria-hidden>{ICON[e.kind]}</span>
       <div className="ae-ev-main">
-        <div className="ae-ev-text">{e.text}</div>
-        {e.edge && <GrantLink source={e.edge.source} sourceKind={e.edge.source_kind} target={e.edge.target} targetKind={e.edge.target_kind}
-          privilege={e.edge.privilege} added={e.edge.added} onOpen={onBox} />}
+        <div className="ae-ev-text"><button type="button" className="ae-link" onClick={onOpen} title={e.kind === "fixed" ? "Open the rule" : CTA[e.link.page] ?? "Open"}>{e.text}</button></div>
         <div className="ae-ev-meta">
           {e.impact && <span>{e.impact}</span>}
-          {e.by && <span className="ae-muted">by <span className="ae-mono">{e.by}</span></span>}
           {e.sensitive && <span className="ae-sens-word">sensitive</span>}
           {e.kind !== "risk" && e.findings.slice(0, 1).map((x) => <FindingChip key={x.num} num={x.num} severity={x.fixed ? "Fixed" : x.severity}
             label={`${x.fixed ? "" : "New · "}#${x.num} ${x.title}`} onOpen={() => onRule(x.num)} />)}
         </div>
       </div>
-      <button type="button" className="ae-btn ae-ev-go" onClick={onOpen}>{e.kind === "fixed" ? "Rule" : CTA[e.link.page] ?? "Open"}</button>
+      {e.by && <span className="ae-muted ae-ev-go">by {e.by}</span>}
     </div>
   );
 }

@@ -4536,8 +4536,32 @@ def group_objects(rows, level="schema", keys=None):
 MAX_OBJECTS = 12  # objects drawn one by one; more roll up into groups (the React graph shows 12 boxes per lane, graphs.ts MAX_BOXES)
 
 
+def lean_rows(rows, start, user):
+    """The grants() rows a graph draws first: without databases and schemas themselves, future grants, and what only
+    PUBLIC gives (unless start is PUBLIC). Returns (rows, what was left out in words); all rows when none would stay."""
+    _, kids, _, _ = fast(start, user)
+    seen, todo = set(), [r for r in (roles_of.get(start, []) if user else [start]) if r != "PUBLIC" or start == "PUBLIC"]
+    while todo:
+        x = todo.pop()
+        if x not in seen:
+            seen.add(x)
+            todo += [k for k in kids.get(x, []) if k != "PUBLIC"]
+    out, left = [], Counter()
+    for r in rows:
+        mine = [h for h in r["holders"] if h in seen]
+        if not mine:
+            left["what only PUBLIC gives"] += 1
+        elif r["type"] in ("DATABASE", "SCHEMA"):
+            left["databases and schemas"] += 1
+        elif r["type"].startswith("FUTURE"):
+            left["future grants"] += 1
+        else:
+            out.append(r | dict(holders=mine, paths=[p for p in r["paths"] if start == "PUBLIC" or "PUBLIC" not in p[1:]]))
+    return (out, ", ".join(left)) if out else (rows, "")
+
+
 def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False, limit=None, user=None, otype=None,
-                cat=None):
+                cat=None, lean=False):
     """User / role graph for any account size: grants() of start (USAGE on databases and schemas left out). Over
     max_objects objects, objects become schema nodes, or database nodes when there are more schemas than that; an
     object outside a schema (a database grant, a warehouse) stays an object node. schema="DB.SCHEMA" (or a database
@@ -4548,13 +4572,15 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
     | type-group}, header e.g. "1,234 objects, grouped by schema", level (object | schema | database | type), shown,
     total, groups (group_objects() when grouped by schema or database), types {type-group: object type}).
     default_only, limit: as grants(). otype: only objects of this type ("TABLE"), drawn one by one. cat: only the
-    privileges of this priv_cat() (a Privileges tab; "usage" keeps database and schema USAGE), no role without one."""
+    privileges of this priv_cat() (a Privileges tab; "usage" keeps database and schema USAGE), no role without one.
+    lean: only lean_rows(); left says what was left out."""
     user = kind_of(start) == "user" if user is None else user
     sid = uid(start, user)
     every = [r for r in grants(start, user, default_only, limit)
              if (priv_cat(r["privilege"], r["type"]) == cat if cat else
                  not (r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA")))]
     rows = [r for r in every if in_scope(r, schema) and otype in (None, r["type"])]
+    rows, left = lean_rows(rows, start, user) if lean else (rows, "")
     if not rows:
         return None
     objs = list(dict.fromkeys(r["object"] for r in rows))
@@ -4584,6 +4610,8 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
         part = [p for h in sorted({h for r in rows for h in r["holders"]}) for p in listed(sts, kids, hops, {h})]
     if schema is None and not cat:  # roles that lead to no object still show
         part += list(shortest(sts, kids, hops).values())
+    if left and start != "PUBLIC":
+        part = [p for p in part if "PUBLIC" not in p[1:]]
     part = [[sid] + p[1:] for p in part]
     ch = chains(part)
     d = {n: min(v) for n, v in ch.items()}
@@ -4623,7 +4651,7 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
         info[BUILTIN_NODE] = dict(count=bi["grants"], noun="built-in grants")
         nts[BUILTIN_NODE] = ("hidden", f"{bi['grants']} grants Snowflake makes to every account through PUBLIC, "
                                        f"{bi['objects']} objects: {', '.join(bi['roles'])}\nShow built-in draws them")
-    return dict(lanes=lanes, edges=edges, notes=nts, info=info, kinds=kinds_, header=header, level=level,
+    return dict(lanes=lanes, edges=edges, notes=nts, info=info, kinds=kinds_, header=header, level=level, left=left,
                 shown=len(objs), total=len({r["object"] for r in every}),
                 groups=group_objects(rows, level, ks) if level in ("schema", "database") else [],
                 types={k: r["type"] for r, k in zip(rows, gs)} if level == "type" else {})

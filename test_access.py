@@ -1356,6 +1356,17 @@ def test_duck_reach():
     assert len(a.DUCKS) <= n + a.KEEP_BUILT + 1, (n, len(a.DUCKS))
 
 
+def test_lean():
+    """A graph's first drawing leaves out PUBLIC, databases and schemas, future grants, and says so; never to nothing."""
+    g, every = a.graph_input("ENGINEER_01", user=True, lean=True), a.graph_input("ENGINEER_01", user=True)
+    nodes = {n for _, ns in g["lanes"] for n in ns}
+    assert g["level"] == "object" and "PUBLIC" not in nodes and not nodes & {o for o, k in a.kinds.items() if k in ("DATABASE", "SCHEMA")}
+    assert g["left"] and not every["left"] and every["shown"] > g["shown"], (g["left"], g["shown"])
+    assert a.graph_input("PUBLIC", user=False, lean=True) is not None
+    for u in a.users:  # whoever reaches something still has a graph
+        assert bool(a.graph_input(u, user=True, lean=True)) == bool(a.graph_input(u, user=True)), u
+
+
 def test_counted():
     """Can they?, Where to cut, Remove, loses, held, grantees, brings and What changed's facts count over the role graph
     and walk by reach: the same answers as the full listing (access_of, up, access_objects), and with MAX_PATHS=2 the

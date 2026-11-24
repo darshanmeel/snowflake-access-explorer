@@ -690,7 +690,7 @@ export interface UsedRow { user: string; app: string | null; role: string | null
 
 export interface CheckPage {
   access: { words: string; share: Record<string, string>; days: number; activity: boolean; // what the privileges allow, in words; share: privilege -> role (WITH GRANT OPTION)
-    app: { owner: string[]; reads: number; changes: number; used: Partial<Record<"READ" | "WRITE" | "DDL", number>>; users: number; shows?: string[]; shows_sensitive?: number } | null } | null; // app: a Streamlit app's owner rights; null: verdict na
+    app: { owner: string[]; reads: number; changes: number; used: Partial<Record<"READ" | "WRITE" | "DDL", number>>; users: number; shows?: string[]; shows_sensitive?: number } | null; hidden?: string[] } | null; // app: a Streamlit app's owner rights; null: verdict na
   used_anyway: { days: number; total: number; queries: number; last: string; rows: UsedRow[] } | null; // No or Blocked only; null: activity not read
   builtin: BuiltinOn | null; // null: none left out (always with builtin=1)
   risks: RiskItem[]; // the subject's and the object's, each line prefixed with its name; [] = no strip

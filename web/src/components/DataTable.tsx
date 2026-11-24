@@ -92,7 +92,7 @@ export function DataTable<R>({
           {csvOn && <button className="ae-btn" onClick={exportCsv}>CSV</button>}
         </div>
       )}
-      <div className={`ae-table-scroll${server && got.loading ? " ae-fade" : ""}`} style={{ maxHeight }}>
+      <div className={`ae-table-scroll${server && got.loading ? " ae-fade" : ""}`} style={{ maxHeight: shown.length > 25 ? maxHeight : undefined }}>
         <table className="ae-table">
           <thead>
             <tr>

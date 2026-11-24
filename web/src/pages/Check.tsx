@@ -67,7 +67,7 @@ function Body({ d }: { d: CheckPage }) {
             <b className="ae-verdict-kind">{headOf(d)}</b>
             <div>{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}{d.dormant_days ? ` · no login for ${d.dormant_days} days` : ""}</span>}
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
-            <div className="ae-verdict-line">{lineOf(d)}</div>
+            <div className="ae-verdict-line">{d.verdict === "no" && d.view !== "mine" && !d.nearest ? <NearLine d={d} /> : lineOf(d)}</div>
             {accessLines(d).slice(1).filter((t) => !t.startsWith("The app normally")).map((t) => <div key={t} className="ae-muted">{t}</div>)}
             <UsedLine d={d} />
           </div>
@@ -155,7 +155,17 @@ function headOf(d: CheckPage): string {
   return x.all ? `${k || "They can read it"}, ${x.clear.length} of ${x.all} sensitive ${x.all === 1 ? "column" : "columns"} in clear` : k;
 }
 
+/** The nearest way in, in the verdict: the request the Answer tab makes too. */
+function NearLine({ d }: { d: CheckPage }) {
+  const c = useApp();
+  const asked = subjectIn(c.params);
+  const s = useApi<CheckPage>("check", { ...apiParams(c), ...(asked.role ? { role: d.user } : { name: d.user }), obj: d.object, near: "1" });
+  return <>{s.data ? lineOf({ ...d, nearest: s.data.nearest }) : ""}</>;
+}
+
 function lineOf(d: CheckPage): string {
+  const hid = d.access?.hidden ?? [];
+  if (hid.length && d.verdict === "yes") return `But they see ${hid.slice(0, 3).map((x) => x.split(".").pop()).join(", ")}${hid.length > 3 ? ` and ${hid.length - 3} more` : ""} through the app, which they cannot read themselves.`;
   const x = colsOf(d), n = d.nearest?.[0];
   if (d.verdict === "no") return n ? `Nearest way in: ${n.role}, held by ${n.holders} ${n.holders === 1 ? "person" : "people"} today.` : "";
   if (d.verdict === "partly" && x.all && x.masked.length) return `${x.masked.join(", ")} ${x.masked.length === 1 ? "is" : "are"} masked${x.clear.length ? `; ${x.clear.join(", ")} ${x.clear.length === 1 ? "is" : "are"} not` : ""}.`;
@@ -343,8 +353,7 @@ function WayList({ d, ways: all, priv, first, title }: { d: CheckPage; ways: Non
                 <button type="button" className="ae-btn" title="Everything this role gives: the effect of granting it" onClick={() => c.nav("access", { role: n.role })}>What it brings</button>
               </div>
             </div>
-            {n.change && (i === 0 ? <CodeOutput changes={[n.change]} name={`grant_${n.role.toLowerCase()}`} />
-              : <details className="ae-near-sql"><summary>Grant text</summary><CodeOutput changes={[n.change]} name={`grant_${n.role.toLowerCase()}`} /></details>)}
+            {n.change && (<details className="ae-near-sql"><summary>Grant text</summary><CodeOutput changes={[n.change]} name={`grant_${n.role.toLowerCase()}`} /></details>)}
           </div>
         ))}
       </div>
@@ -444,7 +453,6 @@ function Answer({ d }: { d: CheckPage }) {
         </Card>
       )}
       <CutBanner capped={d.capped} no={d.verdict === "no"} />
-      <GraphCard g={d.graph} refs={d.refs} title={d.lanes_total === 1 && d.lanes[0] ? `They get in through ${d.lanes[0].path.length - 2} ${d.lanes[0].path.length === 3 ? "role" : "roles"}` : d.lanes_total ? `They get in ${d.lanes_total} ways` : undefined} />
       {d.access?.app && <Card title="The app runs as its owner" sub={d.access.app.shows_sensitive ? `Viewers see what the owner role reads: ${d.access.app.shows_sensitive} sensitive ${d.access.app.shows_sensitive === 1 ? "object" : "objects"}, whatever they hold themselves.` : undefined}>
         <div className="ae-route">
           {([["user", d.user, "opens"], ["object", d.object.split(".").pop()!, "runs as"], ["technical", d.access.app.owner.join(", "), "reads"], ["object", (d.access.app.shows ?? []).map((x) => x.split(".").pop()).join(", ") || "nothing", ""]] as const).map(([k, t, w], i, xs) => (
@@ -452,6 +460,8 @@ function Answer({ d }: { d: CheckPage }) {
               {i < xs.length - 1 && <span className="ae-route-link"><span className="ae-route-say">{w}</span></span>}</span>))}
         </div>
       </Card>}
+      {d.access?.app ? <Fold label="The roles that let them open it"><GraphCard g={d.graph} refs={d.refs} title={d.lanes_total === 1 && d.lanes[0] ? `They get in through ${d.lanes[0].path.length - 2} ${d.lanes[0].path.length === 3 ? "role" : "roles"}` : d.lanes_total ? `They get in ${d.lanes_total} ways` : undefined} /></Fold>
+        : <GraphCard g={d.graph} refs={d.refs} title={d.lanes_total === 1 && d.lanes[0] ? `They get in through ${d.lanes[0].path.length - 2} ${d.lanes[0].path.length === 3 ? "role" : "roles"}` : d.lanes_total ? `They get in ${d.lanes_total} ways` : undefined} />}
       {!d.lanes_total && <RouteTable d={d} />}
       {a.yes && d.view !== "mine" && (
         <div className="ae-two">

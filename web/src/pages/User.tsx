@@ -3,15 +3,15 @@ import { useApi } from "../api/client";
 import type { ListItem, SensitiveReach, UserPage } from "../api/types";
 
 type MR = UserPage["multi"]["rows"][number];
-import { Banner, Card, DataTable, KpiRow, PrivilegeTabs, Tabs } from "../components";
+import { Fold, Rows, Banner, Card, DataTable, KpiRow, PrivilegeTabs, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { Banners, col, Controls, CutBanner, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, PickFirst, Sel, Tog, unread, Usage, ScopeChips, ScopePick } from "./common";
+import { lean, Banners, col, Controls, CutBanner, DataViews, Findings, GraphCard, Head, Load, NameLink, pathCol, Pick, PickFirst, Sel, Tog, unread, Usage, ScopeChips, ScopePick } from "./common";
 
 export function UserPage() {
   const c = useApp();
   const mine = c.view === "mine";
   const name = c.params.name ?? c.meta.default_user ?? "";
-  const s = useApi<UserPage>(name ? "user" : null, { ...apiParams(c), name });
+  const s = useApi<UserPage>(name ? "user" : null, { ...apiParams(c), name, lean: lean(c) });
   const o = useOpen(s.data?.refs);
   const pane = c.inside ? c.params.pane : undefined; // the Access page's Privileges tab ("privs") or Paths tab ("diagram")
   const [want, setPart] = useState(c.params.part ?? "diagram");
@@ -52,7 +52,7 @@ export function UserPage() {
             <Banners list={d.banners} />
             <GraphCard g={d.graph} refs={d.refs} />
             <CutBanner capped={d.capped} />
-            {multi}
+            {multi && <Fold label={`Reached more than one way: ${d.multi.total} paths`}>{multi}</Fold>}
             <button type="button" className="ae-link" onClick={() => c.nav("see", { user: name })}>What they see →</button>
           </>
         );
@@ -85,7 +85,7 @@ export function UserPage() {
               <Card title="Sensitive reach" sub={`Reached through ${d.sensitive.roles.length} granted role(s)`}>
                 <DataTable csv="sensitive_reach.csv" rows={d.sensitive.rows}
                   columns={[col("o", "Object", (r: SensitiveReach) => r.object, { wrap: "nowrap" }),
-                    col("c", "Columns", (r: SensitiveReach) => r.cols.join(", "), { wrap: "wrap" }),
+                    col("c", "Columns", (r: SensitiveReach) => r.cols.join(", "), { wrap: "wrap", render: (r: SensitiveReach) => <Rows items={r.cols} /> }),
                     col("r", "Granted role", (r: SensitiveReach) => r.role, { wrap: "nowrap", render: (r: SensitiveReach) => <NameLink id={r.role} refs={d.refs} /> }),
                     col("t", "Sees", (r: SensitiveReach) => r.text, { wrap: "wrap" }),
                     pathCol<SensitiveReach>(d.refs)]} />

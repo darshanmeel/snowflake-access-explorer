@@ -194,13 +194,16 @@ export function Head({ title, sub, right, quiet = false }: { title: ReactNode; s
 /** The page's main graph. Over-big summaries offer "draw all"; schema / type filters show as a removable chip row. */
 /** A page's graph with its Show only this; param: the URL param of its focus (a page with two graphs: one each, so a
  * focus in one never narrows the other), sent to the server as focus=. */
+/** A graph's lean= parameter: without PUBLIC, databases and schemas, future grants; every=1 in the URL draws them. */
+export const lean = (c: ReturnType<typeof useApp>) => (c.params.every || c.params.builtin === "1" ? null : "1");
+
 export function GraphCard({ g, title, refs, param = "focus" }: { g: G | null; title?: string; refs?: Refs; param?: string }) {
   const c = useApp();
   const o = useOpen(refs);
   if (!g) return null;
   const filters = (["schema", "otype"] as const).filter((k) => c.params[k]);
   return (
-    <Card title={title ?? g.title} sub={g.header}
+    <Card title={title ?? g.title} sub={<>{g.header}{(g.header.includes("left out:") || c.params.every) && <> · <button type="button" className="ae-link" onClick={() => c.set({ every: c.params.every ? null : "1" })}>{c.params.every ? "Leave out PUBLIC, schemas and future grants" : "Show them"}</button></>}</>}
       right={g.level === "summary" && !g.full ? <button className="ae-btn" onClick={() => c.set({ full: "1" })}>Draw all</button>
         : c.params.full ? <button className="ae-btn" onClick={() => c.set({ full: null })}>Fold again</button> : undefined}>
       {filters.length > 0 && (
@@ -210,6 +213,7 @@ export function GraphCard({ g, title, refs, param = "focus" }: { g: G | null; ti
         </div>
       )}
       {g.note && <p className="ae-graph-note">{g.note}</p>}
+      {g.nodes.length > 3 && !g.focus && <p className="ae-graph-hintbar">Click a box to show only what passes through it.</p>}
       <Graph graph={g} theme={c.theme} onNodeClick={o.node} onOnly={(id) => c.set({ [param]: id }, { push: true, stay: true })}
         onRules={(id) => c.nav("rules", { grantee: id.replace(/ \(user\)$/, "") })} />
     </Card>
