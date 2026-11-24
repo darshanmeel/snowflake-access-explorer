@@ -343,6 +343,15 @@ def test_check():
         assert pv in na["not_applicable"] and not set(na["not_applicable"]) & set(na["privileges"])
         assert set(a.priv_types()) <= set(na["not_applicable"]) | set(na["privileges"]) | {"USAGE"}
     assert no["answer"]["how"] in ("none", "paths", "owner", "admin")
+    app = js("/api/check?name=SUPPORT_01&obj=SALES.MART.ST_CUSTOMER_LOOKUP")["access"]  # opens it, runs as its owner
+    assert app["words"].startswith("View only") and app["app"]["owner"] == [a.TECH + "SALES_MART_OWNER"]
+    assert app["app"]["reads"] >= app["app"]["changes"] > 0 and app["app"]["used"]["READ"] >= 42 and app["app"]["users"] >= 1
+    assert js("/api/check?name=ANALYST_01&obj=HR.PEOPLE&priv=SELECT")["access"] is None
+    for kind, held, words in (("TABLE", {"SELECT"}, "Read only"), ("TABLE", set(), ""), ("TABLE", {"SELECT", "INSERT"}, "Read and change (INSERT)"),
+                              ("DATABASE", {"USAGE", "CREATE SCHEMA"}, "Can enter it, holds CREATE SCHEMA; what is inside needs its own grants"),
+                              ("WAREHOUSE", {"USAGE", "OPERATE"}, "Can use it; can manage it (OPERATE)")):
+        assert a.access_words(kind, held) == words, (kind, held, a.access_words(kind, held))
+    assert a.access_words("TABLE", {"OWNERSHIP", "SELECT"}).startswith("Full control")
     for u in a.users:
         js(f"/api/check?name={u}", ["verdict", "held", "lanes", "cut", "cuts", "nearest", "layers", "roles_count"])
     get("/api/check?name=NOPE", 404)

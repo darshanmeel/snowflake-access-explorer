@@ -59,6 +59,21 @@ export function verdictLine(d: Pick<CheckPage, "verdict" | "user" | "object" | "
   return `through ${plural(d.lanes_total, "route")}` + (d.cut.length && d.lanes_total > 1 ? `, all via ${d.cut[0]}` : "");
 }
 
+/** The kind of access in words, then who may share it on and, for an app, whose rights it runs with and what was done through it. */
+export function accessLines(d: Pick<CheckPage, "access">): string[] {
+  const x = d.access, out: string[] = [];
+  if (!x) return out;
+  if (x.words) out.push(x.words + ".");
+  for (const [pv, r] of Object.entries(x.share)) out.push(`Can give ${pv} on to others (grant option through ${r}).`);
+  if (x.app) {
+    out.push(`The app normally runs as its owner ${x.app.owner.join(", ")}, which can read ${plural(x.app.reads, "object")} and change ${x.app.changes}: viewers see or change what the app's code offers of that, whatever they hold themselves.`);
+    const u = x.app.used, w = (u.WRITE ?? 0) + (u.DDL ?? 0);
+    if (x.activity) out.push(x.app.users ? `Through the app in ${x.days} days, by ${plural(x.app.users, "person", "people")}: ${plural(u.READ ?? 0, "read")}, ${plural(w, "change")}.`
+      : `No query names the app in ${x.days} days.`);
+  }
+  return out;
+}
+
 /** How a use came about when no grant explains it: certain only for an app the query names. */
 export function usedHow(r: UsedRow, user = true): string {
   const as = r.role ? `as ${r.role}` : "with no role recorded";

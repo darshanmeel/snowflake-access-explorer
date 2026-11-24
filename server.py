@@ -2633,6 +2633,11 @@ def check_page(p, view):
         r["privileges"].append("USAGE")
         if p.get("priv") == "USAGE":
             r |= container_usage(r, p.get("focus"))
+    has = {x["privilege"] for x in r["held"] if x["held"]}
+    r["access"] = dict(words=a.access_words(r["type"], has) if r["verdict"] in ("yes", "partly") else "",
+                       share=a.can_share(r["user"], r["subject"]["user"], r["object"]) if has else {},
+                       app=a.app_rights(r["object"]) if r["type"] == "STREAMLIT" and has and view != "mine" else None,
+                       days=a.ACTIVITY_DAYS, activity=a.act_state()[0])
     r["used_anyway"] = None
     if view != "mine" and r["verdict"] in ("no", "blocked") and a.act_state()[0]:  # evidence beside the grants, no verdict
         x = a.used_anyway(r["user"], r["subject"]["user"], r["object"], None if r["priv"] == ALL else r["priv"])
@@ -2650,7 +2655,7 @@ def not_applicable(r, pv):
                text=f"{pv} is not applicable to this {kind}: it is a privilege on {', '.join(ts[:6])}{more}.{inside}")
     return dict(priv=pv, answer=ans, verdict="na", paths=[], paths_total=0, owner=[], admin_paths=[], lanes=[], lanes_total=0,
                 cut=[], cuts=[], options=[], choke=[], layers=None, read=None, nearest=[], nearest_own=None, narrow=None,
-                blocked=[], unblock=None, graph=None, used_anyway=None)
+                blocked=[], unblock=None, graph=None, used_anyway=None, access=None)
 
 
 def container_usage(r, focus):

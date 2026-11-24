@@ -6562,6 +6562,71 @@ def app_exposure(app):
                 exposed={u: v for u, v in sorted(exposed.items()) if v})
 
 
+def access_words(kind, held):
+    """What the privileges held on an object of this type allow, in plain words ("" when none is held)."""
+    by = {}
+    for pv in sorted(held):
+        by.setdefault(priv_class(pv, kind), []).append(pv)
+    if not held:
+        return ""
+    if "OWNERSHIP" in held:
+        return "Full control: owns it, so can use, change, drop and grant it"
+    if kind == "STREAMLIT":
+        return "View only: can open and run the app, not edit it" if "USAGE" in held else \
+            f"Cannot open it: holds only {', '.join(sorted(held))}"
+    does = f" ({', '.join(by['write'])})" if by.get("write") else ""
+    if is_data(kind) and kind not in ("DATABASE", "SCHEMA") and (by.get("read") or does):
+        text = "Read only" if not does else f"Read and change{does}" if by.get("read") else f"Change without reading{does}"
+    elif kind in ("DATABASE", "SCHEMA"):
+        new = [pv for pv in sorted(held) if pv.startswith("CREATE ")]
+        text = "Can enter it" if "USAGE" in held else "Cannot enter it"
+        if new:
+            text += f", holds {', '.join(new[:3])}{' and more' if len(new) > 3 else ''}"
+        text += "; what is inside needs its own grants"
+        by["manage"] = [pv for pv in by.get("manage", []) if pv not in new]
+    else:
+        text = f"Can read it{f' and change it{does}' if does else ''}" if by.get("read") else f"Can change it{does}" if does \
+            else "Can use it" if by.get("use") else "Cannot use it"
+    return text + (f"; can manage it ({', '.join(by['manage'])})" if by.get("manage") else "")
+
+
+def can_share(name, user, obj):
+    """{privilege: role} name may grant on to others (WITH GRANT OPTION); ownership, which always may, left out."""
+    rows = cached(("grant_option", obj), lambda: [
+        (g["PRIVILEGE"], g["GRANTEE_ROLE"]) for g in source["data"]["GRANT"] if g["OBJECT_NAME"] == obj and g.get("GRANT_OPTION")
+        and g["PRIVILEGE"] != "OWNERSHIP" and not g["IS_FUTURE"] and g["GRANTED_ON"] == kinds.get(obj)
+        and (source["builtin"] or not builtin_grant(g))])
+    mine = set(best_paths(name, user)) | (set() if user else {name})
+    return {pv: r for pv, r in rows if r in mine}
+
+
+def app_rights(app):
+    """What viewers of a Streamlit app work with: dict(owner [roles], reads, changes [data objects the owner roles can
+    read / change], used {READ|WRITE|DDL: queries naming the app}, users); None without an owner in this data."""
+    owner = sorted(r for r, pv, _ in on.get(app, []) if pv == "OWNERSHIP")
+    if not owner:
+        return None
+
+    def make():
+        reads, changes, used, people = set(), set(), {}, set()
+        for r in owner:
+            for x in access_objects(grants(r, False)):
+                if x["category"] == "data" and is_data(x["type"]) and x["level"] in LEVELS[1:]:
+                    reads.add(x["object"])
+                    if x["level"] in LEVELS[2:]:
+                        changes.add(x["object"])
+            if r in ADMIN:
+                more = {o for o in admin_objects(r) if is_data(kinds.get(o, ""))}
+                reads |= more
+                changes |= more
+        for x in acts:
+            if x.get("APP") == app:
+                used[x["ACTION"]] = used.get(x["ACTION"], 0) + int(x["QUERIES"] or 0)
+                people.add(x["USER_NAME"])
+        return dict(owner=owner, reads=len(reads), changes=len(changes), used=used, users=len(people))
+    return cached(("app_rights", app), make)
+
+
 def app_use(app, rows):
     """A Streamlit app's viewers: can (users who can open it, with the role holding USAGE), opened (users with
     activity() rows for it: queries, last, likely: no query names the app, see app_owner_run), never (can open it, did not in the window), saw (opened it and can't read

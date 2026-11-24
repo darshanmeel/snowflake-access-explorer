@@ -7,7 +7,7 @@ import { useApi } from "../api/client";
 import type { CheckPage, Inside, ListItem, Path, Refs } from "../api/types";
 import { Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, NameList, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
-import { cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, usedAnyway, verdictLine, warehouseNote } from "./verdict";
+import { accessLines, cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, sideEffects, subjectIn, subjectLink, usedAnyway, verdictLine, warehouseNote } from "./verdict";
 import { BuiltinNote, col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Risks, Sel, StateTag } from "./common";
 import { changeOfPath, WhatIfButton, whatIf } from "./Whatif";
 
@@ -61,6 +61,7 @@ function Body({ d }: { d: CheckPage }) {
             <div className="ae-verdict-word">{WORD[d.verdict]}{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}{d.dormant_days ? ` · no login for ${d.dormant_days} days` : ""}</span>}
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
             <div className="ae-verdict-line">{answerLine(d)}</div>
+            {accessLines(d).map((t, i) => <div key={t} className={i ? "ae-muted" : undefined}>{i || !d.access?.words ? t : <b>{t}</b>}</div>)}
             <UsedLine d={d} />
             {d.verdict !== "na" && <WarehouseLine d={d} />}
           </div>
