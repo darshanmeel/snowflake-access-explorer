@@ -28,15 +28,15 @@ function Dec({ who, v, pick, hint }: { who: string; v?: Decision; pick: (v: Deci
   );
 }
 
-export function ReviewGrid() {
+export function ReviewGrid({ sign = false }: { sign?: boolean }) {
   const c = useApp();
   const [q, setQ] = useState(""), [asked, setAsked] = useState("");
   useEffect(() => { const t = setTimeout(() => setAsked(q.trim()), 300); return () => clearTimeout(t); }, [q]);
   const s = useApi<GridPage>("grid", { ...apiParams(c), q: asked || null }); // the server filters and caps the people
-  return <Load s={s}>{(d) => <Grid d={d} q={q} setQ={setQ} />}</Load>;
+  return <Load s={s}>{(d) => <Grid d={d} q={q} setQ={setQ} signTab={sign} />}</Load>;
 }
 
-function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => void }) {
+function Grid({ d, q, setQ, signTab }: { d: GridPage; q: string; setQ: (q: string) => void; signTab: boolean }) {
   const c = useApp();
   const csvOn = useCsv();
   const o = useOpen(d.refs);
@@ -61,7 +61,11 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
   const isAdm = (r: (typeof rows)[number]) => d.columns.length > 0 && d.columns.every((x) => r.cells[x.id]?.level === "admin");
   const admins = rows.filter(isAdm).map((r) => r.user);
   const rest = admins.length > 1 ? rows.filter((r) => !isAdm(r)) : rows;
-  const shown = all ? rest : rest.slice(0, SHOWN);
+  // active people with the same cells are one row with one decision; the inactive stay on their own
+  const like = new Map<string, typeof rest>();
+  rest.forEach((r) => { const k = r.suggest || r.type.includes("SERVICE") ? r.user : d.columns.map((x) => r.cells[x.id]?.level ?? "").join("|") + "|" + (r.beyond ?? 0); like.set(k, [...(like.get(k) ?? []), r]); });
+  const packs = [...like.values()];
+  const shown = all ? packs : packs.slice(0, SHOWN);
   const sleepy = rows.filter((r) => r.suggest).map((r) => r.user);
   const partial = d.total > d.columns.length || d.matched > d.rows.length;
   const done = rows.filter((r) => dec[r.user]).length, revokes = rows.filter((r) => dec[r.user] === "revoke");
@@ -75,6 +79,24 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
     const when = `${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`;
     download(`access_signoff_${key.replace(/[^A-Za-z0-9_]+/g, "_")}_${when.slice(0, 10)}.csv`, signoffCsv(d, rows, dec, reviewer.trim(), when));
   };
+  if (signTab) return (
+    <>
+      <p className="ae-answer">{done} of {d.matched.toLocaleString("en-US")} decided</p>
+      <Card title="Before you sign">
+        <ul className="ae-plan-care"><li><b>{done}</b> decided, <b>{(d.matched - done).toLocaleString("en-US")}</b> open, <b>{revokes.length}</b> marked revoke</li>
+          {partial && <li className="ae-warn-word">Only the people and objects listed here are covered: pick a database or search for the rest</li>}</ul>
+        <div className="ae-row">
+          {sleepy.length > 0 && <button type="button" className="ae-btn" onClick={() => decideAll(sleepy, "revoke")}>{sleepy.every((u) => dec[u] === "revoke") ? "Clear" : `Mark all ${sleepy.length} inactive as Revoke`}</button>}
+          <button type="button" className="ae-btn" disabled={!revokes.length} onClick={() => { plan.set(addTo(plan.get(), revokesOf(rows, dec))); c.nav("whatif", { show: "plan" }); }}>Test the revokes in the change plan</button>
+        </div>
+      </Card>
+      {csvOn && <Card title="Sign off">
+        <div className="ae-row"><label className="ae-field"><span>Reviewer</span><input className="ae-input" value={reviewer} onChange={(e) => setReviewer(e.target.value)} /></label>
+          <button type="button" className="ae-btn ae-btn-primary" disabled={!reviewer.trim()} title={reviewer.trim() ? "Downloads the sign-off as CSV" : "Type the reviewer name first"} onClick={sign}>Sign off review</button></div>
+      </Card>}
+      <Card title="What sign off does"><ul className="ae-plan-care"><li>{csvOn ? "Downloads a CSV: reviewer, decision, time" : "CSV export is off here, so there is no sign-off file"}</li><li>Writes nothing to Snowflake and revokes nothing</li><li>Keeps your decisions in this browser</li></ul></Card>
+    </>
+  );
   return (
     <>
       <div className="ae-headrow">
@@ -94,7 +116,7 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
         <Toggle label="Hide USAGE" on={hide} onPick={(v) => c.set({ hideusage: v ? null : "0" })} />
       </ListToolbar>
       </Fold>
-      <Card title={isObj ? `Who holds each privilege on ${d.object.split(".").pop()}` : d.scope === "sensitive" ? "Who can reach each sensitive object" : "Who can reach each object"}
+      <Card title="Keep or revoke, person by person"
         sub={d.total > d.columns.length ? `First ${d.columns.length} of ${d.total} objects` : undefined}
         right={<span className="ae-bar-legend">{(["read", "change", "own", "admin"] as const).map((l) => <span key={l}><span className={`ae-dot2 ae-lvl-${l}`} />{WORD[l]}</span>)}<span className="ae-muted">Hover a cell for its path</span></span>}>
         {!rows.length || !d.columns.length ? <EmptyState title="Nobody here">Change the scope, or turn off Only dormant / disabled.</EmptyState> : (
@@ -111,6 +133,25 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
                 ))}
                 <span>Decision</span>
               </div>
+              {shown.map((pk) => {
+                const r = pk[0], us = pk.map((x) => x.user), one = us.length === 1;
+                const v = us.every((u) => dec[u] === dec[r.user]) ? dec[r.user] : undefined;
+                return (
+                  <div key={r.user} role="row" className={`ae-rgrid-row${r.suggest ? " ae-rgrid-stale" : ""}`} style={{ gridTemplateColumns: tpl }}>
+                    <span className="ae-rgrid-who">
+                      <button type="button" className="ae-link ae-mono" title={us.join(", ")} onClick={() => c.nav("access", { user: r.user })}>{one ? r.user : us.length === 2 ? us.join(", ") : `${r.user} to ${us[us.length - 1]}`}</button>
+                      <span className={r.suggest ? "ae-bad" : "ae-muted"}>{one ? (r.suggest ? (r.suggest === "never" ? "never logged in" : `${r.suggest}, ${r.last_login.split("·").pop()!.trim()}`) : r.type.includes("SERVICE") ? "service" : "active") : `active, ${us.length} people`}</span>
+                      {(r.beyond ?? 0) > 0 && <span className="ae-muted ae-small">+{r.beyond} objects not drawn</span>}
+                    </span>
+                    {d.columns.map((x) => {
+                      const cl = r.cells[x.id];
+                      return cl ? <span key={x.id} className={`ae-gcell ae-lvl-${cl.level}`} title={`${cl.path.join(" › ")}\n${cl.privileges.join(", ")}`}>{isObj && cl.level !== "admin" ? "Has" : WORD[cl.level] ?? cl.level}</span>
+                        : <span key={x.id} className="ae-gcell ae-gcell-none" title="No access">·</span>;
+                    })}
+                    <Dec who={one ? r.user : `${us.length} people`} v={v} pick={(x) => (one ? decide(r.user, x) : decideAll(us, x))} hint={null} />
+                  </div>
+                );
+              })}
               {admins.length > 1 && (
                 <div role="row" className="ae-rgrid-row ae-rgrid-group" style={{ gridTemplateColumns: tpl }}>
                   <span className="ae-rgrid-who"><b>Admin holders · {admins.length} people</b>
@@ -120,48 +161,12 @@ function Grid({ d, q, setQ }: { d: GridPage; q: string; setQ: (q: string) => voi
                     pick={(v) => decideAll(admins, v)} />
                 </div>
               )}
-              {shown.map((r) => {
-                const v = dec[r.user];
-                return (
-                  <div key={r.user} role="row" className={`ae-rgrid-row${r.suggest ? " ae-rgrid-stale" : ""}`} style={{ gridTemplateColumns: tpl }}>
-                    <span className="ae-rgrid-who">
-                      <button type="button" className="ae-link ae-mono" onClick={() => c.nav("access", { user: r.user })}>{r.user}</button>
-                      <span className={r.suggest ? "ae-warn-word" : "ae-muted"}>{r.type.includes("SERVICE") ? "Service" : "Person"} · {r.suggest ?? "active"} · {r.last_login}</span>
-                      {(r.beyond ?? 0) > 0 && <span className="ae-muted ae-small">+{r.beyond} objects not drawn</span>}
-                    </span>
-                    {d.columns.map((x) => {
-                      const cl = r.cells[x.id];
-                      return cl ? <span key={x.id} className={`ae-gcell ae-lvl-${cl.level}`} title={`${cl.path.join(" › ")}\n${cl.privileges.join(", ")}`}>{isObj && cl.level !== "admin" ? "Has" : WORD[cl.level] ?? cl.level}</span>
-                        : <span key={x.id} className="ae-gcell ae-gcell-none" title="No access">·</span>;
-                    })}
-                    <Dec who={r.user} v={v} pick={(x) => decide(r.user, x)} hint={r.suggest && v !== "revoke" ? `Suggested: revoke (${r.suggest})` : null} />
-                  </div>
-                );
-              })}
             </div>
-            {rest.length > SHOWN && <p className="ae-muted">Showing {shown.length} of {rest.length} people · <button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `show ${rest.length - SHOWN} more`}</button></p>}
+            {packs.length > SHOWN && <p className="ae-muted">Showing {shown.length} of {packs.length} rows · <button type="button" className="ae-link" onClick={() => setAll(!all)}>{all ? "show fewer" : `show ${packs.length - SHOWN} more`}</button></p>}
           </div>
         )}
       </Card>
-      {partial && <p className="ae-signwarn" role="note">Not the whole review: {d.rows.length < d.matched ? `${d.rows.length.toLocaleString("en-US")} of ${d.matched.toLocaleString("en-US")} people listed` : ""}{d.rows.length < d.matched && d.columns.length < d.total ? ", " : ""}{d.columns.length < d.total ? `${d.columns.length} of ${d.total.toLocaleString("en-US")} objects drawn` : ""}. A sign-off here covers only these: pick a database or search for the rest.</p>}
-      <section className="ae-signbar">
-        <span className="ae-signbar-prog">
-          <span><b>{done}</b> of {d.matched.toLocaleString("en-US")} decided · <b>{revokes.length}</b> marked revoke</span>
-          <span className="ae-signbar-track" role="img" aria-label={`${done} of ${d.matched} people decided`}><span style={{ width: `${(100 * done) / Math.max(1, d.matched)}%` }} /></span>
-        </span>
-        {sleepy.length > 0 && <button type="button" className="ae-btn" onClick={() => decideAll(sleepy, "revoke")}
-          title="Marks every dormant or disabled person listed here Revoke; a second click clears it">{sleepy.every((u) => dec[u] === "revoke") ? "Clear" : "Revoke"} all {sleepy.length} dormant / disabled</button>}
-        <span className="ae-signbar-act">
-          <button type="button" className="ae-btn" disabled={!revokes.length} title="Adds the granted roles of each revoked person to the change plan (simulation only)"
-            onClick={() => { plan.set(addTo(plan.get(), revokesOf(rows, dec))); c.nav("whatif", { show: "plan" }); }}>Test revokes in the change plan</button>
-          {csvOn && <>
-            <label className="ae-signbar-who"><span className="ae-sr">Reviewer</span>
-              <input className="ae-input" placeholder="Reviewer name" value={reviewer} onChange={(e) => setReviewer(e.target.value)} /></label>
-            <button type="button" className="ae-btn ae-btn-primary" disabled={!reviewer.trim()} title={reviewer.trim() ? "Downloads the sign-off as CSV" : "Type the reviewer name first"} onClick={sign}>Sign off review</button>
-          </>}
-        </span>
-      </section>
-      <p className="ae-muted ae-small">Keep / Revoke are saved in this browser only.{csvOn ? " Sign off downloads a CSV (reviewer, decision, time);" : " CSV export is off here, so there is no sign-off file;"} nothing is written to Snowflake and no revoke runs.</p>
+      <p><b>{done}</b> of {d.matched.toLocaleString("en-US")} decided, <b>{revokes.length}</b> marked revoke · <button type="button" className="ae-link" onClick={() => c.set({ show: "sign", part: null })}>Sign off</button></p>
     </>
   );
 }

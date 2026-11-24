@@ -3920,7 +3920,7 @@ def flow_sets(max_roles=None):
         return dict(groups=[(g, w, grp[g]) for g, w in FLOW_WORD.items() if g in grp],
                     roles=[(r, "admin" if r == ADMIN_BOX else "fold" if r not in per else role_kind(r), us)
                            for r, us in roles.items()],
-                    every=[dict(id=r, kind="admin" if r == ADMIN_BOX else role_kind(r), count=len(per[r]),
+                    every=[dict(id=r, kind="admin" if r == ADMIN_BOX else role_kind(r), count=len(per[r]), idle=len(per[r] & grp.get("risky", set())),
                                 objects=len(reach[r])) for r in keep],
                     objects=sorted(nodes, key=lambda x: (-len(x[1]), x[0]["id"])), links=links,
                     group_of={u: g for g, us in grp.items() for u in us})

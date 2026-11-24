@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { HeldRow, HoldCell, ListItem, RolePage } from "../api/types";
-import { Banner, Card, DataTable, EmptyState, FilterChips, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph, type TabItem } from "../components";
+import { Banner, Card, DataTable, EmptyState, FilterChips, Fold, Graph, KpiRow, NameList, PrivilegeTabs, StatusDot, Tabs, pathGraph, type TabItem } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { Banners, col, Controls, DataViews, GraphCard, Head, Load, NameLink, pathCol, Pick, Risks, ScopePick, Sel, Tog } from "./common";
 import { PagedTable } from "./paged";
@@ -60,14 +60,12 @@ function HeldBy({ d }: { d: RolePage }) {
         <div className="ae-muted"><p>{d.usage.used} of {d.usage.holders} users who hold it used it in the query history{d.usage.unused.length > 0 && ", not used by:"}</p>
           <NameList items={d.usage.unused} total={d.usage.holders - d.usage.used} onOpen={(u) => c.nav("access", { user: u })} /></div>
       )}
-      {rows.length > 0 && <Graph graph={g} theme={c.theme} onNodeClick={o.node} maxHeight={420} />}
-      {n > rows.length && <p className="ae-muted">Diagram: first {rows.length} of {n}.</p>}
       <DataTable csv={`${d.role.name}_held_by_${tab}.csv`} rows={[]} server={{ path: "held", params: { ...apiParams(c), name: d.role.name, tab } }} rowTone={(r: HeldRow) => (r.kind === "admin" ? "bad" : r.loses_it ? "warn" : null)}
         columns={[
           col("g", "Grantee", (r: HeldRow) => r.grantee, { wrap: "nowrap", render: (r: HeldRow) => <NameLink id={r.id} refs={d.refs} label={r.grantee} /> }),
           col("k", "Kind", (r: HeldRow) => r.kind_label, { wrap: "nowrap" }),
           col("s", "Status", (r: HeldRow) => r.status ?? "", { wrap: "nowrap", render: (r: HeldRow) => r.status && <><StatusDot s={r.status} /> {r.status}</> }),
-          col("d", "Depth", (r: HeldRow) => r.depth, { num: true }), col("n", "Paths", (r: HeldRow) => r.count, { num: true }),
+          col("h", "Holds it", (r: HeldRow) => (r.direct ? "directly" : `through ${r.depth - 1 || 1} ${r.depth > 2 ? "roles" : "role"}`), { wrap: "wrap" }),
           col("l", "If revoked", revokeText, { wrap: "nowrap", help: "Direct holder: what removing its own grant does. Others: the roles every path goes through." }),
           pathCol<HeldRow>(d.refs),
           col("act", "", () => "", { wrap: "nowrap", render: (r: HeldRow) => {
@@ -76,6 +74,8 @@ function HeldBy({ d }: { d: RolePage }) {
             return ch && <WhatIfButton ch={[ch]} label="What if?" />;
           } }),
         ]} />
+      {rows.length > 0 && <Fold label="As a graph"><Graph graph={g} theme={c.theme} onNodeClick={o.node} maxHeight={420} />
+        {n > rows.length && <p className="ae-muted">First {rows.length} of {n}.</p>}</Fold>}
     </>
   );
 }
@@ -115,7 +115,7 @@ export function RolePageView() {
         <>
           {!pane && <Risks list={d.risks} />}{/* inside: the Access page's Overview has the strip */}
           <Banners list={d.banners} />
-          {part === "diagram" && <KpiRow items={d.scope_kpis ? [
+          {part === "diagram" && !pane && <KpiRow items={d.scope_kpis ? [
             { label: "Effective privileges", value: d.scope_kpis.effective, caption: `in scope · ${d.scope_kpis.objects} objects, ${d.scope_kpis.direct} direct` },
             { label: "Users", value: d.scope_kpis.holders, caption: "in scope" },
             { label: "Sensitive objects", value: d.scope_kpis.sensitive, caption: "in scope", tone: d.scope_kpis.sensitive ? "warn" : null },
@@ -142,7 +142,7 @@ export function RolePageView() {
               csvName={`${d.role.name}_privileges`} onNodeClick={o.node} onOpen={o.open}
               focus={c.params.tfocus} onOnly={(id) => c.set({ tfocus: id }, { push: true, stay: true })} />
           </Card>}
-          {part === "held" && <Card title="Held by">
+          {part === "held" && <Card title="Taking it away">
             <HeldBy d={d} />
             {d.filters.cuts_total > 0 && (
               <Controls><Pick label="If revoked from" value={d.filters.cut} what="direct_holders" params={{ role: d.role.name }} onPick={(v) => c.set({ cut: v })} />

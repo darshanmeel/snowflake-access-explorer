@@ -16,39 +16,42 @@ const CTA: Record<string, string> = { object: "See who", access: "Open", rules: 
 export function ChangesPageView() {
   const c = useApp();
   const n = useSaved(watches).length;
-  const show = c.params.show === "watch" ? "watch" : "feed";
+  const show = c.params.show === "watch" || c.params.show === "findings" ? c.params.show : "feed";
   return (
     <>
       <Head title="What changed" quiet sub="This snapshot against the previous one: who gained or lost access, and which findings are new or fixed." />
       <Tabs nav active={show} onChange={(k) => c.set({ show: k === "feed" ? null : k })} tabs={[
-        { key: "feed", label: "Changes" }, { key: "watch", label: "Watched questions", count: n }]} />
-      {show === "feed" ? <ChangeFeed /> : <Watched />}
+        { key: "feed", label: "Changes" }, { key: "findings", label: "Findings" }, { key: "watch", label: "Watched", count: n }]} />
+      {show === "watch" ? <Watched /> : <ChangeFeed key={show} only={show === "findings" ? "findings" : "access"} />}
     </>
   );
 }
 
 /** The feed, for every subject or only one (History tab of a person, role or object). The server filters (f) and
  * pages it (ev_at, limit): a big change has tens of thousands of events. */
-export function ChangeFeed({ subject }: { subject?: string }) {
+export function ChangeFeed({ subject, only }: { subject?: string; only?: "access" | "findings" }) {
   const c = useApp();
-  const s = useApi<ChangesPage>("changes", { view: c.view, subject, f: c.params.f, offset: c.params.ev_at, limit: c.params.limit });
+  const s = useApi<ChangesPage>("changes", { view: c.view, subject, f: c.params.f ?? only, offset: c.params.ev_at, limit: c.params.limit });
   useEffect(() => { if (s.data?.available) forget("home"); }, [s.data]);  // a first comparison: Home's What changed card shows it
-  return <Load s={s}>{(d) => <Feed d={d} />}</Load>;
+  return <Load s={s}>{(d) => <Feed d={d} only={only} />}</Load>;
 }
 
-function Feed({ d }: { d: ChangesPage }) {
+function Feed({ d, only }: { d: ChangesPage; only?: "access" | "findings" }) {
   const c = useApp();
-  const f = (d.f ?? "all") as Filter;
+  const f = (only && (d.f as string) === only ? "all" : d.f ?? "all") as Filter;
+  const top = (["Critical", "High"] as const).reduce((t, v) => t + (d.severity?.new[v] ?? 0), 0);
   const setF = (k: Filter) => c.set({ f: k === "all" ? null : k, ev_at: null });
   if (!d.available) return <Card><EmptyState title="Nothing to compare with yet" art="wait">{d.reason}</EmptyState></Card>;
   const n = d.counts!;
   const said = (d.text ?? "").replace(/^Since [^:]*:\d\d: /, "").replace(/\.$/, "") || `Nothing changed since ${d.before}`;
+  const gained = only === "access" ? (d.text?.match(/(\d+ (?:person|people) gained) sensitive access/)?.[1] ?? "").replace(/$/, " access to sensitive data").replace(/^ access.*/, "") : "";
   const shown = d.events, size = Number(c.params.limit) || PAGE;
   return (
     <>
-    <p className="ae-answer">{said[0].toUpperCase() + said.slice(1)}</p>
-    <Card title={`${d.before} to ${d.now}`} right={<FilterChips label="Show" value={f} onPick={(k) => setF(k as Filter)} items={[
-        { key: "all", label: "All" }, { key: "gain", label: "Gained" }, { key: "lose", label: "Lost" }, { key: "risk", label: "New findings" }, { key: "sensitive", label: "Sensitive" }]} />}>
+    <p className="ae-answer">{only === "findings" ? `${d.new} ${d.new === 1 ? "finding is" : "findings are"} new${top ? `, ${top} of them critical or high` : ""}; ${d.fixed} fixed` : gained || said[0].toUpperCase() + said.slice(1)}</p>
+    {only === "findings" && d.severity && <Card title="New and fixed, by severity"><Strip s={d.severity} /></Card>}
+    <Card title={`${d.before} to ${d.now}`} right={only !== "findings" && <FilterChips label="Show" value={f} onPick={(k) => setF(k as Filter)} items={[
+        { key: "all", label: "All" }, { key: "gain", label: "Gained" }, { key: "lose", label: "Lost" }, ...(only ? [] : [{ key: "risk", label: "New findings" }]), { key: "sensitive", label: "Sensitive" }]} />}>
       {!shown.length ? <EmptyState title={n.all ? "Nothing under this filter" : "No changes"} art={n.all ? "search" : "clear"}>{n.all ? "Pick another filter." : `Nothing changed since ${d.before}.`}</EmptyState> : (
         <div className="ae-feed">
           {shown.map((e) => <Item key={e.id} e={e} onOpen={() => c.nav(e.link.page, e.link.params)} onRule={(num) => c.nav("rules", { rule: num })}
@@ -60,7 +63,7 @@ function Feed({ d }: { d: ChangesPage }) {
         onPage={(k) => c.set({ ev_at: k ? String(k * size) : null })} onSize={(k) => c.set({ limit: k === PAGE ? null : String(k), ev_at: null })} />}
       <p className="ae-muted ae-foot">The difference between two snapshots the app read; "by" is GRANTED_BY from the grant data. Nothing is written to Snowflake.</p>
     </Card>
-    {d.severity && <Card title="Findings: new and fixed"><Strip s={d.severity} /></Card>}
+    <p className="ae-muted"><span className="ae-ev-key more">+</span> more access or new risk <span className="ae-ev-key less">−</span> less access</p>
     </>
   );
 }
@@ -139,7 +142,7 @@ function Watched() {
             <button type="button" className="ae-link" onClick={() => add({ kind: "admins", notify: "" })}>Who holds admin roles?</button>
           </EmptyState>
         ) : (
-          <div className="ae-watch-list">{list.map((w) => <WatchRow key={w.id} w={w} />)}</div>
+          <div className="ae-table-scroll"><table className="ae-table"><thead><tr><th>Question</th><th>Answer</th><th>Against the snapshot before</th><th /></tr></thead><tbody>{list.map((w) => <WatchRow key={w.id} w={w} />)}</tbody></table></div>
         )}
       </Card>
       <Fold label="Watch a question" on={!list.length}>
@@ -168,15 +171,11 @@ function WatchRow({ w }: { w: Watch }) {
   const open = () => (can ? c.nav("check", { name: w.user ?? "", obj: w.object ?? "", do: "read" })
     : c.nav("object", w.kind === "admins" ? { preset: "admin" } : { name: w.object ?? "", show: "who" }));
   return (
-    <div className={`ae-watch${r?.tag === "Changed" ? " ae-watch-alert" : ""}`}>
-      <button type="button" className="ae-link ae-watch-q" onClick={open}>{question(w)}</button>
-      <div className="ae-watch-a">
-        <span>{s.error ? s.error.message : answer ?? "…"}{r?.before && r.tag === "Changed" ? <span className="ae-muted"> · was {r.before}</span> : null}</span>
-        {r && <span className={`ae-watch-tag${r.tag === "Changed" ? " on" : ""}`}>{r.tag}</span>}
-      </div>
-      <div className="ae-muted ae-watch-n">
-        Notify: {w.notify || "—"} <button type="button" className="ae-link" onClick={() => watches.set(watches.get().filter((x) => x.id !== w.id))}>Stop watching</button>
-      </div>
-    </div>
+    <tr className={r?.tag === "Changed" ? "ae-tone-warn" : undefined}>
+      <td><button type="button" className="ae-link" onClick={open}>{question(w)}</button>{w.notify && <span className="ae-muted"> notify {w.notify}</span>}</td>
+      <td>{s.error ? s.error.message : answer ?? "…"}</td>
+      <td>{r && <span className="ae-muted">{r.tag}{r.before && r.tag === "Changed" ? `, was ${r.before}` : ""}</span>}</td>
+      <td><button type="button" className="ae-link" onClick={() => watches.set(watches.get().filter((x) => x.id !== w.id))}>Stop</button></td>
+    </tr>
   );
 }

@@ -184,7 +184,7 @@ function Body({ d }: { d: AccessPage }) {
       ]} />
       {n.read > 0 && objects_}
       {d.runs_total + d.powers_total > 0 && <Card title="Can also run">
-        <ul className="ae-runlist">{[...powers.slice(0, 2), ...runs.slice(0, 5)].map((x) => <li key={x.object + x.privileges.join()}><span><b className="ae-mono">{x.category === "account" ? x.privileges.join(", ") : x.object.split(".").pop()}</b> <span className={x.category === "account" ? "ae-bad" : "ae-muted"}>{x.category === "account" ? "account power" : `${x.type.toLowerCase()}${x.level === "own" ? " (owns)" : ""}`}</span></span><span className="ae-mono ae-muted">{x.holder === "PUBLIC" ? "PUBLIC (everyone)" : x.holder}</span></li>)}</ul>
+        <ul className="ae-runlist">{[...powers.slice(0, 2), ...runs.slice(0, 5)].map((x) => <li key={x.object + x.privileges.join()}><span><b className="ae-mono">{x.category === "account" ? x.privileges.join(", ") : x.object.split(".").pop()}</b> <span className={x.category === "account" ? "ae-bad" : "ae-muted"}>{x.category === "account" ? (x.object === "ACCOUNT" ? "account power" : `on ${x.object}`) : `${x.type.toLowerCase()}${x.level === "own" ? " (owns)" : ""}`}</span></span><span className="ae-mono ae-muted">{x.holder === "PUBLIC" ? "PUBLIC (everyone)" : x.holder}</span></li>)}</ul>
         {d.runs_total + d.powers_total > Math.min(2, powers.length) + Math.min(5, runs.length) && <button type="button" className="ae-link" onClick={() => c.set({ show: "runs" })}>All {(d.runs_total + d.powers_total).toLocaleString("en-US")}</button>}
       </Card>}
       <details className="ae-fold"><summary>Why, risks, identity, other questions</summary><div className="ae-fold-in">

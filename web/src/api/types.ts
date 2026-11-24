@@ -780,7 +780,7 @@ export interface SensitivePage {
     service: number;
     unmasked: number;
     stale: string[]; // the first NAMES of stale_total
-    stale_total: number;
+    stale_total: number; by?: { active: number; risky: number; admin: number; service: number } | null;
   };
   objects: {
     object: string;
@@ -1372,7 +1372,7 @@ export interface GridPage {
 /** Screen 16 (/api/flow). */
 export interface FlowNode { id: string; label: string; count: number; kind?: string; ns?: string; status?: string | null; unmasked?: string[]; masked?: string[]; row_policies?: string[]; roles?: number }
 /** One real role of the flow (not a box): people who hold it, sensitive objects it reaches. */
-export interface FlowRole { id: string; kind: string; count: number; objects: number }
+export interface FlowRole { id: string; kind: string; count: number; objects: number; idle?: number }
 export interface FlowLink { source: string; target: string; count: number }
 /** The box followed (sel=): link keys "source>target" -> people and their main group; users: the box's first 200. */
 export interface FlowFollow { sel: string | null; lit: string[] | null; width: Record<string, number>; tone: Record<string, string>; headline: string; users: string[]; count: number }

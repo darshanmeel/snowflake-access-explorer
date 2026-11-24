@@ -68,11 +68,10 @@ function Body({ d }: { d: ObjUsePage }) {
           <StackBar parts={[["30", "Used in 30 days", "lvl-own"], ["90", "31 to 90 days", "lvl-read"], ["180", "91 to 180 days", "medium"], ["none", "Never used", "high"], ["nodata", "No data", "low"]].map(([key, label, cls]) => ({ key, label, cls,
             value: d.types.reduce((x, y) => x + (y.buckets[key as keyof typeof y.buckets] ?? 0), 0) }))} />
         </Card>)}
-      {tab === "unused" && (
-        <Card title="Last use per type" sub="Each object counted once, at its last read or write. A type picks the table below.">
+      {tab === "unused" && <Fold label="Per type" on={!!d.type}>
+        <Card title="Last use per type" sub="A type picks the table below.">
           <AgeBars types={d.types} onPick={(t) => c.set({ type: t === d.type ? null : t })} />
-        </Card>
-      )}
+        </Card></Fold>}
       <Card title={TITLE[tab](d.days)} sub={SUB[tab]}>
         <Table d={d} />
         <p className="ae-muted ae-foot">{`History: data ${d.history.data} days · warehouses ${d.history.warehouse} days · apps ${d.history.app} days.`}</p>
@@ -107,7 +106,7 @@ function Table({ d }: { d: ObjUsePage }) {
   const c = useApp();
   const day = (v: string | null) => (v ? v.slice(0, 10) : "–");
   const cols = [
-    col<ObjUseRow>("object", "Object", (r) => r.object, {
+    col<ObjUseRow>("object", "Object", (r) => r.object, { wrap: "wrap",
       render: (r) => <span>
         <button type="button" className="ae-link ae-mono" onClick={() => c.nav("object", { name: r.object })}>{r.object}</button>
         {r.new && <span className="ae-otag ae-otag-warn" title="DDL on it in the activity window: created or changed recently"> new or changed</span>}
@@ -117,11 +116,11 @@ function Table({ d }: { d: ObjUsePage }) {
     col<ObjUseRow>("type", "Type", (r) => r.type.toLowerCase()),
     col<ObjUseRow>("last_read", "Last read", (r) => day(r.last_read), { help: "Warehouses: last query run; apps: last opened" }),
     col<ObjUseRow>("last_write", "Last written", (r) => day(r.last_write)),
-    col<ObjUseRow>("days", "Days since used", (r) => r.days_since ?? (r.bucket !== "nodata" ? "never" : r.history ? `none in ${r.history}` : "no data"), { num: true }),
+    col<ObjUseRow>("days", "Days unused", (r) => r.days_since ?? (r.bucket !== "nodata" ? "never" : r.history ? `none in ${r.history}` : "no data"), { num: true }),
     col<ObjUseRow>("read_q", "Read queries", (r) => r.read_q, { num: true, help: `In the last ${d.days} days; warehouses: queries run` }),
     col<ObjUseRow>("write_q", "Write queries", (r) => r.write_q, { num: true }),
     col<ObjUseRow>("readers", "Readers", (r) => r.readers, { num: true, help: "Distinct users in the window" }),
-    col<ObjUseRow>("writers", "Writers", (r) => r.writers, { num: true }),
+    
   ];
   return (
     <DataTable key={`${d.tab}|${d.days}`} columns={cols} rows={[]} sort={SORT[d.tab]} csv={`object_activity_${d.tab}_${d.days}d.csv`}

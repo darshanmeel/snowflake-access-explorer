@@ -4,8 +4,8 @@
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { ListItem, RequestPage } from "../api/types";
-import { Card, CodeOutput, EmptyState, expiryOf, FilterChips, LEVEL_WORD, newRoleOf } from "../components";
-import { apiParams, useApp, useOpen } from "../ctx";
+import { Card, CodeOutput, EmptyState, expiryOf, FilterChips, Fold, LEVEL_WORD, newRoleOf } from "../components";
+import { apiParams, useApp } from "../ctx";
 import { Load, Pick, PickFirst } from "./common";
 import { pickSubject, subjectIn, subjectLink } from "./verdict";
 
@@ -40,7 +40,6 @@ export function RequestPageView() {
 
 function Body({ d }: { d: RequestPage & { object: string } }) {
   const c = useApp();
-  const o = useOpen(d.refs);
   const a = d.asked;
   const viaNew = a && a.kind === "database_role" && !a.to ? a.role : undefined; // a database role can't go to a user
   const asked = viaNew ? undefined : a?.role;
@@ -61,21 +60,14 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
   const now = d.level ? (LEVEL_WORD[d.level] ?? d.level).toLowerCase() : null;
   return (
     <>
-    <p className="ae-answer">{d.has ? `${d.user} already has it` : choices.length ? <><span className="ae-mono">{d.suggestions[0]?.role ?? choices[0].role}</span> is the smallest existing role that does it</> : "No existing role fits"}</p>
-    <div className="ae-req">
+    <p className="ae-answer">{d.has ? `${d.user} already has it` : choices.length ? <><span className="ae-mono">{d.suggestions[0]?.role ?? choices[0].role}</span> is the smallest existing role that lets {d.user} {d.need === "change" ? "change" : "read"} it</> : "No existing role fits"}</p>
+    <div className="ae-req ae-req-one">
       <section className="ae-card ae-req-form" aria-label="Request">
+        <h3>{d.suggestions[0] ? `${d.suggestions[0].role} brings least extra` : "The request"}</h3>
+        <p className="ae-muted">{d.via_admin?.length ? `${d.user} reaches it through admin role ${d.via_admin.join(", ")} today` : now ? `${d.user} can ${now === "can use" ? "use" : now} it today` : `${d.user} has no access today`} · needs {d.privileges.join(", ")}</p>
         <div>
-          <div className="ae-muted">Object</div>
-          <div className="ae-req-obj">
-            <button type="button" className="ae-link ae-mono" onClick={() => o.open(d.object)}>{d.object}</button>
-            <span className="ae-muted">{d.type.toLowerCase()} · {forRole ? "role " : ""}{d.via_admin?.length ? `${d.user} reaches it through admin role ${d.via_admin.join(", ")} today` : now ? `${d.user} can ${now === "can use" ? "use" : now} it today` : `${d.user} has no access today`}</span>
-          </div>
-        </div>
-        <div>
-          <div className="ae-muted">I need to</div>
           <FilterChips label="Access needed" value={d.need} onPick={(k) => c.set({ need: k === "read" ? null : k, role: null, to: null })}
             items={[{ key: "read", label: "Read it" }, { key: "change", label: "Change it" }]} />
-          <div className="ae-muted ae-mt">{d.privileges.join(", ")}</div>
         </div>
         {d.has ? (
           <EmptyState title={d.via_admin?.length ? `${d.user} already reaches it through admin role ${d.via_admin.join(", ")}` : `${d.user} already has ${d.privileges.join(", ")} on it`}>
@@ -83,7 +75,6 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
           </EmptyState>
         ) : choices.length ? (
           <div className="ae-req-roles" role="radiogroup" aria-label="Suggested role">
-            <div className="ae-muted">Suggested role</div>
             {extra.map((x) => (
               <label key={x.role} className={`ae-req-role${pick === x.role ? " on" : ""}`}>
                 <input type="radio" name="role" checked={pick === x.role} onChange={() => setPick(x.role)} />
@@ -93,24 +84,17 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
                   {a?.rule1 && <span className="ae-warn-word ae-block">A technical role on a user or group role breaks rule 1.</span>}</span>
               </label>
             ))}
-            {shown.map((x, i) => (
-              <label key={x.role} className={`ae-req-role${pick === x.role ? " on" : ""}`}>
-                <input type="radio" name="role" checked={pick === x.role} onChange={() => setPick(x.role)} />
-                <span>
-                  <b className="ae-mono">{x.role}</b>{i === 0 && <span className="ae-otag ae-ml">smallest</span>}
-                  <span className="ae-muted">{` · ${x.holders} ${x.holders === 1 ? "person" : "people"} · +${x.extra} privilege${x.extra === 1 ? "" : "s"}`}
-                    {forRole ? ` · to ${d.user}: its ${x.people} ${x.people === 1 ? "holder gets" : "holders get"} it too` : ""}</span>
-                  {x.broad && <span className="ae-warn-word ae-block">Too broad: everyone holding {d.user} ({x.people} people) gets it.</span>}
-                  {(x.also.length > 0 || x.unmasked.length > 0) && (
-                    <span className="ae-req-also">
-                      <span className="ae-muted">It also gives {forRole ? d.user : "you"}</span>
-                      {x.also.map((a) => <span key={a.level + a.where} className={`ae-lvl ae-lvl-${a.level}`}>{(LEVEL_WORD[a.level] ?? a.level).toLowerCase()} · {a.count} in {a.where}</span>)}
-                      {x.unmasked.map((col) => <span key={col} className="ae-otag ae-sens-tag">{col} unmasked</span>)}
-                    </span>
-                  )}
-                </span>
-              </label>
-            ))}
+            <table className="ae-table ae-reqtab">
+              <thead><tr><th>Role</th><th className="num">People today</th><th className="num">Extra</th><th>What else it opens</th></tr></thead>
+              <tbody>{shown.map((x) => (
+                <tr key={x.role} className={pick === x.role ? "on" : ""}>
+                  <td><label><input type="radio" name="role" checked={pick === x.role} onChange={() => setPick(x.role)} /> <b className="ae-mono">{x.role}</b></label></td>
+                  <td className="num">{x.holders.toLocaleString("en-US")}</td>
+                  <td className="num">+{x.extra.toLocaleString("en-US")}</td>
+                  <td>{[...x.also.map((a) => `${(LEVEL_WORD[a.level] ?? a.level).toLowerCase()} ${a.count} in ${a.where}`)].join("; ") || "nothing else"}{x.unmasked.length > 0 && <span className="ae-bad">; {x.unmasked.join(", ")} unmasked</span>}
+                    {x.broad && <span className="ae-warn-word">; too broad: everyone holding {d.user} ({x.people} people) gets it</span>}{forRole && !x.broad && <span className="ae-muted">; its {x.people} {x.people === 1 ? "holder gets" : "holders get"} it too</span>}</td>
+                </tr>))}</tbody>
+            </table>
             {d.suggestions.length > 3 && <button type="button" className="ae-link" onClick={() => setMore(!more)}>{more ? "Fewer roles" : `+${d.suggestions.length - 3} more roles`}</button>}
             <label className={`ae-req-role${!ch ? " on" : ""}`}>
               <input type="radio" name="role" checked={!ch} onChange={() => setPick("")} />
@@ -122,9 +106,10 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
             <b>No existing role fits.</b> {inDb
               ? <>Only a database role of {inDb.db} can be granted to the database role {d.user}{inDb.objDb === inDb.db ? "" : `, and it can't hold privileges on ${d.object} (not in ${inDb.db})`}.</>
               : <>No functional role gives {d.privileges.join(", ")} on {d.object} without an admin or build role{forRole ? ` or a loop through ${d.user}` : ""}.</>}
-            {" "}The text on the right is {inDb && inDb.objDb !== inDb.db ? "why it can't be done this way" : `a commented skeleton for a new ${inDb ? "database " : ""}role`}{d.owners.length ? `; the owner (${d.owners.join(", ")}) decides` : ""}.
+            {" "}The text below is {inDb && inDb.objDb !== inDb.db ? "why it can't be done this way" : `a commented skeleton for a new ${inDb ? "database " : ""}role`}{d.owners.length ? `; the owner (${d.owners.join(", ")}) decides` : ""}.
           </div>
         )}
+        <Fold label="How long, approver, reason" on={!!reason}>
         <div className="ae-req-row">
           <label className="ae-field">For how long
             <select className="ae-input" value={days} onChange={(e) => setDays(Number(e.target.value))}>
@@ -138,8 +123,9 @@ function Body({ d }: { d: RequestPage & { object: string } }) {
         <label className="ae-field">Why you need it
           <textarea className="ae-input" rows={3} value={reason} placeholder="What it is for, and until when" onChange={(e) => setReason(e.target.value)} />
         </label>
+        </Fold>
       </section>
-      <Card title="Ready to copy" sub="For your RBAC repo or a ticket.">
+      <Card title="Text for the ticket">
         {d.has ? <p className="ae-muted">Nothing to request.</p>
           : <CodeOutput changes={changes} note={note} texts={text} name={`access_request_${d.user.toLowerCase()}`} />}
       </Card>

@@ -3271,7 +3271,7 @@ NAMES = 20  # people, objects and subjects sent per What changed event
 def changes_page(p, view):
     """Screen 14: the loaded snapshot against the previous one (demo: a.fake_previous(); else the copy cache.py kept
     in .cache/ when a refresh replaced it). subject= keeps the events about one user, role or object (a node id: a.uid() for users).
-    f= (all, gain, lose, risk, sensitive) keeps one filter's events; they come one page at a time (offset=, limit=:
+    f= (all, gain, lose, risk, sensitive; access: grants and people; findings: new and fixed) keeps one filter's events; they come one page at a time (offset=, limit=:
     PAGE, 0 every one), with events_total: a big change has tens of thousands. An event sends its first NAMES people,
     objects and subjects (plus subject=): one change on a big account names every user, and no page lists them."""
     out = dict(view=view, subject=p.get("subject") or None, available=False, events=[], events_total=0, offset=0, counts=None)
@@ -3295,9 +3295,11 @@ def changes_page(p, view):
             + (f", {len(gained)} {'person' if len(gained) == 1 else 'people'} gained sensitive access" if gained else "") + "."
             + (f" Big changes name only their first {a.EVENT_NAMES} people and objects, so some about {a.node_name(sub)} "
                "may be missing here." if sub and any(e.get("capped") for e in d["events"]) else ""))
-    f = p.get("f") if p.get("f") in ("gain", "lose", "risk", "sensitive") else "all"
-    shown = [e for e in ev if f == "all" or (e["kind"] == f if f in ("gain", "lose") else e["sensitive"] if f == "sensitive"
-                                              else any(not x["fixed"] for x in e["findings"]))]
+    f = p.get("f") if p.get("f") in ("gain", "lose", "risk", "sensitive", "access", "findings") else "all"
+    keep = {"all": lambda e: True, "sensitive": lambda e: e["sensitive"], "risk": lambda e: any(not x["fixed"] for x in e["findings"]),
+            "access": lambda e: e["kind"] in ("gain", "lose", "user"), "findings": lambda e: e["kind"] in ("risk", "fixed")}.get(f, lambda e: e["kind"] == f)
+    shown = [e for e in ev if keep(e)]
+    shown = [e for e in shown if f != "access" or e["sensitive"]] + [e for e in shown if f == "access" and not e["sensitive"]]
     sl, off = window(p, "offset", len(shown))
     short = lambda xs: xs[:NAMES] + ([sub] if sub and sub not in xs[:NAMES] and sub in xs else [])
     ev = [e | dict(people=short(e["people"]), objects=short(e["objects"]), subjects=short(e["subjects"]))
@@ -3418,6 +3420,7 @@ def sensitive_page(p, view):
     tg, db, people = p.get("tag", ""), p.get("db", ""), flag(p, "people")
     tg, db = tg if tg in labels else "", db if db in dbs else ""
     rank = [r for r in rank if (not db or r["database"] == db) and (not tg or tg in {a.tag_label(t, v) for _, t, v, _ in r["tags"]})]
+    rank = sorted(rank, key=lambda r: (-(r["masked"][1] - r["masked"][0]) / max(1, r["masked"][1]) if r["cols"] else 0, not r["cols"], -(r["masked"][1] - r["masked"][0])))  # least protected first
     order = [r["object"] for r in rank]
     who = a.sens_readers(order)
     idle = {u for u in a.users if a.status(u) != "active"}  # once per user, not once per object they read
@@ -3458,6 +3461,7 @@ def sensitive_page(p, view):
         view=view, state="ok", governance=gov, filters=dict(tag=tg, db=db, people=people, tags=labels, dbs=dbs),
         kpis=dict(objects=len(rank), readers=everyone, columns=cols, whole=sum(not r["cols"] for r in rank), people=len(ppl), admin=len(adm),
                   disabled=len(every("disabled")), service=len(every("service")),
+                  by=None if tg or db else sens_readers_by(),
                   unmasked=sum(n - k for k, n in (r["masked"] for r in rank)), stale=stale[:NAMES], stale_total=len(stale)),
         objects=[dict(object=r["object"], database=r["database"], schema=r["schema"], name=r["name"], type=r["kind"],
                       tags=[dict(label=k, origins=list(dict.fromkeys(v))) for k, v in

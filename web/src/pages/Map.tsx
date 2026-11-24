@@ -10,7 +10,7 @@ import { GraphCard, Load, Pick, PickFirst, ScopePick, Sel } from "./common";
 import { riskIds, startOf } from "./screens";
 import { WhatIfButton } from "./Whatif";
 
-const MODES = [["object", "Table", "table"], ["role", "Role", "role"], ["user", "Person", "user"]] as const;
+const MODES = [["object", "Table", "object"], ["role", "Role", "role"], ["user", "Person", "person"]] as const;
 const KIND_WORD: Record<string, string> = {
   user: "Person", functional: "Functional role", technical: "Technical role", group: "Group role", database_role: "Database role",
   admin: "Admin role", object: "Object", fold: "Folded group", database_group: "Objects of a database", schema_group: "Objects of a schema",
@@ -39,29 +39,19 @@ export function GraphPageView() {
   };
   return (
     <>
-      <div className="ae-headrow">
-        <div>
-          <h2 className="ae-sr">Access graph</h2>
-          {tab === "trace" && s.data && <p className="ae-muted ae-graph-sub">{s.data.graph.header}</p>}
-        </div>
-        <div className="ae-seg2" role="group" aria-label="Start from">
-          {MODES.map(([m, label]) => (
-            <button key={m} type="button" aria-pressed={m === mode} className={m === mode ? "on" : ""} onClick={() => pick(m)}>
-              {label}{m === mode && <span className="ae-mono ae-seg2-n">{shown.split(".").pop()}</span>}
-            </button>
-          ))}
-        </div>
-      </div>
+      <h2 className="ae-sr">Access graph</h2>
+      <Tabs nav active={mode} onChange={pick} tabs={[...MODES].reverse().map(([m, , word]) => ({ key: m, label: `From ${word === "person" ? "a person" : word === "role" ? "a role" : "an object"}` }))} />
       <div className="ae-h1 ae-h1-pick">What leads {mode === "object" ? "to" : "from"}
         {!(mine && mode === "user") &&
           <Pick label={MODES.find((x) => x[0] === mode)![1]} value={shown} what={what} params={mode === "object" ? { type: "TABLE" } : undefined}
             onPick={(v) => c.set(startOf(mode === "user" ? "user" : mode, v))} width={300} />}
         ?
       </div>
-      <Tabs nav active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k, focus: null, sel: null })} tabs={[
+      {tab === "trace" && s.data && <p className="ae-answer">{s.data.graph.header.replace(/\.$/, "")}</p>}
+      {!none && <Tabs nav={2} active={tab} onChange={(k) => c.set({ show: k === "diagram" ? null : k, focus: null, sel: null })} tabs={[
         { key: "diagram", label: "Hierarchy" },
         { key: "trace", label: "Trace" },
-      ]} />
+      ]} />}
       {!none && <Difference tab={tab} mode={mode} />}
       {mode !== "object" && !none && <Fold label="Filter" on={!!(c.params.schema || c.params.otype || c.params.access)}><div className="ae-controls"><Filters trace={tab === "trace"} /></div></Fold>}
       {none ? <PickFirst what={mode === "user" ? "a person" : mode === "role" ? "a role" : "a table"} /> : <>
@@ -94,7 +84,14 @@ function OldDiagram({ mode, name }: { mode: string; name: string }) {
   const c = useApp();
   const g = useApi<G>("graph", { of: mode, name: name || null, view: c.view, builtin: c.params.builtin, focus: c.params.focus,
     ...(mode !== "object" ? { schema: c.params.schema, otype: c.params.otype } : {}) });
-  return <Load s={g}>{(x) => (x ? <GraphCard g={x} /> : <EmptyState title="Nothing to draw" />)}</Load>;
+  const said = (x: G) => {
+    const roles = x.nodes.filter((n) => !["user", "object", "fold", "schema_group", "database_group", "type_group", "lane_group"].includes(n.kind) && n.id !== name).length;
+    const people = x.nodes.filter((n) => n.kind === "user" && n.name !== name).length, objs = x.header.match(/([\d,]+) objects?/)?.[1] ?? String(x.nodes.filter((n) => n.kind === "object").length);
+    const w = (n: number | string, one: string, many = `${one}s`) => `${n} ${String(n) === "1" ? one : many}`;
+    const short = name.split(".").pop();
+    return mode === "object" ? `${w(people, "person", "people")} come in to ${short} through ${w(roles, "role")}` : mode === "role" ? `${short} opens ${w(objs, "object")}${people ? ` for ${w(people, "person", "people")}` : ""}` : `${short} reaches ${w(objs, "object")} through ${w(roles, "role")}`;
+  };
+  return <Load s={g}>{(x) => (x ? <><p className="ae-answer">{said(x)}</p><GraphCard g={x} title={mode === "object" ? "Every way in" : mode === "role" ? "Who holds it, what it opens" : "Person to roles to objects"} /></> : <EmptyState title="Nothing to draw" />)}</Load>;
 }
 
 function Trace({ d }: { d: MapPage }) {

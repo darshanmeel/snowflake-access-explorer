@@ -11,16 +11,18 @@ const strongest = (cs: PrivClass[]): PrivClass => cs.reduce<PrivClass>((a, c) =>
 
 export function ReviewPageView() {
   const c = useApp();
+  const sign = c.params.show === "sign";
   const show = c.params.show === "rows" || (c.params.part && c.params.show !== "grid") ? "old" : "grid"; // the sign-off grid first; part=: an old link to the rows
   if (c.view === "mine") return <><Head title="Review & sign-off" /><Banner tone="info" title="Shared snapshot only" lines={["The review lists every user of an object, so it needs the shared snapshot."]} /></>;
   return (
     <>
       <Head title="Review & sign-off" quiet sub="Who can reach what, ready for sign-off." />
-      <Tabs nav active={show} onChange={(k) => c.set(k === "grid" ? { show: null, part: null } : { show: "rows", columns: null, object: null, scope: null })} tabs={[
-        { key: "grid", label: "Review grid & sign-off" },
+      <Tabs nav active={sign ? "sign" : show} onChange={(k) => c.set(k === "grid" ? { show: null, part: null } : k === "sign" ? { show: "sign", part: null } : { show: "rows", columns: null, object: null, scope: null })} tabs={[
+        { key: "grid", label: "Decide" },
+        { key: "sign", label: "Sign off" },
         { key: "old", label: "Rows / CSV" },
       ]} />
-      {show === "old" ? <OldReview /> : <ReviewGrid />}
+      {sign ? <ReviewGrid sign /> : show === "old" ? <OldReview /> : <ReviewGrid />}
     </>
   );
 }
