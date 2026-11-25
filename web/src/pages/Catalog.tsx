@@ -58,7 +58,7 @@ export function Catalog({ rows }: { rows: CatalogRow[] }) {
                 </span>
                 <span className="ae-cat-who"><MiniBar of={most} text={<><b className="ae-cat-n">{r.readers}</b> <span className="ae-muted">users{r.admin ? ` · +${r.admin} admin` : ""} · {r.clear ?? "?"} see clear</span></>}
                   parts={[{ key: "p", label: "Users", value: r.readers, cls: r.status === "not" ? "high" : r.status === "partly" ? "medium" : "people" }, { key: "a", label: "Through an admin role", value: r.admin, cls: "admin" }]} /></span>
-                <span><button type="button" className="ae-btn" onClick={() => c.nav("object", { name: r.object, show: "who" })}>Who →</button></span>
+                <span><button type="button" className="ae-btn" onClick={() => c.nav("object", { name: r.object })}>Who →</button></span>
               </div>
             ))}
           </div>

@@ -78,8 +78,8 @@ function Body({ d }: { d: AccessPage }) {
   const rd = useApi<RolePage>(user ? null : "role", { ...apiParams(inner(c, w.name, false)), name: w.name, lean: lean(c) }).data; // a role's own tabs, the same fetch they show
   const rtabs = user ? [] : roleTabs(rd);
   const part = !user && c.params.show === "detail" && ROLE_PARTS.includes(c.params.part ?? "") ? c.params.part! : c.params.show ?? ""; // old links: show=detail&part=held
-  const keys = ["summary", "privs", "detail", "runs", "history", "activity", ...(user ? [] : ROLE_PARTS)];
-  const show = keys.includes(part) ? part : "overview"; // the summary first, the long lists on their own tabs
+  const keys = ["overview", "summary", "privs", "detail", "runs", "history", "activity", ...(user ? [] : ROLE_PARTS)];
+  const show = keys.includes(part) ? part : c.params.filter ? "overview" : "detail"; // the graph first, the long lists on their own tabs
   // the list is filtered, sorted and paged on the server: a big user has 100k+ objects
   const ask = { ...subjectOf(c), filter: lvl === "all" ? null : lvl, q: sq || null, usage: usage ? "1" : null, group: group === "none" ? null : group,
     sort: sort === "risk" ? null : sort, otype: otype || null, short: "1", more: rest ? "1" : null, cell: cell?.schema, min: cell?.min, offset: page ? String(page * d.limit) : null };
@@ -147,21 +147,30 @@ function Body({ d }: { d: AccessPage }) {
         {list.total > list.limit && <Pager at={page} size={list.limit} total={list.total} onPage={setPage} />}
       </Card>
   );
+  const figs = (
+      <Figs items={[
+        user ? { key: "read", n: tb.read.toLocaleString("en-US"), text: `tables and views they can read${all > tb.read ? `, and ${all - tb.read} other ${all - tb.read === 1 ? "object" : "objects"}` : ""}`, note: nm.schemas.join(", ") || undefined }
+          : { key: "held", n: (w.held_by?.users ?? 0).toLocaleString("en-US"), text: w.held_by?.users === 1 ? "person holds it" : "people hold it", note: w.held_by?.roles ? `and ${plural(w.held_by.roles, "role")}` : undefined, go: () => c.set({ show: "held" }) },
+        user ? { key: "sens", n: tagsOff ? "not read" : tb.clear.toLocaleString("en-US"), text: "with sensitive columns seen in clear", bad: !tagsOff && tb.clear > 0, note: tagsOff ? `${tagsOff.title}: sensitivity unknown` : nm.clear.join(", ") || undefined }
+          : { key: "chg", n: tb.change.toLocaleString("en-US"), text: tb.change === 1 ? "object it can change" : "objects it can change", note: nm.change.join(", ") || undefined },
+        d.risks?.length ? { key: "risk", n: d.risks.reduce((t, r) => t + r.n, 0).toLocaleString("en-US"), text: "risks to look at", bad: d.risks.some((r) => r.severity === "bad"), note: d.risks[0].text }
+          : { key: "run", n: d.runs_total.toLocaleString("en-US"), text: "things to run", go: () => c.set({ show: "runs" }) },
+      ]} />
+  );
   return (
     <>
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "overview" ? null : k, part: null })} tabs={[
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k, part: null })} tabs={[
+        { key: "detail", label: "Graph & trace" },
         { key: "overview", label: user ? "Can do" : "Opens" },
         ...rtabs.filter((t) => t.key === "held"),
-        { key: "detail", label: "Graph & trace" },
         { key: "activity", label: "Activity" },
         { key: "history", label: "History" },
         user ? { key: "privs", label: "Privileges" } : rtabs[0],
         ...rtabs.slice(1).filter((t) => t.key !== "held"),
         { key: "runs", label: "Can run", count: d.runs_total + d.powers_total, tone: d.powers_total > 0 ? "bad" as const : null },
       ]} />
-      {show === "detail" && <p className="ae-answer"><span className="ae-mono">{w.name}</span> {user ? "reaches" : "opens"} {plural(tb.read, "table or view", "tables and views")}</p>}
       {show === "held" && <p className="ae-answer">{plural(w.held_by?.users ?? 0, "person", "people")}{(w.held_by?.roles ?? 0) > 0 && <> and {plural(w.held_by!.roles, "role")}</>} {(w.held_by?.users ?? 0) + (w.held_by?.roles ?? 0) === 1 ? "holds" : "hold"} <span className="ae-mono">{w.name}</span></p>}
-      {show === "detail" ? <Detail name={w.name} user={user} pane="diagram" />
+      {show === "detail" ? <><Detail name={w.name} user={user} pane="diagram" /><p className="ae-answer"><span className="ae-mono">{w.name}</span> {user ? "reaches" : "opens"} {plural(tb.read, "table or view", "tables and views")}</p>{figs}</>
         : ROLE_PARTS.includes(show) ? <Detail name={w.name} user={user} pane={show} /> : null}
       {show === "activity" && <ActivityTab what={user ? "user" : "role"} name={w.name} />}
       {show === "history" && <ChangeFeed subject={w.id} />}
@@ -175,14 +184,7 @@ function Body({ d }: { d: AccessPage }) {
         <span className="ae-mono">{w.name}</span> {!tb.read ? "reads no tables or views" : user ? <>can change {tb.change.toLocaleString("en-US")} of {plural(tb.read, "table or view", "tables and views")}{tb.own > 0 && <>, owns {tb.own.toLocaleString("en-US")}</>}{tb.clear > 0 && <>, {tb.clear === tb.read ? "all" : tb.clear.toLocaleString("en-US")} with sensitive columns in clear</>}</> : <>opens {plural(tb.read, "table or view", "tables and views")}{tb.clear > 0 && <>, {tb.clear.toLocaleString("en-US")} of them sensitive</>}</>}
         {n.admin > 0 && <>, <b className="ae-bad">{n.admin} through an admin role</b></>}
       </p>}
-      <Figs items={[
-        user ? { key: "read", n: tb.read.toLocaleString("en-US"), text: `tables and views they can read${all > tb.read ? `, and ${all - tb.read} other ${all - tb.read === 1 ? "object" : "objects"}` : ""}`, note: nm.schemas.join(", ") || undefined }
-          : { key: "held", n: (w.held_by?.users ?? 0).toLocaleString("en-US"), text: w.held_by?.users === 1 ? "person holds it" : "people hold it", note: w.held_by?.roles ? `and ${plural(w.held_by.roles, "role")}` : undefined, go: () => c.set({ show: "held" }) },
-        user ? { key: "sens", n: tagsOff ? "not read" : tb.clear.toLocaleString("en-US"), text: "with sensitive columns seen in clear", bad: !tagsOff && tb.clear > 0, note: tagsOff ? `${tagsOff.title}: sensitivity unknown` : nm.clear.join(", ") || undefined }
-          : { key: "chg", n: tb.change.toLocaleString("en-US"), text: tb.change === 1 ? "object it can change" : "objects it can change", note: nm.change.join(", ") || undefined },
-        d.risks?.length ? { key: "risk", n: d.risks.reduce((t, r) => t + r.n, 0).toLocaleString("en-US"), text: "risks to look at", bad: d.risks.some((r) => r.severity === "bad"), note: d.risks[0].text }
-          : { key: "run", n: d.runs_total.toLocaleString("en-US"), text: "things to run", go: () => c.set({ show: "runs" }) },
-      ]} />
+      {figs}
       {n.read > 0 && objects_}
       {d.runs_total + d.powers_total > 0 && <Card title="Can also run">
         <ul className="ae-runlist">{[...powers.slice(0, 2), ...runs.slice(0, 5)].map((x) => <li key={x.object + x.privileges.join()}><span><b className="ae-mono">{x.category === "account" ? x.privileges.join(", ") : x.object.split(".").pop()}</b> <span className={x.category === "account" ? "ae-bad" : "ae-muted"}>{x.category === "account" ? (x.object === "ACCOUNT" ? "account power" : `on ${x.object}`) : `${x.type.toLowerCase()}${x.level === "own" ? " (owns)" : ""}`}</span></span><span className="ae-mono ae-muted">{x.holder === "PUBLIC" ? "PUBLIC (everyone)" : x.holder}</span></li>)}</ul>

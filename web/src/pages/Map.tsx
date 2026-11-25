@@ -55,7 +55,7 @@ export function GraphPageView() {
       {mode !== "object" && !none && <Fold label="Filter" on={!!(c.params.schema || c.params.otype || c.params.access)}><div className="ae-controls"><Filters trace={tab === "trace"} /></div></Fold>}
       {none ? <PickFirst what={mode === "user" ? "a person" : mode === "role" ? "a role" : "a table"} /> : <>
         {tab === "diagram" && <OldDiagram mode={mode} name={shown} />}
-        {tab === "trace" && <Load s={s}>{(d) => <><p className="ae-answer">{d.graph.header.replace(/\.$/, "")}{mode !== "object" && !c.params.schema && !c.params.otype && !c.params.access && <span className="ae-muted"> (nothing left out)</span>}</p><Trace d={d} /></>}</Load>}
+        {tab === "trace" && <Load s={s}>{(d) => <><Trace d={d} /><p className="ae-answer">{d.graph.header.replace(/\.$/, "")}{mode !== "object" && !c.params.schema && !c.params.otype && !c.params.access && <span className="ae-muted"> (nothing left out)</span>}</p></>}</Load>}
       </>}
     </>
   );
@@ -90,7 +90,7 @@ function OldDiagram({ mode, name }: { mode: string; name: string }) {
     const short = mode === "object" ? name.split(".").pop() : name; // a login can be an email: only objects are shortened
     return mode === "object" ? `${w(people, "person", "people")} come in to ${short} through ${w(roles, "role")}` : mode === "role" ? `${short} opens ${w(objs, "object")}${people ? ` for ${w(people, "person", "people")}` : ""}` : `${short} reaches ${w(objs, "object")} through ${w(roles, "role")}`;
   };
-  return <Load s={g}>{(x) => (x ? <><p className="ae-answer">{x.focus ? `What passes through ${x.focus.label}` : said(x)}</p><GraphCard leans={mode !== "object"} g={x} title={mode === "object" ? "Every way in" : mode === "role" ? "Who holds it, what it opens" : "Person to roles to objects"} /></> : <EmptyState title="Nothing to draw" />)}</Load>;
+  return <Load s={g}>{(x) => (x ? <><GraphCard leans={mode !== "object"} g={x} title={mode === "object" ? "Every way in" : mode === "role" ? "Who holds it, what it opens" : "Person to roles to objects"} /><p className="ae-answer">{x.focus ? `What passes through ${x.focus.label}` : said(x)}</p></> : <EmptyState title="Nothing to draw" />)}</Load>;
 }
 
 function Trace({ d }: { d: MapPage }) {

@@ -1227,7 +1227,7 @@ export interface WhoPage {
   used: { days: number; total: number; users: number; rows: UsedRow[] } | null; // used it, no grant reaches them; never in people or counts; null: not read
   roles: WhoRole[];
   groups: { level: ObjLevel; privileges: string[]; route: string[]; blocked?: string | null; names: string[]; off: number; queries: number }[];
-  counts: { levels: Record<ObjLevel, number>; blocked: number; people: number; roles: number; disabled: number; dormant: number; states: Partial<Record<WhoState, number>> };
+  counts: { levels: Record<ObjLevel, number>; blocked: number; people: number; admin_only: number; roles: number; disabled: number; dormant: number; states: Partial<Record<WhoState, number>> };
   columns: WhoColumn[];
   default_user: string | null;
   refs: Refs;

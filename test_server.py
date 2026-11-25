@@ -2013,6 +2013,7 @@ def test_answer_first():  # each screen's answer: the grant on Can they?, one re
     o = "SALES.CORE.TBL_CUSTOMER"
     w, d = js(f"/api/who?name={o}"), js(f"/api/object?name={o}")
     assert w["counts"]["people"] == sum(d["kpis"][x] for x in ("people", "disabled", "service", "admin")) == d["matrix"]["total"]
+    assert w["counts"]["admin_only"] == d["kpis"]["admin"]  # the graph draws the others
     assert sum(w["counts"]["states"].values()) == w["counts"]["people"]
     for st, n in w["counts"]["states"].items():
         f = js(f"/api/who?name={o}&st={st}")

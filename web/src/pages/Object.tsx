@@ -60,7 +60,7 @@ function Who({ d }: { d: WhoPage }) {
   // old links: show=who is People by level; part=users|who (People) and sens|sees (Columns) without a show
   const show = sh === "who" || sh === "people" ? "people" : sh === "columns" && cols ? "columns"
     : (sh === "history" || sh === "activity") && !admin ? sh
-    : !sh && cols && (pp === "sens" || pp === "sees") ? "columns" : sh === "detail" || admin ? "detail" : "people"; // who first
+    : !sh && cols && (pp === "sens" || pp === "sees") ? "columns" : !sh && !admin && (pp === "who" || pp === "users") ? "people" : "detail"; // the graph first
   const part = show === "people" ? (!admin && (pp === "who" || pp === "users") ? pp : "level") : show === "columns" ? (pp === "sees" ? "sees" : "sens") : "summary";
   const save = () => saveCsv("who.csv", { view: c.view, builtin: c.params.builtin, ...(admin ? { preset: "admin" } : { name: o.id }) }, `${o.id ?? "admin_roles"}_who.csv`);
   const tags = [
@@ -80,17 +80,15 @@ function Who({ d }: { d: WhoPage }) {
     <>
       <BuiltinNote b={d.builtin} />
       {d.app && <AppNote app={d.app} />}
-      <Tabs nav active={show} onChange={(k) => c.set({ show: k === (admin ? "detail" : "people") ? null : k, part: null })} tabs={[
-        ...(admin ? [{ key: "detail", label: "Admin holders table" }] : []),
+      <Tabs nav active={show} onChange={(k) => c.set({ show: k === "detail" ? null : k, part: null })} tabs={[
+        { key: "detail", label: admin ? "Admin holders table" : "Graph & trace" },
         { key: "people", label: "Who", count: d.counts.people },
         ...(cols ? [{ key: "columns", label: "Columns" }] : []),
-        ...(admin ? [] : [{ key: "detail", label: "Graph & trace" }]),
         ...(admin ? [] : [{ key: "activity", label: "Activity" }, { key: "history", label: "History" }]),
       ]} />
-      {show === "detail" && (admin ? <AdminDetail /> : <Detail id={o.id ?? ""} part="summary" />)}
+      {show === "detail" && (admin ? <AdminDetail /> : <><Detail id={o.id ?? ""} part="summary" /><List d={d} only="trace" /><Answer d={d} /></>)}
       {show === "people" && <>
-        {!admin && <Answer d={d} />}
-        {part === "level" ? <><List d={d} /><For d={d} /><UsedNoGrant d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
+        {part === "level" ? <><List d={d} only="trace" />{!admin && <Answer d={d} />}<List d={d} only="table" /><For d={d} /><UsedNoGrant d={d} /></> : <Detail id={o.id ?? ""} part={part} />}
         {!admin && lvl2([{ key: "level", label: "Who and how" }, { key: "who", label: "By path" }, { key: "users", label: "Users × privileges" }], "level")}
       </>}
       {show === "columns" && <>
@@ -124,16 +122,18 @@ const some = (xs: string[], n: number, total: number) => xs.slice(0, n).join(", 
 function Answer({ d }: { d: WhoPage }) {
   const n = d.counts, lv = (k: (typeof ORDER)[number]) => n.levels[k] ?? 0;
   if (!n.people) return null;
+  const alone = n.admin_only, drawn = n.people - alone;
   const idle = n.disabled + n.dormant;
   const names = (ls: (typeof ORDER)[number][]) => { const xs = d.people.filter((x) => (ls as string[]).includes(x.level) && !x.blocked), more = ls.reduce((t, k) => t + lv(k), 0) - 2; return xs.slice(0, 2).map((x) => `${x.name} ${x.level === "own" ? "owns" : "changes"}`).join(", ") + (xs.length > 1 && more > 0 ? ` and ${more} more` : ""); };
   return (
     <>
     <p className="ae-answer">
-      {plural(n.people, "user")} can reach <span className="ae-mono">{d.object.name}</span>{lv("admin") > 0 && <>, {lv("admin")} of them only as {lv("admin") === 1 ? "admin" : "admins"}</>}
+      {plural(drawn, "user")} {drawn === 1 ? "comes" : "come"} in to <span className="ae-mono">{d.object.name}</span>{alone > 0 && <>, {alone.toLocaleString("en-US")} more only through an admin role (not drawn)</>}
     </p>
     <Figs items={[
-      { key: "all", n: n.people.toLocaleString("en-US"), text: n.people === 1 ? "user can reach it" : "users can reach it", note: lv("admin") ? `${lv("admin").toLocaleString("en-US")} through an admin role` : undefined },
-      { key: "change", n: (lv("own") + lv("change")).toLocaleString("en-US"), text: "can change or own it", note: names(["own", "change"]) || (lv("admin") ? "only admins" : "nobody") },
+      { key: "all", n: drawn.toLocaleString("en-US"), text: drawn === 1 ? "user comes in" : "users come in", note: lv("admin") > alone ? `${(lv("admin") - alone).toLocaleString("en-US")} of them also through an admin role` : undefined },
+      ...(alone ? [{ key: "adm", n: alone.toLocaleString("en-US"), text: "more only through an admin role", bad: true }] : []),
+      { key: "change", n: (lv("own") + lv("change")).toLocaleString("en-US"), text: lv("admin") ? "can change or own it, admins aside" : "can change or own it", note: names(["own", "change"]) || (lv("admin") ? "only admins" : "nobody") },
       { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: some(d.people.filter((x) => x.status === "disabled" || (off(x) && !x.service)).map((x) => x.name), 3, idle) || undefined },
     ]} />
     </>
@@ -207,7 +207,8 @@ function UsedNoGrant({ d }: { d: WhoPage }) {
   );
 }
 
-function List({ d }: { d: WhoPage }) {
+/** The trace (pick a person, see the route) and the table of everyone; the tabs show the numbers between them. */
+function List({ d, only }: { d: WhoPage; only: "trace" | "table" }) {
   const c = useApp();
   const o = useOpen(d.refs);
   const n = d.counts;
@@ -220,7 +221,7 @@ function List({ d }: { d: WhoPage }) {
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
   const hit = (name: string) => !q || name.toLowerCase().includes(q.toLowerCase());
   const rows: WhoEntry[] = roles ? d.roles : d.people;
-  const sel = rows.find((x) => x.name === c.params.sel) ?? rows[0];
+  const sel = rows.find((x) => x.name === c.params.sel) ?? rows.find((x) => x.level !== "admin" && !x.blocked) ?? rows[0]; // first a route the graph draws
   const pick = (name: string) => c.set({ sel: name });
   const people = rows as WhoPerson[];
   const cols = d.columns.length > 0;
@@ -231,20 +232,23 @@ function List({ d }: { d: WhoPage }) {
   const login = (x: WhoPerson) => { const g = groupOf(x); return g ? (g.off ? `${g.off} of ${g.names.length} inactive` : "all active") : `${STATUS[x.status].toLowerCase()}${x.status === "never" ? "" : `, ${ago(x)}`}`; };
   const used = (x: WhoPerson) => (x.queries == null ? null : groupOf(x)?.queries ?? x.queries);
   const clear = (x: WhoPerson) => x.columns.filter((k) => k.state !== "masked").map((k) => k.column);
-  return (
-    <>
+  const list2 = [...list.filter((x) => x.level !== "admin"), ...list.filter((x) => x.level === "admin")];
+  if (only === "trace") return (
       <Card title={roles ? "Pick a role to see how it gets in" : "Pick a person to see how they get in"}>
         <div className="ae-who2">
           <ul className="ae-who2-list" aria-label={roles ? "Roles" : "People"}>
-            {list.slice(0, 40).map((x) => (
+            {list2.slice(0, 40).map((x) => (
               <li key={x.name}><button type="button" aria-pressed={sel?.name === x.name} className={sel?.name === x.name ? "on" : ""} onClick={() => pick(x.name)}>
                 <span className="ae-mono">{label(x)}</span><span className={`ae-lvl ae-lvl-${x.level}`}>{TITLE[x.level]}</span></button></li>
             ))}
-            {list.length > 40 && <li className="ae-muted">+{(list.length - 40).toLocaleString("en-US")} more in the table below</li>}
+            {list.length > 40 && <li className="ae-muted">+{(list.length - 40).toLocaleString("en-US")} more on the Who tab</li>}
           </ul>
           {sel ? <How e={sel} d={d} role={roles} onOpen={o.open} /> : <p className="ae-muted">Nobody reaches it.</p>}
         </div>
       </Card>
+  );
+  return (
+    <>
       <Card title={roles ? `All ${n.roles.toLocaleString("en-US")} roles, side by side` : `All ${n.people.toLocaleString("en-US")}, side by side`}>
         <Fold label="People or roles, status, search" on={roles || !!d.st || !!q || !!c.params.same}>
           <div className="ae-row">
@@ -406,7 +410,6 @@ export function ObjectDetail({ part }: { part: string }) {
         return (
           <>
             {part === "summary" && <>  {/* the counts, owner, admin reach and paths diagram; the other parts are tables */}
-              <p className="ae-answer">{(k.people + k.disabled + k.service).toLocaleString("en-US")} people and services come in to <span className="ae-mono">{d.object.name}</span> through {k.roles.toLocaleString("en-US")} {k.roles === 1 ? "role" : "roles"}</p>
               <CutBanner capped={d.capped} />
               <GraphCard g={d.graph} refs={d.refs} title="Every way in" />
               <Fold label="Owner, admin roles, filters" on={c.params.active === "1" || c.params.users === "1" || !!c.params.priv}>

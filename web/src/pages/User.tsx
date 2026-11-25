@@ -69,15 +69,15 @@ export function UserPage() {
           <>
             <Banners list={d.banners} />
             {u.disabled && <Banner tone="warn" title="Disabled user" lines={["This user cannot log in, but still holds the roles below."]} />}
+            <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.user.name} of="user" refs={d.refs} />
+            <Tabs nav active={part} onChange={(t) => { setPart(t); c.set({ otype: null, full: null }); }} tabs={parts} />
+            {part === "diagram" && <><GraphCard leans g={d.graph} refs={d.refs} /><CutBanner capped={d.capped} /></>}
             <KpiRow items={[
               { label: "Privileges", value: d.kpis.privileges, caption: `${d.kpis.objects} objects` },
               { label: "Roles", value: d.kpis.roles, caption: `${d.kpis.roles_direct} direct` },
               { label: "Sensitive objects", value: d.kpis.sensitive_known && !unread(c.meta, "tags") ? d.kpis.sensitive ?? 0 : c.view === "mine" ? "unknown" : "not read", tone: d.kpis.sensitive ? "warn" : null },
               { label: "Admin roles", value: d.kpis.admin_roles, tone: d.kpis.admin_roles ? "bad" : null, caption: `${d.kpis.account_privs} account privileges` },
             ]} />
-            <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.user.name} of="user" refs={d.refs} />
-            <Tabs nav active={part} onChange={(t) => { setPart(t); c.set({ otype: null, full: null }); }} tabs={parts} />
-            {part === "diagram" && <><GraphCard leans g={d.graph} refs={d.refs} /><CutBanner capped={d.capped} /></>}
             {part === "privs" && privs}
             {part === "multi" && multi}
             {part === "sees" && <DataViews s={d.can_read} path="user" title="What they see when they read" />}

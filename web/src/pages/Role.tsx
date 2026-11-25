@@ -116,6 +116,9 @@ export function RolePageView() {
         <>
           {!pane && <Risks list={d.risks} />}{/* inside: the Access page's Overview has the strip */}
           <Banners list={d.banners} />
+          {!pane && <Tabs nav active={part} onChange={setPart} tabs={tabs} />}
+          {!tabs.some((t) => t.key === part) && <EmptyState title="Nothing here">Clear the filters above, or open another tab.</EmptyState>}
+          {part === "diagram" && <GraphCard leans g={d.graph} refs={d.refs} />}
           {part === "diagram" && !pane && <KpiRow items={d.scope_kpis ? [
             { label: "Effective privileges", value: d.scope_kpis.effective, caption: `in scope · ${d.scope_kpis.objects} objects, ${d.scope_kpis.direct} direct` },
             { label: "Users", value: d.scope_kpis.holders, caption: "in scope" },
@@ -125,9 +128,6 @@ export function RolePageView() {
             { label: "Users", value: d.kpis.users, caption: `${d.kpis.users_direct} direct · ${d.kpis.above} held by roles · farthest ${d.kpis.farthest}` },
             { label: "Sensitive objects", value: d.kpis.sensitive, tone: d.kpis.sensitive ? "warn" : null },
           ]} />}
-          {!pane && <Tabs nav active={part} onChange={setPart} tabs={tabs} />}
-          {!tabs.some((t) => t.key === part) && <EmptyState title="Nothing here">Clear the filters above, or open another tab.</EmptyState>}
-          {part === "diagram" && <GraphCard leans g={d.graph} refs={d.refs} />}
           {part === "rw" && d.readonly_writes.length > 0 && (
             <Card title="Read-only role that can write" sub="Named like a reader, yet holds a write privilege">
               <DataTable csv={`${d.role.name}_readonly_writes.csv`} rows={d.readonly_writes} rowTone={() => "bad"}

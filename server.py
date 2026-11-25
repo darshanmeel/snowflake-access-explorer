@@ -2541,7 +2541,7 @@ def who_all(p, view):
 
 def who_data(o, view):
     if o is None:
-        w, t, cols, seen = a.admin_access(), None, [], {}
+        w, t, cols, seen, only = a.admin_access(), None, [], {}, 0
         head = dict(id=None, preset="admin", type="Admin roles", database=None, schema=None, name="Admin roles",
                     sensitive=False, tags=[], columns=0, masking=[], row_policies=[], owners=[], owner_note="")
     else:
@@ -2551,6 +2551,7 @@ def who_data(o, view):
         cols, seen = a.column_view(o, [x["name"] for x in w["people"] if x["level"] in ("read", "change", "own", "admin")]) \
             if data else ([], {})
         ps, s = a.policies_of(o), a.object_stats(o, t)
+        only = s["admin_users"]  # no other way in: the graph of the paths does not draw them
         db, sc, nm = a.split_name(o, t)
         head = dict(id=o, preset=None, type=t, database=db, schema=sc, name=a.future_label(o, t) or nm,
                     sensitive=o in S["sens"], tags=[a.tag_label(tg, v) for c, tg, v, _ in a.tags_of(o) if not c],
@@ -2582,7 +2583,7 @@ def who_data(o, view):
                 used=a.used_by(o, {x["name"] for x in w["people"]}) if o and view == "shared" and a.act_state()[0] else None,
                 app=a.app_exposure(o) if o and a.kinds.get(o) == "STREAMLIT" else None, columns=cols,
                 counts=dict(levels=levels, blocked=sum(bool(x["blocked"]) for x in w["people"]),
-                            people=len(w["people"]), roles=len(w["roles"]),
+                            people=len(w["people"]), roles=len(w["roles"]), admin_only=only,
                             states=dict(Counter(x["state"] for x in w["people"])),
                             disabled=sum(x["status"] == "disabled" for x in w["people"]),
                             dormant=sum(x["status"] in ("dormant", "never") and not a.is_service(x["name"])

@@ -164,7 +164,7 @@ function WatchRow({ w }: { w: Watch }) {
   const r = answer != null ? recheck(w, run, answer) : null;
   useEffect(() => { if (r?.next) watches.set(watches.get().map((x) => (x.id === w.id ? r.next! : x))); }, [answer, run]);
   const open = () => (can ? c.nav("check", { name: w.user ?? "", obj: w.object ?? "", do: "read" })
-    : c.nav("object", w.kind === "admins" ? { preset: "admin" } : { name: w.object ?? "", show: "who" }));
+    : c.nav("object", w.kind === "admins" ? { preset: "admin" } : { name: w.object ?? "" }));
   return (
     <tr className={r?.tag === "Changed" ? "ae-tone-warn" : undefined}>
       <td><button type="button" className="ae-link" onClick={open}>{question(w)}</button>{w.notify && <span className="ae-muted"> notify {w.notify}</span>}</td>
