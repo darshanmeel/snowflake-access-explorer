@@ -6694,9 +6694,10 @@ def activity_graph(name, what, rows):
     return down_graph(name, rs, user=what == "user"), gone
 
 
-def user_reads(u):
-    """Objects user u reads through any role they hold (PUBLIC too)."""
-    return cached(("user_reads", u), lambda: set().union(*(reads([u, r]) for r in roles_of.get(u, []) + ["PUBLIC"])))
+def user_sens(u):
+    """Sensitive objects user u reads through any role they hold (PUBLIC too)."""
+    s = sens_roles()
+    return cached(("user_sens", u), lambda: set().union(*(s.get(r, ()) for r in roles_of.get(u, []) + ["PUBLIC"])))
 
 
 def app_exposure(app):
@@ -6707,10 +6708,9 @@ def app_exposure(app):
     owner = sorted(r for r, pv, _ in on.get(app, []) if pv == "OWNERSHIP")
     if not owner:
         return None
-    s = sensitive()
-    seen = {o: sensitive_cols(o) for r in owner for o in reads([r]) if o in s}
+    seen = {o: sensitive_cols(o) for r in owner for o in sens_roles().get(r, ())}
     holders = {r: sorted(x for (x, u) in up_rows(r) if u) for r, pv, _ in on.get(app, []) if pv == "USAGE"}
-    exposed = {u: sorted(set(seen) - user_reads(u)) for us in holders.values() for u in us}
+    exposed = {u: sorted(seen.keys() - user_sens(u)) for us in holders.values() for u in us}
     return dict(owner=owner, sensitive=dict(sorted(seen.items())), holders=holders,
                 exposed={u: v for u, v in sorted(exposed.items()) if v})
 
