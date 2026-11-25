@@ -13,13 +13,14 @@ import access as a
 
 END = datetime(2026, 11, 2, 7, 0)
 # the profile at scale 1: (low, high) buckets -> count
-USERS, SERVICE, WITH_ROLES, DISABLED_ROLES, DISABLED_LOGIN = 6017, 8, 3691, 47, 81
+USERS, SERVICE, WITH_ROLES, DISABLED_ROLES, DISABLED_LOGIN = 6030, 8, 3724, 47, 81
+SNOWFLAKE_SERVICE, TYPED = 77, 1010  # users Snowflake made for its services; persons with a TYPE (the rest have none)
 STATUS = dict(never=3083, disabled=2215, dormant=199)  # the other persons are active
 LOGIN_ACTIVE = {(0, 7): 232, (8, 30): 181, (31, 89): 128}
-LOGIN_OLD = {(91, 180): 90, (181, 365): 156, (366, 900): 17}
+LOGIN_OLD = {(91, 180): 90, (181, 365): 156, (366, 386): 17}
 ROLES_PER_USER = {(1, 1): 3448, (2, 2): 157, (3, 4): 57, (5, 9): 29}
 USERS_PER_ROLE = {(1, 1): 24, (2, 2): 7, (3, 4): 5, (5, 9): 9, (10, 19): 6, (20, 49): 6, (50, 99): 1, (100, 499): 2}
-ADMINS = dict(ACCOUNTADMIN=6, ORGADMIN=3, SECURITYADMIN=5, SYSADMIN=14)
+ADMINS = dict(ACCOUNTADMIN=6, ORGADMIN=3, SECURITYADMIN=6, SYSADMIN=15)
 # the profile splits names on dots, so a user named like first.last@domain counts as a "schema" with one object and
 # its first part as a "database": the 1-49 database buckets and the 1-object schemas are user names (NAME_SHARE)
 BIG_DBS, MANAGED_DBS = 108, 100
@@ -29,21 +30,24 @@ MID_DBS = {(50, 99): 9, (100, 499): 18, (500, 999): 12}
 NAME_SHARE = {(1, 1): 1933, (2, 2): 324, (3, 4): 255, (5, 9): 164, (10, 19): 66, (20, 49): 28}  # persons per first name
 OBJECTS, SCHEMA_OBJECTS, FUTURE_SCHEMAS, MANAGED, NO_WRITE, EXECUTE = 198913, 2718, 2369, 1075, 3, 762
 KINDS = {"TABLE": 50415, "PROCEDURE": 47444, "VIEW": 31180, "EXTERNAL TABLE": 26463, "STAGE": 4618, "FILE FORMAT": 545,
-         "FUNCTION": 500, "DYNAMIC_TABLE": 540, "MATERIALIZED_VIEW": 450, "SECRET": 250, "EVENT_TABLE": 200,
-         "ICEBERG_TABLE": 200, "TASK": 120}
+         "FUNCTION": 500, "DYNAMIC TABLE": 540, "MATERIALIZED VIEW": 450, "SECRET": 250, "EVENT TABLE": 200,
+         "ICEBERG TABLE": 200, "TASK": 120,
+         "ROW ACCESS POLICY": 2369, "MASKING POLICY": 832, "NOTEBOOK": 118, "SEMANTIC VIEW": 25}
 PREFIX = {"TABLE": "TBL", "PROCEDURE": "SP", "VIEW": "VW", "EXTERNAL TABLE": "EXT", "STAGE": "STG", "FILE FORMAT": "FF",
-          "FUNCTION": "FN", "DYNAMIC_TABLE": "DT", "MATERIALIZED_VIEW": "MV", "SECRET": "SEC", "EVENT_TABLE": "EVT",
-          "ICEBERG_TABLE": "ICE", "TASK": "TSK", "STREAM": "STR", "STREAMLIT": "ST"}
-READABLE = {"TABLE", "VIEW", "EXTERNAL TABLE", "DYNAMIC_TABLE", "MATERIALIZED_VIEW", "EVENT_TABLE", "ICEBERG_TABLE"}
-FUTURE = ["TABLE", "VIEW", "EXTERNAL_TABLE", "FILE_FORMAT", "FUNCTION", "MATERIALIZED_VIEW", "PROCEDURE", "SEQUENCE",
-          "STAGE", "STREAM", "TASK"]  # plus DYNAMIC_TABLE in 1671 of 2369 schemas
+          "FUNCTION": "FN", "DYNAMIC TABLE": "DT", "MATERIALIZED VIEW": "MV", "SECRET": "SEC", "EVENT TABLE": "EVT",
+          "ICEBERG TABLE": "ICE", "TASK": "TSK", "STREAM": "STR", "STREAMLIT": "ST", "ROW ACCESS POLICY": "RAP",
+          "MASKING POLICY": "MP", "NOTEBOOK": "NB", "SEMANTIC VIEW": "SV"}
+READABLE = {"TABLE", "VIEW", "EXTERNAL TABLE", "DYNAMIC TABLE", "MATERIALIZED VIEW", "EVENT TABLE", "ICEBERG TABLE"}
+FUTURE = ["TABLE", "VIEW", "EXTERNAL TABLE", "FILE FORMAT", "FUNCTION", "MATERIALIZED VIEW", "PROCEDURE", "SEQUENCE",
+          "STAGE", "STREAM", "TASK"]  # plus DYNAMIC TABLE in 1671 of 2369 schemas
 FUNCS = dict(READER=19, ENGINEER=18, STEWARD=18, USAGE=15, VIEWER=12, G=6, CO=5)  # functional roles by suffix
-GROUPS, LEGACY, DB_ROLES, WAREHOUSES, INTEGRATIONS, APPS = 16, 6, 35, 60, 70, 5
+GROUPS, LEGACY, DB_ROLES, WAREHOUSES, INTEGRATIONS, APPS = 16, 6, 203, 62, 97, 19
+DEPLOY_OWNS = .6  # share of schemas whose objects the build's functional role owns itself
 OWNER_UPDATES, OWNER_TRUNCATES, SENS_SCHEMAS, SENS_OBJECTS, SENS_COLUMNS = 17058, 10000, 40, 374, 2068
 TAG_SHAPES = {"GOVERNANCE.TAGS.DATA_DOMAIN_CODE": 5555, "GOV_TAG_HUB_DB.TAGS.DATA_OWNER_TEAM": 5552,
               "GOV_DB.TAGS.RETENTION_CLASS_CODE": 2259, "GOV_TAG_HUB_DB_2.TAGS.MASKING_GROUP_KEY": 2238,
               "GOV_TAG_DB.TAGS.SOURCE_SYSTEM_CODE": 2203, "GOV_DB2_TAGS.TAGS.REGION_ACCESS_KEY": 1111}
-SCHEMA_TAGS, MASKED, ROW_POLICIES = 5, 16947, 8724
+SCHEMA_TAGS, MASKED, ROW_POLICIES, TAGGED, MASKS, ROW_NAMES = 5, 16943, 8396, 650, 171, 1651  # tagged objects, policy names
 OWNER_READS = {(1, 1): 296, (2, 2): 568, (3, 4): 203, (5, 9): 49}  # READ roles of other schemas an owner holds
 # account privileges -> holders (ACCOUNTADMIN first); PUBLIC holds the artifact ones Snowflake grants it
 ACCOUNT = {"VIEW LINEAGE": 7, "CREATE DATABASE": 6, "MANAGE USER SUPPORT CASES": 5, "USE AI FUNCTIONS": 4,
@@ -86,7 +90,7 @@ DDL = {"CREATE_VIEW", "DESCRIBE", "EXTERNAL_TABLE_REFRESH", "CREATE", "CREATE_TA
 PAIR_DAYS = [1] * 10 + [2, 2, 3, 4, 6, 10, 20, 40]  # days a user uses one object
 CLIENTS = {"Snowflake UI": 30, "JDBC": 20, "PythonConnector": 15, "ODBC": 10, "Go": 5, "JavaScript": 5, ".NET": 4,
            "SnowSQL": 4, "Snowflake CLI": 3, "Spark": 4}
-USE_ROWS, USE_USERS, USE_WEEKS, USE_WRITE = 244405, 914, 27, 0.27
+USE_ROWS, USE_USERS, USE_WEEKS, USE_WRITE = 311104, 924, 27, 0.27
 TEAMS = ["SALES", "FINANCE", "HR", "MARKETING", "RISK", "SUPPLY", "OPS", "PRODUCT", "CLAIMS", "PRICING", "FRAUD",
          "LOGISTICS", "BILLING", "CUSTOMER", "PAYMENTS", "TREASURY", "AUDIT", "LEGAL", "DATA", "PLATFORM", "QUALITY",
          "RESEARCH", "CREDIT", "SERVICE"]
@@ -96,6 +100,23 @@ PII = [("EMAIL", "EMAIL", "IDENTIFIER"), ("PHONE", "PHONE_NUMBER", "IDENTIFIER")
        "QUASI_IDENTIFIER"), ("LAST_NAME", "NAME", "IDENTIFIER"), ("POSTCODE", "POSTAL_CODE", "QUASI_IDENTIFIER"),
        ("IBAN", "BANK_ACCOUNT", "SENSITIVE"), ("NATIONAL_ID", "NATIONAL_IDENTIFIER", "IDENTIFIER"),
        ("CLIENT_IP", "IP_ADDRESS", "QUASI_IDENTIFIER"), ("SALARY", "SALARY", "SENSITIVE")]
+
+
+ENVS, REGIONS = ["DEV", "TEST", "ACC", "PROD"], ["EMEA", "NORDICS", "AMERICAS", "APAC", "GLOBAL", "CENTRAL_EUROPE"]
+DOMAINS = ["SALES", "SUPPLY_CHAIN_PLANNING", "CUSTOMER_SERVICE", "PRODUCT_INFORMATION", "FINANCIAL_CONTROLLING", "ORDER_MANAGEMENT",
+           "WORKFORCE", "MARKETING_CAMPAIGNS", "STORE_OPERATIONS", "LOGISTICS_TRACKING"]
+WORDS = ["CUSTOMER", "ORDER", "LINE", "SNAPSHOT", "DAILY", "STAGING", "HISTORY", "CURRENT", "INVOICE", "SHIPMENT", "PLAN", "FORECAST",
+         "PRODUCT", "HIERARCHY", "STORE", "EVENT", "DELTA", "FULL_LOAD", "MAPPING", "REFERENCE"]
+
+
+def spell(rng, name):
+    """One name in a thousand was made in quotes: lower case, with a space."""
+    return name.lower().replace("_", " ", 1) if rng.random() < .001 else name
+
+
+def long_name(rng, i):
+    """An object's words: 1 to 5 of them, now and then a very long name (94 characters on the account)."""
+    return "_".join(rng.choice(WORDS) for _ in range(rng.choices([1, 2, 3, 4, 10], [30, 35, 24, 10, 1])[0]))
 
 
 def spread(rng, hist, n):
@@ -126,7 +147,8 @@ def twin(scale=1.0, seed=7):
     pv = []  # (role, privilege, granted on, object, future)
     links, dbr = [], []  # (child, parent): role links, database role links
     # ---- databases, schemas, objects ----
-    dbs = [f"DB_{i:04}" for i in range(1, n(BIG_DBS) + n(sum(MID_DBS.values())) + 1)]
+    every_db = [f"{e}_{g}_{m}" for m in DOMAINS for g in REGIONS for e in ENVS]  # 19 to 41 characters, as on the account
+    dbs = sorted(rng.sample(every_db, n(BIG_DBS) + n(sum(MID_DBS.values()))), key=lambda d: rng.random())
     big, mid = dbs[:n(BIG_DBS)], dbs[n(BIG_DBS):]
     managed_dbs = big[:n(MANAGED_DBS)]
     users_n, whs_n = n(USERS), n(WAREHOUSES)
@@ -159,7 +181,7 @@ def twin(scale=1.0, seed=7):
     mset = {(x[0], x[1]) for x in managed}
     fut = [x for x in managed if x[2] >= 11] + [x for x in named if (x[0], x[1]) not in mset and x[2] >= 11]
     # future grants per schema: they count as its objects, so a schema of 11 may hold only them
-    fut = {(x[0], x[1]): FUTURE + ["DYNAMIC_TABLE"] * (x[2] > 11 and rng.random() < 1671 / 2369)
+    fut = {(x[0], x[1]): FUTURE + ["DYNAMIC TABLE"] * (x[2] > 11 and rng.random() < 1671 / 2369)
            for x in fut[:n(FUTURE_SCHEMAS)]}
     rest = [(x[0], x[1]) for x in named if (x[0], x[1]) not in mset and x[2] >= 2]
     with_schema = mset | set(rng.sample(rest, min(len(rest), max(0, n(SCHEMA_OBJECTS) - len(mset)))))
@@ -167,7 +189,7 @@ def twin(scale=1.0, seed=7):
     schemas, by = [], {}  # (db, schema, [(object, kind)])
     for d, sc, x in named:
         m = x - len(fut[(d, sc)]) if (d, sc) in fut else x  # its own objects
-        objs = [(f"{d}.{sc}.{PREFIX[k]}_{i:04}", k) for i, k in enumerate(rng.choices(kinds, weights, k=m), 1)]
+        objs = [(f"{d}.{sc}.{spell(rng, f'{PREFIX[k]}_{long_name(rng, i)}_{i:04}')}", k) for i, k in enumerate(rng.choices(kinds, weights, k=m), 1)]
         schemas.append((d, sc, objs))
         by[(d, sc)] = objs
     managed = [(d, sc, by[(d, sc)]) for d, sc, _ in managed]
@@ -182,6 +204,7 @@ def twin(scale=1.0, seed=7):
     sens += [next(o for o, k in x[2] if k in ("TABLE", "VIEW")) for x in sens_schemas]  # one at least in each
     sens = list(dict.fromkeys(sens))
     sset = {(x[0], x[1]) for x in sens_schemas}
+    staff = "AAD_GRP_ALL_STAFF"  # one group nearly everybody is in
     groups = [f"AAD_GRP_{TEAMS[i % len(TEAMS)]}_{i // len(TEAMS) + 1:02}" for i in range(n(GROUPS))]
     legacy = [f"LEGACY_{TEAMS[-1 - i % len(TEAMS)]}_ADMIN" for i in range(n(LEGACY))]
     db_owner = {d: f"{T}{d}_OWNER" if d in managed_dbs else rng.choice(["SYSADMIN"] + legacy) for d in dbs}
@@ -194,15 +217,16 @@ def twin(scale=1.0, seed=7):
     for d, sc, objs in schemas:
         key, name, c = (d, sc), f"{d}.{sc}", caps.get((d, sc), {})
         own = c.get("OWNER") or db_owner[d]
+        keeper = F + "DEPLOY" if key not in sset and rng.random() < DEPLOY_OWNS else own
         rd, wr, ex = c.get("READ"), c.get("WRITE"), c.get("EXECUTE")
         if key in with_schema:
             pv.append((own, "OWNERSHIP", "SCHEMA", name, False))
         pv += [(r, "USAGE", p, x, False) for r in (rd, wr, ex) if r for p, x in (("SCHEMA", name), ("DATABASE", d))]
         for o, k in objs:
-            owner_of[o] = own
-            pv.append((own, "OWNERSHIP", k, o, False))
+            owner_of[o] = keeper
+            pv.append((keeper, "OWNERSHIP", k, o, False))
             if rd and k in READABLE and (k != "EXTERNAL TABLE" or rng.random() < .12):  # most are read by their pipeline only
-                pv += [(r, "SELECT", k, o, False) for r in ((rd, wr, ex) if k == "DYNAMIC_TABLE" else (rd,)) if r]
+                pv += [(r, "SELECT", k, o, False) for r in ((rd, wr, ex) if k == "DYNAMIC TABLE" else (rd,)) if r]
             elif rd and k == "STAGE" and rng.random() < .2:
                 stages += 1
                 pv.append((rd, "READ" if stages <= n(41) else "USAGE", k, o, False))
@@ -225,7 +249,7 @@ def twin(scale=1.0, seed=7):
             pv += [(own, "OWNERSHIP", k, f"{name}.<{k}>", True) for k in fk]
             fut_sens += key in sset
             if rd and (key not in sset or fut_sens <= n(3)):  # rule 15 on a few
-                pv += [(rd, "SELECT", k, f"{name}.<{k}>", True) for k in ("TABLE", "VIEW", "EXTERNAL_TABLE", "MATERIALIZED_VIEW")]
+                pv += [(rd, "SELECT", k, f"{name}.<{k}>", True) for k in ("TABLE", "VIEW", "EXTERNAL TABLE", "MATERIALIZED VIEW")]
             if wr:
                 pv += [(wr, p, "TABLE", f"{name}.<TABLE>", True) for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")]
             if ex:
@@ -290,7 +314,8 @@ def twin(scale=1.0, seed=7):
         links += [(x, r) for x in pick(reads, 2, 6) + pick(execs, 0, 3)]
     for r in func["CO"]:
         links += [(x, r) for x in pick(func["G"] + func["READER"], 2, 5) + pick(reads, 0, 4)]
-    links += [(x, common) for x in pick(sens_reads, 2, 2) + pick(reads, 5, 12)]
+    base = F + "BASE_READER"
+    links += [(common, staff), (base, common)] + [(x, base) for x in pick(sens_reads, 2, 2) + pick(reads, 5, 12)]
     chain = [f"{F}ORG_L{i}" for i in range(1, 4 + n(4))]  # rule 14: users hold the top n(4) levels
     links += [(c, p) for p, c in zip(chain, chain[1:])] + [(writes[0], chain[-1])]
     for g in groups:
@@ -298,7 +323,7 @@ def twin(scale=1.0, seed=7):
                                        + func["ENGINEER"] + func["USAGE"], 1, 3)]
     links.append((reads[1 % len(reads)], groups[0]))  # rule 1: a technical role on a group role
     db_roles = []
-    for i in range(n(DB_ROLES)):
+    for i in range(n(5)):
         d = rng.choice([x[0] for x in schemas if x[0] not in managed_dbs] or dbs)
         r = f"{d}.{['ANALYTICS', 'INGEST', 'CURATED', 'EXPORT', 'CONSUMER', 'PUBLISHER'][i % 6]}{i // 6 or ''}"
         db_roles.append(r)
@@ -306,6 +331,10 @@ def twin(scale=1.0, seed=7):
         objs = [(o, k) for x in schemas if x[0] == d for o, k in x[2] if k in READABLE]
         pv += [(r, "SELECT", k, o, False) for o, k in objs[:30]]
         dbr += [(r, x) for x in pick(sum(func.values(), []) + groups, 1, 12)]
+    for i in range(n(5), n(DB_ROLES)):  # most: held by SYSADMIN only or nested, their own grants not read
+        r = f"{rng.choice(dbs)}.DBR_{WORDS[i % len(WORDS)]}_{i:03}"
+        dbr.append((r, "SYSADMIN" if i % 4 or not db_roles else rng.choice(db_roles)))
+        db_roles.append(r)
     # rules 20, 22, 29: a pipeline schema with a task, a stream on a sensitive table and a Streamlit app
     pipe = next((x for x in managed if "EXECUTE" in caps[(x[0], x[1])] and (x[0], x[1]) not in sset), managed[0])
     pc, pname = caps[(pipe[0], pipe[1])], f"{pipe[0]}.{pipe[1]}"
@@ -314,7 +343,7 @@ def twin(scale=1.0, seed=7):
     pv += [(pc["OWNER"], "OWNERSHIP", "TASK", task, False), (pc.get("EXECUTE", pc["READ"]), "OPERATE", "TASK", task, False),
            (pc["OWNER"], "OWNERSHIP", "STREAM", stream, False), (pc["READ"], "SELECT", "STREAM", stream, False)]
     appsch = next((x for x in sens_schemas if caps[(x[0], x[1])]["READ"] not in
-                   {c for c, p in links if p == common}), sens_schemas[-1])
+                   {c for c, p in links if p == base}), sens_schemas[-1])
     ac = caps[(appsch[0], appsch[1])]
     apps = [f"{appsch[0]}.{appsch[1]}.ST_9001"] + [f"{x[0]}.{x[1]}.ST_{9001 + i}" for i, x in enumerate(managed[1:n(APPS)], 1)]
     for i, app in enumerate(apps):
@@ -360,7 +389,7 @@ def twin(scale=1.0, seed=7):
     first = [f"N{k:04}" for k, c in enumerate(spread(rng, NAME_SHARE, n(sum(NAME_SHARE.values())))) for _ in range(c)]
     rng.shuffle(first)  # persons log in with mail-like names (first.last@domain): dots in user names
     persons = [f"{first[i % len(first)]}.{['ANALYST', 'ENGINEER', 'PERSON', 'CONSULTANT'][i % 4]}_{i // 4 + 1:04}@EXAMPLE.TEST"
-               for i in range(users_n - len(svc))]
+               for i in range(max(1, users_n - len(svc) - n(SNOWFLAKE_SERVICE)))]
     rng.shuffle(persons)
     k = {s: min(n(c), len(persons)) for s, c in STATUS.items()}
     disabled, never = persons[:k["disabled"]], persons[k["disabled"]:k["disabled"] + k["never"]]
@@ -376,12 +405,12 @@ def twin(scale=1.0, seed=7):
     for u in svc:
         days[u] = 0
     held = {}  # user -> [roles], in grant order
-    facing = [common] + groups + rng.sample(consumers[:-1], min(len(consumers) - 1, max(0, n(50) - 1 - len(groups))))  # + admin, chain, build and app roles: 61
+    facing = [staff] + groups + rng.sample(consumers[:-1], min(len(consumers) - 1, max(0, n(50) - 1 - len(groups))))  # + admin, chain, build and app roles: 61
     size = dict(zip(facing[1:], spread(rng, USERS_PER_ROLE, len(facing) - 1)))
     holders = [u for u in active + dormant + never if u not in set(active[:n(40)])]  # n(40) active ones build (DEPLOY)
     holders = holders[:max(1, n(WITH_ROLES) - n(DISABLED_ROLES) - n(40) - len(svc))]
     counts = spread(rng, ROLES_PER_USER, len(holders))
-    size[common] = max(1, sum(counts) - sum(size.values()))
+    size[staff] = max(1, sum(counts) - sum(size.values()))
     names = list(size)
     slots = [r for r in names for _ in range(size[r])]  # each role dealt to its size in users
     rng.shuffle(slots)
@@ -391,9 +420,9 @@ def twin(scale=1.0, seed=7):
             r = slots.pop()
             if r not in got:
                 got.append(r)
-        held[u] = got or [common]
+        held[u] = got or [staff]
     for u in disabled[:n(DISABLED_ROLES)]:
-        held[u] = [common]
+        held[u] = [staff]
     for u in svc + active[:n(40)]:
         held.setdefault(u, []).insert(0, deploy)
     admins = [u for u in active if u not in held or held[u][0] != deploy]
@@ -413,11 +442,14 @@ def twin(scale=1.0, seed=7):
     default = {u: rs[0] for u, rs in held.items()}
     for u, r in adm_users[:n(7)]:  # rule 12
         default[u] = r
-    user_rows = []
-    for u in persons + svc:
+    user_rows, off = [], set(disabled)
+    made = [f"SNOWFLAKE_SVC_{i:03}" for i in range(n(SNOWFLAKE_SERVICE))]  # no login, no role
+    typ = dict.fromkeys(svc, "SERVICE") | dict.fromkeys(made, "SNOWFLAKE_SERVICE")
+    typ |= dict.fromkeys(active[:n(TYPED)] + dormant + never[:max(0, n(TYPED) - len(active) - len(dormant))], "PERSON")
+    for u in persons + svc + made:
         last = None if u not in days else stamp(END - timedelta(days=days[u], hours=rng.randint(0, 12)))
-        user_rows.append(dict(USER_NAME=u, TYPE="SERVICE" if u in svc else "PERSON", DISABLED=u in disabled,
-                              DEFAULT_ROLE=default.get(u), DEFAULT_SECONDARY_ROLES='["ALL"]' if u in held else None,
+        user_rows.append(dict(USER_NAME=u, TYPE=typ.get(u), DISABLED=u in off,
+                              DEFAULT_ROLE=default.get(u) or (staff if rng.random() < .93 else None), DEFAULT_SECONDARY_ROLES='["ALL"]',
                               DEFAULT_WAREHOUSE=rng.choice(whs), DEFAULT_NAMESPACE=None, LAST_SUCCESS_LOGIN=last))
     pv += [("USERADMIN", "OWNERSHIP", "USER", u, False) for u in persons + svc]
     user_role = [dict(USER_NAME=u, ROLE_NAME=r, GRANTED_BY="SECURITYADMIN") for u, rs in held.items() for r in rs]
@@ -431,24 +463,26 @@ def twin(scale=1.0, seed=7):
         tags += [dict(OBJECT_NAME=o, DOMAIN="COLUMN", COLUMN_NAME=c, TAG_NAME=sem, TAG_VALUE=s, APPLY_METHOD="CLASSIFIED"),
                  dict(OBJECT_NAME=o, DOMAIN="COLUMN", COLUMN_NAME=c, TAG_NAME=pcat, TAG_VALUE=p, APPLY_METHOD="CLASSIFIED")]
     data = [o for x in schemas for o, k in x[2] if k in ("TABLE", "VIEW", "EXTERNAL TABLE")]
+    marked = rng.sample(data, min(n(TAGGED), len(data)))  # a few hundred objects carry every tag
     for t, c in TAG_SHAPES.items():
         for i in range(n(c)):
-            o, col = rng.choice(data), f"C_{rng.randint(1, 60):03}"
+            o = rng.choice(marked)
+            col = f"{WORDS[rng.randrange(len(WORDS))]}_{WORDS[rng.randrange(len(WORDS))]}_{rng.randint(1, 3)}"
             tags.append(dict(OBJECT_NAME=o, DOMAIN="COLUMN", COLUMN_NAME=col, TAG_NAME=t,
                              TAG_VALUE=f"{t.split('.')[-1][:4]}_{rng.randint(1, 40):02}", APPLY_METHOD="MANUAL"))
-            cols.append((o, col))
+            cols.append((o, col, t))
     for x in rng.sample(schemas, min(n(SCHEMA_TAGS), len(schemas))):
         tags.append(dict(OBJECT_NAME=f"{x[0]}.{x[1]}", DOMAIN="SCHEMA", COLUMN_NAME=None, TAG_NAME="GOV_TAG_DB.TAGS.OWNER",
                          TAG_VALUE="data owner", APPLY_METHOD="MANUAL"))
     stewards = func["STEWARD"]
-    for i, (o, col) in enumerate(cols[:n(MASKED)]):
+    for i, (o, col, t) in enumerate(cols[:n(MASKED)]):  # set through the column's tag
         st = stewards[i % len(stewards)]
-        policies.append(dict(POLICY_NAME=f"GOV_DB.POLICIES.MP_{i % 50:03}", POLICY_KIND="MASKING_POLICY", OBJECT_NAME=o,
-                             COLUMN_NAME=col, ARG_COLUMNS=None, TAG_NAME=None,
+        policies.append(dict(POLICY_NAME=f"GOV_DB.POLICIES.MP_{i % n(MASKS):03}", POLICY_KIND="MASKING_POLICY", OBJECT_NAME=o,
+                             COLUMN_NAME=col, ARG_COLUMNS=None, TAG_NAME=t,
                              POLICY_BODY=f"CASE WHEN IS_ROLE_IN_SESSION('{st}') THEN VAL ELSE '***MASKED***' END"))
     for i, o in enumerate(rng.sample(data, min(n(ROW_POLICIES), len(data)))):
         st = stewards[i % len(stewards)]
-        policies.append(dict(POLICY_NAME=f"GOV_DB.POLICIES.RAP_{i % 30:03}", POLICY_KIND="ROW_ACCESS_POLICY",
+        policies.append(dict(POLICY_NAME=f"GOV_DB.POLICIES.RAP_{i % n(ROW_NAMES):04}", POLICY_KIND="ROW_ACCESS_POLICY",
                              OBJECT_NAME=o, COLUMN_NAME=None, ARG_COLUMNS="REGION", TAG_NAME=None,
                              POLICY_BODY=f"IS_ROLE_IN_SESSION('{st}') OR CURRENT_ROLE() = '{deploy}'"))
     # ---- usage, object use, activity ----
@@ -589,7 +623,7 @@ def activity(rng, n, held, svc, active, dormant, logged, deploy, links, caps, sc
         while want > 0:
             k = min(want, rng.choice([1] * 10 + [2, 3, 5, 10, 27]))
             want -= k
-            act = "WRITE" if build and rng.random() < USE_WRITE * 1.1 else "READ"
+            act = "WRITE" if build and rng.random() < USE_WRITE * 1.1 else "BASE" if rng.random() < .25 else "READ"
             o = (next(bt2) if act == "WRITE" else next(ev2)) if build else next(p)
             for i in rng.sample(range(USE_WEEKS), k):
                 wk = w0 - timedelta(weeks=i)
