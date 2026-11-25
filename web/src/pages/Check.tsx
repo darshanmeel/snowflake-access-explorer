@@ -65,7 +65,7 @@ function Body({ d }: { d: CheckPage }) {
           <div className="ae-verdict-word">{WORD[d.verdict]}</div>
           <div>
             <b className="ae-verdict-kind">{headOf(d)}</b>
-            <div>{d.answer.tone === "warn" && <span className="ae-warn-word"> · user is {d.status}{d.dormant_days ? ` · no login for ${d.dormant_days} days` : ""}</span>}
+            <div>{d.answer.tone === "warn" && <span className="ae-warn-word"> · user {d.status === "never" ? "never logged in" : `is ${d.status}`}{d.dormant_days ? ` · no login for ${d.dormant_days} days` : ""}</span>}
               {!d.subject.user && <span className="ae-muted"> · role {d.user}, held by {d.subject.people} {d.subject.people === 1 ? "person" : "people"}</span>}</div>
             <div className="ae-verdict-line">{d.verdict === "no" && d.view !== "mine" && !d.nearest ? <NearLine d={d} /> : lineOf(d)}</div>
             {accessLines(d).slice(1).filter((t) => !t.startsWith("The app normally")).map((t) => <div key={t} className="ae-muted">{t}</div>)}

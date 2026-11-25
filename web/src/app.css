@@ -1,13 +1,13 @@
 /* App frame and screen layouts; component styles live in components/styles.css. */
 html, body { margin: 0; }
-body { background: #F8FAFE; }
+body { background: #E6F2F8; }
 .ae-print-head { display: none; }
 @media print {  /* Save as PDF: the open page and tab only, light, A4 landscape */
   @page { size: A4 landscape; margin: 12mm; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .left, .top, .side, .top-lock, .ae-loadlog, .main .ae-btn, .main .ae-pager { display: none !important; }
   .app { display: block; min-height: 0; }
-  .main { max-width: none !important; padding: 0 !important; }
+  .main { max-width: none !important; padding: 0 !important; margin: 0 !important; background: none; }
   .ae-tab:not(.on) { display: none; }
   html, body, .ae-root { background: #fff !important; }
   .ae-print-head { display: block; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 2px solid var(--ae-ink); }
@@ -1174,6 +1174,7 @@ div.ae-tile { cursor: default; }
   .left .side-hide { top: 8px; }
 }
 @media (max-width: 1000px) { .ae-act-row > summary { grid-template-columns: minmax(0, 1fr) auto; } }
+@media (max-width: 700px) { .ae-act-row > summary { grid-template-columns: minmax(0, 1fr); gap: 4px; } .ae-act-row > summary .ae-act-kind { justify-self: start; } }
 
 .ae-sens-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ae-bad_ink); margin-left: 6px; }
 .ae-daybars { display: flex; align-items: flex-end; gap: 3px; height: 120px; } .ae-daybars span { flex: 1; min-width: 2px; background: var(--ae-accent); display: flex; align-items: flex-end; } .ae-daybars i { display: block; width: 100%; background: var(--ae-bad_ink); }
@@ -1230,3 +1231,23 @@ div.ae-tile { cursor: default; }
 
 .ae-option-head { align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .ae-option-head p { margin: 0; }
+
+/* the left menu is dark in both themes: its own values for the colours the menu, search and tools read */
+.left { background: var(--ae-side);
+  --ae-ink: #FFFFFF; --ae-ink2: #E3F3FA; --ae-muted: #C4E0EE; --ae-line: #3F7FA4; --ae-line_strong: #5E99BA; --ae-panel: #0C4567; --ae-sunk: #1A678F; --ae-low_bg: #0C4567; --ae-low_ink: #C4E0EE; --ae-low_bd: #3F7FA4;
+  --ae-accent: #7FDCFB; --ae-accent_soft: #29B5E8; --ae-accent_ink: #04202F; --ae-ok_ink: #9BE8B8; --ae-warn_ink: #FFCB91; --ae-warn_bg: #4B3614; --ae-warn_bd: #9A7436; --ae-bad_ink: #FFC9C2; --ae-bad_bg: #5C201B; --ae-bad_bd: #A2554D;
+  color: var(--ae-ink); }
+@media (min-width: 1001px) {
+  .left { border-right: 0; }
+  .app { column-gap: 12px; }
+  .left .find input::placeholder { color: var(--ae-muted); opacity: 1; }
+  .side nav button.on { color: var(--ae-accent_ink); }
+  .main { width: auto; max-width: none; margin: 12px 12px 12px 0; padding: 28px max(28px, calc(100% - 1212px)) 48px 28px; background: var(--ae-panel); border-radius: 14px; }
+}
+
+/* names are up to 94 characters on a big account: they break inside their column, no column leaves the page */
+.ae-table td.ae-wrap, .ae-table td.ae-wrap .ae-mono { overflow-wrap: anywhere; }
+.ae-table td.ae-wrap { min-width: 84px; }
+.ae-orow .ae-oname { white-space: normal; overflow-wrap: anywhere; text-align: left; overflow: visible; }
+.ae-orow .ae-osub { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.ae-table td.ae-wrap .ae-rowlist { min-width: 116px; }

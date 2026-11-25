@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { flushSync } from "react-dom";
 import { clearCache, get, peek, post, useApi } from "./api/client";
 import type { FindItem, Meta, MineState, Page, Progress } from "./api/types";
-import { Banner, Card, Combo, CsvOn, LoadLog, Root, SEVERITIES, SqlCtx, Waiting, type ThemeName } from "./components";
+import { Banner, Card, Combo, CsvOn, LoadLog, Root, SEVERITIES, SqlCtx, TOKENS, Waiting, type ThemeName } from "./components";
 import { AppCtx, type Ctx, type Params } from "./ctx";
 import { AccessPageView } from "./pages/Access";
 import { AllActivityPageView } from "./pages/AllActivity";
@@ -145,7 +145,7 @@ function useTheme(): [ThemeName, () => void] {
     try { const s = localStorage.getItem("ae-theme"); if (s === "light" || s === "dark") return s; } catch { /* no storage */ }
     return "light";  // light by default; the top-bar button switches and the choice is kept in this browser
   });
-  useEffect(() => { document.body.style.background = t === "dark" ? "#0F1216" : "#F8FAFE"; }, [t]);
+  useEffect(() => { document.body.style.background = TOKENS[t].bg; }, [t]);
   return [t, () => setT((x) => { const n = x === "dark" ? "light" : "dark"; try { localStorage.setItem("ae-theme", n); } catch { /* no storage */ } return n; })];
 }
 

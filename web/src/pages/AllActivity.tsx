@@ -55,7 +55,7 @@ export function AllActivityPageView() {
                 col("object", "Object", (x: Who) => x.object, { wrap: "wrap", render: (x: Who) => <>{link("object", x.object)}{x.sensitive && <span className="ae-sens-dot" title="sensitive" aria-label="sensitive" />}</> }),
                 col("rd", "Reads", (x: Who) => x.read, { num: true }), col("w", "Writes", (x: Who) => x.write, { num: true }),
                 col("ddl", "Defs", (x: Who) => x.ddl, { num: true, help: "Definition changes: CREATE, ALTER, DROP" }),
-                col("off", "Off-hours", (x: Who) => x.off, { num: true }), col("last", "Last", (x: Who) => x.last, { wrap: "nowrap", render: (x: Who) => x.last.slice(5) }),
+                col("off", "Off-hours", (x: Who) => x.off, { num: true }), col("last", "Last", (x: Who) => x.last, { wrap: "nowrap", render: (x: Who) => x.last.slice(5, 16) }),
               ]} />
               <p className="ae-muted"><span className="ae-sens-dot" /> sensitive</p>
             </Card>
