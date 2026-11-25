@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/client";
 import type { GridPage } from "../api/types";
-import { Fold, Card, EmptyState, LEVEL_WORD, ListToolbar, Tabs, Toggle, useCsv } from "../components";
+import { Rows, Fold, Card, EmptyState, LEVEL_WORD, ListToolbar, Tabs, Toggle, useCsv } from "../components";
 import { download } from "../components/table";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { addTo, plan, saved, useSaved } from "./changeplan";
@@ -128,7 +128,7 @@ function Grid({ d, q, setQ, signTab }: { d: GridPage; q: string; setQ: (q: strin
                   <span key={x.id} className="ae-rgrid-col" title={x.id}>
                     {isObj ? <b className="ae-mono">{x.name}</b> : <button type="button" className="ae-link ae-mono" onClick={() => o.open(x.id)}>{x.name}</button>}
                     <span className="ae-muted">{isObj ? x.note : x.ns}</span>
-                    {x.note && !isObj && <span className="ae-sens-word">{x.note}</span>}
+                    {x.note && !isObj && <Rows items={x.note.split(", ")} />}
                   </span>
                 ))}
                 <span>Decision</span>
