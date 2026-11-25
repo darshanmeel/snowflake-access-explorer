@@ -31,25 +31,6 @@ export function Overlap({ a, b, onlyA, onlyB, different, same, onPick }: {
   );
 }
 
-/** A grant as two boxes and the link between them: + (added, solid) or - (removed, dashed and struck). */
-export function GrantLink({ source, sourceKind, target, targetKind, privilege, added, onOpen }: {
-  source: string; sourceKind: string; target: string; targetKind: string; privilege: string | null; added: boolean; onOpen?: (id: string) => void;
-}) {
-  const box = (id: string, kind: string) => (
-    <button type="button" className={`ae-pchip ae-pchip-${kind === "object" ? "obj" : kind}`} onClick={() => onOpen?.(id)} title={id}>{id}</button>
-  );
-  return (
-    <span className={`ae-glink ${added ? "ae-glink-add" : "ae-glink-del"}`} aria-label={`${added ? "Added" : "Removed"}: ${source} to ${target}${privilege ? `, ${privilege}` : ""}`}>
-      {box(source, sourceKind)}
-      <span className="ae-glink-line" aria-hidden>
-        <span className="ae-glink-sign">{added ? "+" : "−"}</span>
-        <span className="ae-glink-what">{privilege ?? "role"}</span>
-      </span>
-      {box(target, targetKind)}
-    </span>
-  );
-}
-
 /** A path left to right with the cut links (index i: path[i] -> path[i+1]) struck through in red. */
 export function CutPath({ path, cuts, kinds, first, onOpen }: {
   path: string[]; cuts: Set<number>; kinds: Record<string, string>; first?: ReactNode; onOpen?: (id: string) => void;

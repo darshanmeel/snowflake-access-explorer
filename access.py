@@ -4538,27 +4538,42 @@ def group_objects(rows, level="schema", keys=None):
 MAX_OBJECTS = 12  # objects drawn one by one; more roll up into groups (the React graph shows 12 boxes per lane, graphs.ts MAX_BOXES)
 
 
-def lean_rows(rows, start, user):
+def lean_rows(rows, start, user, default_only=False, limit=None):
     """The grants() rows a graph draws first: without databases and schemas themselves, future grants, and what only
     PUBLIC gives (unless start is PUBLIC). Returns (rows, what was left out in words); all rows when none would stay."""
-    _, kids, _, _ = fast(start, user)
-    seen, todo = set(), [r for r in (roles_of.get(start, []) if user else [start]) if r != "PUBLIC" or start == "PUBLIC"]
-    while todo:
-        x = todo.pop()
-        if x not in seen:
-            seen.add(x)
-            todo += [k for k in kids.get(x, []) if k != "PUBLIC"]
-    out, left = [], {}
+    sts, kids, _, _ = fast(start, user, default_only, limit)
+
+    def below(todo, stop=None):
+        seen = set()
+        while todo:
+            x = todo.pop()
+            if x not in seen and x != stop:
+                seen.add(x)
+                todo += kids.get(x, [])
+        return seen
+    if start == "PUBLIC" and not user:
+        mine, pub = below(["PUBLIC"]), set()
+    else:
+        mine = below([s[-1] for s in sts if "PUBLIC" not in s[1:]], "PUBLIC")
+        pub = below(["PUBLIC"])
+    out, left, cut = [], {}, {}  # cut: path lists without PUBLIC, kept shared between rows as grant_rows() shares them
     for r in rows:
-        mine = [h for h in r["holders"] if h in seen]
-        if not mine:
+        hs = r["holders"]
+        if not any(h in mine for h in hs):
             left.setdefault("reached only through PUBLIC", set()).add(r["object"])
         elif r["type"] in ("DATABASE", "SCHEMA"):
             left.setdefault("databases and schemas", set()).add(r["object"])
         elif r["type"].startswith("FUTURE"):
             left.setdefault("future grants", set()).add(r["object"])
+        elif not any(h in pub for h in hs):
+            out.append(r)
         else:
-            out.append(r | dict(holders=mine, paths=[p for p in r["paths"] if start == "PUBLIC" or "PUBLIC" not in p[1:]]))
+            k = id(r["paths"])
+            if k not in cut:
+                cut[k] = [p for p in r["paths"] if "PUBLIC" not in p[1:]]
+            if len(cut[k]) < len(r["paths"]):
+                left.setdefault("also reached through PUBLIC", set()).add(r["object"])
+            out.append(r | dict(holders=[h for h in hs if h in mine], paths=cut[k]))
     return (out, ", ".join(f"{len(v):,} {k}" for k, v in left.items())) if out else (rows, "")
 
 
@@ -4575,14 +4590,14 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
     total, groups (group_objects() when grouped by schema or database), types {type-group: object type}).
     default_only, limit: as grants(). otype: only objects of this type ("TABLE"), drawn one by one. cat: only the
     privileges of this priv_cat() (a Privileges tab; "usage" keeps database and schema USAGE), no role without one.
-    lean: only lean_rows(); left says what was left out."""
+    lean: only lean_rows(); left says what was left out, rows are the drawn ones."""
     user = kind_of(start) == "user" if user is None else user
     sid = uid(start, user)
     every = [r for r in grants(start, user, default_only, limit)
              if (priv_cat(r["privilege"], r["type"]) == cat if cat else
                  not (r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA")))]
     rows = [r for r in every if in_scope(r, schema) and otype in (None, r["type"])]
-    rows, left = lean_rows(rows, start, user) if lean else (rows, "")
+    rows, left = lean_rows(rows, start, user, default_only, limit) if lean else (rows, "")
     if not rows:
         return None
     objs = list(dict.fromkeys(r["object"] for r in rows))
@@ -4653,7 +4668,7 @@ def graph_input(start, schema=None, max_objects=MAX_OBJECTS, default_only=False,
         info[BUILTIN_NODE] = dict(count=bi["grants"], noun="built-in grants")
         nts[BUILTIN_NODE] = ("hidden", f"{bi['grants']} grants Snowflake makes to every account through PUBLIC, "
                                        f"{bi['objects']} objects: {', '.join(bi['roles'])}\nShow built-in draws them")
-    return dict(lanes=lanes, edges=edges, notes=nts, info=info, kinds=kinds_, header=header, level=level, left=left,
+    return dict(lanes=lanes, edges=edges, notes=nts, info=info, kinds=kinds_, header=header, level=level, left=left, rows=rows,
                 shown=len(objs), total=len({r["object"] for r in every}),
                 groups=group_objects(rows, level, ks) if level in ("schema", "database") else [],
                 types={k: r["type"] for r, k in zip(rows, gs)} if level == "type" else {})

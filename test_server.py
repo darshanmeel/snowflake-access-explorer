@@ -900,6 +900,20 @@ def test_review_check():
     a.build(a.fake())
 
 
+def test_who_groups():
+    """A group's facts count everyone in it, also the people over MAX_WHO that are not sent."""
+    keep, server.MAX_WHO = server.MAX_WHO, 2
+    try:
+        d = server.who_page(dict(name="SALES.CORE.TBL_CUSTOMER"), "shared")
+        every = {e["name"]: e for e in server.who_all(dict(name="SALES.CORE.TBL_CUSTOMER"), "shared")["people"]}
+        assert any(set(g["names"]) - {e["name"] for e in d["people"]} for g in d["groups"])
+        for g in d["groups"]:
+            assert g["off"] == sum(every[n]["status"] != "active" for n in g["names"])
+            assert g["queries"] == sum(every[n]["queries"] or 0 for n in g["names"])
+    finally:
+        server.MAX_WHO = keep
+
+
 def test_who():  # screen 2: who has access to an object, the admin preset, warehouses grouped by route
     keys = ["object", "people", "roles", "groups", "counts", "columns", "default_user", "refs"]
     d = js("/api/who?name=SALES.CORE.TBL_CUSTOMER", keys)

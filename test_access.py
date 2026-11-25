@@ -1368,6 +1368,16 @@ def test_lean():
     assert g["level"] == "object" and "PUBLIC" not in nodes and not nodes & {o for o, k in a.kinds.items() if k in ("DATABASE", "SCHEMA")}
     assert g["left"] and not every["left"] and every["shown"] > g["shown"], (g["left"], g["shown"])
     assert a.graph_input("PUBLIC", user=False, lean=True) is not None
+    obj = next(r["object"] for r in a.grants("ANALYST_01", True) if r["type"] == "TABLE" and "PUBLIC" not in r["holders"])
+    data = a.fake()
+    data["GRANT"].append(next(g for g in data["GRANT"] if g["OBJECT_NAME"] == obj and g["PRIVILEGE"] == "SELECT") | dict(GRANTEE_ROLE="PUBLIC"))
+    a.build(data)
+    try:  # a role gives it and PUBLIC too (as WH_SALES_XS already): drawn without PUBLIC, and said
+        g = a.graph_input("ANALYST_01", user=True, lean=True)
+        assert "2 also reached through PUBLIC" in g["left"] and "PUBLIC" not in {n for _, ns in g["lanes"] for n in ns}, g["left"]
+        assert all(r["paths"] for r in g["rows"])
+    finally:
+        a.build(a.fake())
     for u in a.users:  # whoever reaches something still has a graph
         assert bool(a.graph_input(u, user=True, lean=True)) == bool(a.graph_input(u, user=True)), u
 

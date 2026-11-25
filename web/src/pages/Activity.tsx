@@ -872,7 +872,7 @@ function WhoUsed({ d, work, open }: { d: ActivityPage; work: Work; open: Open })
         <tbody>{(more ? shown : shown.slice(0, 15)).map((x) => (
           <tr key={`${x.user}|${x.role}|${x.client}|${x.object}`} title={[...x.types.keys()].join(", ")}>
             {d.what !== "user" && <td><button type="button" className="ae-link ae-mono" onClick={() => open("user", x.user)}>{x.user}</button>{x.kind !== "person" && <span className="ae-muted"> {x.kind}</span>}</td>}
-            {perObj && <td><button type="button" className="ae-link ae-mono" title={x.object} onClick={() => open("object", x.object)}>{x.object.split(".").pop()}</button>{d.objects?.[x.object]?.sensitive && <> <span className="ae-tag ae-tag-warn">sensitive</span></>}</td>}
+            {perObj && <td><button type="button" className="ae-link ae-mono" title={x.object} onClick={() => open("object", x.object)}>{x.object.split(".").slice(-2).join(".")}</button>{d.objects?.[x.object]?.sensitive && <> <span className="ae-tag ae-tag-warn">sensitive</span></>}</td>}
             {d.what !== "role" && <td><span className="ae-mono">{x.role}</span></td>}
             <td>{x.client}</td><td className="num">{fmt(x.n.READ)}</td><td className="num">{fmt(x.n.WRITE)}</td><td className="num">{fmt(x.n.DDL)}</td>
             <td className="num">{x.off ? <b className="ae-bad">{fmt(x.off)}</b> : 0}</td><td className="ae-muted">{x.last.slice(5, 16)}</td>

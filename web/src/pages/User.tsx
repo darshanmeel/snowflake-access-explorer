@@ -50,7 +50,7 @@ export function UserPage() {
         if (pane === "diagram") return (
           <>
             <Banners list={d.banners} />
-            <GraphCard g={d.graph} refs={d.refs} />
+            <GraphCard leans g={d.graph} refs={d.refs} />
             <CutBanner capped={d.capped} />
             {multi && <Fold label={`Reached more than one way: ${d.multi.total} paths`}>{multi}</Fold>}
             <button type="button" className="ae-link" onClick={() => c.nav("see", { user: name })}>What they see →</button>
@@ -77,7 +77,7 @@ export function UserPage() {
             ]} />
             <Findings list={d.findings} total={d.findings_total} sev={d.findings_sev} grantee={d.user.name} of="user" refs={d.refs} />
             <Tabs nav active={part} onChange={(t) => { setPart(t); c.set({ otype: null, full: null }); }} tabs={parts} />
-            {part === "diagram" && <><GraphCard g={d.graph} refs={d.refs} /><CutBanner capped={d.capped} /></>}
+            {part === "diagram" && <><GraphCard leans g={d.graph} refs={d.refs} /><CutBanner capped={d.capped} /></>}
             {part === "privs" && privs}
             {part === "multi" && multi}
             {part === "sees" && <DataViews s={d.can_read} path="user" title="What they see when they read" />}

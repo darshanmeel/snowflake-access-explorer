@@ -166,7 +166,7 @@ export function Graph({ graph, theme = "light", onNodeClick, onRules, legend = t
     return [n.name === n.label || isBox(n) ? n.label : n.name, isBox(n) ? n.sub : KIND_LABEL[n.kind] ?? n.raw_kind ?? n.kind,
       n.badge && isBox(n) ? `By grants: ${n.badge}` : "", isBox(n) ? "" : n.tip,
       n.rules.length ? ["Rules broken (click the badge):", ...n.rules.map((r) => `  ${r.num} · ${r.severity} · ${r.title}`)].join("\n") : "",
-      grp ? (onOnly || onPick ? "Click to pick: Show only this or Open the box" : `Click to open${buckets(grp.nodes) ? ", grouped" : ""}`) : ""]
+      grp ? (onOnly && known.has(n.id) ? "Click to show only what passes through it" : onPick && known.has(n.id) ? "Click to pick it" : `Click to open${buckets(grp.nodes) ? ", grouped" : ""}`) : ""]
       .filter(Boolean).join("\n");
   };
   const tapOrClick = (ev: React.MouseEvent, n: GraphNode) => {

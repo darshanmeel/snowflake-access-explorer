@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApi } from "../api/client";
 import type { CheckPage, Inside, ListItem, Path, Refs } from "../api/types";
-import { Fold, Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, Pager, Tabs } from "../components";
+import { NameList, Fold, Banner, Card, CodeOutput, DataTable, EmptyState, FilterChips, MiniBar, Pager, Tabs } from "../components";
 import { apiParams, useApp, useOpen } from "../ctx";
 import { accessLines, cutLabel, cutTexts, cutWhatIf, needOf, nearestNote, nearestTitle, pickSubject, subjectIn, subjectLink, usedAnyway, verdictLine, warehouseNote } from "./verdict";
 import { BuiltinNote, col, CutBanner, GraphCard, Load, NameLink, PathCell, pathCol, Pick, PickFirst, Risks, Sel, StateTag } from "./common";
@@ -252,7 +252,7 @@ function Routes({ d, only }: { d: CheckPage; only?: string }) {
             <tbody>{d.cuts.map((x, i) => (
               <tr key={i} className={i === sel ? "on" : ""}>
                 <td><button type="button" className="ae-link ae-mono" aria-pressed={i === sel} onClick={() => setSel(i)}>{cutLabel(x.edges).replace(/^Revoke /, "").replace(" from user ", " from ")}</button></td>
-                <td><b>{x.people.length}</b> <span title={x.people.join(", ")}>{x.people.length === 1 ? `only ${x.people[0]}` : `${x.people.slice(0, 2).join(", ")}${x.people.length > 2 ? ` and ${x.people.length - 2} more` : ""}`}</span></td>
+                <td><b>{x.people.length}</b> {x.people.length === 1 ? `only ${x.people[0]}` : <NameList items={x.people} max={2} />}</td>
                 <td>{x.lost ? `${x.lost} other ${x.lost === 1 ? "privilege" : "privileges"}` : "nothing"}</td>
                 <td><button type="button" className="ae-btn ae-btn-s" title="Simulate it on the change plan: nothing changes in Snowflake" onClick={() => whatIf(c, cutWhatIf(x.edges))}>Simulate</button></td>
               </tr>))}</tbody>

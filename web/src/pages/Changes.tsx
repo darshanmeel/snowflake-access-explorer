@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { forget, useApi } from "../api/client";
 import type { ChangeEvent, ChangesPage, CheckPage, ListItem, WhoPage } from "../api/types";
-import { FilterChips, Fold, Card, EmptyState, FindingChip, GrantLink, Pager, Tabs } from "../components";
+import { FilterChips, Fold, Card, EmptyState, FindingChip, Pager, Tabs } from "../components";
 import { useApp } from "../ctx";
 import { useSaved } from "./changeplan";
 import { Head, Load, Pick, Sel } from "./common";

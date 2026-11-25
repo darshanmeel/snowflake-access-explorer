@@ -69,7 +69,7 @@ function Objects({ d }: { d: FlowPage }) {
         <DataTable csv="sensitive_objects.csv" rows={objs} rowTone={(r) => (r.unmasked?.length && !off ? "bad" : null)} onRowClick={(r) => c.nav("object", { name: r.id, show: "who" })}
           columns={[col("o", "Object", (r: Obj) => r.id, { wrap: "wrap" }), col("p", "People", (r: Obj) => r.count, { num: true }),
             col("r", "Through roles", (r: Obj) => r.roles ?? 0, { num: true }),
-            col("u", "Unmasked columns", (r: Obj) => (off ? "unknown: policies not read" : (r.unmasked ?? []).join(", ")), { wrap: "wrap", render: (r: Obj) => (off ? "unknown: policies not read" : <Rows items={r.unmasked ?? []} bad />) }), col("m", "Masked columns", (r: Obj) => (r.masked ?? []).join(", "), { wrap: "wrap", render: (r: Obj) => <Rows items={r.masked ?? []} /> }),
+            col("u", "Unmasked columns", (r: Obj) => (off ? "unknown: policies not read" : (r.unmasked ?? []).join(", ")), { wrap: "wrap", render: (r: Obj) => (off ? "unknown: policies not read" : <Rows key={r.id} items={r.unmasked ?? []} bad />) }), col("m", "Masked columns", (r: Obj) => (r.masked ?? []).join(", "), { wrap: "wrap", render: (r: Obj) => <Rows key={r.id} items={r.masked ?? []} /> }),
             col("w", "Rows", (r: Obj) => (r.row_policies?.length ? `by ${r.row_policies.map((x) => x.split(".").pop()).join(", ")}` : "whole object"))]} />
       </Card>
     </>

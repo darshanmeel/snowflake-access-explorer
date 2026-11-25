@@ -117,15 +117,15 @@ function Who({ d }: { d: WhoPage }) {
   );
 }
 
-/** The first n names, then how many more. */
-const some = (xs: string[], n: number) => xs.slice(0, n).join(", ") + (xs.length > n ? ` and ${xs.length - n} more` : "");
+/** The first n names, then how many more of total (the names sent may be fewer). */
+const some = (xs: string[], n: number, total: number) => xs.slice(0, n).join(", ") + (xs.length && total > Math.min(n, xs.length) ? ` and ${total - Math.min(n, xs.length)} more` : "");
 
 /** Who has access in one sentence: how many, who can do more than read, who is inactive. */
 function Answer({ d }: { d: WhoPage }) {
   const n = d.counts, lv = (k: (typeof ORDER)[number]) => n.levels[k] ?? 0;
   if (!n.people) return null;
   const idle = n.disabled + n.dormant;
-  const names = (ls: string[]) => { const xs = d.people.filter((x) => ls.includes(x.level)); return xs.slice(0, 2).map((x) => `${x.name} ${x.level === "own" ? "owns" : "changes"}`).join(", ") + (xs.length > 2 ? ` and ${xs.length - 2} more` : ""); };
+  const names = (ls: (typeof ORDER)[number][]) => { const xs = d.people.filter((x) => (ls as string[]).includes(x.level) && !x.blocked), more = ls.reduce((t, k) => t + lv(k), 0) - 2; return xs.slice(0, 2).map((x) => `${x.name} ${x.level === "own" ? "owns" : "changes"}`).join(", ") + (xs.length > 1 && more > 0 ? ` and ${more} more` : ""); };
   return (
     <>
     <p className="ae-answer">
@@ -134,7 +134,7 @@ function Answer({ d }: { d: WhoPage }) {
     <Figs items={[
       { key: "all", n: n.people.toLocaleString("en-US"), text: n.people === 1 ? "user can reach it" : "users can reach it", note: lv("admin") ? `${lv("admin").toLocaleString("en-US")} through an admin role` : undefined },
       { key: "change", n: (lv("own") + lv("change")).toLocaleString("en-US"), text: "can change or own it", note: names(["own", "change"]) || (lv("admin") ? "only admins" : "nobody") },
-      { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: some(d.people.filter(off).map((x) => x.name), 3) || undefined },
+      { key: "idle", n: idle.toLocaleString("en-US"), text: idle === 1 ? "is inactive" : "are inactive", bad: idle > 0, note: some(d.people.filter((x) => x.status === "disabled" || (off(x) && !x.service)).map((x) => x.name), 3, idle) || undefined },
     ]} />
     </>
   );
@@ -228,9 +228,8 @@ function List({ d }: { d: WhoPage }) {
   const list = rows.filter((x) => hit(x.name)).filter((x) => { const g = groupOf(x); return !g || g.names[0] === x.name; });
   const label = (x: WhoEntry) => { const g = groupOf(x); return g ? sameLabel(g.names, g.route) : x.name; };
   // a group's row speaks for everyone in it, not for its first person
-  const all = (x: WhoPerson) => { const g = groupOf(x); return g ? people.filter((p) => g.names.includes(p.name)) : [x]; };
-  const login = (x: WhoPerson) => { const ps = all(x), k = ps.filter(off).length; return ps.length > 1 ? (k ? `${k} of ${ps.length} inactive` : "all active") : `${STATUS[x.status].toLowerCase()}${x.status === "never" ? "" : `, ${ago(x)}`}`; };
-  const used = (x: WhoPerson) => (x.queries == null ? null : all(x).reduce((t, p) => t + (p.queries ?? 0), 0));
+  const login = (x: WhoPerson) => { const g = groupOf(x); return g ? (g.off ? `${g.off} of ${g.names.length} inactive` : "all active") : `${STATUS[x.status].toLowerCase()}${x.status === "never" ? "" : `, ${ago(x)}`}`; };
+  const used = (x: WhoPerson) => (x.queries == null ? null : groupOf(x)?.queries ?? x.queries);
   const clear = (x: WhoPerson) => x.columns.filter((k) => k.state !== "masked").map((k) => k.column);
   return (
     <>
@@ -269,9 +268,9 @@ function List({ d }: { d: WhoPage }) {
           <DataTable rows={list as WhoPerson[]} filter={false} columns={[
             col("p", "Person", (x: WhoPerson) => label(x), { wrap: "wrap", render: (x: WhoPerson) => <><button type="button" className="ae-link ae-mono" title={groupOf(x)?.names.join(", ")} onClick={() => pick(x.name)}>{label(x)}</button>{x.service && <span className="ae-muted"> service</span>}</> }),
             col("c", "Can", (x: WhoPerson) => TITLE[x.level], { render: (x: WhoPerson) => <><span className={`ae-lvl ae-lvl-${x.level}`} title={x.privileges.join(", ")}>{TITLE[x.level]}</span>{x.blocked && <span className="ae-blocked"> blocked</span>}</> }),
-            col("l", "Login", login, { wrap: "wrap", render: (x: WhoPerson) => <span className={all(x).some(off) ? "ae-bad" : undefined}>{login(x)}</span> }),
+            col("l", "Login", login, { wrap: "wrap", render: (x: WhoPerson) => <span className={(groupOf(x)?.off ?? (off(x) ? 1 : 0)) > 0 ? "ae-bad" : undefined}>{login(x)}</span> }),
             col("t", "Through", (x: WhoPerson) => through(x), { wrap: "wrap", render: (x: WhoPerson) => <span className="ae-mono">{through(x)}</span> }),
-            ...(cols ? [col("s", "In clear", (x: WhoPerson) => clear(x).join(", ") || "none", { wrap: "wrap" as const, render: (x: WhoPerson) => (clear(x).length ? <Rows items={clear(x)} bad /> : <span className="ae-muted">none</span>) })] : []),
+            ...(cols ? [col("s", "In clear", (x: WhoPerson) => clear(x).join(", ") || "none", { wrap: "wrap" as const, render: (x: WhoPerson) => (clear(x).length ? <Rows key={x.name} items={clear(x)} bad /> : <span className="ae-muted">none</span>) })] : []),
             col("q", `Used, ${c.meta.limits ? "60" : ""} days`, (x: WhoPerson) => used(x) ?? -1, { num: true, render: (x: WhoPerson) => (used(x) == null ? <span className="ae-muted">not read</span> : used(x) ? used(x)!.toLocaleString("en-US") : <span className="ae-muted">not recorded</span>) }),
           ]} />
         )}

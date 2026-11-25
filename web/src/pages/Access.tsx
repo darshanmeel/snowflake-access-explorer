@@ -94,7 +94,7 @@ function Body({ d }: { d: AccessPage }) {
   const ruleLink = (num: string) => c.nav("rules", { rule: num });
   const status = w.status ? `${w.disabled ? "disabled" : w.status === "never" ? "never logged in" : w.status}${  // "never" says it once
     w.last_login && w.status !== "never" ? ` · last login ${w.last_login}` : ""}` : "";
-  const all = lvl === "all" && !q && !otype && !cell ? list.total : 0; // stages, streams, tasks: in the list, not tables or views
+  const all = lvl === "all" && !q && !otype && !cell && !usage && !rest ? list.total : 0; // stages, streams, tasks: in the list, not tables or views
   const objects_ = (
       <Card title={tagsOff || !tb.clear ? (user ? "What they can access" : "What it opens") : `${tb.clear.toLocaleString("en-US")} of ${tb.read.toLocaleString("en-US")} show sensitive columns in clear`}>
         <details className="ae-filter" open={lvl !== "all" || !!q || usage || group !== "none" || !!otype || !!cell || undefined}><summary>Filter, group, CSV</summary>

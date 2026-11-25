@@ -126,7 +126,7 @@ export function RolePageView() {
           ]} />}
           {!pane && <Tabs nav active={part} onChange={setPart} tabs={tabs} />}
           {!tabs.some((t) => t.key === part) && <EmptyState title="Nothing here">Clear the filters above, or open another tab.</EmptyState>}
-          {part === "diagram" && <GraphCard g={d.graph} refs={d.refs} />}
+          {part === "diagram" && <GraphCard leans g={d.graph} refs={d.refs} />}
           {part === "rw" && d.readonly_writes.length > 0 && (
             <Card title="Read-only role that can write" sub="Named like a reader, yet holds a write privilege">
               <DataTable csv={`${d.role.name}_readonly_writes.csv`} rows={d.readonly_writes} rowTone={() => "bad"}

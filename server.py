@@ -1063,7 +1063,7 @@ def drawn_input(start, user, rows, schema, otype, default_only, limit, full, lea
     use = [r for r in rows if not (r["privilege"] == "USAGE" and r["type"] in ("DATABASE", "SCHEMA"))
            and a.in_scope(r, schema) and otype in (None, r["type"])]
     if g["left"]:
-        use, g = a.lean_rows(use, start, user)[0], g | dict(header=f"{g['header']} · left out: {g['left']}")
+        use, g = g["rows"], g | dict(header=f"{g['header']} · left out: {g['left']}")
     gx = member_groups(use, g["level"], schema) if g["kinds"] else {}
     note, level, drawn = None, g["level"], False
     if a.too_big(g):
@@ -2600,7 +2600,9 @@ def who_page(p, view):
     du = None if view == "shared" else (a.users[0] if a.users else None)  # shared: nobody until one is picked
     every = [g | dict(names=[n for n in g["names"] if ok(n)]) for g in x["groups"]]
     every = [g for g in every if g["names"]]
-    groups = every[:MAX_WHO_GROUPS]
+    who = {e["name"]: e for e in x["people"]}  # a group's facts count everyone in it, sent or not
+    groups = [g | dict(off=sum(who[n]["status"] != "active" for n in g["names"]),
+                       queries=sum(who[n]["queries"] or 0 for n in g["names"])) for g in every[:MAX_WHO_GROUPS]]
     people = [e for e in x["people"] if ok(e["name"])]
     roles = [e for e in x["roles"] if hit(e)]
     want = {p.get("as") or du, p.get("sel")} | {g["names"][0] for g in groups}
@@ -2663,6 +2665,11 @@ def subject_of(u, user):
 
 
 MAX_WH = 10  # Can they?: warehouses named in the note under the answer
+
+
+def does(pv):
+    """"can SELECT", but "has USAGE on": a privilege whose name is no verb."""
+    return f"can {pv}" if pv in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "MODIFY", "OPERATE", "MONITOR", "READ", "WRITE") else f"has {pv} on"
 
 
 def check_page(p, view):
@@ -2781,7 +2788,7 @@ def check_object(p, view):
     elif not ps and admin:
         via = list(dict.fromkeys(next(x for x in q if x in a.ADMIN) for q in admin))
         ans = dict(yes=True, how="admin", title=yes_text or f"Yes, through admin role {', '.join(via)}",
-                   text=f"{u} can {pv} {o} through the roles granted to admin role {via[0]}: {' > '.join(admin[0])}.{note}",
+                   text=f"{u} {does(pv)} {o} through the roles granted to admin role {via[0]}: {' > '.join(admin[0])}.{note}",
                    tone=tone, stats=[["Paths", 0], ["Via admin", len(admin)]])
     elif not ps:
         ans = dict(yes=False, how="none", title="No, by the grants in this data",
@@ -2792,7 +2799,7 @@ def check_object(p, view):
         ends = {x["holder"] for x in ps}
         ans = dict(yes=True, how="paths", title=yes_text or (f"Yes: {plural(len(held), 'privilege')} through {plural(r['count'], 'path')}"
                                                              if pv == ALL else f"Yes, through {plural(r['count'], 'path')}"),
-                   text=(f"{u} has {what} on {o}." if pv == ALL else f"{u} can {pv} {o}.") + (f" Every path ends at {ps[0]['holder']}." if len(ends) == 1 else "")
+                   text=(f"{u} has {what} on {o}." if pv == ALL else f"{u} {does(pv)} {o}.") + (f" Every path ends at {ps[0]['holder']}." if len(ends) == 1 else "")
                    + (" Also through an admin role." if admin else "") + note, tone=tone,
                    stats=([["Privileges", len(held)]] if pv == ALL else []) + [["Paths", r["count"]], ["Shortest depth", r["shortest"]]])
     wa = sorted({x for q in a.held_admin(u, user) for x in a.admin_objects(q) if a.kinds.get(x) == "WAREHOUSE"} - set(r["warehouses"]))

@@ -396,18 +396,6 @@ button.ae-pchip:hover { border-color: var(--ae-accent); }
 .ae-venn-hit { cursor: pointer; outline: none; }
 .ae-venn-hit:focus-visible text { text-decoration: underline; }
 
-/* a grant: two boxes and a + / - link */
-.ae-glink { display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 4px; margin: 2px 0; }
-.ae-glink-line { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 84px; padding: 0 12px 0 8px; height: 22px;
-  font-size: 11.5px; font-family: var(--ae-mono); box-sizing: border-box; }
-.ae-glink-line::before { content: ""; position: absolute; left: 0; right: 4px; top: 50%; border-top: 2px solid var(--ae-ok_ink); }
-.ae-glink-line::after { content: ""; position: absolute; right: 0; top: calc(50% - 4px); border: 4px solid transparent; border-left: 6px solid var(--ae-ok_ink); border-right: 0; }
-.ae-glink-del .ae-glink-line::before { border-top: 2px dashed var(--ae-bad_ink); }
-.ae-glink-del .ae-glink-line::after { border-left-color: var(--ae-bad_ink); }
-.ae-glink-sign, .ae-glink-what { position: relative; background: var(--ae-panel); padding: 0 3px; }
-.ae-glink-sign { font-weight: 800; font-size: 13px; color: var(--ae-ok_ink); }
-.ae-glink-del .ae-glink-sign { color: var(--ae-bad_ink); }
-.ae-glink-del .ae-glink-what { text-decoration: line-through; color: var(--ae-bad_ink); }
 .ae-pchip-user { border-radius: 999px; }
 .ae-pchip-off { opacity: .75; border-style: dashed; }
 
