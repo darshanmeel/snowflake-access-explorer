@@ -399,15 +399,17 @@ function Layers({ d }: { d: CheckPage }) {
   );
 }
 
-/** When no single link is on every route: the server's ways to remove the access, one per route. */
+/** When no single link is on every route: the server's ways to remove the access. */
 function RemoveOptions({ d }: { d: CheckPage }) {
+  const c = useApp();
   if (!d.options.length) return null;
   return (
     <div className="ae-options">
       {d.options.map((x, i) => (
         <div key={i} className="ae-option">
-          <p><strong>Option {i + 1}</strong> · {x.edges === 1 ? "one grant" : `all ${x.edges} grants together`} · {x.users.length === 1 ? `only ${x.users[0]} loses it` : `${x.users.length} people lose it`}</p>
-          <pre className="ae-code">{x.iac}</pre><pre className="ae-code">{x.sql}</pre>
+          <div className="ae-row ae-option-head"><p>{d.options.length > 1 && <strong>Option {i + 1} · </strong>}{x.edges === 1 ? "one grant" : `${x.edges} grants together`} · {x.users.length === 1 ? `only ${x.users[0]} loses it` : `${x.users.length} people lose it`}</p>
+            <button type="button" className="ae-btn ae-btn-s" title="Simulate it on the change plan: nothing changes in Snowflake" onClick={() => whatIf(c, cutWhatIf(x.links))}>Simulate</button></div>
+          <CodeOutput changes={[]} texts={cutTexts(x, d.user)} name={`revoke_${d.user.toLowerCase()}${i ? `_${i + 1}` : ""}`} />
         </div>
       ))}
     </div>

@@ -1227,3 +1227,6 @@ div.ae-tile { cursor: default; }
 .ae-ev-text .ae-link { font-weight: 600; text-align: left; white-space: normal; color: inherit; }
 
 .ae-ps-chip { overflow-wrap: normal; word-break: normal; }
+
+.ae-option-head { align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ae-option-head p { margin: 0; }

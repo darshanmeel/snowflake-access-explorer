@@ -733,7 +733,7 @@ export interface CheckPage {
   paths_total?: number; // every path (paths lists the first MAX_PATHS)
   owner: Path[];
   choke: string[];
-  options: { iac: string; sql: string; affects: number; users: string[]; edges: number }[];
+  options: { iac: string; sql: string; affects: number; users: string[]; edges: number; links: CheckPage["cuts"][number]["edges"] }[];
   use_role: string | null;
   warehouse: string | null;
   blocked: { type: "DATABASE" | "SCHEMA"; name: string }[]; // the USAGE missing; empty = none
@@ -1040,6 +1040,7 @@ export interface WhatIfPage {
   groups_total: number;
   impact: { object: string; type: string; people: number; privileges: string[] }[]; // objects people lose, most people first
   impact_total: number;
+  one_more: { role: string; people: number; names: string[] }[]; // dropping the role instead would touch them too
   critical_stay: number; // critical findings left after the plan
   lost_privs: number;
   kept_privs: number;

@@ -70,7 +70,7 @@ export function LossGraph({ d, changes }: { d: WhatIfPage; changes: WhatIfChange
       });
     });
     if (!paths.length) return null;
-    const g = pathGraph(paths, { kinds, max: 40, objectLabel: "Objects", node: (n) => ({ ...n, label: n.label.replace(/ \(user\)$/, "") }) });
+    const g = pathGraph(paths, { kinds, max: 40, objectLabel: "Objects", node: (n) => ({ ...n, label: n.label.replace(/ \(user\)$/, "").replace(/^(.*)\.<([A-Z ]+)>$/, (_, w: string, t: string) => `future ${t.toLowerCase()}s in ${w}`) }) });
     const hi = new Set<string>();
     g.edges.forEach((e) => { if (red.has(`${e.source}>${e.target}`)) { hi.add(e.id); e.privs = ["removed"]; } });
     return { g, hi };
@@ -113,13 +113,14 @@ export function LossTable({ d }: { d: WhatIfPage }) {
 /** What to mind about a plan, one bullet each. */
 export function Care({ d }: { d: WhatIfPage }) {
   const k = d.counts, more = wider(d), n = (x: number, w: string) => `${x.toLocaleString("en-US")} ${w}${x === 1 ? "" : "s"}`;
-  if (!more.length && !k.unreached && !k.orphans && !k.new) return null;
+  if (!more.length && !k.unreached && !k.orphans && !k.new && !d.one_more.length) return null;
   return (
     <ul className="ae-plan-care">
       {more.map((x) => <li key={x} className="ae-warn-word">Reaches more people than named: {x.replace(/^Revoke role /, "")}</li>)}
       {k.unreached > 0 && <li className="ae-bad">Nobody reaches {n(k.unreached, "object")} any more</li>}
       {k.orphans > 0 && <li>{n(k.orphans, "role")} left without users or parent roles</li>}
       {k.new > 0 && <li className="ae-bad">{n(k.new, "new finding")}</li>}
+      {d.one_more.map((x) => <li key={x.role}>One more step: dropping <span className="ae-mono">{x.role}</span> would also touch {x.people <= x.names.length ? x.names.join(", ") : `${x.people.toLocaleString("en-US")} other people`}</li>)}
     </ul>
   );
 }

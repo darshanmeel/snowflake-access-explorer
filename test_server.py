@@ -909,6 +909,21 @@ def test_remove_everything():
     assert all("REVOKE" in x["sql"] for x in d["options"])
 
 
+def test_plan_graph_rows():  # the plan graph's few rows per group are objects before databases and schemas
+    import urllib.parse
+    ch = urllib.parse.quote(json.dumps([dict(op="revoke_role_from_user", role="GRP_ANALYSTS", user="ANALYST_01")]))
+    g = js(f"/api/whatif?changes={ch}")["groups"][0]
+    assert [r["type"] for r in g["lost"][:3]] and not {"DATABASE", "SCHEMA"} & {r["type"] for r in g["lost"][:3]}, g["lost"]
+
+
+def test_one_more():
+    """A role taken from one person: the others who hold it are the next step's reach; never the person named."""
+    x = server.one_more([dict(op="revoke_role_from_user", role="GRP_ANALYSTS", user="ANALYST_01")])
+    assert x == [dict(role="GRP_ANALYSTS", people=1, names=["ANALYST_02"])], x
+    assert server.one_more([dict(op="revoke_role_from_user", role="GRP_ANALYSTS", user=u) for u in ("ANALYST_01", "ANALYST_02")]) == []
+    assert server.one_more([dict(op="drop_role", role="GRP_ANALYSTS")]) == []
+
+
 def test_who_groups():
     """A group's facts count everyone in it, also the people over MAX_WHO that are not sent."""
     keep, server.MAX_WHO = server.MAX_WHO, 2

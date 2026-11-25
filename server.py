@@ -2855,7 +2855,8 @@ def check_object(p, view):
         nearest=near, nearest_own=own, narrow=narrow, approver=a.approver(o), subject=subject_of(u, user),
         view=view, user=u, object=o, type=a.kinds[o], priv=pv, privileges=[ALL] + opts, answer=ans, status=r["status"],
         dormant_days=d if sleep else None, admin_paths=admin, paths=r["paths"], paths_total=r["count"], owner=r["owner"], choke=r["choke"],
-        options=[] if mine else [dict(iac=x["iac"], sql=x["sql"], affects=x["affects"], users=x["users"], edges=len(x["edges"]))
+        options=[] if mine else [dict(iac=x["iac"], sql=x["sql"], affects=x["affects"], users=x["users"], edges=len(x["edges"]),
+                                      links=[{k: e.get(k) for k in ("grantee", "to", "priv", "user")} for e in x["edges"]])
                                  for x in r["options"]],
         use_role=r["use_role"], warehouse=r["warehouse"], read=read,
         blocked=[dict(type=t, name=c) for t, c in gaps], unblock=dict(iac=r["unblock"][0], sql=r["unblock"][1]) if gaps else None,
@@ -3759,6 +3760,7 @@ def loss_groups(us):
     """People who lose the same privileges on the same objects (and keep the same ones another way) as one group,
     biggest first: the first names, the first lost / kept rows and a sentence."""
     sig = lambda rows: "|".join(sorted(f'{r["object"]}:{",".join(r["privileges"])}' for r in rows))
+    drawn = lambda rows: sorted(rows, key=lambda r: 2 if r["type"] in ("DATABASE", "SCHEMA") else r["type"].startswith("FUTURE"))  # the plan graph's rows: real objects first
     by = {}
     for u in us:
         by.setdefault((sig(u["lost_rows"]), sig(u["kept_rows"]), u["objects"], str(u["lost_where"])), []).append(u)
@@ -3770,7 +3772,7 @@ def loss_groups(us):
         text = (f"{who} {verb} {', '.join(lost[0]['privileges'])} on {lost[0]['object']}" if g[0]["objects"] == 1 else
                 f"{who} {verb} access to {plural(g[0]['objects'], 'object')} in {plural(len(where), 'place')}" if lost else f"{who} {verb} nothing")
         out.append(dict(key=str(i), n=n, users=[dict(user=u["user"], status=u["status"]) for u in g[:WHATIF_USERS]],
-                        off=sum(u["status"] != "active" for u in g), lost=lost[:3], kept=g[0]["kept_rows"][:2],
+                        off=sum(u["status"] != "active" for u in g), lost=drawn(lost)[:6], kept=drawn(g[0]["kept_rows"])[:2],
                         lost_sum=sum(u["lost"] for u in g), kept_sum=sum(u["kept"] for u in g),
                         where=where[:LOSS_WHERE], where_total=len(where), text=text))
     return out
@@ -3789,6 +3791,22 @@ def object_impact(us):
             x["pv"].update(r["privileges"])
     out = [dict(object=x["object"], type=x["type"], people=len(x["who"]), privileges=sorted(x["pv"])) for x in by.values()]
     return sorted(out, key=lambda x: (-x["people"], x["object"]))
+
+
+def one_more(changes):
+    """The roles a plan takes from one holder only, and who else holds each: the people dropping the role instead would
+    touch too. Most people first, at most 3."""
+    out, gone = {}, {}
+    for c in changes:
+        if c["op"] == "revoke_role_from_user":
+            gone.setdefault(c["role"], set()).add(c["user"])
+        elif c["op"] == "revoke_role_from_role":
+            gone.setdefault(c["role"], set()).update(a.ups(c["grantee"])[1])
+    for r, us in gone.items():
+        rest = sorted(a.ups(r)[1] - us)
+        if rest and r != "PUBLIC" and r not in a.ADMIN:
+            out[r] = dict(role=r, people=len(rest), names=rest[:3])
+    return sorted(out.values(), key=lambda x: (-x["people"], x["role"]))[:3]
 
 
 def whatif_page(p, view):
@@ -3810,6 +3828,7 @@ def whatif_page(p, view):
         findings=x["findings"][:WHATIF_USERS], findings_total=len(x["findings"]), objects=x["objects"][:WHATIF_USERS],
         objects_total=len(x["objects"]), roles=x["roles"][:WHATIF_USERS], roles_total=len(x["roles"]), users=[{k: v for k, v in u.items() if k in ("user", "status", "lost", "objects", "kept")} for u in us[:WHATIF_USERS]],
         users_total=len(us), groups=gs[:WHATIF_GROUPS], groups_total=len(gs), impact=objs[:WHATIF_OBJECTS],
+        one_more=one_more(json.loads(p["changes"])),
         critical_stay=sum(r["severity"] == "Critical" for r in S["rows"])
         + sum((f["status"] == "new") - (f["status"] == "fixed") for f in x["findings"] if f["severity"] == "Critical"),
         impact_total=len(objs), lost_privs=sum(u["lost"] for u in us), kept_privs=sum(u["kept"] for u in us),
