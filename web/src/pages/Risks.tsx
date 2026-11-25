@@ -8,7 +8,7 @@ import { CodeOutput, copyText, EmptyState, FilterChips, MiniBar, Pager, PathText
 import { useApp, useOpen } from "../ctx";
 import { Load } from "./common";
 import { changeText, findingKey, inPlan, muted, plan, planTexts, rulesOff, toggleFix, useSaved, visible } from "./changeplan";
-import { Care, LossTable } from "./Plan";
+import { Gone, Care, LossTable } from "./Plan";
 import { startOf } from "./screens";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -301,6 +301,7 @@ export function PlanPanel() {
           </ul>
           <Load s={s}>{(d) => (
             <>
+              <Gone d={d} />
               <div className="ae-plan-tiles">
                 <div className={`ae-tile${d.counts.users ? " ae-tile-bad" : ""}`}><span className="ae-tile-l">People lose access</span><span className="ae-tile-v">{d.counts.users}</span></div>
                 <div className="ae-tile"><span className="ae-tile-l">Of them keep some of it</span><span className="ae-tile-v">{d.counts.kept}</span></div>
@@ -313,7 +314,7 @@ export function PlanPanel() {
                   <LossTable d={d} />
                 </div>
               )}
-              <CodeOutput changes={[]} name="change_plan" texts={planTexts(list, d.sql)} />
+              <CodeOutput changes={[]} name="change_plan" texts={planTexts(d.changes.map((x) => x.change), d.sql)} />
             </>
           )}</Load>
           <div className="ae-row">

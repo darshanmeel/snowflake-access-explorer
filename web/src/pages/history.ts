@@ -29,7 +29,7 @@ export const usageCsv = (rows: UsageRow[]) => toCsv(["Object", "Type", "Granted"
 
 export type WatchKind = "can" | "who" | "admins";
 export interface Watch { id: string; kind: WatchKind; user?: string; object?: string; notify: string; seen?: { run: string; answer: string }; before?: string | null }
-export const watches = saved<Watch[]>("ae-watch", []);
+export const watches = saved<Watch[]>("ae-watch", [], true);
 
 export function question(w: Watch): string {
   if (w.kind === "can") return `Can ${w.user} read ${w.object}?`;

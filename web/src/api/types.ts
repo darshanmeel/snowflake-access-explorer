@@ -211,6 +211,7 @@ export interface KindStyle {
 export type ThemeTokens = Record<string, string> & { kind: Record<string, KindStyle> };
 
 export interface Meta {
+  data_id?: string; // which account and source: what the browser keeps stays with it
   mode: Mode;
   source: Source;
   where: string;
@@ -1021,6 +1022,7 @@ export interface WhatIfFinding {
 
 export interface WhatIfPage {
   changes: WhatIfStep[];
+  gone?: { change: WhatIfChange; why: string }[]; // not in this data: left out
   summary: string;
   counts: {
     users: number;

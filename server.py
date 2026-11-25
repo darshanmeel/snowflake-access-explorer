@@ -28,6 +28,8 @@ MODE, SOURCE, WHERE = cache.config()  # FAKE=1 fake data; else SOURCE=direct|obj
 DIRECT = SOURCE == "direct"  # no tables: read the grants straight from Snowflake (a.live)
 # one shared copy and one My access copy per CACHE_DIR: another account or role gets its own CACHE_DIR
 KEY = "shared_data" if MODE == "snowflake" else cache.name(SOURCE, where=WHERE)
+# which account and source this is, as a hash: what the browser keeps (change plan, recent, watched) stays with it
+DATA_ID = hashlib.sha256(f"{cache.name(SOURCE, where=WHERE)}|{cache.DIR if MODE == 'snowflake' else ''}".encode()).hexdigest()[:12]
 OFFLINE = os.environ.get("BUILD_ONLY") == "1"  # run.py --build: built from the parts kept, never a Snowflake read
 DEMO_USER = os.environ.get("DEMO_USER", "ENGINEER_01")
 TTL = cache.TTL  # the My access session cookie (seconds); the data itself stays until read again
@@ -3738,7 +3740,8 @@ WHATIF_KEYS = ["section", "name", "privilege", "type", "object", "cls", "status"
 
 
 def what_if(p, cap):
-    """a.what_if() of the changes param (a JSON list of {op, ...}); 400 on a malformed or unknown change."""
+    """a.what_if() of the changes param (a JSON list of {op, ...}), gone: the changes whose grant is not in this data (a
+    revoke already done, a plan saved on other data), left out; 400 on a malformed change or an unknown op."""
     try:
         changes = json.loads(p.get("changes") or "")
     except ValueError:
@@ -3746,7 +3749,8 @@ def what_if(p, cap):
     if not (isinstance(changes, list) and changes and all(isinstance(c, dict) for c in changes)):
         raise ApiError(400, "bad_param", 'changes must be a JSON list of changes, e.g. [{"op": "empty_public"}]')
     try:
-        return a.what_if(changes, cap)
+        gone = []
+        return a.what_if(changes, cap, gone) | dict(gone=gone)
     except ValueError as x:
         raise ApiError(400, "bad_change", str(x))
 
@@ -3828,7 +3832,7 @@ def whatif_page(p, view):
         findings=x["findings"][:WHATIF_USERS], findings_total=len(x["findings"]), objects=x["objects"][:WHATIF_USERS],
         objects_total=len(x["objects"]), roles=x["roles"][:WHATIF_USERS], roles_total=len(x["roles"]), users=[{k: v for k, v in u.items() if k in ("user", "status", "lost", "objects", "kept")} for u in us[:WHATIF_USERS]],
         users_total=len(us), groups=gs[:WHATIF_GROUPS], groups_total=len(gs), impact=objs[:WHATIF_OBJECTS],
-        one_more=one_more(json.loads(p["changes"])),
+        one_more=one_more([s["change"] for s in x["changes"]]),
         critical_stay=sum(r["severity"] == "Critical" for r in S["rows"])
         + sum((f["status"] == "new") - (f["status"] == "fixed") for f in x["findings"] if f["severity"] == "Critical"),
         impact_total=len(objs), lost_privs=sum(u["lost"] for u in us), kept_privs=sum(u["kept"] for u in us),
@@ -3840,7 +3844,8 @@ def whatif_csv(p, view):
     text = csv_text([k.capitalize() for k in WHATIF_KEYS], [[x[k] for k in WHATIF_KEYS] for x in out["csv"]],
                     [["What if", out["summary"]], ["Run", a.run.get("RUN_ID"), str(a.run.get("FINISHED_AT"))[:16]],
                      ["Generated", f"{now:%Y-%m-%d %H:%M}"], ["Infrastructure as code", out["iac"]],
-                     ["SQL (never run by this app)", out["sql"]]])
+                     ["SQL (never run by this app)", out["sql"]],
+                     *[["Left out, not in this data", g["why"]] for g in out["gone"]]])
     return f"what_if_{now:%Y-%m-%d}.csv", text
 
 
@@ -4212,7 +4217,7 @@ def side_people():
 
 def meta(p, sid):
     view = p.get("view", "shared")
-    base = dict(mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), fetched_ts=fetched(True), view=view, loaded=False, run=None, sources={}, notes=[],
+    base = dict(data_id=DATA_ID, mode=MODE, source=SOURCE, where=WHERE, fetched_at=fetched(), fetched_ts=fetched(True), view=view, loaded=False, run=None, sources={}, notes=[],
                 mine=mine_state(sid), mine_available=mine_off() is None, mine_note=mine_off(), cache_hours=cache.HOURS if cache.local() else 0,
                 sql_copy=sql_copy(view, sid), inside=a.INSIDE, csv=csv_on(), pages=[dict(key=k, label=lab, badge=None, group=GROUP[k]) for k, lab in PAGES.items()
                                               if not (view == "mine" and k in SHARED_ONLY)],

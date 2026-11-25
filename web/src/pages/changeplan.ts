@@ -7,18 +7,33 @@ import { terraformOf, type Change } from "../components/codegen";
 
 export interface Saved<T> { get: () => T; set: (v: T) => void; sub: (f: () => void) => () => void }
 
-export function saved<T>(key: string, empty: T): Saved<T> {
-  let v = empty;
-  try { const s = localStorage.getItem(key); if (s) v = JSON.parse(s) as T; } catch { /* no storage */ }
+let dataId = "";
+const onScope: (() => void)[] = [];
+/** The storage key of something that names people, roles or objects: kept per account (meta.data_id). */
+export const scoped = (key: string) => (dataId ? `${key}:${dataId}` : key);
+
+/** Another account's data is shown: its own plan and watched questions. */
+export function scope(id: string | undefined) {
+  if (!id || id === dataId) return;
+  dataId = id;
+  onScope.forEach((f) => f());
+}
+
+/** perData: names things of one account, so another account starts empty. */
+export function saved<T>(key: string, empty: T, perData = false): Saved<T> {
+  const name = () => (perData ? scoped(key) : key);
+  const read = (): T => { try { const s = localStorage.getItem(name()); if (s) return JSON.parse(s) as T; } catch { /* no storage */ } return empty; };
+  let v = read();
   const subs = new Set<() => void>();
+  if (perData) onScope.push(() => { v = read(); queueMicrotask(() => subs.forEach((f) => f())); });
   return {
     get: () => v,
-    set: (n) => { v = n; try { localStorage.setItem(key, JSON.stringify(n)); } catch { /* no storage */ } subs.forEach((f) => f()); },
+    set: (n) => { v = n; try { localStorage.setItem(name(), JSON.stringify(n)); } catch { /* no storage */ } subs.forEach((f) => f()); },
     sub: (f) => { subs.add(f); return () => { subs.delete(f); }; },
   };
 }
 
-export const plan = saved<WhatIfChange[]>("ae-plan", []);
+export const plan = saved<WhatIfChange[]>("ae-plan", [], true);
 export const muted = saved<Record<string, string>>("ae-muted", {}); // finding key -> reason
 export const rulesOff = saved<string[]>("ae-rules-off", []);
 export const useSaved = <T,>(s: Saved<T>): T => useSyncExternalStore(s.sub, s.get, s.get);

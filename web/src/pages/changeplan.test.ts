@@ -77,3 +77,18 @@ describe("a role held through a group", () => {
     expect(wider({ changes: [step("Revoke role F_X from user U1"), step("Revoke role F_X from user U1 (held through GRP: revoked there, so their other holders lose it as well)")] })).toHaveLength(1);
   });
 });
+
+it("what names one account's people and roles stays with that account", async () => {
+  const { scope, saved: keep } = await import("./changeplan");
+  localStorage.setItem("ae-own", JSON.stringify(["kept before the account was known"]));
+  const own = keep<string[]>("ae-own", [], true), all = keep<string[]>("ae-all", []);
+  scope("demo");
+  expect(own.get()).toEqual([]);
+  own.set(["DW_DEV_01"]);
+  all.set(["5"]);
+  scope("real");
+  expect(own.get()).toEqual([]);
+  expect(all.get()).toEqual(["5"]);
+  scope("demo");
+  expect(own.get()).toEqual(["DW_DEV_01"]);
+});

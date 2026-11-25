@@ -1,6 +1,7 @@
 // Screen 0: start with a question. Hero (search: people, roles, objects, "can X read Y" goes to Can they?; quick
 // links; recently viewed), then what needs attention, act first, findings, the admin / dormant / sensitive cards, the
 // account at a glance and What changed. Every number comes from the server (home_page); takeaways from homedata.
+import { scoped } from "./changeplan";
 import { useEffect, useRef, useState } from "react";
 import { get, useApi } from "../api/client";
 import type { FindItem, HomeCards, HomePage, Page, Severity } from "../api/types";
@@ -24,11 +25,11 @@ export function openFound(i: FindItem, nav: (p: Page, params: Record<string, str
 type Recent = { page: Page; id: string; label: string };
 
 export function recent(): Recent[] {
-  try { return JSON.parse(localStorage.getItem(RECENT) ?? "[]"); } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(scoped(RECENT)) ?? "[]"); } catch { return []; }
 }
 
 export function remember(r: Recent) {
-  try { localStorage.setItem(RECENT, JSON.stringify([r, ...recent().filter((x) => x.id !== r.id)].slice(0, 8))); } catch { /* no storage */ }
+  try { localStorage.setItem(scoped(RECENT), JSON.stringify([r, ...recent().filter((x) => x.id !== r.id)].slice(0, 8))); } catch { /* no storage */ }
 }
 
 /** "can ENGINEER_01 read SALES.CORE.TBL_CUSTOMER" -> who (a user, or a role such as F_MARKETING: Can they? takes a

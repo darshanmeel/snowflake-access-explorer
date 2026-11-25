@@ -146,6 +146,19 @@ export function Outcome({ d, changes }: { d: WhatIfPage; changes: WhatIfChange[]
   );
 }
 
+/** Changes of a plan that are not in this data: named and left out. */
+export function Gone({ d, onRemove }: { d: Pick<WhatIfPage, "gone">; onRemove?: () => void }) {
+  if (!d.gone?.length) return null;
+  const n = d.gone.length;
+  return (
+    <div className="ae-gone" role="status">
+      <b>{n === 1 ? "1 change is" : `${n} changes are`} not in this data and left out</b>
+      <ul>{d.gone.slice(0, 5).map((g) => <li key={g.why}>{g.why}</li>)}{n > 5 && <li className="ae-muted">+{n - 5} more</li>}</ul>
+      {onRemove && <button type="button" className="ae-btn ae-btn-s" onClick={onRemove}>Remove {n === 1 ? "it" : "them"} from the plan</button>}
+    </div>
+  );
+}
+
 /** result: what a plan does (the page's own). */
 export function PlanTab({ fromUrl, result }: { fromUrl: WhatIfChange[]; result: (d: WhatIfPage, list: WhatIfChange[]) => ReactNode }) {
   const c = useApp();
@@ -163,7 +176,7 @@ export function PlanTab({ fromUrl, result }: { fromUrl: WhatIfChange[]; result: 
         {extra.length > 0 && <button type="button" className="ae-btn" onClick={() => plan.set(addTo(list, extra))}>Add the {plural(extra.length, "change")} from the Changes tab</button>}
         {list.length > 0 && <button type="button" className="ae-link" onClick={() => plan.set([])}>Clear</button>}
       </div>
-      {list.length > 0 ? <Load s={s}>{(d) => <>{result(d, list)}</>}</Load>
+      {list.length > 0 ? <Load s={s}>{(d) => <><Gone d={d} onRemove={() => { const out = new Set(d.gone!.map((g) => changeText(g.change))); plan.set(list.filter((x) => !out.has(changeText(x)))); }} />{(d.changes.length > 0 || !d.gone?.length) && result(d, list)}</>}</Load>
         : <EmptyState title="Add a change to see its impact" art="plan">Pick a change above, or add fixes from findings on Risks.</EmptyState>}
     </>
   );

@@ -5899,12 +5899,18 @@ STATE = REBOUND + ("role_grants", "user_grants", "privs", "holds", "held_by", "u
                    "hidden", "source", "obj_use", "acts", "admin_links")
 
 
-def changes_of(changes):
+def changes_of(changes, gone=None):
     """what_if() changes checked against the loaded grants: (cut, [dict(change, label, iac, sql)]). cut: dict(user
     {(user, role)}, link {(role, grantee role)}, priv {(role, privilege, object)}, drop {role}, public). ValueError
-    for an unknown op or a grant that is not there."""
+    for an unknown op, and for a grant that is not there unless gone (a list) takes it: dict(change, why), left out."""
     cut, out = dict(user=set(), link=set(), priv=set(), drop=set(), public=False), []
     held = {}  # role -> {(privilege, object): types}: one pass over a role's grants, not one per change (a trim has 1000s)
+
+    def missing(c, why):
+        if gone is None:
+            raise ValueError(why)
+        gone.append(dict(change=c, why=why))
+
     for c in changes:
         op, r = c.get("op"), c.get("role")
         if op in ("revoke_role_from_user", "revoke_role_from_role"):
@@ -5914,7 +5920,8 @@ def changes_of(changes):
             # held further down: cut r where it is granted, at every role on g's paths that holds it directly
             via = sorted(h for h in dict.fromkeys(held_by.get(r, [])) if h != g and (g in ups(h)[1] if user else g in ups(h)[0]))
             if not direct and not via:
-                raise ValueError(f"{'User' if user else 'Role'} {g} does not reach role {r}")
+                missing(c, f"{'User' if user else 'Role'} {g} does not reach role {r}")
+                continue
             if direct:
                 cut["user" if user else "link"].add((g, r) if user else (r, g))
             cut["link"].update((r, h) for h in via)
@@ -5931,12 +5938,14 @@ def changes_of(changes):
                     held[r].setdefault((p, x), set()).add(k)
             ks = sorted(held[r].get((pv, o), ()))
             if not ks:
-                raise ValueError(f"Role {r} holds no {pv} on {o}")
+                missing(c, f"Role {r} holds no {pv} on {o}")
+                continue
             cut["priv"].add((r, pv, o))
             label, (iac, sql) = f"Revoke {pv} on {o} from role {r}", fix_text([priv_edge(r, pv, k, o) for k in ks])
         elif op == "drop_role":
             if r not in roles or r == "PUBLIC" or r in ADMIN:  # PUBLIC and the system roles can't be dropped
-                raise ValueError(f"Role {r} can't be dropped" if r in roles else f"No role {r}")
+                missing(c, f"Role {r} can't be dropped" if r in roles else f"No role {r}")
+                continue
             cut["drop"].add(r)
             label, iac, sql = (f"Drop role {r}", f"Remove in the infrastructure-as-code repo: role {r}, with every "
                                                  "grant to and from it", f"DROP {role_sql(r)};")
@@ -5989,7 +5998,7 @@ def reached_roles():
     return cached("reached", make)
 
 
-def what_if(changes, cap=MAX_PATHS):
+def what_if(changes, cap=MAX_PATHS, gone=None):
     """The access lost when grants go, simulated on a copy: the loaded lookups are rebuilt without the changes and put
     back after; the rules recheck only the users and roles a change can touch. changes: [dict(op, ...)]:
     revoke_role_from_user (role, user), revoke_role_from_role (role, grantee), revoke_priv (role, privilege, object),
@@ -6002,7 +6011,7 @@ def what_if(changes, cap=MAX_PATHS):
     objects [dict(object, type, sensitive, unreached, ownerless)], roles [dict(role, kind, orphan, unreached)],
     findings [dict(num, title, severity, grantee, kind, detail, path, status fixed | new, changed: the rule still
     fires on that grantee)], iac, sql, csv [rows: section, name, privilege, type, object, cls, status, path, detail])."""
-    cut, steps = changes_of(changes)
+    cut, steps = changes_of(changes, gone)
     pub = list(dict.fromkeys(holds.get("PUBLIC", []))) if cut["public"] else []
     # cut points: (users who reach it, role, the roles right under the cut)
     pts = [({u}, r, {r}) for u, r in cut["user"]] + [(ups(g)[1], r, {r}) for r, g in cut["link"]]

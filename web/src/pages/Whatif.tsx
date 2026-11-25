@@ -6,7 +6,7 @@ import type { ListItem, WhatIfChange, WhatIfFinding, WhatIfObjectRow, WhatIfOp, 
 import { Card, CodeOutput, DataTable, EmptyState, Fold, Tabs, useCsv } from "../components";
 import { apiParams, useApp, useOpen, type Ctx } from "../ctx";
 import { col, Head, Load, NameLink, PathCell, Pick, Sel } from "./common";
-import { LoseKeep, Outcome, PlanTab } from "./Plan";
+import { Gone, LoseKeep, Outcome, PlanTab } from "./Plan";
 import { addTo, changeText, plan, planTexts, useSaved } from "./changeplan";
 
 const OPS: [WhatIfOp, string][] = [
@@ -209,8 +209,8 @@ export function WhatIfPageView() {
         { key: "text", label: "Text to apply" },
       ]} />
       {show === "plan" && <PlanTab fromUrl={list} result={(d, l) => <Result d={d} list={l} />} />}
-      {show === "text" && (every.length ? <Load s={tx}>{(d) => <><p className="ae-answer">{every.length} {every.length === 1 ? "change" : "changes"} for your RBAC code</p>
-        <Card title="Text to apply"><CodeOutput changes={[]} name="what_if" texts={planTexts(every, d.sql)} /></Card></>}</Load>
+      {show === "text" && (every.length ? <Load s={tx}>{(d) => <><Gone d={d} /><p className="ae-answer">{d.changes.length} {d.changes.length === 1 ? "change" : "changes"} for your RBAC code</p>
+        <Card title="Text to apply"><CodeOutput changes={[]} name="what_if" texts={planTexts(d.changes.map((x) => x.change), d.sql)} /></Card></>}</Load>
         : <EmptyState title="No change yet" art="plan">Add one on Add a change.</EmptyState>)}
       {show === "changes" && <>
       {!list.length && <p className="ae-answer">Add a change, see who it hits before it is written down</p>}
@@ -222,7 +222,7 @@ export function WhatIfPageView() {
             ))}</div>
           : <EmptyState title="No change yet" art="plan">Or start from a role, a path or a finding ("What if revoked?").</EmptyState>}
       </Card>
-      {list.length > 0 && <Load s={s}>{(d) => <Result d={d} list={list} />}</Load>}
+      {list.length > 0 && <Load s={s}>{(d) => <><Gone d={d} />{(d.changes.length > 0 || !d.gone?.length) && <Result d={d} list={list} />}</>}</Load>}
       </>}
     </>
   );

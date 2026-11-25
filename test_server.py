@@ -616,7 +616,15 @@ def test_whatif():
     assert hs and {i["type"] for i in hs} == {"direct", "inherited"} and hs[0]["type"] == "direct", hs[:3]
     us = js(f"/api/list?what=user_holders&role={a.TECH}SALES_CORE_READ")["items"]
     assert us and all(i["kind"] == "user" for i in us)
-    get("/api/whatif?changes=" + quote(json.dumps([{"op": "drop_role", "role": "NOPE"}])), 400)
+    get("/api/whatif?changes=" + quote(json.dumps([{"op": "nope"}])), 400)
+    # a change whose grant is not in this data is left out and named; the rest of the plan still answers
+    old = {"op": "revoke_role_from_user", "role": "NOPE", "user": "NOBODY"}
+    d = js("/api/whatif?changes=" + quote(json.dumps([old])))
+    assert d["gone"] == [dict(change=old, why="User NOBODY does not reach role NOPE")] and not d["changes"] and not d["counts"]["users"]
+    mix, alone = (js("/api/whatif?changes=" + quote(json.dumps(x))) for x in ([old, {"op": "empty_public"}], [{"op": "empty_public"}]))
+    assert len(mix["gone"]) == 1 and mix["counts"] == alone["counts"] and mix["sql"] == alone["sql"] and not alone["gone"]
+    assert "Left out" in get("/api/whatif.csv?changes=" + quote(json.dumps([old]))).text
+    assert re.fullmatch("[0-9a-f]{12}", js("/api/meta")["data_id"])
 
 
 READ_ONLY = re.compile(r"^\s*(SELECT|WITH|SHOW|DESC(RIBE)?|USE SECONDARY ROLES ALL|CALL \S+\.SP_ACCESS_SNAPSHOT\()", re.I)

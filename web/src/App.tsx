@@ -15,6 +15,7 @@ import { ErrorBox, SqlPanel } from "./pages/common";
 import { FlowPageView } from "./pages/Flow";
 import { GraphPageView } from "./pages/Map";
 import { HomePageView, openFound } from "./pages/Home";
+import { scope } from "./pages/changeplan";
 import { askedOf, startWith, type Asked } from "./pages/screens";
 import { ObjectPageView } from "./pages/Object";
 import { RequestPageView } from "./pages/Request";
@@ -257,6 +258,23 @@ function Side({ meta, page, params, nav, onShut, foot, asked }: { meta: Meta; pa
   );
 }
 
+/** The tools used now and then, behind one button next to the name; a pick, Escape or a click elsewhere closes it. */
+export function More({ children }: { children: ReactNode }) {
+  const box = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const shut = (e: Event) => {
+      const d = box.current;
+      if (!d?.open) return;
+      if (e instanceof KeyboardEvent) { if (e.key === "Escape") { d.open = false; d.querySelector("summary")?.focus(); } }
+      else if (!d.contains(e.target as Node) || (e.target as Element).closest("button.ae-btn")) d.open = false;
+    };
+    addEventListener("click", shut);
+    addEventListener("keydown", shut);
+    return () => { removeEventListener("click", shut); removeEventListener("keydown", shut); };
+  }, []);
+  return <details className="top-more" ref={box}><summary>More</summary><div>{children}</div></details>;
+}
+
 /** Side panel "Data": where the data shown comes from, how long it is kept, and the DuckDB copy to query with SQL. */
 export function DataInfo({ meta }: { meta: Meta }) {
   if (!meta.run) return null;
@@ -336,6 +354,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const view = loc.mine ? "mine" : "shared";
   const m = useApi<Meta>("meta", { view });
   const meta = m.data;
+  scope(meta?.data_id); // before any page reads what the browser kept
   const poll = useCallback(() => peek<Progress>("progress"), []);
 
   const at = useRef(loc);
@@ -435,13 +454,6 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             <button type="button" className="ae-btn" onClick={() => setLogOpen(!logOpen)} aria-expanded={logOpen} title="What the app did while loading, step by step">Log</button>
             {meta?.mine_available !== false && <button className="ae-btn" aria-pressed={loc.mine} disabled={!!busy && !loc.mine && !meta?.mine.loaded} title={loc.mine ? "Back to everyone: the shared snapshot" : "Only what you can reach, read as you"}
               onClick={() => (loc.mine ? setView(false) : meta?.mine.loaded ? setView(true) : loadMine())}>{loc.mine ? "Everyone" : "My access"}</button>}
-            <details className="rail-more"><summary>More</summary>
-              <div>
-                {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
-                <button className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
-                {!loc.mine && meta && meta.mode !== "fake" && <button className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
-                {meta && <DataInfo meta={meta} />}
-              </div></details>
           </span>
   );
   return (
@@ -455,6 +467,12 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
             Access explorer
           </button>
+          <More>
+            {hasData && <button type="button" className="ae-btn" onClick={() => window.print()} title="Print this page with its open tab, or save it as a PDF">Save as PDF</button>}
+            <button type="button" className="ae-btn" onClick={flip}>{theme === "dark" ? "Light" : "Dark"}</button>
+            {!loc.mine && meta && meta.mode !== "fake" && <button type="button" className="ae-btn" onClick={rebuild} disabled={!!busy || !!bg} title="Runs the snapshot procedure in Snowflake">Rebuild snapshot</button>}
+            {meta && <DataInfo meta={meta} />}
+          </More>
           <div className="top-lock" {...lock}>
           <Find view={view} onOpen={(i) => openFound(i, nav)} />
           {loc.mine && <span className="top-demo">My access</span>}
