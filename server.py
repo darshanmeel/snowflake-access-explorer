@@ -2137,6 +2137,8 @@ def held_rows(p, c):
         rows = [dict(grantee=x["grantee"], id=a.uid(x["grantee"], x["kind"] == "user"), kind=norm(x["kind"]),
                      kind_label=kind_label(x["grantee"], x["kind"]),
                      status=a.status(x["grantee"]) if x["kind"] == "user" else None, depth=x["depth"],
+                     used=sum(int(y["QUERIES"] or 0) for y in a.used.get(x["grantee"], []) if y["NAME"] == r and y["KIND"] in ("ROLE", "SECONDARY ROLE"))
+                     if x["kind"] == "user" and a.used else None,  # queries with this role; None: a role, or no query history
                      direct=x["direct"], only_via=x["only_via"], path=x["path"], count=x["count"],
                      # no grantee picked: a direct holder loses the role when its own grant is its only path
                      loses_it=(x["grantee"], x["kind"]) in lost if cut else x["direct"] and x["count"] == 1,
@@ -2155,7 +2157,7 @@ def revoke_text(r):
 
 
 HELD_SORT = {"g": lambda r: r["grantee"], "k": lambda r: r["kind_label"], "s": lambda r: r["status"] or "",
-             "d": lambda r: r["depth"], "n": lambda r: r["count"], "l": revoke_text, "path": lambda r: " > ".join(r["path"])}
+             "d": lambda r: r["depth"], "n": lambda r: r["count"], "u": lambda r: -1 if r["used"] is None else r["used"], "l": revoke_text, "path": lambda r: " > ".join(r["path"])}
 
 
 def held_tab_rows(p, view):
@@ -2183,8 +2185,8 @@ def held_page(p, view):
 
 def held_csv(p, view):
     c, rows = held_tab_rows(p, view)
-    cols = ["Grantee", "Kind", "Status", "Depth", "Paths", "If revoked", "Path"]
-    out = [[r["grantee"], r["kind_label"], r["status"] or "", r["depth"], r["count"], revoke_text(r), " > ".join(r["path"])]
+    cols = ["Grantee", "Kind", "Status", "Depth", "Paths", "Queries with it", "If revoked", "Path"]
+    out = [[r["grantee"], r["kind_label"], r["status"] or "", r["depth"], r["count"], "" if r["used"] is None else r["used"], revoke_text(r), " > ".join(r["path"])]
            for r in rows]
     return f"{c['r']}_held_by_{p.get('tab', 'all')}.csv", csv_text(cols, out)
 
@@ -2751,7 +2753,7 @@ def check_object(p, view):
     if pv == ALL:  # every privilege the user holds on o, each with its own paths
         held = list(dict.fromkeys(x["privilege"] for x in mine_rows if x["object"] == o))
         rs = {x: a.can(u, x, o, is_user=user) for x in held}
-        r = (dict(next(iter(rs.values())), choke=[]) if rs else a.can(u, opts[0], o, is_user=user)) | dict(ask=[], options=[], closest=None)
+        r = (dict(next(iter(rs.values())), choke=[]) if rs else a.can(u, opts[0], o, is_user=user)) | dict(ask=[], options=a.removal(u, None, o, user) if rs and not mine else [], closest=None)
         r["paths"] = [q | dict(privilege=x) for x, v in rs.items() for q in v["paths"]]
         r["owner"] = list({tuple(q): q for v in rs.values() for q in v["owner"]}.values())
         r["choke"] = [c for c in (next(iter(rs.values()))["choke"] if rs else []) if all(c in v["choke"] for v in rs.values())]

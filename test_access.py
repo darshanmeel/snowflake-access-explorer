@@ -1374,10 +1374,12 @@ def test_lean():
     a.build(data)
     try:  # a role gives it and PUBLIC too (as WH_SALES_XS already): drawn without PUBLIC, and said
         g = a.graph_input("ANALYST_01", user=True, lean=True)
-        assert "2 also reached through PUBLIC" in g["left"] and "PUBLIC" not in {n for _, ns in g["lanes"] for n in ns}, g["left"]
+        assert "2 with a PUBLIC route too" in g["left"] and "PUBLIC" not in {n for _, ns in g["lanes"] for n in ns}, g["left"]
         assert all(r["paths"] for r in g["rows"])
     finally:
         a.build(a.fake())
+    for u in a.users:  # with the default role only: no row without a way to it
+        assert all(r["paths"] for r in (a.graph_input(u, user=True, lean=True, default_only=True) or dict(rows=[]))["rows"]), u
     for u in a.users:  # whoever reaches something still has a graph
         assert bool(a.graph_input(u, user=True, lean=True)) == bool(a.graph_input(u, user=True)), u
 

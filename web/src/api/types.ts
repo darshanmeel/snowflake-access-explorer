@@ -472,6 +472,7 @@ export interface HeldRow {
   kind_label: string;
   status: UserStatus | null;
   depth: number;
+  used: number | null; // queries run with the role; null: not a user, or no query history
   direct: boolean;
   only_via: string[];
   path: Path;

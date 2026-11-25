@@ -66,6 +66,7 @@ function HeldBy({ d }: { d: RolePage }) {
           col("k", "Kind", (r: HeldRow) => r.kind_label, { wrap: "nowrap" }),
           col("s", "Status", (r: HeldRow) => r.status ?? "", { wrap: "nowrap", render: (r: HeldRow) => r.status && <><StatusDot s={r.status} /> {r.status}</> }),
           col("h", "Holds it", (r: HeldRow) => (r.direct ? "directly" : `through ${r.depth - 1 || 1} ${r.depth > 2 ? "roles" : "role"}`), { wrap: "wrap" }),
+          ...(tab === "roles" ? [] : [col("u", "Used it", (r: HeldRow) => r.used ?? "", { num: true, help: "Queries run with this role, as primary or secondary role, in the query history", render: (r: HeldRow) => (r.used == null ? "" : r.used ? `${r.used.toLocaleString("en-US")} ${r.used === 1 ? "query" : "queries"}` : <span className="ae-muted">not recorded</span>) })]),
           col("l", "If revoked", revokeText, { wrap: "nowrap", help: "Direct holder: what removing its own grant does. Others: the roles every path goes through." }),
           pathCol<HeldRow>(d.refs),
           col("act", "", () => "", { wrap: "nowrap", render: (r: HeldRow) => {

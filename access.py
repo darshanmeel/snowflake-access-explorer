@@ -4572,7 +4572,7 @@ def lean_rows(rows, start, user, default_only=False, limit=None):
             if k not in cut:
                 cut[k] = [p for p in r["paths"] if "PUBLIC" not in p[1:]]
             if len(cut[k]) < len(r["paths"]):
-                left.setdefault("also reached through PUBLIC", set()).add(r["object"])
+                left.setdefault("with a PUBLIC route too", set()).add(r["object"])
             out.append(r | dict(holders=[h for h in hs if h in mine], paths=cut[k]))
     return (out, ", ".join(f"{len(v):,} {k}" for k, v in left.items())) if out else (rows, "")
 
@@ -5022,9 +5022,9 @@ def lose_key(e):
 
 def losers(edges, privs, obj):
     """Users who no longer hold one of privs on obj once every edge in edges is cut (each of their paths uses one):
-    reach without the cut links, per user who reaches a cut."""
+    reach without the cut links, per user who reaches a cut. A privilege None: any one of them."""
     gone = {(e["grantee"], e["to"]) for e in edges}
-    hs = [{r for r, pv, k in on.get(obj, []) if pv == q and (r, obj) not in gone} for q in privs]
+    hs = [{r for r, pv, k in on.get(obj, []) if q in (None, pv) and (r, obj) not in gone} for q in privs]
     us = set().union(*(users_through(e["grantee"], e.get("user")) for e in edges))
     out = set()
     for v in us:
@@ -5039,8 +5039,8 @@ def removal(user, priv, obj, is_user=True):
     the user: one option per grant edge that every path uses (a choke point, found by counting paths, not listing
     them); when no single grant to the user cuts every path, one option revoking each granted role on a path (all
     needed). Option: edges, edge (first), iac, sql, affects (users who lose priv on obj, net of their other paths),
-    users."""
-    t = tally(fast(user, is_user), holding(obj, lambda pv: pv == priv))
+    users. priv None: everything held on obj, role links only."""
+    t = tally(fast(user, is_user), holding(obj, lambda pv: priv in (None, pv)))
     if not t["total"]:
         return []
     first, out = first_path(t, obj), []
@@ -5051,7 +5051,7 @@ def removal(user, priv, obj, is_user=True):
         out.append(dict(edges=edges, edge=edges[0], iac=iac, sql=sql, affects=len(us), users=sorted(us), order=order))
 
     for i, (x, y) in enumerate(zip(first, first[1:])):
-        if y == "PUBLIC" or via_link(t, x, None if y == obj else y, is_user, i == 0 and is_user) != t["total"]:
+        if y == "PUBLIC" or (priv is None and y == obj) or via_link(t, x, None if y == obj else y, is_user, i == 0 and is_user) != t["total"]:
             continue  # every user holds PUBLIC: not revocable
         option([holder_edge(x, priv, obj) if y == obj else role_edge(x, y, i == 0 and is_user)], i)
     down = t["down"]  # a role's own grant has no role link

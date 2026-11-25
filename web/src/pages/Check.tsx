@@ -246,7 +246,7 @@ function Routes({ d, only }: { d: CheckPage; only?: string }) {
         <>
         {d.cuts[0] && <p className="ae-answer">{cutLabel(d.cuts[0].edges).replace(/^Revoke /, "Removing ")} hits {d.cuts[0].people.length === 1 ? `only ${d.cuts[0].people[0]}` : `${d.cuts[0].people.length} people`}</p>}
         <Card title={d.cuts.length ? `${d.cuts.length} ${d.cuts.length === 1 ? "place" : "places"} to cut, smallest effect first` : "Take it away"} sub={d.cuts.length ? undefined
-          : d.view === "mine" ? "Not worked out in My access: it needs everyone's grants." : "No single link is on every route: each route needs its own cut, below."}>
+          : d.view === "mine" ? "Not worked out in My access: it needs everyone's grants." : (d.options.length ? "No single link is on every route: revoke these together." : "No single grant to revoke: it comes through PUBLIC, ownership or an admin role.")}>
           {d.cuts.length > 0 && <div className="ae-table-scroll"><table className="ae-table ae-cuttab">
             <thead><tr><th>Cut here</th><th>Who loses it</th><th>What else {d.user} loses</th><th /></tr></thead>
             <tbody>{d.cuts.map((x, i) => (
@@ -406,7 +406,7 @@ function RemoveOptions({ d }: { d: CheckPage }) {
     <div className="ae-options">
       {d.options.map((x, i) => (
         <div key={i} className="ae-option">
-          <p><strong>Option {i + 1}</strong> · {x.affects} privilege(s) lost · {x.users.length} user(s) affected</p>
+          <p><strong>Option {i + 1}</strong> · {x.edges === 1 ? "one grant" : `all ${x.edges} grants together`} · {x.users.length === 1 ? `only ${x.users[0]} loses it` : `${x.users.length} people lose it`}</p>
           <pre className="ae-code">{x.iac}</pre><pre className="ae-code">{x.sql}</pre>
         </div>
       ))}

@@ -237,6 +237,8 @@ def test_big_lanes():
     assert sum(x["count"] for x in gs["rows"]) == gs["users"] == o["grantees"]["users"] and gs["roles"] == o["grantees"]["roles"]
     assert len(get(f"/api/grantees.csv?name={t}").text.strip().splitlines()) == rows["total"] + 1
     d = js(f"/api/role?name={r}")
+    u = js(f"/api/held?name={r}&tab=users")["rows"]
+    assert sum(bool(x["used"]) for x in u) == d["usage"]["used"] and any(x["used"] for x in u)
     h = js(f"/api/held?name={r}&tab=users&limit=1")
     assert len(h["rows"]) == 1 and h["total"] == d["held_by"]["users"] and h["rows"][0]["kind"] == "user"
     assert js(f"/api/held?name={r}")["total"] == d["held_by"]["total"] == d["held_by"]["users"] + d["held_by"]["roles"]
@@ -898,6 +900,13 @@ def test_review_check():
     a.build(test_access.tiny([("B", "A"), ("C", "B"), ("B", "C")], [("A", "U")]))
     assert [n["raw"] for n in server.loop_notes()] == ["B, C"]
     a.build(a.fake())
+
+
+def test_remove_everything():
+    """Can they?, any privilege, no link on every route: the grants to revoke together take everything away."""
+    d = js("/api/check?name=ENGINEER_01&obj=SALES.CORE.TBL_CUSTOMER&priv=*")
+    assert not d["cuts"] and d["options"] and d["options"][0]["edges"] > 1 and d["options"][0]["users"] == ["ENGINEER_01"], d["options"]
+    assert all("REVOKE" in x["sql"] for x in d["options"])
 
 
 def test_who_groups():

@@ -293,7 +293,7 @@ function ColumnsCard({ d }: { d: WhoPage }) {
           <li key={k.column}>
             <div><div className="ae-mono">{k.column}</div><div className="ae-muted">{k.tags.map(tagWord).filter(Boolean).join(", ") || (k.sensitive ? "sensitive" : "")}</div></div>
             <div className="ae-whocols-r">
-              <MiniBar of={Math.max(1, k.clear.length + k.masked.length + k.unknown.length)} text={<span className={k.clear.length ? "ae-sens-word" : ""} title={k.clear.join(", ")}>{k.clear.length} of {k.clear.length + k.masked.length + k.unknown.length} see it</span>}
+              <MiniBar of={Math.max(1, k.clear.length + k.masked.length + k.unknown.length)} text={<span className={k.clear.length ? "ae-sens-word" : ""} title={k.clear.join(", ")}>{k.clear.length} of {k.clear.length + k.masked.length + k.unknown.length} who can read it see it</span>}
                 parts={[{ key: "c", label: "See it in the clear", value: k.clear.length, cls: "high" }, { key: "m", label: "Masked", value: k.masked.length, cls: "keep" }, { key: "u", label: "Unknown", value: k.unknown.length, cls: "low" }]} />
               <div className="ae-muted">{k.policies.length ? `${k.policies.map((x) => x.split(".").pop()).join(", ")}${k.masked.length ? ` · masked for ${k.masked.length}` : ""}` : "No masking policy"}</div>
             </div>
