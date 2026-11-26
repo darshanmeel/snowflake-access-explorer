@@ -324,8 +324,12 @@ function How({ e, d, role, onOpen }: { e: WhoEntry; d: WhoPage; role: boolean; o
         {steps.map((s, i) => (
           <span key={i} className="ae-route-step">
             {i > 0 && <span className="ae-route-link" />}
-            <button type="button" className={`ae-route-node ae-route-${i === 0 ? (role ? d.refs.kinds[e.path[0]] ?? "group" : "user") : i === steps.length - 1 ? "object" : d.refs.kinds[e.path[i]] ?? "group"}`} onClick={() => onOpen(e.path[i])} title={e.path[i]}>
-              <span className="ae-mono">{s.name}</span><span className="ae-muted">{s.kind}</span></button>
+            {(() => {
+              const cls = `ae-route-node ae-route-${i === 0 ? (role ? d.refs.kinds[e.path[0]] ?? "group" : "user") : i === steps.length - 1 ? "object" : d.refs.kinds[e.path[i]] ?? "group"}`;
+              const inner = <><span className="ae-mono">{s.name}</span><span className="ae-muted">{s.kind}</span></>;
+              return e.path[i] === d.object.id ? <span className={cls} title={e.path[i]}>{inner}</span> // this page: no self-link
+                : <button type="button" className={cls} onClick={() => onOpen(e.path[i])} title={e.path[i]}>{inner}</button>;
+            })()}
           </span>
         ))}
       </div>

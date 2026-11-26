@@ -1,7 +1,7 @@
 // Privileges split in tabs, each with its own small diagram and table.
 import { useMemo, useState } from "react";
 import { useApi } from "../api/client";
-import type { Account, Graph as G, GraphNode, PrivClass, PrivRow, ReachRow, Refs, Tab, TabKey } from "../api/types";
+import type { Account, Graph as G, GraphNode, NodeKind, PrivClass, PrivRow, ReachRow, Refs, Tab, TabKey } from "../api/types";
 import { Graph } from "./Graph";
 import { DataTable, type Column, type DataTableProps } from "./DataTable";
 import { Banner, Chips, Tabs } from "./parts";
@@ -22,7 +22,7 @@ export interface PrivilegeTabsProps {
   onNodeClick?: (n: GraphNode) => void;
   onOnly?: (id: string | null) => void; // a server diagram: Show only this / Whole graph (focus=)
   focus?: string | null; // its focused box (the page keeps it apart from its own graph's)
-  onOpen?: (id: string) => void; // a name clicked in a table or path
+  onOpen?: (id: string, kind?: NodeKind) => void; // a name clicked in a table or path; kind when the table knows it
   theme?: ThemeName;
   max?: number;
   csvName?: string;
@@ -101,12 +101,12 @@ export const AccessTag = ({ cls, grants }: { cls: PrivClass; grants: string[] })
   <span className={`ae-pclass ae-pclass-${cls}`} title={grants.join(", ")}>{ACCESS[cls] ?? cls}</span>;
 
 function PrivTable({ rows, kinds, onOpen, csv, server }: {
-  rows: PrivRow[]; kinds: Record<string, string>; onOpen?: (id: string) => void; csv: string; server?: DataTableProps<ObjRow>["server"];
+  rows: PrivRow[]; kinds: Record<string, string>; onOpen?: (id: string, kind?: NodeKind) => void; csv: string; server?: DataTableProps<ObjRow>["server"];
 }) {
   const objs = useMemo(() => (server ? [] : byObject(rows)), [rows, server]);
   const cols: Column<ObjRow>[] = [
     { key: "object", label: "Object", get: (r) => r.label, wrap: "truncate",
-      render: (r) => <button className="ae-link" onClick={() => onOpen?.(r.object)} title={r.object}>
+      render: (r) => <button className="ae-link" onClick={() => onOpen?.(r.object, "object")} title={r.object}>
         {r.sensitive && <span className="ae-sens" title="Sensitive">●</span>}{r.label}</button> },
     { key: "type", label: "Type", get: (r) => r.type, wrap: "nowrap" },
     { key: "access", label: "Access", get: (r) => ACCESS[r.access] ?? r.access, wrap: "nowrap", render: (r) => <AccessTag cls={r.access} grants={r.grants} />,

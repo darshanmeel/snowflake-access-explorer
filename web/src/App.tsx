@@ -234,7 +234,7 @@ function Side({ meta, page, params, nav, onShut, foot, asked }: { meta: Meta; pa
         })}
       </details>
       {meta.notes.length > 0 && (
-        <details className="side-notes">
+        <details className="side-notes" id="side-notes">
           <summary><span className="side-notes-dot" />Incomplete · {meta.notes.length} source{meta.notes.length === 1 ? "" : "s"}</summary>
           <ul>
             {meta.notes.map((n) => (
@@ -447,7 +447,7 @@ export function App({ onUrl }: { onUrl?: (query: string) => void } = {}) {
   const controls = (
     <span className="top-right">
             {meta && <DataTime meta={meta} reload={reload} busy={!!busy || !!bg} />}
-            {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => setShut(false)}
+            {meta && meta.notes.length > 0 && <button type="button" className="top-chip top-incomplete" onClick={() => { setShut(false); requestAnimationFrame(() => { const n = document.getElementById("side-notes") as HTMLDetailsElement | null; if (n) { n.open = true; n.scrollIntoView({ block: "nearest" }); } }); }}
               title={meta.notes.map((n) => `${n.title}: ${n.meaning}`).join("\n")}><span className="side-notes-dot" aria-hidden />Incomplete · {meta.notes.length}</button>}
             {meta?.mode === "fake" && <span className="top-demo" title="Fake accounts, roles and tables. Run without --fake (FAKE=1), with the connection in .env, to read Snowflake.">Demo data</span>}
             {hasData && <button className="ae-btn" onClick={() => setSql("")} title="The SQL behind this page, to run yourself (every card has its own </> mark too)">{"</>"} SQL</button>}

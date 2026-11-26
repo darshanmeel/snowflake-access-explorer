@@ -27,8 +27,8 @@ export const apiParams = (c: Ctx) => ({ ...c.params, tfocus: undefined, afocus: 
 const base = (id: string) => id.replace(/ \(user\)$/, "");
 
 /** Page that shows `id`, from the kind the server sent in refs. */
-export function openTarget(id: string, refs?: Refs | null): { page: Page; params: Params } {
-  const k: NodeKind | undefined = refs?.kinds[id];
+export function openTarget(id: string, refs?: Refs | null, kind?: NodeKind): { page: Page; params: Params } {
+  const k: NodeKind | undefined = kind ?? refs?.kinds[id]; // kind: the caller knows it (a privileges row is always an object)
   if (k === "user") return { page: "user", params: { name: base(id) } };
   if (k === "object" || (!k && refs?.types[id])) return { page: "object", params: { name: id } };
   if (!k && /\(user\)$/.test(id)) return { page: "user", params: { name: base(id) } };
@@ -38,7 +38,7 @@ export function openTarget(id: string, refs?: Refs | null): { page: Page; params
 /** Handlers for graph and table clicks, shared by every page. */
 export function useOpen(refs?: Refs | null) {
   const c = useApp();
-  const open = (id: string) => { const t = openTarget(id, refs); c.nav(t.page, t.params); };
+  const open = (id: string, kind?: NodeKind) => { const t = openTarget(id, refs, kind); c.nav(t.page, t.params); };
   const action = (a: NodeAction | null) => {
     if (!a) return;
     if (a.kind === "page") c.nav(a.page, a.params);

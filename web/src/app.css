@@ -317,7 +317,8 @@ div.ae-tile { cursor: default; }
 .ae-route-node { font: inherit; display: grid; gap: 1px; text-align: left; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--ae-line_strong); background: var(--ae-panel); color: var(--ae-ink); cursor: pointer; max-width: 210px; }
 .ae-route-node .ae-mono { font-size: 12.5px; overflow-wrap: anywhere; }
 .ae-route-node .ae-muted { font-size: 11px; }
-.ae-route-node:hover { border-color: var(--ae-accent); }
+button.ae-route-node:hover { border-color: var(--ae-accent); }
+span.ae-route-node { cursor: default; }
 .ae-route-node:focus-visible { outline: 2px solid var(--ae-accent); }
 .ae-route-user { border: 2px solid var(--ae-ink); border-radius: 999px; padding: 6px 14px; }
 .ae-route-functional { background: var(--ae-k-functional-bg); border-color: var(--ae-k-functional-bd); }
@@ -520,6 +521,7 @@ div.ae-tile { cursor: default; }
 .ae-rgrid-group { background: var(--ae-bad_bg); }
 .ae-rgrid-group .ae-rgrid-who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ae-rgrid-group .ae-gcell { justify-content: flex-start; padding: 0 12px; position: sticky; left: 0; }
+.ae-rgrid-group .ae-rgrid-dec { position: relative; z-index: 1; } /* the sticky cell slides over it when the grid scrolls sideways */
 .ae-signbar-act { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
 .ae-signbar .ae-btn:not(.ae-btn-primary) { background: var(--ae-panel); color: var(--ae-ink); }
 .ae-signbar .ae-btn:disabled { opacity: .55; cursor: not-allowed; }
