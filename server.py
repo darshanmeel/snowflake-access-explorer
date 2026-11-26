@@ -4466,14 +4466,24 @@ def forget():
         x.clear()
 
 
+def answer_key(name, p, sid):
+    dk = data_key(p.get("view", "shared"), sid)
+    return dk and (dk, name, tuple(sorted(p.items())))
+
+
+def kept(name, params, sid=None):
+    """The answer serve() keeps for these parameters, or None: answered without waiting for the one computed now."""
+    return ANSWERS.get(answer_key(name, {k: str(v) for k, v in params.items()}, sid))
+
+
 def serve(name, params=None, sid=None):
     """The JSON answer of one endpoint (a dict), as the local server and the Streamlit components get it. Answers
     depend only on the data set and the parameters, so a repeat comes from ANSWERS without the lock."""
     p = {k: str(v) for k, v in (params or {}).items()}
-    dk = data_key(p.get("view", "shared"), sid)
-    key = dk and (dk, name, tuple(sorted(p.items())))
+    key = answer_key(name, p, sid)
     if key in ANSWERS:
         return ANSWERS[key]
+    dk = key and key[0]
     fk = (dk, p.get("builtin") == "1")
     if name == "find" and fk in FIND:  # matched without LOCK; the answer lines of new hits need it, unless it is busy
         out, missing = find_items(p, FIND[fk], fk)
@@ -4609,9 +4619,34 @@ def make_app():
     def mine_(request: Request):
         return mine_state(sid_of(request))
 
+    import anyio
+    gate = anyio.Semaphore(1)  # new answers share LOCK anyway; waiting here holds no thread, so files and kept answers still come
+
+    async def answer(request, name, p):
+        sid = sid_of(request)
+        work = lambda: JSONResponse(serve(name, p, sid))  # already plain JSON: FastAPI's encoder takes a minute on 100k rows
+        if name == "find" or kept(name, p, sid) is not None:  # find answers without LOCK while it is busy
+            return await run_in_threadpool(work)
+        gone, listen = False, anyio.CancelScope()
+
+        async def watch():  # reads until the browser leaves: a closed connection is only seen while reading
+            nonlocal gone
+            with listen:
+                while (await request.receive())["type"] != "http.disconnect":
+                    pass
+                gone = True
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(watch)
+            await gate.acquire()
+            listen.cancel()
+        try:
+            return Response(status_code=499) if gone else await run_in_threadpool(work)  # a page that left is skipped
+        finally:
+            gate.release()
+
     def route(name):
-        def h(request: Request):  # already plain JSON: FastAPI's own encoder takes a minute on a 100k row answer
-            return JSONResponse(serve(name, dict(request.query_params), sid_of(request)))
+        async def h(request: Request):
+            return await answer(request, name, dict(request.query_params))
         return h
 
     async def body_of(request):  # a GET whose query would be too long for a URL (a big change plan) comes as a POST
@@ -4625,8 +4660,7 @@ def make_app():
 
     def post_route(name):
         async def h(request: Request):
-            p = await body_of(request)
-            return JSONResponse(await run_in_threadpool(serve, name, p, sid_of(request)))
+            return await answer(request, name, await body_of(request))
         return h
 
     def post_csv(name):

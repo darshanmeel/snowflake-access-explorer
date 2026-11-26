@@ -2098,6 +2098,19 @@ def test_builtin_hidden():  # Can they? and Who has access: the note on left-out
     assert d["verdict"] == "yes" and d["paths"][0]["path"] == ["ANALYST_01", "PUBLIC", "SNOWFLAKE_LEARNING_ROLE", "SNOWFLAKE_LEARNING_DB"], d
 
 
+
+def test_kept_while_busy():
+    """While one answer is computed (it holds LOCK), a kept answer and the page itself still come at once."""
+    import threading
+    c.get("/api/home")
+    with server.LOCK:
+        got = {}
+        t = threading.Thread(target=lambda: got.update(home=c.get("/api/home").status_code, page=c.get("/").status_code))
+        t.start()
+        t.join(10)
+        assert got == {"home": 200, "page": 200}, got
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
