@@ -89,7 +89,7 @@ export function UseLine({ name, user }: { name: string; user: string }) {
   if (!n) return <span className="ae-muted">Not used in {d.days} days</span>;
   const last = d.by!.user[0]?.last.slice(0, 10);
   return (
-    <button type="button" className="ae-link" onClick={() => c.set({ show: "activity", as: user })}>
+    <button type="button" className="ae-link" onClick={() => c.nav("object", { name, show: "activity", as: user, ...(c.params.builtin && { builtin: c.params.builtin }) })}>
       {d.likely && d.rows!.every((r) => r.likely) ? "Likely used" : "Used"}: {n} quer{n === 1 ? "y" : "ies"} in {d.days} days as {d.by!.role.map((r) => r.key).join(", ")} ({d.by!.client.map((r) => r.key).join(", ")}), last {last}
     </button>
   );
